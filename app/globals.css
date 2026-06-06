@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --font-saira: 'Saira', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+body { font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); }
+
+.font-saira { font-family: var(--font-saira); }
+.font-mono  { font-family: var(--font-mono); }
+
+/* Scroll suave sin scrollbar */
+.scroll-x { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.scroll-x::-webkit-scrollbar { display: none; }
