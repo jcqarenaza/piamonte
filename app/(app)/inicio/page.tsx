@@ -50,7 +50,7 @@ export default async function InicioPage() {
     .select('blue, oficial, mep, fecha')
     .order('fecha', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   // KPIs del día
   const ventas = ventasHoy || []

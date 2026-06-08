@@ -59,7 +59,7 @@ export function DolarBar() {
 
   const fetch = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('cotizaciones').select('blue,oficial,mep,fecha').order('fecha', { ascending: false }).limit(1).single()
+    const { data } = await supabase.from('cotizaciones').select('blue,oficial,mep,fecha').order('fecha', { ascending: false }).limit(1).maybeSingle()
     if (data) { _cotiz = data; _listeners.forEach(fn => fn()) }
     setLoading(false)
   }, [supabase])

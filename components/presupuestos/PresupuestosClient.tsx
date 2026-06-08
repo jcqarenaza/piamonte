@@ -22,7 +22,7 @@ export default function PresupuestosClient({ userId, nombre }: { userId: string;
 
   useEffect(() => {
     supabase.from('presupuestos').select('*').order('created_at', { ascending: false }).then(({ data }) => setPresus(data ?? []))
-    supabase.from('cotizaciones').select('blue,mep').order('fecha', { ascending: false }).limit(1).single().then(({ data }) => { if (data) setCotiz(data) })
+    supabase.from('cotizaciones').select('blue,mep').order('fecha', { ascending: false }).limit(1).maybeSingle().then(({ data }) => { if (data) setCotiz(data) })
   }, [supabase])
 
   const neto = items.reduce((a, it) => a + it.c * it.p, 0)
