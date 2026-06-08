@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, Empty } from '@/components/ui'
@@ -13,8 +14,33 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [items, setItems] = useState<VentaItem[]>([])
   const [ivaOn, setIvaOn] = useState(true)
   const supabase = createClient()
+  const searchParams = useSearchParams()
 
   const [form, setForm] = useState({ aseg: '', sin: '', pol: '', cli: '', tel: '', veh: '', pat: '', obs: '' })
+
+  // Pre-cargar desde presupuesto si viene con parámetros
+  useEffect(() => {
+    const cli = searchParams.get('cli')
+    const tel = searchParams.get('tel')
+    const veh = searchParams.get('veh')
+    const itemsStr = searchParams.get('items')
+    const totalStr = searchParams.get('total')
+    const ivaStr = searchParams.get('iva')
+    if (cli || tel || veh) {
+      setForm(p => ({ ...p, cli: cli??'', tel: tel??'', veh: veh??'' }))
+    }
+    if (itemsStr) {
+      try {
+        const parsedItems = JSON.parse(itemsStr)
+        setItems(parsedItems)
+      } catch {}
+    }
+    if (totalStr && ivaStr) {
+      const ivaNum = +ivaStr
+      setIvaOn(ivaNum > 0)
+    }
+    if (cli || tel) setOpen(true)
+  }, [searchParams])
   const [item, setItem] = useState({ d: '', c: '1', p: '' })
 
   useEffect(() => {
