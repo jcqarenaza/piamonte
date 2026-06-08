@@ -274,7 +274,7 @@ export default function VehiculoClient() {
     if(!pos){setCat([]);setStock([]);return}
     setLoading(true)
     const q = supabase.from('catalogo').select('id,proveedor,codigo,descripcion,costo_neto,disponible,es_promo').eq('pos',pos).order('costo_neto')
-    if(marca.trim()) q.ilike('descripcion',`%${marca}%`)
+    if(marca.trim()) q.or(`descripcion.ilike.%${marca}%,marca.ilike.%${marca}%`)
     const[{data:catData},{data:stockData}] = await Promise.all([
       q.limit(50),
       supabase.from('stock').select('id,descripcion,cantidad,precio_venta').eq('pos',pos).eq('activo',true).gt('cantidad',0)
