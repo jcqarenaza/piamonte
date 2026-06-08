@@ -119,7 +119,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
           <button onClick={() => changeDay(1)} className="p-1.5 rounded-lg border border-p-line hover:bg-p-light text-lg">→</button>
           <button onClick={() => setFecha(todayStr())} className="text-xs text-p-ink2 hover:text-p-ink underline">Hoy</button>
         </div>
-        <Btn onClick={openNew}>+ Nuevo turno</Btn>
+        <button onClick={openNew} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Nuevo turno</button>
       </div>
 
       <p className="text-sm text-p-ink2 capitalize mb-4">{fmtFecha(fecha)} · {turnos.length} turno(s)</p>

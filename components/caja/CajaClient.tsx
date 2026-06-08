@@ -121,7 +121,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
           <button onClick={() => changeDay(1)} className="p-1.5 rounded-lg border border-p-line hover:bg-p-light">→</button>
           <button onClick={() => setFecha(todayStr())} className="text-xs text-p-ink2 hover:text-p-ink underline">Hoy</button>
         </div>
-        <Btn onClick={() => setOpen(true)}>+ Registrar venta</Btn>
+        <button onClick={() => setOpen(true)} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Registrar venta</button>
       </div>
 
       {/* KPIs */}

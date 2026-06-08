@@ -79,7 +79,7 @@ export default function PresupuestosClient({ userId, nombre }: { userId: string;
 
   return (
     <div>
-      <div className="flex justify-end mb-5"><Btn onClick={() => setOpen(true)}>+ Nuevo presupuesto</Btn></div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:20}}><button onClick={()=>setOpen(true)} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Nuevo presupuesto</button></div>
 
       {presus.length === 0 ? <Empty msg="Sin presupuestos todavía." /> : (
         <div className="flex flex-col gap-4">
