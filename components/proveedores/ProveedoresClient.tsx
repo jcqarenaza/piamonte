@@ -41,7 +41,9 @@ function decodePos(d:string) {
 }
 function toNum(v:unknown) {
   if(v==null) return 0
-  return parseFloat(String(v).replace(/\./g,'').replace(',','.')) || 0
+  if(typeof v === 'number') return v  // xlsx ya parsea números — no tocar el punto decimal
+  const s = String(v).replace(/\./g,'').replace(',','.')
+  return parseFloat(s) || 0
 }
 function mkRow(prov:string,cod:string,desc:string,marca:string,pre:number,costo:number,disp='',promo=false): CatRow {
   return { proveedor:prov, codigo:cod||null, descripcion:desc, marca:marca||null,
