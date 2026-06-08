@@ -228,7 +228,7 @@ export default function ProveedoresClient() {
       for(let i=0;i<items.length;i+=BATCH){
         const batch=items.slice(i,i+BATCH)
         const { error } = await supabase.from('catalogo')
-          .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:true })
+          .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:false })
         if(error) throw new Error(error.message)
         inserted+=batch.length
         setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
