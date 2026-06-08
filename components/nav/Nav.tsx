@@ -12,6 +12,7 @@ const NAV_MAIN = [
   { href: '/ordenes',        label: 'O. Servicio',    icon: '🔧' },
   { href: '/adas',           label: 'Cert. ADAS',     icon: '🛡' },
   { href: '/turnos',         label: 'Turnos',         icon: '📅' },
+  { href: '/clientes',       label: 'Clientes',       icon: '👥' },
 ]
 
 const NAV_SEC = [

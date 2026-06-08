@@ -1,0 +1,205 @@
+'use client'
+import { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
+import { moneyARS, todayStr } from '@/lib/utils/format'
+
+interface Cliente { id:string; nombre:string; telefono:string|null; email:string|null; notas:string|null; created_at:string }
+interface Historial {
+  turnos: { id:string; fecha:string; trabajo:string|null; estado:string; precio_acordado:number|null }[]
+  presupuestos: { id:string; fecha:string; total:number; vehiculo:string|null }[]
+  ordenes: { id:string; numero:string; fecha:string; total:number; aseguradora:string|null }[]
+}
+
+export default function ClientesClient({ userId }: { userId:string }) {
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [q, setQ]               = useState('')
+  const [open, setOpen]         = useState(false)
+  const [selected, setSelected] = useState<Cliente|null>(null)
+  const [historial, setHistorial] = useState<Historial|null>(null)
+  const [loadingHist, setLoadingHist] = useState(false)
+  const [saving, setSaving]     = useState(false)
+  const supabase = createClient()
+
+  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'' })
+
+  const load = useCallback(async () => {
+    const query = supabase.from('clientes').select('*').order('nombre')
+    if (q.trim()) query.ilike('nombre', `%${q}%`)
+    const { data } = await query.limit(50)
+    setClientes(data ?? [])
+  }, [q, supabase])
+
+  useEffect(() => { load() }, [load])
+
+  async function save() {
+    if (!form.nombre.trim()) return
+    setSaving(true)
+    if (selected?.id && !open) {
+      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null }).eq('id', selected.id)
+    } else {
+      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, user_id:userId })
+    }
+    setSaving(false); setOpen(false)
+    setForm({ nombre:'', telefono:'', email:'', notas:'' })
+    load()
+  }
+
+  async function loadHistorial(c: Cliente) {
+    if (selected?.id === c.id) { setSelected(null); setHistorial(null); return }
+    setSelected(c); setLoadingHist(true); setHistorial(null)
+    const nombre = c.nombre
+    const [t, p, o] = await Promise.all([
+      supabase.from('turnos').select('id,fecha,trabajo,estado,precio_acordado').ilike('cliente', `%${nombre}%`).order('fecha', {ascending:false}).limit(10),
+      supabase.from('presupuestos').select('id,fecha,total,vehiculo').ilike('cliente', `%${nombre}%`).order('fecha', {ascending:false}).limit(10),
+      supabase.from('ordenes_servicio').select('id,numero,fecha,total,aseguradora').ilike('cliente', `%${nombre}%`).order('fecha', {ascending:false}).limit(10),
+    ])
+    setHistorial({ turnos:t.data??[], presupuestos:p.data??[], ordenes:o.data??[] })
+    setLoadingHist(false)
+  }
+
+  async function del(id:string) {
+    if (!confirm('¿Borrar cliente?')) return
+    await supabase.from('clientes').delete().eq('id', id)
+    setClientes(prev => prev.filter(c => c.id !== id))
+    if (selected?.id === id) { setSelected(null); setHistorial(null) }
+  }
+
+  const total = historial ? [
+    ...historial.turnos.filter(t=>t.precio_acordado).map(t=>t.precio_acordado!),
+    ...historial.presupuestos.map(p=>p.total),
+    ...historial.ordenes.map(o=>o.total),
+  ].reduce((a,b)=>a+b, 0) : 0
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente…"
+          className="flex-1 min-w-[200px] border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green" />
+        <Btn onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', notas:'' }); setOpen(true) }}>
+          + Nuevo cliente
+        </Btn>
+      </div>
+
+      {clientes.length === 0 ? (
+        <Empty msg={q ? `Sin resultados para "${q}"` : 'Sin clientes todavía. Agregá el primero.'} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {clientes.map(c => (
+            <div key={c.id}>
+              <div className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap cursor-pointer transition-colors ${selected?.id===c.id ? 'border-p-green bg-p-light/30' : 'border-p-line hover:bg-p-light/20'}`}
+                onClick={() => loadHistorial(c)}>
+                <div className="w-9 h-9 rounded-full bg-p-green flex items-center justify-center text-white font-saira font-bold shrink-0">
+                  {c.nombre.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-saira font-bold text-p-ink">{c.nombre}</p>
+                  <p className="text-xs text-p-ink2 mt-0.5">
+                    {[c.telefono, c.email].filter(Boolean).join(' · ') || 'Sin contacto'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {c.telefono && (
+                    <a href={`https://wa.me/${c.telefono.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer"
+                      onClick={e=>e.stopPropagation()}
+                      className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
+                  )}
+                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', notas:c.notas??'' }); setSelected(c); setOpen(true) }}
+                    className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink2 hover:bg-p-light">✏</button>
+                  <button onClick={e=>{ e.stopPropagation(); del(c.id) }}
+                    className="text-xs border border-red-200 rounded-lg px-2 py-1 text-red-400 hover:text-red-600">✕</button>
+                </div>
+              </div>
+
+              {/* Historial expandido */}
+              {selected?.id === c.id && (
+                <div className="border border-t-0 border-p-green rounded-b-xl bg-white px-4 py-4 -mt-1">
+                  {loadingHist ? (
+                    <p className="text-sm text-p-gray text-center py-4">Cargando historial…</p>
+                  ) : historial ? (
+                    <div className="flex flex-col gap-4">
+                      {/* Resumen */}
+                      {total > 0 && (
+                        <div className="bg-p-light rounded-xl px-4 py-3 flex items-center justify-between">
+                          <p className="text-sm text-p-ink2 font-semibold">Facturado total histórico</p>
+                          <p className="font-saira font-bold text-xl text-p-dark">{moneyARS(total)}</p>
+                        </div>
+                      )}
+
+                      {/* Turnos */}
+                      {historial.turnos.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-p-ink2 uppercase tracking-wider mb-2">📅 Turnos</p>
+                          <div className="flex flex-col gap-1.5">
+                            {historial.turnos.map(t => (
+                              <div key={t.id} className="flex items-center gap-3 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                                <span className="font-mono text-xs text-p-ink2 shrink-0">{t.fecha.split('-').reverse().join('/')}</span>
+                                <span className="flex-1 text-p-ink truncate">{t.trabajo ?? '—'}</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${t.estado==='hecho'?'bg-green-100 text-green-700':t.estado==='confirmado'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>{t.estado}</span>
+                                {t.precio_acordado && <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(t.precio_acordado)}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Presupuestos */}
+                      {historial.presupuestos.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-p-ink2 uppercase tracking-wider mb-2">📋 Presupuestos</p>
+                          <div className="flex flex-col gap-1.5">
+                            {historial.presupuestos.map(p => (
+                              <div key={p.id} className="flex items-center gap-3 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                                <span className="font-mono text-xs text-p-ink2 shrink-0">{p.fecha.split('-').reverse().join('/')}</span>
+                                <span className="flex-1 text-p-ink truncate">{p.vehiculo ?? '—'}</span>
+                                <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(p.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Órdenes */}
+                      {historial.ordenes.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-p-ink2 uppercase tracking-wider mb-2">🔧 Órdenes de servicio</p>
+                          <div className="flex flex-col gap-1.5">
+                            {historial.ordenes.map(o => (
+                              <div key={o.id} className="flex items-center gap-3 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                                <span className="font-mono text-xs font-bold text-p-dark shrink-0">{o.numero}</span>
+                                <span className="font-mono text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
+                                <span className="flex-1 text-p-ink truncate">{o.aseguradora ?? '—'}</span>
+                                <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(o.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {!historial.turnos.length && !historial.presupuestos.length && !historial.ordenes.length && (
+                        <p className="text-sm text-p-gray text-center py-2">Sin historial registrado todavía.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={open} onClose={()=>setOpen(false)} title={selected && open ? 'Editar cliente' : 'Nuevo cliente'}>
+        <div className="flex flex-col gap-3">
+          <Field label="Nombre *"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" /></Field>
+          <Field label="WhatsApp"><Input type="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="54 9 2302…" /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional" /></Field>
+          <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
+          <div className="flex justify-end gap-2 pt-2">
+            <Btn variant="secondary" onClick={()=>setOpen(false)}>Cancelar</Btn>
+            <Btn onClick={save} disabled={saving}>{saving?'Guardando…':'Guardar'}</Btn>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
