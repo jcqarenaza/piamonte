@@ -10,6 +10,7 @@ const NAV_MAIN = [
   { href: '/caja',           label: 'Caja del día',   icon: '💰' },
   { href: '/presupuestos',   label: 'Presupuestos',   icon: '📄' },
   { href: '/ordenes',        label: 'O. Servicio',    icon: '🔧' },
+  { href: '/adas',           label: 'Cert. ADAS',     icon: '🛡' },
   { href: '/turnos',         label: 'Turnos',         icon: '📅' },
 ]
 

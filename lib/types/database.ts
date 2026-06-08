@@ -148,3 +148,28 @@ export interface Oferta {
   activa: boolean
   created_at: string
 }
+
+export interface CertificadoAdas {
+  id: string
+  numero: string
+  fecha: string
+  cliente: string | null
+  razon_social: string | null
+  marca: string | null
+  modelo: string | null
+  anio: string | null
+  dominio: string | null
+  vin: string | null
+  kilometraje: string | null
+  sistemas: string[]
+  otros_sistemas: string | null
+  procedimientos: string[]
+  equipo: string
+  software: string
+  protocolos: string
+  observaciones: string | null
+  turno_id: string | null
+  orden_id: string | null
+  user_id: string | null
+  created_at: string
+}
