@@ -212,13 +212,21 @@ export default function ProveedoresClient() {
 
       if(!items.length) throw new Error('No se encontraron ítems en el archivo')
 
+      // Deduplicar — Malatesta y otros pueden tener el mismo código más de una vez
+      const seen = new Set<string>()
+      items = items.filter(it => {
+        const key = `${it.proveedor}|${it.codigo ?? it.descripcion}`
+        if (seen.has(key)) return false
+        seen.add(key); return true
+      })
+
       setProgress(`Importando ${items.length.toLocaleString('es-AR')} piezas…`)
       let inserted=0
       const BATCH=200
       for(let i=0;i<items.length;i+=BATCH){
         const batch=items.slice(i,i+BATCH)
         const { error } = await supabase.from('catalogo')
-          .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:false })
+          .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:true })
         if(error) throw new Error(error.message)
         inserted+=batch.length
         setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
