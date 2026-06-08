@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Btn, Field } from '@/components/ui'
 
 const SUPABASE_URL = 'https://hjzhatercccblhgaukgx.supabase.co'
@@ -10,25 +11,34 @@ const FORMATOS = [
   { id: 'sekurit',     label: 'Sekurit — Lista disponible',      ext: '.xlsx' },
   { id: 'promo_ar',    label: 'Promo Alta Rotación 68%',         ext: '.xlsx' },
   { id: 'promo_bg',    label: 'Promo Bajo Giro 68%',             ext: '.xlsx' },
-  { id: 'oferta_gamma',label: 'Oferta Especial Mixta (GAMMA)',   ext: '.pdf'  },
+  { id: 'oferta_gamma','label': 'Oferta Especial Mixta (GAMMA)', ext: '.pdf'  },
   { id: 'mix_malat',   label: 'Oferta Mix Pilkington/Euroglass', ext: '.pdf'  },
 ]
 
-const REGLAS = [
-  { nombre: 'GAMMA',       desc: '−48% + 1,5% flete + IVA',                       color: 'bg-green-100 text-green-700'  },
-  { nombre: 'Malatesta',   desc: '−53% + 1% flete + IVA',                          color: 'bg-blue-100 text-blue-700'    },
-  { nombre: 'Sekurit',     desc: 'Precio neto + IVA',                              color: 'bg-purple-100 text-purple-700'},
-  { nombre: 'Promos 68%',  desc: 'Desc base 68% + extra por ítem + PP 8% + IVA',  color: 'bg-amber-100 text-amber-700'  },
-  { nombre: 'Ofertas PDF', desc: 'Precio neto + IVA (vigencia mensual)',           color: 'bg-rose-100 text-rose-700'    },
-]
-
+interface Lista { id: string; nombre: string; proveedor: string; tipo: string; desc_pct: number; flete_pct: number; iva_pct: number; vigencia_hasta: string | null; activa: boolean }
 interface Result { ok: boolean; total?: number; importados?: number; error?: string }
 
 export default function ProveedoresClient({ token }: { token: string }) {
+  const [listas, setListas]   = useState<Lista[]>([])
+  const [saving, setSaving]   = useState<string | null>(null)
+  const [saved, setSaved]     = useState<string | null>(null)
   const [formato, setFormato] = useState('gamma')
   const [file, setFile]       = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult]   = useState<Result | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.from('listas_precio').select('*').order('proveedor').then(({ data }) => setListas(data ?? []))
+  }, [supabase])
+
+  async function updateLista(id: string, field: string, val: string) {
+    const num = parseFloat(val) / 100   // usuario escribe 48, guardamos 0.48
+    setSaving(id)
+    await supabase.from('listas_precio').update({ [field]: num }).eq('id', id)
+    setListas(prev => prev.map(l => l.id === id ? { ...l, [field]: num } : l))
+    setSaving(null); setSaved(id); setTimeout(() => setSaved(null), 1500)
+  }
 
   const fmt = FORMATOS.find(f => f.id === formato)!
 
@@ -36,50 +46,79 @@ export default function ProveedoresClient({ token }: { token: string }) {
     if (!file) return
     setLoading(true); setResult(null)
     const fd = new FormData()
-    fd.append('file', file)
-    fd.append('formato', formato)
-    fd.append('lista_nombre', fmt.label)
+    fd.append('file', file); fd.append('formato', formato); fd.append('lista_nombre', fmt.label)
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/importar-lista`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
       })
       setResult(await res.json())
     } catch {
-      setResult({ ok: false, error: 'Error de conexión con la Edge Function' })
+      setResult({ ok: false, error: 'Error de conexión. ¿Está deployada la Edge Function?' })
     }
-    setLoading(false)
-    setFile(null)
+    setLoading(false); setFile(null)
     const inp = document.getElementById('fi') as HTMLInputElement
     if (inp) inp.value = ''
   }
 
-  return (
-    <div className="max-w-xl">
+  function pct(n: number) { return (n * 100).toFixed(1) }
 
-      {/* Reglas */}
-      <div className="bg-white border border-p-line rounded-xl overflow-hidden mb-8 shadow-sm">
+  return (
+    <div className="max-w-2xl flex flex-col gap-8">
+
+      {/* Descuentos editables */}
+      <div className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
           <p className="font-saira font-bold text-sm text-p-ink">Reglas de costo por proveedor</p>
+          <p className="text-xs text-p-ink2 mt-0.5">Editá los porcentajes y se guardan automáticamente.</p>
         </div>
-        {REGLAS.map((r, i) => (
-          <div key={r.nombre} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-p-line2' : ''}`}>
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${r.color}`}>{r.nombre}</span>
-            <p className="text-sm text-p-ink2">{r.desc}</p>
+
+        {listas.length === 0 ? (
+          <p className="text-sm text-p-gray text-center py-8">Cargando…</p>
+        ) : (
+          <div>
+            {/* Header */}
+            <div className="grid grid-cols-5 gap-2 px-4 py-2 bg-gray-50 border-b border-p-line2 text-[10px] font-bold text-p-ink2 uppercase tracking-wider">
+              <span className="col-span-2">Lista</span>
+              <span className="text-center">Desc %</span>
+              <span className="text-center">Flete %</span>
+              <span className="text-center">IVA %</span>
+            </div>
+            {listas.map(l => (
+              <div key={l.id} className={`grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-p-line2 items-center ${!l.activa ? 'opacity-50' : ''}`}>
+                <div className="col-span-2">
+                  <p className="text-sm font-medium text-p-ink">{l.nombre}</p>
+                  <p className="text-[10px] text-p-ink2">{l.proveedor} · {l.tipo}</p>
+                </div>
+                {(['desc_pct','flete_pct','iva_pct'] as const).map(field => (
+                  <div key={field} className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      defaultValue={pct(l[field])}
+                      onBlur={e => updateLista(l.id, field, e.target.value)}
+                      className="w-full border border-p-line rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:border-p-green"
+                    />
+                    <span className="text-xs text-p-gray">%</span>
+                  </div>
+                ))}
+                {saving === l.id && <div className="col-span-5 text-[10px] text-p-ink2 text-right pb-1">Guardando…</div>}
+                {saved === l.id && <div className="col-span-5 text-[10px] text-green-600 text-right pb-1">✓ Guardado</div>}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       {/* Importador */}
       <div className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
           <p className="font-saira font-bold text-sm text-p-ink">Importar lista de precios</p>
+          <p className="text-xs text-p-ink2 mt-0.5">Seleccioná el tipo y subí el archivo. El catálogo se actualiza automáticamente.</p>
         </div>
         <div className="p-4 flex flex-col gap-4">
-
-          {/* Selector de formato */}
-          <Field label="1. Elegí el tipo de lista">
+          <Field label="1. Tipo de lista">
             <select
               value={formato}
               onChange={e => { setFormato(e.target.value); setFile(null); setResult(null) }}
@@ -91,58 +130,32 @@ export default function ProveedoresClient({ token }: { token: string }) {
             </select>
           </Field>
 
-          {/* Selector de archivo */}
-          <Field label={`2. Seleccioná el archivo (${fmt.ext})`}>
+          <Field label={`2. Archivo (${fmt.ext})`}>
             <input
-              id="fi"
-              type="file"
-              accept={fmt.ext}
+              id="fi" type="file" accept={fmt.ext}
               onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }}
               className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white
                 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0
-                file:bg-p-green file:text-white file:font-saira file:font-bold file:text-xs
-                cursor-pointer"
+                file:bg-p-green file:text-white file:font-saira file:font-bold file:text-xs cursor-pointer"
             />
-            {file && (
-              <p className="text-xs text-p-ink2 mt-1.5">
-                📎 {file.name} ({(file.size / 1024).toFixed(0)} KB)
-              </p>
-            )}
+            {file && <p className="text-xs text-p-ink2 mt-1">📎 {file.name} ({(file.size/1024).toFixed(0)} KB)</p>}
           </Field>
 
-          {/* Botón */}
-          <Btn
-            onClick={importar}
-            disabled={!file || loading}
-            className="w-full text-base py-3"
-          >
+          <Btn onClick={importar} disabled={!file || loading} className="w-full py-3 text-base">
             {loading ? '⏳ Importando…' : '⬆ Importar al catálogo'}
           </Btn>
 
-          {/* Resultado */}
           {result && (
-            <div className={`p-4 rounded-xl border text-sm ${
-              result.ok
-                ? 'bg-green-50 border-green-200 text-green-800'
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}>
+            <div className={`p-4 rounded-xl border text-sm ${result.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
               {result.ok ? (
-                <>
-                  <p className="font-saira font-bold text-base mb-1">✅ Importación exitosa</p>
-                  <p>Se importaron <b>{result.importados?.toLocaleString('es-AR')}</b> de <b>{result.total?.toLocaleString('es-AR')}</b> piezas.</p>
-                </>
+                <><p className="font-bold mb-1">✅ Importación exitosa</p>
+                <p>Se importaron <b>{result.importados?.toLocaleString('es-AR')}</b> de <b>{result.total?.toLocaleString('es-AR')}</b> piezas.</p></>
               ) : (
-                <>
-                  <p className="font-bold mb-1">❌ Error al importar</p>
-                  <p className="font-mono text-xs">{result.error}</p>
-                  {result.error?.includes('Edge Function') && (
-                    <p className="mt-2 text-xs">La Edge Function <b>importar-lista</b> no está deployada todavía. Deployala desde el dashboard de Supabase.</p>
-                  )}
-                </>
+                <><p className="font-bold mb-1">❌ Error</p>
+                <p className="font-mono text-xs">{result.error}</p></>
               )}
             </div>
           )}
-
         </div>
       </div>
     </div>
