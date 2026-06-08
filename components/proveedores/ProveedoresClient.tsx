@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import * as XLSX from 'xlsx'
 
 const FORMATOS = [
   { id: 'gamma',        label: 'GAMMA — Catálogo',               ext: '.xlsx', tipo: 'excel' },
@@ -49,15 +50,9 @@ function mkRow(prov:string,cod:string,desc:string,marca:string,pre:number,costo:
     es_promo:promo, updated_at:new Date().toISOString() }
 }
 
-// ── parsers Excel ─────────────────────────────────────────────────────────────
-async function loadXLSX() {
-  // @ts-ignore
-  const mod = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
-  return mod
-}
 
+// ── parsers Excel ─────────────────────────────────────────────────────────────
 async function parseGamma(file:File): Promise<CatRow[]> {
-  const XLSX = await loadXLSX()
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['Lista General']
@@ -75,7 +70,6 @@ async function parseGamma(file:File): Promise<CatRow[]> {
 }
 
 async function parseMalateseta(file:File): Promise<CatRow[]> {
-  const XLSX = await loadXLSX()
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['Lista']
@@ -91,7 +85,6 @@ async function parseMalateseta(file:File): Promise<CatRow[]> {
 }
 
 async function parseSekurit(file:File): Promise<CatRow[]> {
-  const XLSX = await loadXLSX()
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['LP']
@@ -109,7 +102,6 @@ async function parseSekurit(file:File): Promise<CatRow[]> {
 }
 
 async function parsePromo(file:File): Promise<CatRow[]> {
-  const XLSX = await loadXLSX()
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['Hoja1']
