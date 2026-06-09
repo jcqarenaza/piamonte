@@ -24,19 +24,25 @@ function norm(s:string) {
 }
 function decodePos(d:string) {
   const s=norm(d).replace(/^E-/,'')
-  if(/^PSAS|^PB\b|PARABRISA/.test(s)) return 'PARABRISAS'
-  if(/^LUNETA|^LTA|^LT\b/.test(s))    return 'LUNETA'
-  if(/^TECHO/.test(s))                 return 'TECHO'
-  if(/^P\.?D\.?D/.test(s))            return 'PUERTA_DD'
-  if(/^P\.?D\.?I/.test(s))            return 'PUERTA_DI'
-  if(/^P\.?T\.?D/.test(s))            return 'PUERTA_TD'
-  if(/^P\.?T\.?I/.test(s))            return 'PUERTA_TI'
-  if(/^P\.?D\b/.test(s))              return 'PUERTA_DD'
-  if(/^P\.?I\b/.test(s))              return 'PUERTA_DI'
-  if(/^C\.?T?\.?D|^C\.?D/.test(s)||s.startsWith('CUSTODIA')) return 'CUSTODIA_D'
-  if(/^C\.?T?\.?I|^C\.?I/.test(s))   return 'CUSTODIA_I'
-  if(/^A\.?T?\.?D|^A\.?D\b/.test(s)) return 'ALETA_D'
-  if(/^A\.?T?\.?I|^A\.?I\b/.test(s)) return 'ALETA_I'
+  // GAMMA: PSAS. / Malatesta: PSAS. / Sekurit: PB
+  if(/^PSAS|^PB\b|^PB\s|PARABRISA/.test(s)) return 'PARABRISAS'
+  // Sekurit: Lu / GAMMA: LUNETA / LTA
+  if(/^LUNETA|^LTA|^LT\b|^LU\b|^LU\s/.test(s)) return 'LUNETA'
+  if(/^TECHO/.test(s)) return 'TECHO'
+  // Sekurit: Pta DD / Pta DI / Pta TD / Pta TI
+  if(/^PTA\s+DD|^P\.?D\.?D/.test(s)) return 'PUERTA_DD'
+  if(/^PTA\s+DI|^P\.?D\.?I/.test(s)) return 'PUERTA_DI'
+  if(/^PTA\s+TD|^P\.?T\.?D/.test(s)) return 'PUERTA_TD'
+  if(/^PTA\s+TI|^P\.?T\.?I/.test(s)) return 'PUERTA_TI'
+  // Sekurit: Pta (sin especificar) → genérico
+  if(/^PTA\s/.test(s)) return 'PUERTA_DD'
+  if(/^P\.?D\b/.test(s)) return 'PUERTA_DD'
+  if(/^P\.?I\b/.test(s)) return 'PUERTA_DI'
+  // Custodias / Sekurit: Cu D / Cu I
+  if(/^C\.?T?\.?D|^C\.?D|^CU\s+D/.test(s)||s.startsWith('CUSTODIA')) return 'CUSTODIA_D'
+  if(/^C\.?T?\.?I|^C\.?I|^CU\s+I/.test(s)) return 'CUSTODIA_I'
+  if(/^A\.?T?\.?D|^A\.?D\b|^ALETA\s+TD|^ALETA\s+DD/.test(s)) return 'ALETA_D'
+  if(/^A\.?T?\.?I|^A\.?I\b|^ALETA\s+TI|^ALETA\s+DI/.test(s)) return 'ALETA_I'
   return 'OTRO'
 }
 function toNum(v:unknown) {
@@ -91,16 +97,67 @@ async function parseSekurit(file:File): Promise<CatRow[]> {
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['LP']
   if(!ws) throw new Error('Hoja "LP" no encontrada')
-  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
-  const h=rows[0].map((v:unknown)=>norm(String(v??'')))
-  const iM=h.findIndex((x:string)=>x==='MATERIAL'),iD=h.findIndex((x:string)=>x.includes('DESCRIP'))
-  const iMk=h.findIndex((x:string)=>x==='MARCA'),iP=h.findIndex((x:string)=>x.includes('LISTA'))
-  const iDp=h.findIndex((x:string)=>x.includes('DISP'))
-  return rows.slice(1).filter(r=>toNum(r[iP])&&String(r[iD]??'').trim()).map(r=>{
-    const d=String(r[iDp]??'').trim().toUpperCase()
-    const disp=d==='SI'||d==='SÍ'?'SI':d==='NO'?'NO':d.includes('MIN')?'MIN':''
-    return mkRow('SEKURIT',String(r[iM]??'').trim(),String(r[iD]??'').trim(),String(r[iMk]??'').trim(),toNum(r[iP]),toNum(r[iP]),disp,false)
-  })
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' })
+
+  // Detectar posición desde descripción
+  function posFromDesc(desc:string): string {
+    const d = desc.toUpperCase()
+    if(d.startsWith('PB ') || d.startsWith('PB  ')) return 'PARABRISAS'
+    if(d.startsWith('LU ') || d.startsWith('LU  ') || d.startsWith('LUNETA')) return 'LUNETA'
+    if(d.startsWith('PTA DD') || d.startsWith('PTA  DD')) return 'PUERTA_DD'
+    if(d.startsWith('PTA DI') || d.startsWith('PTA  DI')) return 'PUERTA_DI'
+    if(d.startsWith('PTA TD') || d.startsWith('PTA  TD')) return 'PUERTA_TD'
+    if(d.startsWith('PTA TI') || d.startsWith('PTA  TI')) return 'PUERTA_TI'
+    if(d.startsWith('PTA ') || d.startsWith('PTA  ')) return 'PUERTA_DD' // fallback puerta
+    if(d.startsWith('CU D') || d.startsWith('CUS D') || d.startsWith('CUST D')) return 'CUSTODIA_D'
+    if(d.startsWith('CU I') || d.startsWith('CUS I') || d.startsWith('CUST I')) return 'CUSTODIA_I'
+    if(d.startsWith('TECHO') || d.startsWith('TCH')) return 'TECHO'
+    return ''
+  }
+
+  // Headers de posición que cambian el contexto
+  const POS_HEADERS: Record<string,string> = {
+    'PARABRISAS':'PARABRISAS','LUNETAS':'LUNETA','LUNETA':'LUNETA',
+    'LATERALES':'LATERAL','PUERTAS':'PUERTA_DD',
+    'CUSTODIAS':'CUSTODIA_D','TECHOS':'TECHO','TECHO':'TECHO',
+  }
+  // Headers de marcas conocidas (para no confundirlos con posición)
+  const KNOWN_BRANDS = new Set(['AUDI','BMW','CHERY','CHEVROLET','CITROEN','FIAT','FORD','HONDA',
+    'HYUNDAI','JEEP','KIA','MERCEDES','NISSAN','PEUGEOT','RENAULT','SUZUKI','TOYOTA','VOLKSWAGEN','VW'])
+
+  const items: CatRow[] = []
+  let currentPos = ''
+
+  for(let i=1; i<rows.length; i++) {
+    const r = rows[i]
+    const c0 = String(r[0]||'').trim()
+    const precio = toNum(r[7])
+
+    // Si no tiene precio es un header de sección
+    if(!precio) {
+      const c0up = c0.toUpperCase()
+      if(POS_HEADERS[c0up]) currentPos = POS_HEADERS[c0up]
+      // Si es marca conocida → no cambia pos
+      continue
+    }
+
+    const desc  = String(r[4]||'').trim()
+    const marca = String(r[6]||'').trim()
+    const cod   = String(r[0]||'').trim() || String(r[2]||'').trim()
+    const dispRaw = String(r[8]||'').trim().toUpperCase()
+    const disp  = dispRaw==='SI'||dispRaw==='SÍ'?'SI':dispRaw==='NO'?'NO':dispRaw.includes('MIN')?'MIN':''
+
+    if(!desc) continue
+
+    // Refinar pos desde descripción (más específico que el header de sección)
+    const posDesc = posFromDesc(desc)
+    const pos = posDesc || currentPos
+
+    const row = mkRow('SEKURIT', cod, desc, marca, precio, precio, disp, false)
+    row.pos = pos || null
+    items.push(row)
+  }
+  return items
 }
 
 async function parsePromo(file:File): Promise<CatRow[]> {
