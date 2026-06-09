@@ -21,7 +21,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const [saving, setSaving]     = useState(false)
   const supabase = createClient()
 
-  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'' })
+  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'' })
 
   const load = useCallback(async () => {
     const query = supabase.from('clientes').select('*').order('nombre')
@@ -36,12 +36,12 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (!form.nombre.trim()) return
     setSaving(true)
     if (selected?.id && !open) {
-      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null }).eq('id', selected.id)
+      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null }).eq('id', selected.id)
     } else {
-      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, user_id:userId })
+      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, user_id:userId })
     }
     setSaving(false); setOpen(false)
-    setForm({ nombre:'', telefono:'', email:'', notas:'' })
+    setForm({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'' })
     load()
   }
 
@@ -95,9 +95,14 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-saira font-bold text-p-ink">{c.nombre}</p>
-                  <p className="text-xs text-p-ink2 mt-0.5">
-                    {[c.telefono, c.email].filter(Boolean).join(' · ') || 'Sin contacto'}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="text-xs text-p-ink2">{[c.telefono, c.email].filter(Boolean).join(' · ') || 'Sin contacto'}</p>
+                    {c.tipo_cliente_id && tipos.find(t=>t.id===c.tipo_cliente_id) && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">
+                        {tipos.find(t=>t.id===c.tipo_cliente_id)?.nombre}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {c.telefono && (
@@ -194,6 +199,13 @@ export default function ClientesClient({ userId }: { userId:string }) {
           <Field label="Nombre *"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" /></Field>
           <Field label="WhatsApp"><Input type="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="54 9 2302…" /></Field>
           <Field label="Email"><Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional" /></Field>
+          <Field label="Tipo de cliente">
+            <select value={form.tipo_cliente_id} onChange={e=>setForm(p=>({...p,tipo_cliente_id:e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green bg-white">
+              <option value="">Sin tipo</option>
+              {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+            </select>
+          </Field>
           <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={()=>setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
