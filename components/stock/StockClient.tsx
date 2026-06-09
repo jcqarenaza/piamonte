@@ -21,6 +21,11 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [depFilter, setDepFilter] = useState('')
   const [soloSinCosto, setSoloSinCosto] = useState(false)
   const [open, setOpen] = useState(false)
+  const [ajusteOpen, setAjusteOpen] = useState(false)
+  const [ajusteForm, setAjusteForm] = useState({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
+  const [ajusteSearch, setAjusteSearch] = useState('')
+  const [ajusteSugs, setAjusteSugs] = useState<StockItem[]>([])
+  const [ajusteStockId, setAjusteStockId] = useState<string|null>(null)
   const [costoEdit, setCostoEdit] = useState<Record<string, string>>({})
   const supabase = createClient()
 
@@ -73,6 +78,43 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     if (!confirm('¿Quitar del stock?')) return
     await supabase.from('stock').update({ activo: false, updated_at: new Date().toISOString() }).eq('id', id)
     setItems(prev => prev.filter(x => x.id !== id))
+  }
+
+  // Búsqueda para ajuste
+  useEffect(() => {
+    if (ajusteSearch.length < 2) { setAjusteSugs([]); return }
+    const q = ajusteSearch.toUpperCase()
+    setAjusteSugs(items.filter(s => (s.descripcion+' '+(s.marca??'')).toUpperCase().includes(q)).slice(0,6))
+  }, [ajusteSearch, items])
+
+  async function saveAjuste() {
+    if (!ajusteForm.desc || !ajusteForm.cant) return
+    const cant = +ajusteForm.cant || 0
+    const costo = ajusteForm.costo ? +ajusteForm.costo.replace(/[^0-9.]/g,'') : null
+    // Si hay un stock_id, incrementar cantidad
+    if (ajusteStockId) {
+      const s = items.find(x => x.id === ajusteStockId)
+      if (s) {
+        await supabase.from('stock').update({ cantidad: s.cantidad + cant, ...(costo ? {costo} : {}), updated_at: new Date().toISOString() }).eq('id', ajusteStockId)
+      }
+    } else {
+      // Crear nueva entrada de stock
+      await supabase.from('stock').insert({
+        descripcion: ajusteForm.desc, cantidad: cant, costo,
+        deposito: 'Principal', activo: true
+      })
+    }
+    // Registrar ajuste
+    await supabase.from('ajustes_stock').insert({
+      tipo: 'entrada', stock_id: ajusteStockId || null,
+      descripcion: ajusteForm.desc, cantidad: cant,
+      costo_unitario: costo, proveedor: ajusteForm.prov || null,
+      nota: ajusteForm.nota || null
+    })
+    setAjusteOpen(false)
+    setAjusteForm({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
+    setAjusteSearch(''); setAjusteStockId(null)
+    load()
   }
 
   async function addStock() {
@@ -129,6 +171,10 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           {soloSinCosto ? '✕ Solo sin costo' : '⚠ Solo sin costo'}
         </button>}
         <Btn size="sm" onClick={() => setOpen(true)}>+ Agregar</Btn>
+        <button onClick={() => setAjusteOpen(true)}
+          style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          📥 Cargar mercadería
+        </button>
       </div>
 
       <p className="text-xs text-p-ink2 mb-3">{visible.length} ítems · {visible.reduce((a, s) => a + s.cantidad, 0)} u.</p>
@@ -185,6 +231,71 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           </div>
         </div>
       </Modal>
+      {/* Modal carga de mercadería */}
+      {ajusteOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={e=>e.target===e.currentTarget&&setAjusteOpen(false)}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-p-line">
+              <h2 className="font-saira font-bold text-lg text-p-ink">📥 Cargar mercadería</h2>
+              <button onClick={()=>setAjusteOpen(false)} className="text-p-gray text-xl">✕</button>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza existente en stock</label>
+                <div className="relative">
+                  <input value={ajusteSearch} onChange={e=>{setAjusteSearch(e.target.value);setAjusteStockId(null)}}
+                    placeholder="Modelo, marca…"
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                  {ajusteSugs.length>0&&(
+                    <div className="absolute z-10 top-full left-0 right-0 bg-white border border-p-line rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {ajusteSugs.map(s=>(
+                        <button key={s.id} onClick={()=>{setAjusteForm(p=>({...p,desc:s.descripcion,costo:s.costo?String(Math.round(s.costo)):''}));setAjusteStockId(s.id);setAjusteSearch(s.descripcion);setAjusteSugs([])}}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                          <span className="font-medium">{s.descripcion}</span>
+                          <span className="text-p-ink2 text-xs ml-2">stock actual: {s.cantidad} u.</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {ajusteStockId&&<p className="text-xs text-p-green font-semibold mt-1">✓ Entrada a pieza existente</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">O descripción nueva</label>
+                <input value={ajusteForm.desc} onChange={e=>setAjusteForm(p=>({...p,desc:e.target.value}))}
+                  placeholder="Descripción de la pieza"
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Unidades</label>
+                  <input type="number" min="1" value={ajusteForm.cant} onChange={e=>setAjusteForm(p=>({...p,cant:e.target.value}))}
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Costo unit.</label>
+                  <input value={ajusteForm.costo} onChange={e=>setAjusteForm(p=>({...p,costo:e.target.value}))} placeholder="$"
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Proveedor</label>
+                  <input value={ajusteForm.prov} onChange={e=>setAjusteForm(p=>({...p,prov:e.target.value}))} placeholder="GAMMA…"
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Nota</label>
+                <input value={ajusteForm.nota} onChange={e=>setAjusteForm(p=>({...p,nota:e.target.value}))} placeholder="Observaciones opcionales"
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={()=>setAjusteOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer'}}>Cancelar</button>
+                <button onClick={saveAjuste} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer'}}>Cargar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

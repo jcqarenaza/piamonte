@@ -109,3 +109,17 @@ export function AlarmBar({ count, label, href, onGo }: { count: number; label: s
     </div>
   )
 }
+
+// ── NO ACCESO ────────────────────────────────────────────────────────────────
+export function NoAcceso({ modulo = '' }: { modulo?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+      <p className="text-5xl mb-4">🔒</p>
+      <h2 className="font-saira font-bold text-xl text-p-ink mb-2">Acceso restringido</h2>
+      <p className="text-p-ink2 text-sm max-w-xs">
+        Tu usuario no tiene permiso para acceder{modulo ? ` a ${modulo}` : ' a este módulo'}.
+        <br/>Pedile acceso al administrador del sistema.
+      </p>
+    </div>
+  )
+}
