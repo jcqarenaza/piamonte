@@ -1,4 +1,3 @@
-import type { Config } from "tailwindcss";
 export default {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   safelist: [
@@ -44,4 +43,4 @@ export default {
     },
   },
   plugins: [],
-} satisfies Config;
+}
