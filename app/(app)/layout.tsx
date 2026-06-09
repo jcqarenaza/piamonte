@@ -10,22 +10,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect('/login')
   const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle()
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight:'100vh', background:'#F5F0E8' }}>
       <Nav rol={perfil?.rol} />
-      {/* Contenido — margen izquierdo en desktop para el sidebar */}
-      <div id="main-content" style={{ marginLeft: 0 }}>
-        <script dangerouslySetInnerHTML={{__html: `
-          (function(){
-            function applyMargin(){
-              var el = document.getElementById('main-content');
-              if(el) el.style.marginLeft = window.innerWidth >= 1024 ? '220px' : '0';
-            }
-            applyMargin();
-            window.addEventListener('resize', applyMargin);
-          })();
-        `}} />
+      <div id="main-content">
+        <script dangerouslySetInnerHTML={{__html:`(function(){function m(){var e=document.getElementById('main-content');if(e)e.style.marginLeft=window.innerWidth>=1024?'210px':'0'}m();window.addEventListener('resize',m)})()`}}/>
         <DolarBar />
-        <main style={{ paddingTop: 0, paddingBottom: 80 }} className="px-4 lg:px-8 py-6">
+        <main className="px-4 lg:px-8 py-6" style={{ paddingBottom:80 }}>
           {children}
         </main>
       </div>

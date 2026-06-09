@@ -4,63 +4,85 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-const ALL_MODULES = [
-  { id:'inicio',       href:'/inicio',       label:'Inicio',        icon:'🏠' },
-  { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
-  { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
-  { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
-  { id:'turnos',       href:'/turnos',       label:'Turnos',        icon:'📅' },
-  { id:'clientes',     href:'/clientes',     label:'Clientes',      icon:'👥' },
-  { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
-  { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
-  { id:'caja',         href:'/caja',         label:'Caja del día',  icon:'💰' },
-  { id:'stock',        href:'/stock',        label:'Mi stock',      icon:'📦' },
-  { id:'adas',         href:'/adas',         label:'Cert. ADAS',    icon:'🛡️' },
-  { id:'ofertas',      href:'/ofertas',      label:'Ofertas',       icon:'📄' },
-  { id:'proveedores',  href:'/proveedores',  label:'Proveedores',   icon:'🏭' },
-  { id:'informes',     href:'/informes',     label:'Informes',      icon:'📊' },
+// ── Grupos de módulos ─────────────────────────────────────────────────────────
+const GRUPOS = [
+  {
+    label: 'OPERACIÓN',
+    items: [
+      { id:'inicio',       href:'/inicio',       label:'Inicio',        icon:'🏠' },
+      { id:'turnos',       href:'/turnos',       label:'Turnos',        icon:'📅' },
+      { id:'caja',         href:'/caja',         label:'Caja del día',  icon:'💰' },
+      { id:'clientes',     href:'/clientes',     label:'Clientes',      icon:'👥' },
+    ]
+  },
+  {
+    label: 'DOCUMENTOS',
+    items: [
+      { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
+      { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
+      { id:'adas',         href:'/adas',         label:'Cert. ADAS',    icon:'🛡️' },
+    ]
+  },
+  {
+    label: 'CATÁLOGO',
+    items: [
+      { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
+      { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
+      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
+    ]
+  },
+  {
+    label: 'INVENTARIO',
+    items: [
+      { id:'stock',        href:'/stock',        label:'Mi stock',      icon:'📦' },
+      { id:'ofertas',      href:'/ofertas',      label:'Ofertas',       icon:'📄' },
+    ]
+  },
+  {
+    label: 'ADMINISTRACIÓN',
+    items: [
+      { id:'proveedores',  href:'/proveedores',  label:'Proveedores',   icon:'🏭' },
+      { id:'informes',     href:'/informes',     label:'Informes',      icon:'📊' },
+    ]
+  },
 ]
 
+const ALL_MODULES = GRUPOS.flatMap(g => g.items)
 const DEFAULT_FAVS = ['inicio','turnos','caja','buscar']
-const SIDEBAR_W = 220
+const SIDEBAR_W = 210
 
-// Estilos base reutilizables
-const S = {
-  sidebar: {
-    position:'fixed' as const, left:0, top:0, height:'100vh',
-    width:SIDEBAR_W, minWidth:SIDEBAR_W,
-    background:'#0C1810', borderRight:'1px solid rgba(255,255,255,0.08)',
-    display:'flex', flexDirection:'column' as const,
-    zIndex:40, overflowY:'auto' as const, padding:'20px 0',
-  },
-  link: (active:boolean): React.CSSProperties => ({
-    display:'flex', alignItems:'center', gap:10,
-    padding:'9px 16px', margin:'1px 8px', borderRadius:8,
-    background: active ? '#00A550' : 'transparent',
-    color: active ? '#fff' : 'rgba(255,255,255,0.72)',
-    textDecoration:'none', fontSize:13, fontWeight:600,
-    fontFamily:'Arial, sans-serif', transition:'background .15s, color .15s',
-    cursor:'pointer',
-  }),
-  icon: { fontSize:16, flexShrink:0, width:20, textAlign:'center' as const },
+// Colores — estilo MobixERP / QP C&IA
+const C = {
+  sidebar:    '#FFFFFF',
+  border:     '#E5E7EB',
+  sectionTxt: '#9CA3AF',
+  linkTxt:    '#374151',
+  linkHover:  '#F0FDF4',
+  activeLink: '#E6F7EF',
+  activeTxt:  '#00A550',
+  activeBorder:'#00A550',
+  logo:       '#00A550',
+  userBg:     '#F9FAFB',
+  content:    '#F5F0E8',  // fondo crema del contenido
 }
+
+type Module = typeof ALL_MODULES[0]
 
 export default function Nav({ rol }: { rol?: string }) {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
-  const [favs, setFavs]       = useState<string[]>(DEFAULT_FAVS)
-  const [perfil, setPerfil]   = useState<{nombre:string;rol:string}|null>(null)
-  const [masOpen, setMasOpen] = useState(false)
+  const [favs, setFavs]         = useState<string[]>(DEFAULT_FAVS)
+  const [perfil, setPerfil]     = useState<{nombre:string;rol:string}|null>(null)
+  const [masOpen, setMasOpen]   = useState(false)
   const [editFavs, setEditFavs] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024)
-    check()
-    window.addEventListener('resize', check)
+    check(); window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
 
@@ -84,152 +106,175 @@ export default function Nav({ rol }: { rol?: string }) {
   }
 
   function toggleFav(id: string) {
-    if (favs.includes(id)) {
-      if (favs.length <= 2) return
-      saveFavs(favs.filter(f => f !== id))
-    } else {
-      saveFavs(favs.length >= 4 ? [...favs.slice(0,3), id] : [...favs, id])
-    }
+    if (favs.includes(id)) { if (favs.length > 2) saveFavs(favs.filter(f=>f!==id)) }
+    else saveFavs(favs.length >= 4 ? [...favs.slice(0,3), id] : [...favs, id])
   }
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href+'/')
 
-  const visible = ALL_MODULES.filter(m => {
-    if (rol === 'ventas' && ['proveedores','informes'].includes(m.id)) return false
-    return true
-  })
+  const visibleGrupos = GRUPOS.map(g => ({
+    ...g,
+    items: g.items.filter(m => {
+      if (rol === 'ventas' && ['proveedores','informes'].includes(m.id)) return false
+      return true
+    })
+  })).filter(g => g.items.length > 0)
 
+  const visible = visibleGrupos.flatMap(g => g.items)
   const favModules = ALL_MODULES.filter(m => favs.includes(m.id))
 
-  // ── SIDEBAR DESKTOP ──────────────────────────────────────────────────────
+  // ── Contenido del sidebar ─────────────────────────────────────────────────
   const SidebarContent = () => (
-    <>
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
       {/* Logo */}
-      <div style={{padding:'0 16px 20px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:8}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:perfil?12:0}}>
-          <div style={{width:34,height:34,background:'#00A550',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <span style={{color:'#fff',fontWeight:900,fontSize:17,fontFamily:'Arial'}}>P</span>
+      <div style={{padding:'20px 16px 16px',borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:36,height:36,background:C.logo,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>
+            <img src="/logo.png" alt="Logo" style={{width:'100%',height:'100%',objectFit:'cover'}}
+              onError={e=>{const t=e.target as HTMLImageElement;t.style.display='none';t.parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:16px;font-family:Arial">P</span>'}}/>
           </div>
           <div>
-            <div style={{color:'#00A550',fontWeight:900,fontSize:15,fontFamily:'Arial',letterSpacing:1,textTransform:'uppercase'}}>PIAMONTE</div>
-            <div style={{color:'rgba(255,255,255,0.35)',fontSize:9,letterSpacing:'0.15em',textTransform:'uppercase',marginTop:1}}>Gestión</div>
+            <div style={{fontWeight:800,fontSize:15,color:'#111827',fontFamily:'Arial',letterSpacing:'0.03em'}}>El Piamonte</div>
+            <div style={{fontSize:10,color:C.sectionTxt,marginTop:1,fontFamily:'Arial'}}>Gestión de comercio</div>
           </div>
         </div>
-        {perfil && (
-          <div style={{background:'rgba(255,255,255,0.06)',borderRadius:7,padding:'7px 10px',marginTop:10}}>
-            <div style={{color:'rgba(255,255,255,0.92)',fontSize:12,fontWeight:600,fontFamily:'Arial'}}>{perfil.nombre}</div>
-            <div style={{color:'rgba(255,255,255,0.4)',fontSize:10,fontFamily:'Arial',marginTop:2,textTransform:'capitalize'}}>{perfil.rol}</div>
-          </div>
-        )}
       </div>
 
-      {/* Links */}
-      <nav style={{flex:1,padding:'4px 0'}}>
-        {visible.map(m => (
-          <Link key={m.id} href={m.href} style={S.link(isActive(m.href))}>
-            <span style={S.icon}>{m.icon}</span>
-            <span>{m.label}</span>
-          </Link>
+      {/* Grupos de links */}
+      <nav style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+        {visibleGrupos.map(g => (
+          <div key={g.label} style={{marginBottom:4}}>
+            <div style={{padding:'8px 16px 4px',fontSize:10,fontWeight:700,color:C.sectionTxt,fontFamily:'Arial',letterSpacing:'0.08em'}}>
+              {g.label}
+            </div>
+            {g.items.map(m => {
+              const active = isActive(m.href)
+              return (
+                <Link key={m.id} href={m.href}
+                  style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px 8px 16px',margin:'1px 8px',borderRadius:8,textDecoration:'none',fontFamily:'Arial',fontSize:13,fontWeight:active?600:500,
+                    background:active?C.activeLink:'transparent',
+                    color:active?C.activeTxt:C.linkTxt,
+                    borderLeft:active?`3px solid ${C.activeBorder}`:'3px solid transparent',
+                  }}>
+                  <span style={{fontSize:15,width:20,textAlign:'center',flexShrink:0}}>{m.icon}</span>
+                  <span>{m.label}</span>
+                </Link>
+              )
+            })}
+          </div>
         ))}
       </nav>
 
-      {/* Footer */}
-      <div style={{padding:'16px',borderTop:'1px solid rgba(255,255,255,0.06)',marginTop:'auto'}}>
-        <div style={{color:'rgba(255,255,255,0.2)',fontSize:10,fontFamily:'Arial',letterSpacing:'0.1em',textTransform:'uppercase'}}>QP Cloud & IA</div>
+      {/* Usuario + logout */}
+      <div style={{borderTop:`1px solid ${C.border}`,padding:'12px 16px'}}>
+        {perfil && (
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <div style={{width:32,height:32,background:C.logo,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <span style={{color:'#fff',fontWeight:700,fontSize:13,fontFamily:'Arial'}}>{perfil.nombre.charAt(0).toUpperCase()}</span>
+            </div>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#111827',fontFamily:'Arial'}}>{perfil.nombre}</div>
+              <div style={{fontSize:11,color:C.sectionTxt,textTransform:'capitalize',fontFamily:'Arial'}}>{perfil.rol}</div>
+            </div>
+          </div>
+        )}
+        <button onClick={async()=>{ await supabase.auth.signOut(); window.location.href='/login' }}
+          style={{display:'flex',alignItems:'center',gap:8,width:'100%',background:'none',border:`1px solid ${C.border}`,borderRadius:7,padding:'7px 12px',color:'#6B7280',fontSize:12,fontFamily:'Arial',fontWeight:600,cursor:'pointer'}}>
+          <span style={{fontSize:13}}>🚪</span>
+          <span>Cerrar sesión</span>
+        </button>
       </div>
-    </>
+    </div>
   )
 
   return (
     <>
-      {/* Sidebar desktop */}
+      {/* ── SIDEBAR DESKTOP ── */}
       {isDesktop && (
-        <aside style={S.sidebar}>
+        <aside style={{position:'fixed',left:0,top:0,height:'100vh',width:SIDEBAR_W,minWidth:SIDEBAR_W,background:C.sidebar,borderRight:`1px solid ${C.border}`,zIndex:40,overflowY:'auto',boxShadow:'2px 0 8px rgba(0,0,0,0.04)'}}>
           <SidebarContent />
         </aside>
       )}
 
-      {/* Header mobile */}
+      {/* ── HEADER MOBILE ── */}
       {!isDesktop && (
-        <header style={{position:'fixed',top:0,left:0,right:0,height:48,background:'#0C1810',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px',zIndex:40,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+        <header style={{position:'fixed',top:0,left:0,right:0,height:52,background:'#fff',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px',zIndex:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <div style={{width:28,height:28,background:'#00A550',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <span style={{color:'#fff',fontWeight:900,fontSize:14,fontFamily:'Arial'}}>P</span>
+            <div style={{width:30,height:30,background:C.logo,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+              <img src="/logo.png" alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}
+                onError={e=>{const t=e.target as HTMLImageElement;t.style.display='none';t.parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:13px;font-family:Arial">P</span>'}}/>
             </div>
-            <span style={{color:'#00A550',fontWeight:900,fontSize:15,fontFamily:'Arial',letterSpacing:1}}>PIAMONTE</span>
+            <span style={{fontWeight:800,fontSize:15,color:'#111827',fontFamily:'Arial'}}>El Piamonte</span>
           </div>
-          <button onClick={() => setSideOpen(true)} style={{color:'rgba(255,255,255,0.7)',background:'none',border:'none',fontSize:22,cursor:'pointer',padding:4}}>☰</button>
+          <button onClick={()=>setSideOpen(true)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280',padding:4}}>☰</button>
         </header>
       )}
 
-      {/* Drawer mobile */}
+      {/* ── DRAWER MOBILE ── */}
       {!isDesktop && sideOpen && (
         <div style={{position:'fixed',inset:0,zIndex:50,display:'flex'}}>
-          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.5)'}} onClick={() => setSideOpen(false)}/>
-          <aside style={{...S.sidebar,position:'relative',width:260,minWidth:260,height:'100%',paddingTop:16,zIndex:51}}>
-            <button onClick={() => setSideOpen(false)} style={{position:'absolute',top:12,right:12,background:'none',border:'none',color:'rgba(255,255,255,0.5)',fontSize:20,cursor:'pointer'}}>✕</button>
+          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.35)'}} onClick={()=>setSideOpen(false)}/>
+          <aside style={{position:'relative',width:260,background:C.sidebar,height:'100%',zIndex:51,boxShadow:'4px 0 20px rgba(0,0,0,0.1)'}}>
+            <button onClick={()=>setSideOpen(false)} style={{position:'absolute',top:14,right:14,background:'none',border:'none',fontSize:18,color:'#9CA3AF',cursor:'pointer'}}>✕</button>
             <SidebarContent />
           </aside>
         </div>
       )}
 
-      {/* Bottom nav mobile */}
+      {/* ── BOTTOM NAV MOBILE ── */}
       {!isDesktop && (
-        <nav style={{position:'fixed',bottom:0,left:0,right:0,background:'#fff',borderTop:'1px solid #C2DDD0',display:'flex',zIndex:40}}>
+        <nav style={{position:'fixed',bottom:0,left:0,right:0,background:'#fff',borderTop:`1px solid ${C.border}`,display:'flex',zIndex:40,boxShadow:'0 -2px 8px rgba(0,0,0,0.06)'}}>
           {favModules.map(m => (
-            <Link key={m.id} href={m.href} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'8px 4px',gap:3,textDecoration:'none',color:isActive(m.href)?'#00A550':'#4A6655'}}>
+            <Link key={m.id} href={m.href} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'8px 4px',gap:3,textDecoration:'none',color:isActive(m.href)?C.activeTxt:'#6B7280'}}>
               <span style={{fontSize:22,lineHeight:1}}>{m.icon}</span>
               <span style={{fontSize:10,fontWeight:600,fontFamily:'Arial',lineHeight:1}}>{m.label.split(' ')[0]}</span>
             </Link>
           ))}
-          <button onClick={() => setMasOpen(true)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'8px 4px',gap:3,background:'none',border:'none',color:masOpen?'#00A550':'#4A6655',cursor:'pointer'}}>
+          <button onClick={()=>setMasOpen(true)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'8px 4px',gap:3,background:'none',border:'none',color:masOpen?C.activeTxt:'#6B7280',cursor:'pointer'}}>
             <span style={{fontSize:22,lineHeight:1}}>⋯</span>
             <span style={{fontSize:10,fontWeight:600,fontFamily:'Arial',lineHeight:1}}>Más</span>
           </button>
         </nav>
       )}
 
-      {/* Sheet "Más" */}
+      {/* ── SHEET "MÁS" ── */}
       {masOpen && !isDesktop && (
         <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.4)'}} onClick={() => { setMasOpen(false); setEditFavs(false) }}/>
-          <div style={{position:'relative',background:'#fff',borderRadius:'24px 24px 0 0',maxHeight:'85vh',overflowY:'auto',paddingBottom:24}}>
-            {/* Handle */}
+          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.35)'}} onClick={()=>{setMasOpen(false);setEditFavs(false)}}/>
+          <div style={{position:'relative',background:'#fff',borderRadius:'20px 20px 0 0',maxHeight:'85vh',overflowY:'auto',paddingBottom:28}}>
             <div style={{display:'flex',justifyContent:'center',padding:'12px 0 4px'}}>
-              <div style={{width:40,height:4,borderRadius:2,background:'#C2DDD0'}}/>
+              <div style={{width:40,height:4,borderRadius:2,background:C.border}}/>
             </div>
-            {/* Header */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 20px 12px',borderBottom:'1px solid #E0EFE8'}}>
-              <span style={{fontWeight:700,fontSize:15,fontFamily:'Arial',color:'#0C1810'}}>Todos los módulos</span>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 20px 12px',borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontWeight:700,fontSize:15,fontFamily:'Arial',color:'#111827'}}>Todos los módulos</span>
               <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                <button onClick={() => setEditFavs(!editFavs)}
-                  style={{background:editFavs?'#00A550':'#fff',color:editFavs?'#fff':'#4A6655',border:'1.5px solid',borderColor:editFavs?'#00A550':'#C2DDD0',borderRadius:20,padding:'5px 14px',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'Arial'}}>
+                <button onClick={()=>setEditFavs(!editFavs)}
+                  style={{background:editFavs?C.logo:'#fff',color:editFavs?'#fff':C.sectionTxt,border:`1.5px solid ${editFavs?C.logo:C.border}`,borderRadius:20,padding:'5px 14px',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'Arial'}}>
                   {editFavs ? '✓ Listo' : '✏ Personalizar'}
                 </button>
-                <button onClick={() => { setMasOpen(false); setEditFavs(false) }} style={{background:'none',border:'none',fontSize:20,color:'#7A9085',cursor:'pointer'}}>✕</button>
+                <button onClick={()=>{setMasOpen(false);setEditFavs(false)}} style={{background:'none',border:'none',fontSize:20,color:C.sectionTxt,cursor:'pointer'}}>✕</button>
               </div>
             </div>
             {editFavs && (
-              <div style={{margin:'10px 16px',background:'#E6F7EF',borderRadius:10,padding:'10px 14px',fontSize:12,color:'#005C2E',fontFamily:'Arial'}}>
+              <div style={{margin:'10px 16px',background:C.activeLink,borderRadius:10,padding:'10px 14px',fontSize:12,color:'#005C2E',fontFamily:'Arial'}}>
                 <strong>Elegí tus 4 accesos rápidos.</strong> Los tildados aparecen en la barra inferior.
               </div>
             )}
-            {/* Grid */}
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,padding:'12px 16px'}}>
               {visible.map(m => {
                 const active = isActive(m.href)
                 const isFav = favs.includes(m.id)
                 return (
                   <button key={m.id}
-                    onClick={() => { if (editFavs) toggleFav(m.id); else { router.push(m.href); setMasOpen(false) } }}
-                    style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,borderRadius:16,padding:'16px 8px',background:editFavs?(isFav?'#E6F7EF':'#f5f5f5'):(active?'#E6F7EF':'#f5f5f5'),border:`2px solid ${(editFavs?isFav:active)?'#00A550':'transparent'}`,cursor:'pointer',fontFamily:'Arial'}}>
+                    onClick={()=>{ if(editFavs) toggleFav(m.id); else {router.push(m.href);setMasOpen(false)} }}
+                    style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,borderRadius:14,padding:'16px 8px',background:(editFavs?isFav:active)?C.activeLink:'#F9FAFB',border:`2px solid ${(editFavs?isFav:active)?C.logo:'transparent'}`,cursor:'pointer',fontFamily:'Arial'}}>
                     {editFavs && (
-                      <div style={{position:'absolute',top:6,right:6,width:18,height:18,borderRadius:9,border:'2px solid',borderColor:isFav?'#00A550':'#ccc',background:isFav?'#00A550':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#fff',fontWeight:700}}>
+                      <div style={{position:'absolute',top:6,right:6,width:18,height:18,borderRadius:9,border:`2px solid ${isFav?C.logo:'#ccc'}`,background:isFav?C.logo:'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#fff',fontWeight:700}}>
                         {isFav?'✓':''}
                       </div>
                     )}
                     <span style={{fontSize:28}}>{m.icon}</span>
-                    <span style={{fontSize:11,fontWeight:600,color:'#0C1810',textAlign:'center',lineHeight:1.2}}>{m.label}</span>
+                    <span style={{fontSize:11,fontWeight:600,color:'#374151',textAlign:'center',lineHeight:1.2}}>{m.label}</span>
                   </button>
                 )
               })}
