@@ -222,8 +222,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
             </Field>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save}>Registrar</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>Registrar</button>
           </div>
         </div>
       </Modal>

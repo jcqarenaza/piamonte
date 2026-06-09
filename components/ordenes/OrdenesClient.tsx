@@ -110,13 +110,13 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                <Btn size="sm" onClick={() => printOrden(o)}>Imprimir</Btn>
+                <button onClick={() => printOrden(o)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Imprimir</button>
                 {o.telefono && (
                   <a href={`https://wa.me/${(o.telefono ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`*Parabrisas El Piamonte* — Orden ${o.numero}\nAseguradora: ${o.aseguradora || '—'}\nSiniestro: ${o.siniestro || '—'}\nVehículo: ${o.vehiculo || '—'}${o.patente ? ' (' + o.patente + ')' : ''}\n*TOTAL: ${moneyARS(o.total)}*${o.iva ? ' (IVA incl.)' : ''}`)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="text-xs font-bold bg-[#25d366] text-white px-3 py-1.5 rounded-lg">WA</a>
                 )}
-                <Btn size="sm" variant="danger" onClick={() => del(o.id)}>Borrar</Btn>
+                <button onClick={() => del(o.id)} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Borrar</button>
               </div>
             </div>
           ))}
@@ -150,7 +150,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
               <Field label="Cant."><Input type="number" value={item.c} onChange={e => setItem(p => ({ ...p, c: e.target.value }))} min="1" /></Field>
               <div className="col-span-2"><Field label="Precio neto"><Input value={item.p} onChange={e => setItem(p => ({ ...p, p: e.target.value }))} placeholder="$" /></Field></div>
             </div>
-            <Btn size="sm" variant="secondary" className="w-full mt-2" onClick={addItem}>+ Agregar</Btn>
+            <button onClick={addItem} style={{background:"#6b7280",color:"#fff",border:"none",borderRadius:8,padding:"7px 0",width:"100%",marginTop:8,fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Agregar</button>
           </div>
           {items.length > 0 && (
             <div className="border-t border-p-line2 pt-2">
@@ -171,8 +171,8 @@ export default function OrdenesClient({ userId }: { userId: string }) {
           )}
           <Field label="Observaciones"><Input value={form.obs} onChange={e => setForm(p => ({ ...p, obs: e.target.value }))} placeholder="Detalle del trabajo, aclaraciones…" /></Field>
           <div className="flex justify-end gap-2 pt-1">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save}>Guardar orden</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar orden</button>
           </div>
         </div>
       </Modal>

@@ -28,6 +28,7 @@ export default function Nav({ rol }: { rol?: string }) {
   const router = useRouter()
   const supabase = createClient()
   const [favs, setFavs] = useState<string[]>(DEFAULT_FAVS)
+  const [perfil, setPerfil] = useState<{nombre:string;rol:string}|null>(null)
   const [masOpen, setMasOpen] = useState(false)
   const [editFavs, setEditFavs] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
@@ -36,8 +37,11 @@ export default function Nav({ rol }: { rol?: string }) {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
-      supabase.from('perfiles').select('nav_favoritos').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.nav_favoritos?.length) setFavs(data.nav_favoritos) })
+      supabase.from('perfiles').select('nav_favoritos,nombre,rol').eq('id', user.id).maybeSingle()
+        .then(({ data }) => {
+          if (data?.nav_favoritos?.length) setFavs(data.nav_favoritos)
+          if (data?.nombre) setPerfil({ nombre: data.nombre, rol: data.rol })
+        })
     })
   }, [supabase])
 
@@ -76,11 +80,24 @@ export default function Nav({ rol }: { rol?: string }) {
   return (
     <>
       {/* ── SIDEBAR DESKTOP ───────────────────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-full w-56 bg-p-ink border-r border-p-ink2/30 z-40 py-6 overflow-y-auto">
-        {/* Logo */}
-        <div className="px-5 mb-6">
-          <p className="font-saira font-black text-xl text-p-green leading-none">PIAMONTE</p>
-          <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">Gestión</p>
+      <aside className="hidden lg:flex flex-col fixed left-0 top-0 h-full bg-p-ink z-40 py-6 overflow-y-auto" style={{width:224,minWidth:224,borderRight:"1px solid rgba(255,255,255,0.1)"}}>
+        {/* Logo + usuario */}
+        <div className="px-4 mb-6">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div style={{width:36,height:36,background:'#00A550',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <span style={{color:'#fff',fontWeight:900,fontSize:16,fontFamily:'Arial'}}>P</span>
+            </div>
+            <div>
+              <p style={{color:'#00A550',fontWeight:900,fontSize:16,fontFamily:'Arial',lineHeight:1}}>PIAMONTE</p>
+              <p style={{color:'rgba(255,255,255,0.4)',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:2}}>Gestión</p>
+            </div>
+          </div>
+          {perfil && (
+            <div style={{background:'rgba(255,255,255,0.07)',borderRadius:8,padding:'8px 10px'}}>
+              <p style={{color:'#fff',fontSize:13,fontWeight:600,fontFamily:'Arial'}}>{perfil.nombre}</p>
+              <p style={{color:'rgba(255,255,255,0.45)',fontSize:11,textTransform:'capitalize',marginTop:2}}>{perfil.rol}</p>
+            </div>
+          )}
         </div>
         <nav className="flex flex-col gap-0.5 px-2">
           {visible.map(m => (
@@ -91,8 +108,8 @@ export default function Nav({ rol }: { rol?: string }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto px-5 pt-6">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider">QP C&IA</p>
+        <div className="mt-auto px-4 pt-6" style={{borderTop:'1px solid rgba(255,255,255,0.08)',marginTop:'auto',paddingTop:16}}>
+          <p style={{color:'rgba(255,255,255,0.25)',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase'}}>QP Cloud & IA</p>
         </div>
       </aside>
 

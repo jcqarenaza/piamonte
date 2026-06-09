@@ -51,7 +51,7 @@ export default function OfertasClient() {
 
   return (
     <div>
-      <div className="flex justify-end mb-5"><Btn onClick={() => setOpen(true)}>+ Nueva oferta</Btn></div>
+      <div className="flex justify-end mb-5"><button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nueva oferta</button></div>
 
       {ofertas.length === 0 ? <Empty msg="Sin ofertas cargadas." /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -96,8 +96,8 @@ export default function OfertasClient() {
             {imgPrev && <img src={imgPrev} alt="" className="mt-2 max-h-32 rounded-lg border border-p-line" />}
           </Field>
           <div className="flex justify-end gap-2 pt-1">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save}>Guardar</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar</button>
           </div>
         </div>
       </Modal>

@@ -265,7 +265,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   return (
     <div>
       <div className="flex justify-end mb-5">
-        <Btn onClick={() => setOpen(true)}>+ Nuevo certificado ADAS</Btn>
+        <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nuevo certificado ADAS</button>
       </div>
 
       {certs.length === 0 ? (
@@ -291,7 +291,7 @@ export default function AdasClient({ userId }: { userId: string }) {
                   {c.sistemas.length} sistema(s) calibrado(s)
                 </p>
               </div>
-              <Btn size="sm" onClick={() => printCert(c)}>🖨 Imprimir</Btn>
+              <button onClick={() => printCert(c)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨 Imprimir</button>
             </div>
           ))}
         </div>
@@ -376,8 +376,8 @@ export default function AdasClient({ userId }: { userId: string }) {
           <Field label="Observaciones"><Input value={form.observaciones} onChange={e => setForm(p => ({ ...p, observaciones: e.target.value }))} placeholder="Observaciones opcionales" /></Field>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-p-line">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save}>Guardar e imprimir</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar e imprimir</button>
           </div>
         </div>
       </Modal>

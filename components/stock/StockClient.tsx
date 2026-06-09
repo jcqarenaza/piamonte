@@ -170,7 +170,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           className={`text-xs font-bold px-3 py-2 rounded-lg border transition-colors ${soloSinCosto ? 'bg-amber-100 text-amber-700 border-amber-300' : 'border-p-line text-p-ink2 hover:bg-p-light'}`}>
           {soloSinCosto ? '✕ Solo sin costo' : '⚠ Solo sin costo'}
         </button>}
-        <Btn size="sm" onClick={() => setOpen(true)}>+ Agregar</Btn>
+        <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>
         <button onClick={() => setAjusteOpen(true)}
           style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📥 Cargar mercadería
@@ -226,8 +226,8 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           </div>
           <Field label="Depósito"><Input value={form.dep} onChange={e => setForm(p => ({ ...p, dep: e.target.value }))} placeholder="Principal" /></Field>
           <div className="flex justify-end gap-2 pt-1">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={addStock}>Agregar</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={addStock} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Agregar</button>
           </div>
         </div>
       </Modal>
