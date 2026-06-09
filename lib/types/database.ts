@@ -118,7 +118,7 @@ export interface Presupuesto {
 
 export interface OrdenServicio {
   id: string
-  numero: string
+  numero: number | null
   fecha: string
   aseguradora: string | null
   siniestro: string | null
@@ -132,7 +132,10 @@ export interface OrdenServicio {
   iva_pct: number
   iva: number
   total: number
+  obs: string | null
   observaciones: string | null
+  tiene_adas: boolean | null
+  numero_adas: number | null
   user_id: string | null
   created_at: string
 }
