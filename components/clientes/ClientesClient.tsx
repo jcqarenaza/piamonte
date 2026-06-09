@@ -112,7 +112,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                       onClick={e=>e.stopPropagation()}
                       className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
                   )}
-                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', notas:c.notas??'' }); setSelected(c); setOpen(true) }}
+                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'' }); setSelected(c); setOpen(true) }}
                     className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink2 hover:bg-p-light">✏</button>
                   <button onClick={e=>{ e.stopPropagation(); del(c.id) }}
                     className="text-xs border border-red-200 rounded-lg px-2 py-1 text-red-400 hover:text-red-600">✕</button>
