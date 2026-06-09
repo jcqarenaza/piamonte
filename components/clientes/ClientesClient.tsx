@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
 
-interface Cliente { id:string; nombre:string; telefono:string|null; email:string|null; notas:string|null; created_at:string }
+interface Cliente { id:string; nombre:string; telefono:string|null; email:string|null; notas:string|null; tipo_cliente_id:string|null; created_at:string }
 interface Historial {
   turnos: { id:string; fecha:string; trabajo:string|null; estado:string; precio_acordado:number|null }[]
   presupuestos: { id:string; fecha:string; total:number; vehiculo:string|null }[]
