@@ -30,21 +30,64 @@ export default function BuscarClient() {
   const search = useCallback(async () => {
     if (q.trim().length < 2) { setResults([]); return }
     setLoading(true)
-    // Buscar en stock y catálogo en paralelo
-    const [{ data: stockData }, { data: catData }] = await Promise.all([
-      supabase.from('stock').select('*').eq('activo', true).or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,codigo.ilike.%${q}%,pos.ilike.%${q.toUpperCase()}%`).order('descripcion').limit(30),
-      supabase.from('catalogo').select('*').or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,modelo.ilike.%${q}%,codigo.ilike.%${q}%`).order('proveedor').limit(60),
-    ])
-    // Agrupar por descripción/modelo para mostrar comparado
+
+    // ── Búsqueda multi-palabra ────────────────────────────────────────────────
+    const POS_KW: Record<string,string> = {
+      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
+      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
+    }
+    const words    = q.trim().toUpperCase().split(/\s+/).filter(Boolean)
+    const posWord  = words.find(w => POS_KW[w])
+    const nonPosWs = words.filter(w => !POS_KW[w])
+    const mainWord = nonPosWs[0] || words[0]
+
+    // Construir query catálogo
+    let catQ = supabase.from('catalogo').select('*').order('proveedor').limit(100)
+    if (posWord && nonPosWs.length > 0) {
+      // "fiesta para" → descripcion ILIKE %fiesta% AND pos = PARABRISAS
+      catQ = catQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
+    } else if (posWord) {
+      // solo "parabrisas"
+      catQ = catQ.eq('pos', POS_KW[posWord])
+    } else {
+      // búsqueda libre — filtrar resto client-side
+      catQ = catQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
+    }
+
+    // Stock — mismo filtro
+    let stockQ = supabase.from('stock').select('*').eq('activo', true).order('descripcion').limit(30)
+    if (posWord && nonPosWs.length > 0) {
+      stockQ = stockQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
+    } else if (posWord) {
+      stockQ = stockQ.eq('pos', POS_KW[posWord])
+    } else {
+      stockQ = stockQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
+    }
+
+    const [{ data: stockData }, { data: catDataRaw }] = await Promise.all([stockQ, catQ])
+
+    // Filtro cliente: palabras restantes deben aparecer en descripcion o marca
+    const restWords = nonPosWs.slice(1)
+    const catData = (catDataRaw ?? []).filter((c:any) =>
+      restWords.every((w:string) =>
+        (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
+      )
+    )
+    const stockFiltered = (stockData ?? []).filter((s:any) =>
+      restWords.every((w:string) =>
+        (s.descripcion||'').toUpperCase().includes(w) || (s.marca||'').toUpperCase().includes(w)
+      )
+    )
+
+    // Agrupar por descripción/posición
     const groups = new Map<string, ResultGroup>()
-    // Primero, agregar ítems de stock
-    for (const s of (stockData ?? [])) {
+    for (const s of stockFiltered) {
       const key = (s.descripcion + (s.pos ?? '')).toUpperCase().replace(/\s+/g, ' ')
       if (!groups.has(key)) groups.set(key, { provs: [] })
       groups.get(key)!.stock = s
     }
-    // Agregar catálogo
-    for (const c of (catData ?? [])) {
+    for (const c of catData) {
       const key = (c.descripcion + (c.pos ?? '')).toUpperCase().replace(/\s+/g, ' ')
       if (!groups.has(key)) groups.set(key, { provs: [] })
       groups.get(key)!.provs.push(c)
