@@ -59,7 +59,7 @@ export default function CompararClient() {
       .order('descripcion').limit(200)
     // Agrupar por descripción normalizada
     const map = new Map<string, Agrupado>()
-    for (const row of (data ?? []) as CatRow[]) {
+    for (const row of (dataRaw ?? []).filter((c:any) => restWords.every((w:string) => (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w))) as CatRow[]) {
       const key = row.descripcion.toUpperCase().replace(/\s+/g,' ').trim()
       if (!map.has(key)) map.set(key, { desc: row.descripcion, pos: row.pos, provs: [] })
       map.get(key)!.provs.push(row)
