@@ -1,178 +1,342 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
-import { Btn, Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, PRESU_PRESETS, ASEGURADORAS, todayStr } from '@/lib/utils/format'
+import { Modal, Field, Input, Select, Empty } from '@/components/ui'
+import { moneyARS, ASEGURADORAS, todayStr } from '@/lib/utils/format'
 
 const IVA_RATE = 0.21
+const btn      = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
+const btnSm    = { ...btn,padding:'6px 14px',fontSize:13 } as const
+const btnGray  = { ...btnSm,background:'#6b7280' } as const
+const btnRed   = { ...btnSm,background:'#ef4444' } as const
+const btnWa    = { ...btnSm,background:'#25d366' } as const
+const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
+
+const RUBROS_RAPIDOS = ['Mano de obra','Pegamento','Activador','Primer/gel','Sensor','Calibración ADAS']
+
+function tieneADAS(items: VentaItem[]): boolean {
+  return items.some(it => it.d.toLowerCase().includes('adas') || it.d.toLowerCase().includes('calibración'))
+}
 
 export default function OrdenesClient({ userId }: { userId: string }) {
-  const [ordenes, setOrdenes] = useState<OrdenServicio[]>([])
-  const [open, setOpen] = useState(false)
-  const [items, setItems] = useState<VentaItem[]>([])
-  const [ivaOn, setIvaOn] = useState(true)
+  const [ordenes, setOrdenes]   = useState<OrdenServicio[]>([])
+  const [open, setOpen]         = useState(false)
+  const [items, setItems]       = useState<VentaItem[]>([])
+  const [ivaOn, setIvaOn]       = useState(true)
+  const [loading, setLoading]   = useState(false)
   const supabase = createClient()
   const searchParams = useSearchParams()
 
-  const [form, setForm] = useState({ aseg: '', sin: '', pol: '', cli: '', tel: '', veh: '', pat: '', obs: '' })
+  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'' })
+  const [item, setItem] = useState({ d:'', c:'1', p:'' })
 
-  // Pre-cargar desde presupuesto si viene con parámetros
+  // Pre-cargar desde presupuesto
   useEffect(() => {
-    const cli = searchParams.get('cli')
-    const tel = searchParams.get('tel')
-    const veh = searchParams.get('veh')
+    const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
     const itemsStr = searchParams.get('items')
-    const totalStr = searchParams.get('total')
-    const ivaStr = searchParams.get('iva')
-    if (cli || tel || veh) {
-      setForm(p => ({ ...p, cli: cli??'', tel: tel??'', veh: veh??'' }))
-    }
-    if (itemsStr) {
-      try {
-        const parsedItems = JSON.parse(itemsStr)
-        setItems(parsedItems)
-      } catch {}
-    }
-    if (totalStr && ivaStr) {
-      const ivaNum = +ivaStr
-      setIvaOn(ivaNum > 0)
-    }
+    if (cli || tel || veh) setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'' }))
+    if (itemsStr) { try { setItems(JSON.parse(itemsStr)) } catch {} }
     if (cli || tel) setOpen(true)
   }, [searchParams])
-  const [item, setItem] = useState({ d: '', c: '1', p: '' })
 
-  useEffect(() => {
-    supabase.from('ordenes_servicio').select('*').order('created_at', { ascending: false }).then(({ data }) => setOrdenes(data ?? []))
+  const load = useCallback(() => {
+    supabase.from('ordenes_servicio').select('*').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
   }, [supabase])
 
-  const neto = items.reduce((a, it) => a + it.c * it.p, 0)
-  const iva = ivaOn ? Math.round(neto * IVA_RATE) : 0
+  useEffect(() => { load() }, [load])
+
+  const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
+  const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
   const total = neto + iva
 
   function addItem() {
-    if (!item.d || !item.p) { alert('Cargá concepto y precio.'); return }
-    setItems(prev => [...prev, { d: item.d, c: +item.c || 1, p: +item.p.replace(/[^0-9.]/g, '') }])
-    setItem({ d: '', c: '1', p: '' })
+    if(!item.d||!item.p) return
+    setItems(prev=>[...prev,{d:item.d,c:+item.c||1,p:+item.p.replace(/[^0-9.]/g,'')}])
+    setItem({d:'',c:'1',p:''})
   }
 
   async function save() {
-    if (!items.length) { alert('Agregá al menos un ítem.'); return }
-    const { data: cnt } = await supabase.rpc('next_orden_numero')
+    if(!items.length) return
+    setLoading(true)
+    const conADAS = tieneADAS(items)
+    let numero_adas: number|null = null
+
+    if(conADAS) {
+      // Obtener próximo número ADAS
+      const { count } = await supabase.from('certificados_adas').select('*',{count:'exact',head:true})
+      numero_adas = (count??0) + 1
+      // Crear también el certificado ADAS
+      await supabase.from('certificados_adas').insert({
+        numero: numero_adas, fecha: todayStr(),
+        cliente: form.cli||null, vehiculo: form.veh||null,
+        patente: form.pat||null, user_id: userId
+      })
+    }
+
+    const { data: nuevas } = await supabase.from('ordenes_servicio').select('numero').order('numero',{ascending:false}).limit(1)
+    const nextNum = ((nuevas?.[0] as any)?.numero ?? 0) + 1
+
     await supabase.from('ordenes_servicio').insert({
-      numero: cnt, fecha: todayStr(),
-      aseguradora: form.aseg || null, siniestro: form.sin || null, poliza: form.pol || null,
-      cliente: form.cli || null, telefono: form.tel || null,
-      vehiculo: form.veh || null, patente: form.pat.toUpperCase() || null,
-      items, neto, iva_pct: IVA_RATE, iva, total,
-      observaciones: form.obs || null, user_id: userId
+      numero: nextNum, fecha: todayStr(),
+      aseguradora: form.aseg||null, siniestro: form.sin||null, poliza: form.pol||null,
+      cliente: form.cli||null, telefono: form.tel||null, vehiculo: form.veh||null,
+      patente: form.pat||null, obs: form.obs||null,
+      items, neto, iva_pct:IVA_RATE, iva, total,
+      tiene_adas: conADAS, numero_adas, user_id: userId
     })
-    setOpen(false); setItems([])
-    setForm({ aseg: '', sin: '', pol: '', cli: '', tel: '', veh: '', pat: '', obs: '' })
-    const { data } = await supabase.from('ordenes_servicio').select('*').order('created_at', { ascending: false })
-    setOrdenes(data ?? [])
+
+    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:''})
+    setLoading(false); load()
   }
 
-  function printOrden(o: OrdenServicio) {
-    const rows = o.items.map((it: VentaItem) => `<tr><td>${it.d}</td><td style="text-align:center">${it.c}</td><td style="text-align:right">${moneyARS(it.p)}</td><td style="text-align:right">${moneyARS(it.c * it.p)}</td></tr>`).join('')
-    const w = window.open('', '_blank')!
-    w.document.write(`<html><head><title>${o.numero}</title><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;max-width:740px;margin:24px auto;padding:0 20px;color:#0C1810}.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A550;padding-bottom:12px}.box{border:1px solid #ddd;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:6px 20px}.aseg{font-size:16px;font-weight:bold;color:#007A3D;grid-column:1/3}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px;border-bottom:1px solid #ddd;font-size:13px}th{background:#E6F7EF;text-align:left}.tot{text-align:right;font-size:20px;font-weight:bold;margin-top:8px}.sub{text-align:right;font-size:13px;color:#555;margin-top:4px}.firmas{display:flex;justify-content:space-between;margin-top:60px;font-size:12px;color:#777}.firmas div{border-top:1px solid #999;width:42%;text-align:center;padding-top:6px}</style></head><body><div class="hd"><div><h1 style="font-size:18px;margin:0">Parabrisas El Piamonte</h1></div><div style="text-align:right"><b style="font-size:18px">ORDEN DE SERVICIO</b><br><span style="font-size:12px;color:#777">${o.numero} · ${o.fecha.split('-').reverse().join('/')}</span></div></div><div class="box"><div class="aseg">Aseguradora: ${o.aseguradora || '—'}</div><div><b>N° Siniestro:</b> ${o.siniestro || '—'}</div><div><b>N° Póliza:</b> ${o.poliza || '—'}</div><div><b>Cliente:</b> ${o.cliente || '—'}</div><div><b>Tel:</b> ${o.telefono || '—'}</div><div><b>Vehículo:</b> ${o.vehiculo || '—'}</div><div><b>Patente:</b> ${o.patente || '—'}</div></div><table><tr><th>Trabajo / vidrio</th><th style="text-align:center">Cant.</th><th style="text-align:right">Unit.</th><th style="text-align:right">Subtotal</th></tr>${rows}</table><div class="sub">Subtotal neto: ${moneyARS(o.neto)}</div>${o.iva ? `<div class="sub">IVA ${Math.round(o.iva_pct * 100)}%: ${moneyARS(o.iva)}</div>` : ''}<div class="tot">TOTAL: ${moneyARS(o.total)}</div>${o.observaciones ? `<p style="font-size:12px;color:#777;margin-top:12px"><b>Obs:</b> ${o.observaciones}</p>` : ''}<div class="firmas"><div>Firma del taller</div><div>Conformidad cliente / aseguradora</div></div><script>window.print()<\/script></body></html>`)
-    w.document.close()
+  async function del(id:string) {
+    if(!confirm('¿Borrar esta orden?')) return
+    await supabase.from('ordenes_servicio').delete().eq('id',id); load()
   }
 
-  async function del(id: string) {
-    if (!confirm('¿Borrar orden?')) return
-    await supabase.from('ordenes_servicio').delete().eq('id', id)
-    setOrdenes(prev => prev.filter(o => o.id !== id))
+  // ── PDF ──────────────────────────────────────────────────────────────────
+  async function generarPDF(o: OrdenServicio): Promise<Blob> {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({format:'a4',unit:'mm'})
+    const W=210, pad=15
+    let y=20
+    const conADAS = (o as any).tiene_adas
+    const numADAS = (o as any).numero_adas
+    const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
+
+    // ── Header ──
+    doc.setFillColor(0,165,80)
+    doc.rect(0,0,W,30,'F')
+    doc.setTextColor(255,255,255)
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(18); doc.text('PARABRISAS EL PIAMONTE', pad, 13)
+    doc.setFontSize(9); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa', pad, 20)
+    // Tipo de documento y número
+    const tipoDoc = conADAS ? 'CERTIFICADO ADAS' : 'ORDEN DE SERVICIO'
+    const numDoc  = conADAS ? String(numADAS||0).padStart(7,'0') : numOS
+    doc.setFontSize(13); doc.text(tipoDoc, W-pad, 13, {align:'right'})
+    doc.setFontSize(10); doc.text(`N° ${numDoc}`, W-pad, 20, {align:'right'})
+    doc.setFontSize(8);  doc.text(o.fecha.split('-').reverse().join('/'), W-pad, 26, {align:'right'})
+    y = 38
+
+    // ── Datos cliente / vehículo ──
+    doc.setTextColor(30,30,30)
+    doc.setFillColor(245,250,247)
+    doc.rect(pad, y-4, W-pad*2, conADAS ? 24 : (o.aseguradora ? 34 : 22), 'F')
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    doc.text('Cliente:', pad+2, y); doc.setFont('helvetica','normal')
+    doc.text(o.cliente||'—', pad+22, y)
+    if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
+    y+=6
+
+    doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
+    doc.text(o.vehiculo||'—', pad+22, y)
+    if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
+    y+=6
+
+    if(!conADAS && o.aseguradora) {
+      doc.setFont('helvetica','bold'); doc.text('Aseguradora:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.text(o.aseguradora, pad+30, y); y+=6
+      if(o.siniestro||o.poliza){
+        if(o.siniestro){ doc.setFont('helvetica','bold'); doc.text('Siniestro:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(o.siniestro, pad+24, y) }
+        if(o.poliza)   { doc.setFont('helvetica','bold'); doc.text('Póliza:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.poliza, pad+116, y) }
+        y+=6
+      }
+    }
+    y+=6
+
+    // ── Tabla de ítems ──
+    const cols = [100, 20, 35, 35]
+    doc.setFillColor(0,165,80)
+    doc.rect(pad, y, W-pad*2, 7, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    let xi = pad
+    ;['Detalle','Cant.','Precio unit.','Subtotal'].forEach((h,i)=>{
+      doc.text(h, xi+(i>0?cols[i]-2:2), y+5, {align:i>0?'right':'left'}); xi+=cols[i]
+    })
+    y+=7
+
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(9)
+    ;(o.items as VentaItem[]).forEach((it,idx)=>{
+      if(idx%2===0){doc.setFillColor(240,250,245);doc.rect(pad,y,W-pad*2,6.5,'F')}
+      let xi=pad
+      doc.text(it.d.slice(0,48), xi+2, y+4.5); xi+=cols[0]
+      doc.text(String(it.c), xi-2, y+4.5, {align:'right'}); xi+=cols[1]
+      doc.text(moneyARS(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
+      doc.text(moneyARS(it.c*it.p), xi-2, y+4.5, {align:'right'})
+      y+=6.5
+    })
+    y+=4
+
+    // ── Totales ──
+    const totX = W-pad-70
+    if(o.iva){ doc.text('Subtotal neto:', totX, y); doc.text(moneyARS(o.neto), W-pad, y, {align:'right'}); y+=6 }
+    if(o.iva){ doc.text('IVA 21%:', totX, y); doc.text(moneyARS(o.iva), W-pad, y, {align:'right'}); y+=6 }
+    doc.setFont('helvetica','bold'); doc.setFontSize(12)
+    doc.text('TOTAL:', totX, y); doc.text(moneyARS(o.total), W-pad, y, {align:'right'})
+    y+=10
+
+    // Observaciones
+    if(o.obs){ doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,100,100); doc.text(`Obs: ${o.obs}`, pad, y); y+=6 }
+
+    // ── Firma (siempre para OS, especialmente para ADAS) ──
+    y = Math.max(y, 220)
+    doc.setDrawColor(180,180,180); doc.line(pad, y, pad+70, y)
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,80,80)
+    doc.text('Mario Sappa', pad, y+5)
+    doc.text('Técnico Especialista en Cristales Automotrices', pad, y+10)
+    if(conADAS){ doc.setFont('helvetica','bold'); doc.text('ADAS Calibration Technician', pad, y+15) }
+
+    // ── Footer ──
+    doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    doc.text('📞 2302 595969', pad, 292)
+    doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
+    doc.text('Calle 17 N° 1224', W-pad, 292, {align:'right'})
+
+    return doc.output('blob')
+  }
+
+  async function compartirWA(o: OrdenServicio) {
+    const blob = await generarPDF(o)
+    const conADAS = (o as any).tiene_adas
+    const numADAS = (o as any).numero_adas
+    const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
+    const nombre  = conADAS ? `ADAS-${String(numADAS||0).padStart(7,'0')}` : numOS
+    const file = new File([blob], `${nombre}-${o.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`, {type:'application/pdf'})
+    if(navigator.canShare?.({files:[file]})) { await navigator.share({files:[file],title:`${conADAS?'Certificado ADAS':'Orden de Servicio'} El Piamonte`}); return }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
+    const tel = (o.telefono??'').replace(/[^0-9]/g,'')
+    const texto = `Hola${o.cliente?' '+o.cliente:''}! Te enviamos ${conADAS?'el certificado ADAS':'la orden de servicio'} de Parabrisas El Piamonte. N° ${conADAS?String(numADAS||0).padStart(7,'0'):numOS}.`
+    setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`,'_blank'),800)
+  }
+
+  async function descargarPDF(o: OrdenServicio) {
+    const blob = await generarPDF(o)
+    const conADAS = (o as any).tiene_adas
+    const numADAS = (o as any).numero_adas
+    const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
+    const nombre  = conADAS ? `ADAS-${String(numADAS||0).padStart(7,'0')}` : numOS
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href=url; a.download=`${nombre}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:20}}><button onClick={()=>setOpen(true)} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Nueva orden</button></div>
+      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
+        <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>
+      </div>
 
-      {ordenes.length === 0 ? <Empty msg="Sin órdenes de servicio todavía." /> : (
-        <div className="flex flex-col gap-3">
-          {ordenes.map(o => (
-            <div key={o.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs bg-p-light text-p-dark px-2 py-0.5 rounded-full font-bold">{o.numero}</span>
-                    <span className="font-saira font-bold text-p-dark">{o.aseguradora || 'Sin aseguradora'}</span>
+      {ordenes.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
+        <div className="flex flex-col gap-4">
+          {ordenes.map(o => {
+            const conADAS = (o as any).tiene_adas
+            const numADAS = (o as any).numero_adas
+            const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
+            return (
+              <div key={o.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-saira font-bold text-p-ink">{o.cliente||'(sin nombre)'}</p>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${conADAS?'bg-blue-100 text-blue-700':'bg-p-light text-p-dark'}`}>
+                        {conADAS ? `ADAS N° ${String(numADAS||0).padStart(7,'0')}` : numOS}
+                      </span>
+                    </div>
+                    <p className="text-xs text-p-ink2 mt-0.5">
+                      {[o.vehiculo,(o as any).patente,o.aseguradora,o.fecha.split('-').reverse().join('/')].filter(Boolean).join(' · ')}
+                    </p>
                   </div>
-                  <p className="text-sm text-p-ink mt-0.5">{o.cliente || '—'} {o.vehiculo ? `· ${o.vehiculo}` : ''} {o.patente ? `(${o.patente})` : ''}</p>
-                  <p className="text-xs text-p-ink2 mt-0.5">{[o.siniestro ? 'Sin. ' + o.siniestro : null, o.poliza ? 'Pól. ' + o.poliza : null, o.fecha.split('-').reverse().join('/')].filter(Boolean).join(' · ')}</p>
-                </div>
-                <div className="text-right">
                   <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(o.total)}</p>
-                  <p className="text-xs text-p-ink2">{o.iva ? 'c/IVA' : 's/IVA'}</p>
+                </div>
+                <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
+                  <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
+                  <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
+                  <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
                 </div>
               </div>
-              <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                <button onClick={() => printOrden(o)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Imprimir</button>
-                {o.telefono && (
-                  <a href={`https://wa.me/${(o.telefono ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`*Parabrisas El Piamonte* — Orden ${o.numero}\nAseguradora: ${o.aseguradora || '—'}\nSiniestro: ${o.siniestro || '—'}\nVehículo: ${o.vehiculo || '—'}${o.patente ? ' (' + o.patente + ')' : ''}\n*TOTAL: ${moneyARS(o.total)}*${o.iva ? ' (IVA incl.)' : ''}`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-xs font-bold bg-[#25d366] text-white px-3 py-1.5 rounded-lg">WA</a>
-                )}
-                <button onClick={() => del(o.id)} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Borrar</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Nueva orden de servicio">
+      <Modal open={open} onClose={()=>setOpen(false)} title="Nueva orden de servicio">
         <div className="flex flex-col gap-3">
-          <Field label="Aseguradora">
-            <Input value={form.aseg} onChange={e => setForm(p => ({ ...p, aseg: e.target.value }))} list="aseguradoras" placeholder="La Caja, Sancor…" />
-            <datalist id="aseguradoras">{ASEGURADORAS.map(a => <option key={a} value={a} />)}</datalist>
-          </Field>
+          {/* Cliente */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="N° Siniestro"><Input value={form.sin} onChange={e => setForm(p => ({ ...p, sin: e.target.value }))} /></Field>
-            <Field label="N° Póliza"><Input value={form.pol} onChange={e => setForm(p => ({ ...p, pol: e.target.value }))} /></Field>
+            <Field label="Cliente"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
+            <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Cliente"><Input value={form.cli} onChange={e => setForm(p => ({ ...p, cli: e.target.value }))} /></Field>
-            <Field label="WhatsApp"><Input value={form.tel} onChange={e => setForm(p => ({ ...p, tel: e.target.value }))} placeholder="54 9 …" /></Field>
+            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value}))} placeholder="AB 123 CD"/></Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Vehículo"><Input value={form.veh} onChange={e => setForm(p => ({ ...p, veh: e.target.value }))} placeholder="VW Gol" /></Field>
-            <Field label="Patente"><Input value={form.pat} onChange={e => setForm(p => ({ ...p, pat: e.target.value.toUpperCase() }))} /></Field>
+          {/* Seguro */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Aseguradora">
+              <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
+                <option value="">Sin seguro</option>
+                {ASEGURADORAS.map(a=><option key={a} value={a}>{a}</option>)}
+              </Select>
+            </Field>
+            <Field label="N° Siniestro"><Input value={form.sin} onChange={e=>setForm(p=>({...p,sin:e.target.value}))} placeholder="000000"/></Field>
+            <Field label="Póliza"><Input value={form.pol} onChange={e=>setForm(p=>({...p,pol:e.target.value}))} placeholder="000000"/></Field>
           </div>
+          {/* Ítems */}
           <div className="border-t border-p-line2 pt-3">
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Rubros rápidos</label>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {PRESU_PRESETS.map(r => <button key={r} onClick={() => setItem(p => ({ ...p, d: r }))} className="text-xs border border-p-line rounded-full px-2.5 py-1 hover:bg-p-light text-p-ink2">+ {r}</button>)}
+              {RUBROS_RAPIDOS.map(r=>(
+                <button key={r} onClick={()=>setItems(prev=>[...prev,{d:r,c:1,p:0}])}
+                  className={`text-xs px-2.5 py-1 rounded-full border ${r.toLowerCase().includes('adas')?'border-blue-300 bg-blue-50 text-blue-700':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
+                  + {r}
+                </button>
+              ))}
             </div>
             <div className="grid grid-cols-5 gap-2">
-              <div className="col-span-2"><Field label="Trabajo / vidrio"><Input value={item.d} onChange={e => setItem(p => ({ ...p, d: e.target.value }))} placeholder="Concepto" /></Field></div>
-              <Field label="Cant."><Input type="number" value={item.c} onChange={e => setItem(p => ({ ...p, c: e.target.value }))} min="1" /></Field>
-              <div className="col-span-2"><Field label="Precio neto"><Input value={item.p} onChange={e => setItem(p => ({ ...p, p: e.target.value }))} placeholder="$" /></Field></div>
+              <div className="col-span-2"><Input value={item.d} onChange={e=>setItem(p=>({...p,d:e.target.value}))} placeholder="Concepto"/></div>
+              <Input type="number" value={item.c} onChange={e=>setItem(p=>({...p,c:e.target.value}))} min="1"/>
+              <div className="col-span-2"><Input value={item.p} onChange={e=>setItem(p=>({...p,p:e.target.value}))} placeholder="$ precio"/></div>
             </div>
-            <button onClick={addItem} style={{background:"#6b7280",color:"#fff",border:"none",borderRadius:8,padding:"7px 0",width:"100%",marginTop:8,fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Agregar</button>
+            <button onClick={addItem} style={{...btnGray,width:'100%',marginTop:6}}>+ Agregar ítem</button>
           </div>
-          {items.length > 0 && (
+          {/* Lista ítems */}
+          {items.length>0&&(
             <div className="border-t border-p-line2 pt-2">
-              {items.map((it, i) => (
-                <div key={i} className="flex justify-between items-center py-1.5 border-b border-p-line2 text-sm">
-                  <span>{it.d} {it.c > 1 ? `(×${it.c})` : ''}</span>
-                  <div className="flex items-center gap-2"><span className="font-mono">{moneyARS(it.c * it.p)}</span><button onClick={() => setItems(p => p.filter((_, j) => j !== i))} className="text-red-400 text-xs">✕</button></div>
+              {items.map((it,i)=>(
+                <div key={i} className={`flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm ${it.d.toLowerCase().includes('adas')?'text-blue-700 font-semibold':''}`}>
+                  <span className="flex-1">{it.d}{it.c>1?` ×${it.c}`:''}</span>
+                  <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
+                    className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                  <span className="font-mono text-xs w-24 text-right">{moneyARS(it.c*it.p)}</span>
+                  <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs ml-1">✕</button>
                 </div>
               ))}
+              {tieneADAS(items)&&(
+                <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700 font-semibold">
+                  🛡️ Esta OS incluye calibración ADAS — se generará certificado con numeración ADAS automáticamente.
+                </div>
+              )}
               <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={ivaOn} onChange={e => setIvaOn(e.target.checked)} className="accent-p-green" />IVA 21%
+                <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Sumar IVA 21%
               </label>
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
-                {ivaOn && <div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
+                {ivaOn&&<div className="flex justify-between text-p-ink2"><span>Subtotal</span><span className="font-mono">{moneyARS(neto)}</span></div>}
+                {ivaOn&&<div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
                 <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
               </div>
             </div>
           )}
-          <Field label="Observaciones"><Input value={form.obs} onChange={e => setForm(p => ({ ...p, obs: e.target.value }))} placeholder="Detalle del trabajo, aclaraciones…" /></Field>
+          <Field label="Observaciones"><Input value={form.obs} onChange={e=>setForm(p=>({...p,obs:e.target.value}))} placeholder="Opcional…"/></Field>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar orden</button>
+            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
+            <button onClick={save} disabled={loading} style={{...btn,opacity:loading?.6:1}}>
+              {loading?'Guardando…':'Guardar'}
+            </button>
           </div>
         </div>
       </Modal>

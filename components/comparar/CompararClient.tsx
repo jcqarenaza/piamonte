@@ -33,11 +33,29 @@ export default function CompararClient() {
   const supabase = createClient()
 
   const buscar = useCallback(async () => {
-    if (q.trim().length < 3) { setGrupos([]); return }
+    if (q.trim().length < 2) { setGrupos([]); return }
     setLoading(true)
-    const { data } = await supabase.from('catalogo')
+
+    const POS_KW: Record<string,string> = {
+      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
+      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
+    }
+    const words    = q.trim().toUpperCase().split(/\s+/).filter(Boolean)
+    const posWord  = words.find(w => POS_KW[w])
+    const nonPosWs = words.filter(w => !POS_KW[w])
+    const mainWord = nonPosWs[0] || words[0]
+
+    let dbQ = supabase.from('catalogo')
       .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo')
-      .or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,codigo.ilike.%${q}%`)
+    if (posWord && nonPosWs.length > 0) {
+      dbQ = dbQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
+    } else if (posWord) {
+      dbQ = dbQ.eq('pos', POS_KW[posWord])
+    } else {
+      dbQ = dbQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
+    }
+    const { data: dataRaw } = await dbQ
       .order('descripcion').limit(200)
     // Agrupar por descripción normalizada
     const map = new Map<string, Agrupado>()
