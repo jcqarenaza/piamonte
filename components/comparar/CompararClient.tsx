@@ -57,6 +57,7 @@ export default function CompararClient() {
     }
     const { data: dataRaw } = await dbQ
       .order('descripcion').limit(200)
+    const restWords = nonPosWs.slice(1)
     // Agrupar por descripción normalizada
     const map = new Map<string, Agrupado>()
     for (const row of (dataRaw ?? []).filter((c:any) => restWords.every((w:string) => (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w))) as CatRow[]) {
