@@ -114,7 +114,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setItemManual({d:'',c:'1',p:''})
   }
 
-  const itemsImpresion = items.filter((it:any)=>!it.esRubro || it.visible_impresion!==false)
+  const itemsImpresion = items  // todos los ítems van al PDF
   const neto  = items.reduce((a,it)=>a+it.c*it.p,0)
   const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
   const total = neto+iva
@@ -381,7 +381,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
           {/* Rubros rápidos */}
           <div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Rubros rápidos <span className="font-normal normal-case text-p-gray">(no aparecen en el PDF)</span></label>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Rubros rápidos</label>
             <div className="grid grid-cols-2 gap-2">
               {rubros.map(r=>(
                 <div key={r.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
@@ -413,10 +413,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 const alerta = alertaMargen(it)
                 const esRubro = (it as any).esRubro
                 return(
-                  <div key={i} className={`flex items-center justify-between py-1.5 border-b border-p-line2 text-sm ${esRubro?'opacity-75':''}`}>
+                  <div key={i} className="flex items-center justify-between py-1.5 border-b border-p-line2 text-sm">
                     <div className="min-w-0 flex-1">
-                      <span className={`text-p-ink ${esRubro?'italic':''}`}>{it.d}{it.c>1?` (×${it.c})`:''}</span>
-                      {esRubro&&<span className="ml-1 text-[10px] text-p-gray">(interno)</span>}
+                      <span className="text-p-ink">{it.d}{it.c>1?` (×${it.c})`:''}</span>
                       {alerta&&<p className="text-[10px] text-amber-600 font-semibold">{alerta}</p>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
