@@ -13,6 +13,7 @@ interface Historial {
 
 export default function ClientesClient({ userId }: { userId:string }) {
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [tipos, setTipos] = useState<{id:string;nombre:string}[]>([])
   const [q, setQ]               = useState('')
   const [open, setOpen]         = useState(false)
   const [selected, setSelected] = useState<Cliente|null>(null)
@@ -24,6 +25,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'' })
 
   const load = useCallback(async () => {
+    supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
     const query = supabase.from('clientes').select('*').order('nombre')
     if (q.trim()) query.ilike('nombre', `%${q}%`)
     const { data } = await query.limit(50)

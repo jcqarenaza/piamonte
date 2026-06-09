@@ -32,7 +32,7 @@ export default function BuscarClient() {
     setLoading(true)
     // Buscar en stock y catálogo en paralelo
     const [{ data: stockData }, { data: catData }] = await Promise.all([
-      supabase.from('stock').select('*').eq('activo', true).or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,codigo.ilike.%${q}%`).order('descripcion').limit(30),
+      supabase.from('stock').select('*').eq('activo', true).or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,codigo.ilike.%${q}%,pos.ilike.%${q.toUpperCase()}%`).order('descripcion').limit(30),
       supabase.from('catalogo').select('*').or(`descripcion.ilike.%${q}%,marca.ilike.%${q}%,modelo.ilike.%${q}%,codigo.ilike.%${q}%`).order('proveedor').limit(60),
     ])
     // Agrupar por descripción/modelo para mostrar comparado

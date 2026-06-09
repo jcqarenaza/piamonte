@@ -52,7 +52,21 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   // Búsqueda catálogo
   useEffect(()=>{
     if(catQ.trim().length<3){setCatHits([]);return}
-    supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto').ilike('descripcion',`%${catQ}%`).order('costo_neto').limit(12).then(({data})=>setCatHits(data??[]))
+    // Detectar si el término es una posición conocida y buscar por pos también
+    const posMap: Record<string,string> = {
+      'parabrisa':'PARABRISAS','parabrisas':'PARABRISAS',
+      'luneta':'LUNETA','techo':'TECHO',
+      'puerta':'PUERTA', 'custodia':'CUSTODIA'
+    }
+    const termLow = catQ.toLowerCase().trim()
+    const posMatch = Object.entries(posMap).find(([k])=>termLow.includes(k))
+    let q2 = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto').order('costo_neto').limit(12)
+    if(posMatch) {
+      q2 = q2.or(`descripcion.ilike.%${catQ}%,pos.ilike.%${posMatch[1]}%`)
+    } else {
+      q2 = q2.or(`descripcion.ilike.%${catQ}%,marca.ilike.%${catQ}%`)
+    }
+    q2.then(({data})=>setCatHits(data??[]))
   },[catQ,supabase])
 
   // Búsqueda clientes
