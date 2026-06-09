@@ -85,7 +85,7 @@ export default function Nav({ rol }: { rol?: string }) {
         <nav className="flex flex-col gap-0.5 px-2">
           {visible.map(m => (
             <Link key={m.id} href={m.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${isActive(m.href) ? 'bg-p-green text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${isActive(m.href) ? 'bg-p-green text-white' : 'text-white opacity-75'}`}>
               <span className="text-base">{m.icon}</span>
               <span>{m.label}</span>
             </Link>
@@ -114,7 +114,7 @@ export default function Nav({ rol }: { rol?: string }) {
             <nav className="flex flex-col gap-0.5 px-2">
               {visible.map(m => (
                 <Link key={m.id} href={m.href}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${isActive(m.href) ? 'bg-p-green text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${isActive(m.href) ? 'bg-p-green text-white' : 'text-white opacity-75'}`}>
                   <span className="text-lg">{m.icon}</span>
                   <span>{m.label}</span>
                 </Link>

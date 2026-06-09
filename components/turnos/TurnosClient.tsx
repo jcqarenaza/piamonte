@@ -122,7 +122,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
         <button onClick={openNew} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Nuevo turno</button>
       </div>
 
-      <p className="text-sm text-p-ink2 capitalize mb-4">{fmtFecha(fecha)} · {turnos.length} turno(s)</p>
+      <p className="text-sm text-p-ink2 mb-4">{fmtFecha(fecha)} · {turnos.length} {turnos.length === 1 ? "turno" : "turnos"}</p>
 
       {loading ? (
         <p className="text-sm text-p-gray py-8 text-center">Cargando…</p>

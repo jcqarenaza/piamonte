@@ -196,8 +196,8 @@ export default function ClientesClient({ userId }: { userId:string }) {
           <Field label="Email"><Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional" /></Field>
           <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
           <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="secondary" onClick={()=>setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save} disabled={saving}>{saving?'Guardando…':'Guardar'}</Btn>
+            <button onClick={()=>setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} disabled={saving} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',opacity:saving?0.6:1}}>{saving?'Guardando…':'Guardar'}</button>
           </div>
         </div>
       </Modal>

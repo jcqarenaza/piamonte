@@ -23,7 +23,7 @@ export function fmtFecha(iso: string): string {
   const [y, m, d] = iso.split('-')
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
   const day = new Date(+y, +m - 1, +d).getDay()
-  return `${dias[day]} ${d}/${m}/${y}`
+  const dia = dias[day]; return `${dia.charAt(0).toUpperCase() + dia.slice(1)} ${d}/${m}/${y}`
 }
 
 export const POS_LABEL: Record<string, string> = {
