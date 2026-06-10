@@ -198,17 +198,34 @@ async function extractPdfText(bytes:Uint8Array): Promise<string> {
 async function parsePdfGamma(file:File): Promise<CatRow[]> {
   const bytes=new Uint8Array(await file.arrayBuffer())
   const text=await extractPdfText(bytes)
-  // pdfjs-dist devuelve el texto de la página en una línea con espacios
-  // Formato: "CODIGO [CODIGO2/PILKINGTON] DESCRIPCION PRECIO"
-  // Regex para capturar: código(s) + descripción (PSAS...) + precio numérico al final
-  const items:CatRow[]=[]
-  // Dividir en tokens y parsear línea por línea
-  const lineRe=/([0-9]{6,}[A-Z0-9]+)\s+(?:([0-9]{6,}[A-Z0-9]+|PILKINGTON)\s+)?((?:E-)?PSAS[.\s][^0-9$]{5,}?)\s+([\d.,]+)/gi
-  let m
-  while((m=lineRe.exec(text))!==null){
-    const cod=m[1], desc=(m[3]||'').trim(), ps=m[4]
-    const p=toNum(ps); if(!p||!desc)continue
-    items.push(mkRow('GAMMA',cod,desc,'',p,p,'',true))
+  // pdfjs devuelve un item por línea. Formato GAMMA oferta:
+  // Línea N:   "080930VSLP"         (código)
+  // Línea N+1: "PILKINGTON"         (o segundo código XYG)
+  // Línea N+2: "PSAS. CHEV. AGILE"  (descripción)
+  // Línea N+3: "125803,00"          (precio)
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
+  const cRe=/^[0-9]{5,}[A-Z0-9]+$/
+  const pRe=/^[\d.,]+$/
+  const descRe=/^(E-)?PSAS/i
+  const items:CatRow[]=[]; let i=0
+  while(i<lines.length){
+    if(cRe.test(lines[i])){
+      const cod=lines[i]
+      let j=i+1
+      // Saltar segundo código o PILKINGTON
+      if(j<lines.length && (cRe.test(lines[j])||lines[j]==='PILKINGTON')) j++
+      // La siguiente línea debería ser la descripción
+      if(j<lines.length && descRe.test(lines[j])){
+        const desc=lines[j]; j++
+        // La siguiente línea debería ser el precio
+        if(j<lines.length && pRe.test(lines[j])){
+          const p=toNum(lines[j])
+          if(p>1000) items.push(mkRow('GAMMA',cod,desc,'',p,p,'',true))
+          j++
+        }
+      }
+      i=j
+    }else i++
   }
   return items
 }
