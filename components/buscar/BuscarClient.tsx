@@ -9,7 +9,7 @@ interface CatRow {
   marca: string; modelo: string; pos: string; precio_lista: number
   costo_neto: number; disponible: string; es_promo: boolean
 }
-interface ResultGroup { stock?: StockItem; provs: CatRow[] }
+interface ResultGroup { stock?: StockItem; provs: CatRow[]; grupoId?: number }
 
 const PROVCOLOR: Record<string, string> = {
   GAMMA: 'bg-green-100 text-green-700', MALATESTA: 'bg-blue-100 text-blue-700',
