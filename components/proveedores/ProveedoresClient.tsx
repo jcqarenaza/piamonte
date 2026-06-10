@@ -182,7 +182,7 @@ async function parsePromo(file:File): Promise<CatRow[]> {
 // ── parsers PDF ───────────────────────────────────────────────────────────────
 async function extractPdfText(bytes:Uint8Array): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
   const parts: string[] = []
   for(let i = 1; i <= pdf.numPages; i++) {
