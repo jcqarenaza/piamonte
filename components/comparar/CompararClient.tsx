@@ -6,7 +6,7 @@ import { moneyARS } from '@/lib/utils/format'
 interface CatRow {
   id: string; proveedor: string; codigo: string | null; descripcion: string
   marca: string | null; pos: string | null; precio_lista: number
-  costo_neto: number; disponible: string | null; es_promo: boolean
+  costo_neto: number; disponible: string | null; es_promo: boolean; lista_nombre: string | null
 }
 
 const PROV_COLOR: Record<string, { bg: string; text: string }> = {
@@ -47,7 +47,7 @@ export default function CompararClient() {
     const mainWord = nonPosWs[0] || words[0]
 
     let dbQ = supabase.from('catalogo')
-      .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo')
+      .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo,grupo_id,lista_nombre')
     if (posWord && nonPosWs.length > 0) {
       dbQ = dbQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
     } else if (posWord) {
@@ -129,7 +129,7 @@ export default function CompararClient() {
                     {sorted.map(p => (
                       <span key={p.id} style={{ background: PROV_COLOR[p.proveedor]?.bg ?? '#f3f4f6', color: PROV_COLOR[p.proveedor]?.text ?? '#374151' }}
                         className="text-[11px] font-bold px-2 py-0.5 rounded-full">
-                        {p.proveedor}
+                        {p.proveedor}{p.es_promo ? ' (Oferta)' : ''}
                       </span>
                     ))}
                     {ahorro > 0 && (
@@ -163,8 +163,8 @@ export default function CompararClient() {
                           className={`flex items-center gap-3 px-4 py-3 flex-wrap ${isBest ? 'bg-green-50' : ''}`}>
                           {/* Proveedor */}
                           <span style={{ background: PROV_COLOR[p.proveedor]?.bg ?? '#f3f4f6', color: PROV_COLOR[p.proveedor]?.text ?? '#374151' }}
-                            className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0 min-w-[80px] text-center">
-                            {p.proveedor}
+                            className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0 text-center">
+                            {p.proveedor}{p.lista_nombre ? ' · ' + p.lista_nombre.replace(/Catálogo|Catalog/i,'Cat.').replace(/Oferta especial mixta/i,'Oferta Mixta').replace(/Oferta Mix/i,'Mix P/E') : ''}
                           </span>
                           {/* Código */}
                           {p.codigo && (
@@ -180,9 +180,7 @@ export default function CompararClient() {
                               {p.disponible === 'MIN' ? 'stock mínimo' : p.disponible === 'SI' ? 'disponible' : 'sin stock'}
                             </span>
                           )}
-                          {p.es_promo && (
-                            <span className="text-[10px] font-bold bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full shrink-0">PROMO</span>
-                          )}
+
                           <div className="ml-auto text-right">
                             <p className={`font-mono font-bold text-base ${isBest ? 'text-green-700' : 'text-p-ink'}`}>
                               {moneyARS(p.costo_neto)}

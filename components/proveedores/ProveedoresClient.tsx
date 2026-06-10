@@ -14,7 +14,7 @@ const FORMATOS = [
 ]
 
 interface Lista { id:string; nombre:string; proveedor:string; tipo:string; desc_pct:number; flete_pct:number; iva_pct:number }
-interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; updated_at:string }
+interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function norm(s:string) {
@@ -55,7 +55,7 @@ function mkRow(prov:string,cod:string,desc:string,marca:string,pre:number,costo:
   return { proveedor:prov, codigo:cod||null, descripcion:desc, marca:marca||null,
     modelo:null, pos:decodePos(desc), precio_lista:pre,
     costo_neto:Math.round(costo), disponible:disp||null,
-    es_promo:promo, updated_at:new Date().toISOString() }
+    es_promo:promo, lista_nombre:null, updated_at:new Date().toISOString() }
 }
 
 
@@ -212,14 +212,27 @@ async function parsePdfMix(file:File): Promise<CatRow[]> {
   const bytes=new Uint8Array(await file.arrayBuffer())
   const text=extractPdfText(bytes)
   const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
-  const dRe=/^(E-)?PSAS|^LTA|^P\.|^C\.|^A\./i,nRe=/^[\d.,]+$/
+  const dRe=/^(E-)?PSAS|^LTA|^P\.|^C\.|^A\./i
+  const nRe=/^[\d.,]+$/
   const items:CatRow[]=[]; let i=0
   while(i<lines.length){
     if(dRe.test(lines[i])){
-      const desc=lines[i]; let p=0
-      if(i+1<lines.length&&nRe.test(lines[i+1])){p=toNum(lines[i+1]);i+=2}else{i++;continue}
-      if(!p)continue
-      items.push(mkRow('MALATESTA','',desc,'',p,p,'',true))
+      const desc=lines[i]
+      // Buscar los dos primeros números tras la descripción
+      const nums:number[]=[]; let j=i+1
+      while(j<lines.length&&j<i+6){
+        if(nRe.test(lines[j])){ const v=toNum(lines[j]); if(v>1000)nums.push(v) }
+        else if(dRe.test(lines[j])) break
+        j++
+      }
+      if(!nums.length){ i++; continue }
+      // El PDF muestra: [precio_euroglass] [precio_mix] — usamos el MÁS GRANDE (Mix)
+      const pMix = Math.max(...nums)
+      const pEuro = Math.min(...nums)
+      i=j
+      if(!pMix)continue
+      // Importar precio Mix como principal
+      items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
     }else i++
   }
   return items
@@ -270,6 +283,15 @@ export default function ProveedoresClient() {
       else if(formato==='mix_malat')    items = await parsePdfMix(file)
 
       if(!items.length) throw new Error('No se encontraron ítems en el archivo')
+
+      // Asignar lista_nombre según el formato importado
+      const listaNombre: Record<string,string> = {
+        gamma: 'Catálogo', malatesta: 'Catálogo', sekurit: 'Lista',
+        promo_ar: 'Promo Alta Rot.', promo_bg: 'Bajo Giro',
+        oferta_gamma: 'Oferta Mixta Jun26', mix_malat: 'Mix P/E Jun26',
+      }
+      const ln = listaNombre[formato] || ''
+      items = items.map(it => ({ ...it, lista_nombre: ln || null }))
 
       // Deduplicar — Malatesta y otros pueden tener el mismo código más de una vez
       const seen = new Set<string>()
