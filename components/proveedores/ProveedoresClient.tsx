@@ -389,7 +389,7 @@ export default function ProveedoresClient() {
       </div>
       <div style={{ marginBottom:16 }}>
         <label style={{ fontSize:12,fontWeight:600,color:'#4A6655',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:6 }}>Archivo ({fmt.ext})</label>
-        <input id="fi" type="file" accept={fmt.ext}
+        <input key={fmt.ext} id="fi" type="file" accept={fmt.ext}
           onChange={e=>{ setFile(e.target.files?.[0]??null); setResult(null) }}
           style={{ width:'100%',border:'1px solid #C2DDD0',borderRadius:10,padding:'8px 12px',fontSize:14,background:'#fff',cursor:'pointer' }}/>
         {file&&<p style={{ fontFamily:'monospace',fontSize:12,color:'#4A6655',marginTop:6 }}>📎 {file.name} · {(file.size/1024).toFixed(0)} KB</p>}

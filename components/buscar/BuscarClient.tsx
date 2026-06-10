@@ -8,6 +8,8 @@ interface CatRow {
   id: string; proveedor: string; codigo: string; descripcion: string
   marca: string; modelo: string; pos: string; precio_lista: number
   costo_neto: number; disponible: string; es_promo: boolean
+
+  lista_nombre: string | null; grupo_id: number | null
 }
 interface ResultGroup { stock?: StockItem; provs: CatRow[]; grupoId?: number }
 
