@@ -87,10 +87,18 @@ export default function BuscarClient() {
       if (!groups.has(key)) groups.set(key, { provs: [] })
       groups.get(key)!.stock = s
     }
-    for (const c of catData) {
-      const key = (c.descripcion + (c.pos ?? '')).toUpperCase().replace(/\s+/g, ' ')
-      if (!groups.has(key)) groups.set(key, { provs: [] })
-      groups.get(key)!.provs.push(c)
+    const grupoMap = new Map<number, string>()
+    for (const c of catData as CatRow[]) {
+      const gid = (c as any).grupo_id as number|null
+      let key: string
+      if (gid) {
+        if (!grupoMap.has(gid)) { key = `grupo_${gid}`; grupoMap.set(gid, key) }
+        else key = grupoMap.get(gid)!
+      } else {
+        key = (c.descripcion + (c.pos ?? '')).toUpperCase().replace(/\s+/g, ' ')
+      }
+      if (!groups.has(key)) groups.set(key, { provs: [], grupoId: gid || undefined })
+      groups.get(key)!.provs.push(c as CatRow)
     }
     const arr = [...groups.entries()].map(([k, v]) => ({ desc: k, ...v }))
       .sort((a, b) => (b.stock ? 1 : 0) - (a.stock ? 1 : 0))
