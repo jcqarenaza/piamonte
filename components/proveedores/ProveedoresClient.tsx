@@ -188,11 +188,10 @@ async function extractPdfText(bytes:Uint8Array): Promise<string> {
   for(let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
-    const pageText = content.items
-      .filter((item: any) => 'str' in item)
-      .map((item: any) => item.str)
-      .join(' ')
-    parts.push(pageText)
+    // Cada item de pdfjs va en su propia línea para que los parsers funcionen
+    content.items
+      .filter((item: any) => 'str' in item && (item as any).str.trim())
+      .forEach((item: any) => parts.push((item as any).str.trim()))
   }
   return parts.join('\n')
 }
@@ -216,28 +215,29 @@ async function parsePdfGamma(file:File): Promise<CatRow[]> {
 async function parsePdfMix(file:File): Promise<CatRow[]> {
   const bytes=new Uint8Array(await file.arrayBuffer())
   const text=await extractPdfText(bytes)
-  const items:CatRow[]=[]
-  // Formato Malatesta Mix: "DESCRIPCION $ precio_euroglass precio_mix $"
-  // o simplemente "PSAS. XXX precio1 precio2"
-  // Capturar: descripción (PSAS...) + dos precios numéricos
-  const lineRe=/((?:E-)?PSAS[.\s][^$\d]{5,}?)\s+\$?\s*([\d.,]+)\s+([\d.,]+)/gi
-  let m
-  while((m=lineRe.exec(text))!==null){
-    const desc=(m[1]||'').trim()
-    const p1=toNum(m[2]), p2=toNum(m[3])
-    // Mix es el más caro (Pilkington+Euroglass > solo Euroglass)
-    const pMix=Math.max(p1,p2)
-    if(!pMix||!desc||pMix<1000)continue
-    items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
-  }
-  // Fallback: si no hay matches con dos precios, buscar con uno solo
-  if(!items.length){
-    const singleRe=/((?:E-)?PSAS[.\s][^$\d]{5,}?)\s+([\d.,]+)/gi
-    while((m=singleRe.exec(text))!==null){
-      const desc=(m[1]||'').trim(), p=toNum(m[2])
-      if(!p||!desc||p<1000)continue
-      items.push(mkRow('MALATESTA','',desc,'',p,p,'',true))
-    }
+  // pdfjs devuelve un item por línea. Formato Malatesta Mix:
+  // Línea N:   "PSAS. CHEVROLET AGILE / MONTANA '09/'15"  (descripción)
+  // Línea N+1: "125.803"  (precio Mix — el mayor, Pilkington+Euroglass)
+  // Línea N+2: "$"
+  // Línea N+3: "116.484"  (precio Euroglass solo)
+  // Línea N+4: "$"
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
+  const descRe=/^(E-)?PSAS/i
+  const numRe=/^[\d.,]+$/
+  const items:CatRow[]=[]; let i=0
+  while(i<lines.length){
+    if(descRe.test(lines[i])){
+      const desc=lines[i]
+      // El primer número tras la descripción es el precio Mix
+      let pMix=0, j=i+1
+      while(j<lines.length && j<i+4){
+        if(numRe.test(lines[j])){ pMix=toNum(lines[j]); j++; break }
+        j++
+      }
+      i=j
+      if(!pMix||pMix<1000)continue
+      items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
+    }else i++
   }
   return items
 }
