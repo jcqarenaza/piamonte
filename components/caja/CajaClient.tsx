@@ -22,8 +22,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
-    stock_id: null as string | null
+    stock_id: null as string | null,
+    tipo_id: '', tipo_nombre: ''
   })
+  const [tipos, setTipos] = useState<{id:string;nombre:string}[]>([])
 
   const loadVentas = useCallback(async () => {
     setLoading(true)
@@ -33,6 +35,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   }, [fecha, supabase])
 
   useEffect(() => { loadVentas() }, [loadVentas])
+
+  useEffect(() => {
+    supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
+  }, [supabase])
 
   useEffect(() => {
     supabase.from("stock").select("id,descripcion,codigo,marca,pos,precio_venta,costo,cantidad").gt("cantidad",0).then(({ data }) => setStockItems((data as unknown as StockItem[]) ?? []))
@@ -66,7 +72,9 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
       fecha, descripcion: form.descripcion, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
       pago: form.pago, origen: form.origen, pendiente: !c,
-      stock_id: form.stock_id, user_id: userId
+      stock_id: form.stock_id, user_id: userId,
+      tipo_cliente_id: form.tipo_id||null,
+      tipo_cliente_nombre: form.tipo_nombre||null
     })
     // Descontar stock
     if (form.origen === 'stock' && form.stock_id) {
@@ -77,7 +85,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
       }
     }
     setOpen(false)
-    setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null })
+    setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, tipo_id: '', tipo_nombre: '' })
     loadVentas()
   }
 
@@ -205,6 +213,13 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Tipo de cliente">
+              <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
+                style={{width:'100%',border:'1.5px solid #C2DDD0',borderRadius:10,padding:'9px 12px',fontSize:13,color:'#0C1810',background:'#fff',outline:'none'}}>
+                <option value="">Sin tipo</option>
+                {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </Field>
             <Field label="Cliente"><Input value={form.cliente} onChange={e => setForm(p => ({ ...p, cliente: e.target.value }))} placeholder="Nombre" /></Field>
             <Field label="N° comprobante"><Input value={form.comprobante} onChange={e => setForm(p => ({ ...p, comprobante: e.target.value }))} placeholder="Factura / remito" /></Field>
           </div>
