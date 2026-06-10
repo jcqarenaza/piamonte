@@ -180,60 +180,64 @@ async function parsePromo(file:File): Promise<CatRow[]> {
 }
 
 // ── parsers PDF ───────────────────────────────────────────────────────────────
-function extractPdfText(bytes:Uint8Array): string {
-  const text=new TextDecoder('latin1').decode(bytes)
-  const parts:string[]=[]
-  const re=/\(([^)\\]*(?:\\.[^)\\]*)*)\)/g; let m
-  while((m=re.exec(text))!==null){
-    const s=m[1].replace(/\\n/g,'\n').replace(/\\r/g,'\n').replace(/\\t/g,' ')
-      .replace(/\\\\/g,'\\').replace(/\\\(/g,'(').replace(/\\\)/g,')').trim()
-    if(s.length>1)parts.push(s)
+async function extractPdfText(bytes:Uint8Array): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+  const parts: string[] = []
+  for(let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const pageText = content.items
+      .filter((item: any) => 'str' in item)
+      .map((item: any) => item.str)
+      .join(' ')
+    parts.push(pageText)
   }
   return parts.join('\n')
 }
 async function parsePdfGamma(file:File): Promise<CatRow[]> {
   const bytes=new Uint8Array(await file.arrayBuffer())
-  const text=extractPdfText(bytes)
-  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
-  const cRe=/^[0-9]{6,}[A-Z]+$/; const items:CatRow[]=[]; let i=0
-  while(i<lines.length){
-    if(cRe.test(lines[i])){
-      const cod=lines[i],n1=lines[i+1]??''
-      let desc='',ps=''
-      if(cRe.test(n1)||n1==='PILKINGTON'){desc=lines[i+2]??'';ps=lines[i+3]??'';i+=4}
-      else{desc=n1;ps=lines[i+2]??'';i+=3}
-      const p=toNum(ps);if(!p||!desc)continue
-      items.push(mkRow('GAMMA',cod,desc,'',p,p,'',true))
-    }else i++
+  const text=await extractPdfText(bytes)
+  // pdfjs-dist devuelve el texto de la página en una línea con espacios
+  // Formato: "CODIGO [CODIGO2/PILKINGTON] DESCRIPCION PRECIO"
+  // Regex para capturar: código(s) + descripción (PSAS...) + precio numérico al final
+  const items:CatRow[]=[]
+  // Dividir en tokens y parsear línea por línea
+  const lineRe=/([0-9]{6,}[A-Z0-9]+)\s+(?:([0-9]{6,}[A-Z0-9]+|PILKINGTON)\s+)?((?:E-)?PSAS[.\s][^0-9$]{5,}?)\s+([\d.,]+)/gi
+  let m
+  while((m=lineRe.exec(text))!==null){
+    const cod=m[1], desc=(m[3]||'').trim(), ps=m[4]
+    const p=toNum(ps); if(!p||!desc)continue
+    items.push(mkRow('GAMMA',cod,desc,'',p,p,'',true))
   }
   return items
 }
 async function parsePdfMix(file:File): Promise<CatRow[]> {
   const bytes=new Uint8Array(await file.arrayBuffer())
-  const text=extractPdfText(bytes)
-  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
-  const dRe=/^(E-)?PSAS|^LTA|^P\.|^C\.|^A\./i
-  const nRe=/^[\d.,]+$/
-  const items:CatRow[]=[]; let i=0
-  while(i<lines.length){
-    if(dRe.test(lines[i])){
-      const desc=lines[i]
-      // Buscar los dos primeros números tras la descripción
-      const nums:number[]=[]; let j=i+1
-      while(j<lines.length&&j<i+6){
-        if(nRe.test(lines[j])){ const v=toNum(lines[j]); if(v>1000)nums.push(v) }
-        else if(dRe.test(lines[j])) break
-        j++
-      }
-      if(!nums.length){ i++; continue }
-      // El PDF muestra: [precio_euroglass] [precio_mix] — usamos el MÁS GRANDE (Mix)
-      const pMix = Math.max(...nums)
-      const pEuro = Math.min(...nums)
-      i=j
-      if(!pMix)continue
-      // Importar precio Mix como principal
-      items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
-    }else i++
+  const text=await extractPdfText(bytes)
+  const items:CatRow[]=[]
+  // Formato Malatesta Mix: "DESCRIPCION $ precio_euroglass precio_mix $"
+  // o simplemente "PSAS. XXX precio1 precio2"
+  // Capturar: descripción (PSAS...) + dos precios numéricos
+  const lineRe=/((?:E-)?PSAS[.\s][^$\d]{5,}?)\s+\$?\s*([\d.,]+)\s+([\d.,]+)/gi
+  let m
+  while((m=lineRe.exec(text))!==null){
+    const desc=(m[1]||'').trim()
+    const p1=toNum(m[2]), p2=toNum(m[3])
+    // Mix es el más caro (Pilkington+Euroglass > solo Euroglass)
+    const pMix=Math.max(p1,p2)
+    if(!pMix||!desc||pMix<1000)continue
+    items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
+  }
+  // Fallback: si no hay matches con dos precios, buscar con uno solo
+  if(!items.length){
+    const singleRe=/((?:E-)?PSAS[.\s][^$\d]{5,}?)\s+([\d.,]+)/gi
+    while((m=singleRe.exec(text))!==null){
+      const desc=(m[1]||'').trim(), p=toNum(m[2])
+      if(!p||!desc||p<1000)continue
+      items.push(mkRow('MALATESTA','',desc,'',p,p,'',true))
+    }
   }
   return items
 }
