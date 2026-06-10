@@ -58,14 +58,27 @@ export default function CompararClient() {
     const { data: dataRaw } = await dbQ
       .order('descripcion').limit(200)
     const restWords = nonPosWs.slice(1)
-    // Agrupar por descripción normalizada
+    const filtered = (dataRaw ?? []).filter((c:any) => restWords.every((w:string) =>
+      (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
+    )) as CatRow[]
+
+    // Agrupar SOLO por grupo_id explícito — sin grupo_id cada pieza es individual
     const map = new Map<string, Agrupado>()
-    for (const row of (dataRaw ?? []).filter((c:any) => restWords.every((w:string) => (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w))) as CatRow[]) {
-      const key = row.descripcion.toUpperCase().replace(/\s+/g,' ').trim()
+    const grupoKeyMap = new Map<number, string>()
+    for (const row of filtered) {
+      const gid = (row as any).grupo_id as number|null
+      let key: string
+      if (gid) {
+        if (!grupoKeyMap.has(gid)) { key = `g_${gid}`; grupoKeyMap.set(gid, key) }
+        else key = grupoKeyMap.get(gid)!
+      } else {
+        // Sin equivalencia: aparece como pieza individual (key única por id)
+        key = `solo_${row.id}`
+      }
       if (!map.has(key)) map.set(key, { desc: row.descripcion, pos: row.pos, provs: [] })
       map.get(key)!.provs.push(row)
     }
-    // Ordenar: primero los que tienen más proveedores
+    // Ordenar: primero los grupos con más proveedores (equivalencias arriba), luego individuales
     const arr = [...map.values()].sort((a, b) => b.provs.length - a.provs.length)
     setGrupos(arr)
     setLoading(false)
@@ -101,7 +114,13 @@ export default function CompararClient() {
         {grupos.map((g, i) => {
           const key = g.desc
           const isOpen = expandido === key
-          const sorted = [...g.provs].sort((a, b) => a.costo_neto - b.costo_neto)
+          // Un precio por proveedor — si hay múltiples variantes del mismo proveedor, mostrar el más barato
+          const dedupMap = new Map<string, typeof g.provs[0]>()
+          for(const p of g.provs){
+            const key = `${p.proveedor}|${p.lista_nombre||''}`
+            if(!dedupMap.has(key) || p.costo_neto < dedupMap.get(key)!.costo_neto) dedupMap.set(key, p)
+          }
+          const sorted = [...dedupMap.values()].sort((a, b) => a.costo_neto - b.costo_neto)
           const best = sorted[0]
           const worst = sorted[sorted.length - 1]
           const ahorro = worst && best ? worst.costo_neto - best.costo_neto : 0
