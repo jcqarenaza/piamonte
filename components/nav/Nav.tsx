@@ -19,6 +19,7 @@ const GRUPOS = [
     label: 'DOCUMENTOS',
     items: [
       { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
+      { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
       { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
       { id:'adas',         href:'/adas',         label:'Cert. ADAS',    icon:'🛡️' },
     ]

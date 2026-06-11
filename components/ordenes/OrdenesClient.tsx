@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
@@ -28,6 +28,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [loading, setLoading]   = useState(false)
   const supabase = createClient()
   const searchParams = useSearchParams()
+  const router = useRouter()
 
   const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
@@ -256,6 +257,14 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                 <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
                   <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
                   <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
+                  <button onClick={()=>{
+                    const params = new URLSearchParams({
+                      cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
+                      items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0),
+                      oid: o.id,
+                    })
+                    router.push(`/comprobantes?${params.toString()}`)
+                  }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                   <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
                 </div>
               </div>
