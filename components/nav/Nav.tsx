@@ -45,6 +45,7 @@ const GRUPOS = [
     items: [
       { id:'proveedores',  href:'/proveedores',  label:'Proveedores',   icon:'🏭' },
       { id:'informes',     href:'/informes',     label:'Informes',      icon:'📊' },
+      { id:'usuarios',      href:'/usuarios',      label:'Usuarios',      icon:'👤' },
       { id:'configuracion', href:'/configuracion', label:'Configuración', icon:'⚙️' },
     ]
   },
@@ -119,7 +120,7 @@ export default function Nav({ rol }: { rol?: string }) {
     ...g,
     items: g.items.filter(m => {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
-    if (rol !== 'gerencial' && m.id === 'configuracion') return false
+    if (rol !== 'gerencial' && ['configuracion','usuarios'].includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)

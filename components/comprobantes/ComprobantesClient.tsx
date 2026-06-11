@@ -52,9 +52,19 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
-  const [items, setItems]       = useState<{d:string;c:number;p:number}[]>([])
+  const [items, setItems]       = useState<{d:string;c:number;p:number;costo?:number;stock_id?:string}[]>([])
+  const [stockQ, setStockQ]     = useState('')
+  const [stockSugs, setStockSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
   const [obs, setObs]           = useState('')
+
+  // Búsqueda de stock
+  useEffect(()=>{
+    if(stockQ.trim().length<2){setStockSugs([]);return}
+    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
+      .ilike('descripcion',`%${stockQ}%`).limit(8)
+      .then(({data})=>setStockSugs(data??[]))
+  },[stockQ,supabase])
 
   // Totales
   const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
@@ -150,6 +160,16 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
       user_id: userId,
     }).select().single()
 
+    // Descontar stock para items vinculados
+    for(const it of items){
+      if(it.stock_id && it.c > 0){
+        const {data:s} = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
+        if(s) await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
+      }
+    }
+    const costoTotal = items.reduce((a,it)=>a+(it.costo||0)*it.c, 0)
+    const tieneTodoCosto = items.every(it=>it.costo!=null&&it.costo>0)
+
     // Registrar venta automáticamente en Caja
     if(comp) {
       await supabase.from('ventas').insert({
@@ -223,7 +243,15 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
     })
     y+=4
 
-    // Totales
+    // Búsqueda de stock
+  useEffect(()=>{
+    if(stockQ.trim().length<2){setStockSugs([]);return}
+    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
+      .ilike('descripcion',`%${stockQ}%`).limit(8)
+      .then(({data})=>setStockSugs(data??[]))
+  },[stockQ,supabase])
+
+  // Totales
     const totX=W-pad-70
     if(c.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(c.neto),W-pad,y,{align:'right'}); y+=6 }
     if(c.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(c.iva),W-pad,y,{align:'right'}); y+=6 }
@@ -373,16 +401,49 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
           {/* Vehículo */}
           <Field label="Vehículo"><Input value={fiscal.vehiculo} onChange={e=>setFiscal(p=>({...p,vehiculo:e.target.value}))} placeholder="VW Gol 2015"/></Field>
 
+          {/* Buscar en stock */}
+          <div>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar en stock</label>
+            <div className="relative">
+              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder="Buscar pieza del stock…"/>
+              {stockSugs.length>0&&(
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                  {stockSugs.map((s:any)=>(
+                    <button key={s.id} onClick={()=>{
+                      setItems(prev=>[...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,costo:s.costo||0,stock_id:s.id}])
+                      setStockQ(''); setStockSugs([])
+                    }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-p-ink truncate">{s.descripcion}</p>
+                        <p className="text-[10px] text-p-ink2">Stock: {s.cantidad} u. · Costo: {s.costo?moneyARS(s.costo):'-'}</p>
+                      </div>
+                      <span className="font-mono font-bold text-sm text-p-dark shrink-0">{s.precio_venta?moneyARS(s.precio_venta):'-'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Ítems */}
           {items.length>0&&(
             <div className="border-t border-p-line2 pt-2">
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
               {items.map((it,i)=>(
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
-                  <span className="flex-1 text-p-ink">{it.d}{it.c>1?` ×${it.c}`:''}</span>
-                  <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
-                    className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
-                  <span className="font-mono text-xs w-24 text-right">{moneyARS(it.c*it.p)}</span>
+                  <span className="flex-1 text-p-ink min-w-0 truncate">{it.d}{it.c>1?` ×${it.c}`:''}</span>
+                  {it.stock_id&&<span className="text-[10px] text-p-green font-bold shrink-0">📦</span>}
+                  <div className="shrink-0">
+                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">costo</div>
+                    <input type="number" value={it.costo||''} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,costo:v}:x))}}
+                      placeholder="$" className="w-24 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                  </div>
+                  <div className="shrink-0">
+                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">precio venta</div>
+                    <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
+                      className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                  </div>
+                  <span className="font-mono text-xs w-20 text-right shrink-0">{moneyARS(it.c*it.p)}</span>
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
                 </div>
               ))}
