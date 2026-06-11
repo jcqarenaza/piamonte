@@ -14,7 +14,7 @@ export default {
     'disabled:opacity-50',
     'font-saira',
     // Layout crítico - sidebar
-    'w-56', 'ml-56', 'lg:ml-56', 'lg:flex', 'lg:hidden', 'lg:w-60',
+    'w-56', 'ml-56', 'lg:ml-56', 'lg:ml-[210px]', 'lg:flex', 'lg:hidden', 'lg:w-60',
     'pt-\\[100px\\]', 'pb-24', 'pb-safe',
     // Opacidad texto
     'opacity-75', 'opacity-70',

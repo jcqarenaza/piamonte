@@ -12,8 +12,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div style={{ minHeight:'100vh', background:'#F5F0E8' }}>
       <Nav rol={perfil?.rol} />
-      <div id="main-content">
-        <script dangerouslySetInnerHTML={{__html:`(function(){function m(){var e=document.getElementById('main-content');if(e)e.style.marginLeft=window.innerWidth>=1024?'210px':'0'}m();window.addEventListener('resize',m)})()`}}/>
+      {/* Contenido — el margen se aplica via clase CSS que Tailwind sí genera */}
+      <div style={{ marginLeft: 0 }} className="lg:ml-[210px]">
         <DolarBar />
         <main className="px-4 lg:px-8 py-6" style={{ paddingBottom:80 }}>
           {children}
