@@ -1,106 +1,151 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Oferta } from '@/lib/types/database'
-import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
-import { todayStr } from '@/lib/utils/format'
+
+const moneyARS = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+const PROV_COLOR: Record<string, { bg: string; text: string }> = {
+  GAMMA:     { bg: '#dcfce7', text: '#166534' },
+  MALATESTA: { bg: '#dbeafe', text: '#1e40af' },
+  SEKURIT:   { bg: '#ede9fe', text: '#5b21b6' },
+}
+
+interface Pieza {
+  id: string; proveedor: string; descripcion: string
+  pos: string | null; costo_neto: number; precio_lista: number
+  lista_nombre: string | null; codigo: string | null
+}
 
 export default function OfertasClient() {
-  const [ofertas, setOfertas] = useState<Oferta[]>([])
-  const [open, setOpen] = useState(false)
-  const [imgPrev, setImgPrev] = useState('')
+  const [piezas, setPiezas] = useState<Pieza[]>([])
+  const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
+  const [provFilter, setProvFilter] = useState('')
   const supabase = createClient()
 
-  const [form, setForm] = useState({ prov: '', rubro: '', precio: '', vence: '', nota: '' })
-  const [file, setFile] = useState<File | null>(null)
-
-  const today = todayStr()
-
   useEffect(() => {
-    supabase.from('ofertas').select('*').eq('activa', true).order('created_at', { ascending: false }).then(({ data }) => setOfertas(data ?? []))
+    supabase.from('catalogo')
+      .select('id,proveedor,descripcion,pos,costo_neto,precio_lista,lista_nombre,codigo')
+      .eq('es_promo', true)
+      .order('proveedor')
+      .limit(500)
+      .then(({ data }) => { setPiezas(data ?? []); setLoading(false) })
   }, [supabase])
 
-  function onFile(f: File | null) {
-    setFile(f)
-    if (f) { const fr = new FileReader(); fr.onload = () => setImgPrev(fr.result as string); fr.readAsDataURL(f) }
-    else setImgPrev('')
-  }
+  const listas = [...new Set(piezas.map(p => p.lista_nombre).filter(Boolean))]
+  const proveedores = [...new Set(piezas.map(p => p.proveedor))]
 
-  async function save() {
-    if (!form.prov) { alert('Cargá el proveedor.'); return }
-    let img_url = null
-    if (file && imgPrev) {
-      // Subir imagen a Supabase Storage (bucket 'ofertas') — si no existe, guardamos como dataURL pequeño
-      img_url = imgPrev.length < 500_000 ? imgPrev : null // máx ~350KB como dataURL
-    }
-    await supabase.from('ofertas').insert({
-      proveedor: form.prov, rubro: form.rubro || null, precio: form.precio || null,
-      vigencia: form.vence || null, nota: form.nota || null, img_url, activa: true
-    })
-    setOpen(false); setFile(null); setImgPrev('')
-    setForm({ prov: '', rubro: '', precio: '', vence: '', nota: '' })
-    const { data } = await supabase.from('ofertas').select('*').eq('activa', true).order('created_at', { ascending: false })
-    setOfertas(data ?? [])
-  }
+  const filtradas = piezas.filter(p => {
+    const matchQ = !q || p.descripcion.toLowerCase().includes(q.toLowerCase()) || (p.codigo||'').toLowerCase().includes(q.toLowerCase())
+    const matchP = !provFilter || p.lista_nombre === provFilter
+    return matchQ && matchP
+  })
 
-  async function del(id: string) {
-    if (!confirm('¿Quitar oferta?')) return
-    await supabase.from('ofertas').update({ activa: false }).eq('id', id)
-    setOfertas(prev => prev.filter(o => o.id !== id))
-  }
+  // Agrupar por lista
+  const porLista = filtradas.reduce((acc, p) => {
+    const k = p.lista_nombre || p.proveedor
+    if (!acc[k]) acc[k] = []
+    acc[k].push(p)
+    return acc
+  }, {} as Record<string, Pieza[]>)
 
   return (
     <div>
-      <div className="flex justify-end mb-5"><button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nueva oferta</button></div>
+      {/* Controles */}
+      <div className="flex gap-3 flex-wrap mb-5">
+        <input value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Buscar modelo…"
+          className="flex-1 min-w-[200px] border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white shadow-sm"/>
+        <select value={provFilter} onChange={e => setProvFilter(e.target.value)}
+          className="border border-p-line rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white shadow-sm">
+          <option value="">Todas las listas</option>
+          {listas.map(l => <option key={l!} value={l!}>{l}</option>)}
+        </select>
+      </div>
 
-      {ofertas.length === 0 ? <Empty msg="Sin ofertas cargadas." /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {ofertas.map(o => {
-            const venc = o.vigencia && o.vigencia < today
+      {loading ? (
+        <p className="text-sm text-p-gray text-center py-10">Cargando ofertas…</p>
+      ) : piezas.length === 0 ? (
+        <div className="bg-white border border-p-line rounded-xl p-10 text-center">
+          <p className="text-4xl mb-3">📄</p>
+          <p className="font-saira font-bold text-p-ink text-lg">Sin ofertas cargadas</p>
+          <p className="text-sm text-p-ink2 mt-1">Importá los PDFs de oferta desde <a href="/proveedores" className="text-p-green font-semibold">Proveedores</a>.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6">
+          {/* Resumen */}
+          <div className="flex gap-3 flex-wrap">
+            {listas.map(l => {
+              const items = piezas.filter(p => p.lista_nombre === l)
+              const prov = items[0]?.proveedor
+              const c = PROV_COLOR[prov] || { bg: '#f3f4f6', text: '#374151' }
+              return (
+                <button key={l!} onClick={() => setProvFilter(provFilter === l ? '' : l!)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all"
+                  style={{ background: provFilter === l ? c.bg : '#fff', borderColor: provFilter === l ? c.text : '#E5E7EB', color: c.text }}>
+                  <span className="font-bold text-sm">{l}</span>
+                  <span className="font-mono text-xs bg-white/70 px-1.5 py-0.5 rounded-full">{items.length}</span>
+                </button>
+              )
+            })}
+            <span className="text-sm text-p-ink2 self-center ml-auto">
+              {filtradas.length} piezas{q ? ` para "${q}"` : ''}
+            </span>
+          </div>
+
+          {/* Tablas por lista */}
+          {Object.entries(porLista).map(([lista, items]) => {
+            const prov = items[0]?.proveedor
+            const c = PROV_COLOR[prov] || { bg: '#f3f4f6', text: '#374151' }
             return (
-              <div key={o.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm flex gap-3 ${venc ? 'opacity-60' : ''}`}>
-                {o.img_url && (
-                  <button onClick={() => window.open(o.img_url!, '_blank')} className="shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={o.img_url} alt="oferta" className="w-16 h-16 object-cover rounded-lg border border-p-line" />
-                  </button>
-                )}
-                {!o.img_url && <div className="w-16 h-16 rounded-lg bg-p-light flex items-center justify-center text-2xl shrink-0">📄</div>}
-                <div className="flex-1 min-w-0">
-                  <p className="font-saira font-bold text-p-ink">{o.proveedor}{o.rubro ? ' · ' + o.rubro : ''}</p>
-                  {o.nota && <p className="text-xs text-p-ink2 mt-0.5 truncate">{o.nota}</p>}
-                  {o.precio && <p className="font-mono font-bold text-p-dark text-sm mt-1">{o.precio}</p>}
-                  {o.vigencia && <p className="text-xs text-p-gray mt-0.5">Vence: {o.vigencia.split('-').reverse().join('/')}{venc ? ' — VENCIDA' : ''}</p>}
+              <div key={lista} className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-p-line2"
+                  style={{ background: c.bg }}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-saira font-bold text-sm" style={{ color: c.text }}>{lista}</span>
+                    <span className="text-xs font-mono" style={{ color: c.text }}>{items.length} piezas</span>
+                  </div>
+                  <span className="text-xs font-semibold" style={{ color: c.text }}>{prov}</span>
                 </div>
-                <button onClick={() => del(o.id)} className="text-red-400 hover:text-red-600 text-sm self-start">✕</button>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-p-line2 bg-gray-50">
+                        <th className="text-left px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Descripción</th>
+                        <th className="text-left px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Cód.</th>
+                        <th className="text-right px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Precio oferta</th>
+                        <th className="text-right px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Lista regular</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((p, i) => {
+                        // Buscar precio de lista regular en catálogo (aproximado por descripción)
+                        const regular = piezas.find(x => !x.lista_nombre?.includes('ferta') && !x.lista_nombre?.includes('Mix') && x.proveedor === prov && x.descripcion === p.descripcion)
+                        const ahorro = regular ? Math.round(((regular.costo_neto - p.costo_neto) / regular.costo_neto) * 100) : null
+
+                        return (
+                          <tr key={p.id} className={`border-b border-p-line2 last:border-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                            <td className="px-4 py-2.5 text-p-ink font-medium">{p.descripcion}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-p-ink2">{p.codigo || '—'}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <span className="font-mono font-bold" style={{ color: c.text }}>{moneyARS(p.costo_neto)}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-mono text-p-ink2 text-xs">
+                              {regular ? moneyARS(regular.costo_neto) : '—'}
+                              {ahorro && ahorro > 0 && (
+                                <span className="ml-1 text-[10px] font-bold bg-green-100 text-green-700 px-1 rounded">-{ahorro}%</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )
           })}
         </div>
       )}
-
-      <Modal open={open} onClose={() => setOpen(false)} title="Nueva oferta">
-        <div className="flex flex-col gap-3">
-          <Field label="Proveedor *"><Input value={form.prov} onChange={e => setForm(p => ({ ...p, prov: e.target.value }))} placeholder="GAMMA, Sekurit…" /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Rubro / pieza"><Input value={form.rubro} onChange={e => setForm(p => ({ ...p, rubro: e.target.value }))} placeholder="Parabrisas, pegamento…" /></Field>
-            <Field label="Precio / descuento"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$ o %" /></Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Nota"><Input value={form.nota} onChange={e => setForm(p => ({ ...p, nota: e.target.value }))} placeholder="Detalle libre" /></Field>
-            <Field label="Vence"><Input type="date" value={form.vence} onChange={e => setForm(p => ({ ...p, vence: e.target.value }))} /></Field>
-          </div>
-          <Field label="Imagen de la lista">
-            <input type="file" accept="image/*" onChange={e => onFile(e.target.files?.[0] ?? null)}
-              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-p-light file:text-p-dark file:font-semibold file:text-xs" />
-            {imgPrev && <img src={imgPrev} alt="" className="mt-2 max-h-32 rounded-lg border border-p-line" />}
-          </Field>
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar</button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
