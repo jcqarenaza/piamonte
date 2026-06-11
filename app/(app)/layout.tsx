@@ -11,9 +11,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle()
   return (
     <div style={{ minHeight:'100vh', background:'#F5F0E8' }}>
+      <style>{`@media (min-width: 1024px) { #mc { margin-left: 210px; } }`}</style>
       <Nav rol={perfil?.rol} />
-      {/* Contenido — el margen se aplica via clase CSS que Tailwind sí genera */}
-      <div style={{ marginLeft: 0 }} className="lg:ml-[210px]">
+      <div id="mc">
         <DolarBar />
         <main className="px-4 lg:px-8 py-6" style={{ paddingBottom:80 }}>
           {children}
