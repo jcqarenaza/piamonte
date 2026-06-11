@@ -1,5 +1,15 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+
+// Similitud Jaccard
+function normTok(s: string): string[] {
+  return s.toUpperCase().replace(/^(E-PSAS\.|PSAS\.|E-)/,'').replace(/[`.'\/\-()]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(w=>w.length>2)
+}
+function sim(a: string, b: string): number {
+  const wa=new Set(normTok(a)),wb=new Set(normTok(b))
+  const inter=[...wa].filter(w=>wb.has(w)).length,union=new Set([...wa,...wb]).size
+  return union===0?0:Math.round((inter/union)*100)
+}
 import { createClient } from '@/lib/supabase/client'
 
 const moneyARS = (n:number) => '$'+Math.round(n).toLocaleString('es-AR')
@@ -27,6 +37,8 @@ export default function EquivalenciasClient() {
   const [loading, setLoading]   = useState(false)
   const [modo, setModo]         = useState<Modo>('buscar')
   const [piezaA, setPiezaA]     = useState<Pieza|null>(null)  // pieza a enlazar
+  const [autoSugs, setAutoSugs] = useState<{pieza:Pieza;s:number}[]>([])
+  const [loadAutoSugs, setLoadAutoSugs] = useState(false)
   const [qB, setQB]             = useState('')
   const [resB, setResB]         = useState<Pieza[]>([])
   const [toast, setToast]       = useState('')
@@ -120,8 +132,16 @@ export default function EquivalenciasClient() {
   }
 
   // Iniciar enlace manual
-  function iniciarEnlace(p: Pieza) {
+  async function iniciarEnlace(p: Pieza) {
     setPiezaA(p); setModo('enlazando'); setQB(''); setResB([])
+    setAutoSugs([]); setLoadAutoSugs(true)
+    const { data } = await supabase.from('catalogo')
+      .select('id,proveedor,codigo,descripcion,pos,costo_neto,precio_lista,grupo_id')
+      .eq('pos', p.pos || 'PARABRISAS').neq('proveedor', p.proveedor).limit(400)
+    const matches = (data??[] as Pieza[])
+      .map(x=>({pieza:x as Pieza,s:sim(p.descripcion,x.descripcion)}))
+      .filter(m=>m.s>=50).sort((a,b)=>b.s-a.s).slice(0,10)
+    setAutoSugs(matches); setLoadAutoSugs(false)
   }
 
   // Piezas sin grupo (para enlazar manualmente)
@@ -145,13 +165,36 @@ export default function EquivalenciasClient() {
             <button onClick={()=>{setModo('buscar');setPiezaA(null)}} style={btnGray}>Cancelar</button>
           </div>
           <div className="bg-white rounded-lg p-3 mb-3 border border-blue-100">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs px-2 py-0.5 rounded-full text-white" style={{background:PROV_COLOR[piezaA.proveedor]||'#6b7280'}}>{piezaA.proveedor}</span>
-              <p className="text-sm font-medium text-p-ink">{piezaA.descripcion}</p>
-              <p className="ml-auto font-mono text-sm font-bold text-p-dark">{moneyARS(piezaA.costo_neto)}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-xs px-2 py-0.5 rounded-full text-white shrink-0" style={{background:PROV_COLOR[piezaA.proveedor]||'#6b7280'}}>{piezaA.proveedor}</span>
+              {piezaA.codigo&&<span className="font-mono text-[10px] text-p-ink2 shrink-0">cód {piezaA.codigo}</span>}
+              <p className="text-sm font-medium text-p-ink flex-1">{piezaA.descripcion}</p>
+              <p className="font-mono text-sm font-bold text-p-dark shrink-0">{moneyARS(piezaA.costo_neto)}</p>
             </div>
           </div>
-          <p className="text-sm text-blue-700 mb-2">Buscá la pieza equivalente en otro proveedor:</p>
+
+          {/* Sugerencias automáticas */}
+          {(loadAutoSugs || autoSugs.length > 0) && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">
+                {loadAutoSugs ? 'Buscando equivalencias…' : `${autoSugs.length} sugerencias por similitud:`}
+              </p>
+              <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+                {autoSugs.map(({pieza:s,s:pct})=>(
+                  <button key={s.id} onClick={()=>enlazar(s)}
+                    className="flex items-center gap-2 bg-white hover:bg-green-50 border border-p-line rounded-lg px-3 py-2 text-left transition-colors w-full">
+                    <span className="font-bold text-[10px] px-2 py-0.5 rounded-full text-white shrink-0" style={{background:PROV_COLOR[s.proveedor]||'#6b7280'}}>{s.proveedor}</span>
+                    {s.codigo&&<span className="font-mono text-[10px] text-p-ink2 shrink-0">cód {s.codigo}</span>}
+                    <span className="text-xs text-p-ink flex-1 min-w-0 truncate">{s.descripcion}</span>
+                    <span className="font-mono text-xs font-bold text-p-dark shrink-0">{moneyARS(s.costo_neto)}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${pct>=80?'bg-green-100 text-green-700':pct>=65?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600'}`}>{pct}%</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-sm text-blue-700 mb-2">O buscá manualmente:</p>
           <div className="relative">
             <input value={qB} onChange={e=>setQB(e.target.value)} placeholder="Buscar pieza equivalente…"
               className="w-full border border-blue-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"/>
