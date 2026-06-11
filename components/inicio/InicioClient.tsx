@@ -31,11 +31,11 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
     const mes = hoy.slice(0, 7)
 
     Promise.all([
-      // KPIs del día
-      supabase.from('comprobantes').select('total').eq('fecha', hoy),
+      // KPIs del día — ventas es la fuente de verdad (caja + comprobantes)
+      supabase.from('ventas').select('precio').eq('fecha', hoy),
       supabase.from('ventas').select('precio,costo,pendiente').gte('fecha', `${mes}-01`),
       supabase.from('turnos').select('estado').eq('fecha', hoy),
-      supabase.from('comprobantes').select('total').gte('fecha', `${mes}-01`),
+      supabase.from('ventas').select('precio').gte('fecha', `${mes}-01`),
       // Turnos de hoy
       supabase.from('turnos').select('*').eq('fecha', hoy).order('hora').limit(10),
       // Stock bajo (cantidad < 2)
@@ -47,8 +47,8 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       // Cotización dólar
       supabase.from('cotizaciones').select('blue,fecha').order('fecha', { ascending: false }).limit(1).maybeSingle(),
     ]).then(([compHoy, ventasMes, turnosHoy, compMes, turnosData, stockData, actData, chartData, dolarData]) => {
-      const facHoy   = (compHoy.data ?? []).reduce((a: number, c: any) => a + (c.total || 0), 0)
-      const facMes   = (compMes.data ?? []).reduce((a: number, c: any) => a + (c.total || 0), 0)
+      const facHoy   = (compHoy.data ?? []).reduce((a: number, c: any) => a + (c.precio || 0), 0)
+      const facMes   = (compMes.data ?? []).reduce((a: number, c: any) => a + (c.precio || 0), 0)
       const gananMes = (ventasMes.data ?? []).filter((v: any) => !v.pendiente).reduce((a: number, v: any) => a + ((v.precio || 0) - (v.costo || 0)), 0)
       const pendsMes = (ventasMes.data ?? []).filter((v: any) => v.pendiente).length
       const tConf    = (turnosHoy.data ?? []).filter((t: any) => t.estado === 'confirmado').length
