@@ -187,7 +187,7 @@ export default function EquivalenciasClient() {
                     {s.codigo&&<span className="font-mono text-[10px] text-p-ink2 shrink-0">cód {s.codigo}</span>}
                     <span className="text-xs text-p-ink flex-1 min-w-0 truncate">{s.descripcion}</span>
                     <span className="font-mono text-xs font-bold text-p-dark shrink-0">{moneyARS(s.costo_neto)}</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${pct>=80?'bg-green-100 text-green-700':pct>=65?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600'}`}>{pct}%</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${pct>=80?'bg-green-100 text-green-700':pct>=65?'bg-yellow-100 text-yellow-700':'bg-blue-100 text-blue-700'}`}>{pct}%</span>
                   </button>
                 ))}
               </div>
