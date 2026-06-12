@@ -145,22 +145,51 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                   {[t.vehiculo, t.patente, t.precio_acordado ? '$' + Math.round(t.precio_acordado).toLocaleString('es-AR') : null].filter(Boolean).join(' · ')}
                 </p>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {(['confirmado','hecho'] as Turno['estado'][]).map(e => (
-                  <button key={e} onClick={() => setEstado(t.id, t.estado === e ? 'pendiente' : e)}
-                    className={`text-xs font-bold px-2 py-1 rounded-lg border transition-colors ${t.estado === e ? 'bg-p-green text-white border-p-green' : 'border-p-line text-p-ink2 hover:bg-p-light'}`}>
-                    {e === 'confirmado' ? 'conf.' : 'hecho'}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Botón acción principal según estado */}
+                {t.estado === 'pendiente' && (
+                  <button onClick={() => setEstado(t.id, 'confirmado')}
+                    style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    ✓ Confirmar
                   </button>
-                ))}
+                )}
+                {t.estado === 'confirmado' && (
+                  <button onClick={() => setEstado(t.id, 'hecho')}
+                    style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    ✓ Hecho
+                  </button>
+                )}
+                {(t.estado === 'hecho' || t.estado === 'ausente') && (
+                  <button onClick={() => setEstado(t.id, 'pendiente')}
+                    style={{background:'#f3f4f6',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    ↩ Reabrir
+                  </button>
+                )}
+                {/* Marcar ausente — solo desde pendiente/confirmado */}
+                {(t.estado === 'pendiente' || t.estado === 'confirmado') && (
+                  <button onClick={() => setEstado(t.id, 'ausente')}
+                    style={{background:'#fff',color:'#ef4444',border:'1px solid #fecaca',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:11,cursor:'pointer'}}>
+                    Ausente
+                  </button>
+                )}
+                {/* WA */}
                 {t.telefono ? (
                   <a href={`https://wa.me/${t.telefono.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(buildWaMsg(t))}`}
                     target="_blank" rel="noopener noreferrer"
-                    className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
+                    style={{background:'#25d366',color:'#fff',border:'none',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12,textDecoration:'none',display:'inline-block'}}>
+                    WA
+                  </a>
                 ) : (
-                  <span className="text-xs text-p-gray border border-p-line rounded-lg px-2.5 py-1 opacity-40">WA</span>
+                  <span style={{background:'#f3f4f6',color:'#d1d5db',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12}}>WA</span>
                 )}
-                <button onClick={() => openEdit(t)} className="text-xs text-p-ink2 hover:text-p-ink border border-p-line rounded-lg px-2 py-1">editar</button>
-                <button onClick={() => del(t.id)} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-2 py-1">✕</button>
+                <button onClick={() => openEdit(t)}
+                  style={{background:'#fff',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
+                  ✏
+                </button>
+                <button onClick={() => del(t.id)}
+                  style={{background:'#fff',color:'#ef4444',border:'1px solid #fecaca',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
+                  ✕
+                </button>
               </div>
             </div>
           ))}
