@@ -39,7 +39,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       // Turnos de hoy
       supabase.from('turnos').select('*').eq('fecha', hoy).order('hora').limit(10),
       // Stock bajo (cantidad < 2)
-      supabase.from('stock').select('descripcion,cantidad').eq('activo', true).lt('cantidad', 2).order('cantidad').limit(6),
+      supabase.from('stock').select('descripcion,cantidad,codigo,pos').eq('activo', true).lt('cantidad', 2).order('cantidad').limit(6),
       // Actividad reciente
       supabase.from('comprobantes').select('numero,cliente_nombre,total,fecha,tipo').order('created_at', { ascending: false }).limit(5),
       // Ventas últimos 7 días para chart
@@ -201,7 +201,10 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
                   <span className={`font-saira font-black text-lg shrink-0 ${s.cantidad === 0 ? 'text-red-500' : 'text-amber-500'}`}>
                     {s.cantidad}
                   </span>
-                  <p className="text-sm text-p-ink truncate">{s.descripcion}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-p-ink truncate">{s.descripcion}</p>
+                    <p className="text-[10px] text-p-ink2 font-mono">{[s.codigo, s.pos].filter(Boolean).join(' · ')}</p>
+                  </div>
                 </div>
               ))}
             </div>
