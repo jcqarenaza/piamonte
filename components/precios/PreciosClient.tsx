@@ -21,7 +21,8 @@ function precioVenta(costo: number, margen: number) {
   return Math.round(costo * (1 + margen / 100))
 }
 
-export default function PreciosClient() {
+export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
+  const esGerencial = rol === 'gerencial' || rol === 'admin'
   const [q, setQ]           = useState('')
   const [piezas, setPiezas] = useState<Pieza[]>([])
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
@@ -43,18 +44,34 @@ export default function PreciosClient() {
       })
   }, [supabase])
 
+  const POS_KW: Record<string,string> = {
+    'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+    'LUNETA':'LUNETA','LU':'LUNETA','REAR':'LUNETA',
+    'LATERAL':'LATERAL','LA':'LATERAL','LAT':'LATERAL',
+    'ALETA':'ALETA_D','AD':'ALETA_D','AT':'ALETA_T',
+  }
+
   const buscar = useCallback(async () => {
     if (q.trim().length < 2) { setPiezas([]); return }
     setLoading(true)
     const words = q.toUpperCase().split(/\s+/).filter(Boolean)
-    const first = words[0]
-    const rest  = words.slice(1)
-    const { data } = await supabase.from('catalogo')
+    const posWord = words.find(w => POS_KW[w])
+    const nonPos  = words.filter(w => !POS_KW[w])
+    const pos     = posWord ? POS_KW[posWord] : null
+    const first   = nonPos[0] || words[0]
+    const rest    = nonPos.slice(1)
+
+    let query = supabase.from('catalogo')
       .select('id,proveedor,codigo,descripcion,pos,costo_neto,lista_nombre,es_promo,grupo_id')
-      .or(`descripcion.ilike.%${first}%,codigo.ilike.%${first}%`)
+      .or(`descripcion.ilike.%${first}%,codigo.ilike.%${first}%,marca.ilike.%${first}%`)
       .order('proveedor').limit(300)
+    if (pos) query = query.eq('pos', pos)
+
+    const { data } = await query
     const filtered = (data ?? []).filter((p: any) =>
-      rest.every((w: string) => (p.descripcion || '').toUpperCase().includes(w))
+      rest.every((w: string) =>
+        (p.descripcion || '').toUpperCase().includes(w) || (p.marca || '').toUpperCase().includes(w)
+      )
     ) as Pieza[]
     // Deduplicar por descripcion+pos — un precio por proveedor (el más barato)
     const map = new Map<string, Pieza>()
@@ -102,7 +119,7 @@ export default function PreciosClient() {
         {tipos.map(t => (
           <button key={t.id} onClick={() => setTipoSel(tipoSel === t.id ? 'todos' : t.id)}
             style={{ background: tipoSel === t.id ? '#00A550' : '#fff', color: tipoSel === t.id ? '#fff' : '#4A6655', border: `1.5px solid ${tipoSel === t.id ? '#00A550' : '#C2DDD0'}`, borderRadius: 20, padding: '6px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            {TIPO_ICON[t.nombre] || '👥'} {t.nombre} <span style={{ opacity: 0.7, fontWeight: 400 }}>+{t.margen_pct}%</span>
+            {TIPO_ICON[t.nombre] || '👥'} {t.nombre} {esGerencial && <span style={{ opacity: 0.7, fontWeight: 400 }}>+{t.margen_pct}%</span>}
           </button>
         ))}
       </div>
@@ -126,7 +143,7 @@ export default function PreciosClient() {
                   <p className="font-saira font-bold text-p-ink">{desc}</p>
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {items[0].pos} · {items.length} {items.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
-                    <span className="text-p-green font-semibold">mejor costo {moneyARS(bestCosto)}</span>
+                    {esGerencial && <span className="text-p-green font-semibold">mejor costo {moneyARS(bestCosto)}</span>}
                   </p>
                 </div>
 
@@ -142,7 +159,7 @@ export default function PreciosClient() {
                         </span>
                         {pieza.codigo && <span className="font-mono text-[10px] text-p-ink2">{pieza.codigo}</span>}
                         {pieza.lista_nombre && <span className="text-[10px] text-p-ink2">{pieza.lista_nombre}</span>}
-                        <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(pieza.costo_neto)}</span></span>
+                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(pieza.costo_neto)}</span></span>}
                       </div>
 
                       {/* Precios por tipo de cliente */}
@@ -158,7 +175,7 @@ export default function PreciosClient() {
                                 <div>
                                   <p className="text-[11px] font-semibold text-p-ink2">
                                     {TIPO_ICON[tipo.nombre] || '👥'} {tipo.nombre}
-                                    <span className="text-p-gray ml-1">+{tipo.margen_pct}%</span>
+                                    {esGerencial && <span className="text-p-gray ml-1">+{tipo.margen_pct}%</span>}
                                   </p>
                                   <p className={`font-saira font-bold text-xl mt-0.5 ${isBest ? 'text-p-green' : 'text-p-ink'}`}>
                                     {moneyARS(precio)}
