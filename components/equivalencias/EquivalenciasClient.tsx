@@ -37,7 +37,7 @@ export default function EquivalenciasClient() {
   const [loading, setLoading]   = useState(false)
   const [modo, setModo]         = useState<Modo>('buscar')
   const [piezaA, setPiezaA]     = useState<Pieza|null>(null)  // pieza a enlazar
-  const [autoSugs, setAutoSugs] = useState<{pieza:Pieza;s:number}[]>([])
+  const [autoSugs, setAutoSugs] = useState<{pieza:Pieza;s:number}[]|null>(null)  // null = no buscado aún
   const [loadAutoSugs, setLoadAutoSugs] = useState(false)
   const [qB, setQB]             = useState('')
   const [resB, setResB]         = useState<Pieza[]>([])
@@ -184,13 +184,13 @@ export default function EquivalenciasClient() {
           </div>
 
           {/* Sugerencias automáticas */}
-          {(loadAutoSugs || autoSugs.length > 0) && (
+          {(loadAutoSugs || autoSugs !== null) && (
             <div className="mb-3">
               <p className="text-xs font-semibold text-blue-700 mb-1.5">
-                {loadAutoSugs ? 'Buscando equivalencias…' : `${autoSugs.length} sugerencias por similitud:`}
+                {loadAutoSugs ? 'Buscando equivalencias…' : autoSugs?.length ? `${autoSugs.length} sugerencias por similitud:` : 'Sin sugerencias con ≥50% de similitud.'}
               </p>
               <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
-                {autoSugs.map(({pieza:s,s:pct})=>(
+                {(autoSugs??[]).map(({pieza:s,s:pct})=>(
                   <button key={s.id} onClick={()=>enlazar(s)}
                     className="flex items-center gap-2 bg-white hover:bg-green-50 border border-p-line rounded-lg px-3 py-2 text-left transition-colors w-full">
                     <span className="font-bold text-[10px] px-2 py-0.5 rounded-full text-white shrink-0" style={{background:PROV_COLOR[s.proveedor]||'#6b7280'}}>{s.proveedor}</span>

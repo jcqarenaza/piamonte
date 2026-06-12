@@ -150,8 +150,8 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
                 <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className="font-mono text-xs text-p-ink2 shrink-0">{t.hora?.slice(0,5)}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-p-ink truncate">{t.nombre}</p>
-                    <p className="text-[10px] text-p-ink2 truncate">{t.servicio}</p>
+                    <p className="text-sm font-semibold text-p-ink truncate">{t.cliente ?? '(sin nombre)'}</p>
+                    <p className="text-[10px] text-p-ink2 truncate">{t.trabajo || t.vehiculo || ''}</p>
                   </div>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white shrink-0"
                     style={{ background: ESTADO_COLOR[t.estado] || '#6b7280' }}>
