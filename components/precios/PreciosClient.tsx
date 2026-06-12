@@ -18,7 +18,7 @@ const TIPO_ORDER = ['Particular', 'Compañías', 'Chapista']
 const TIPO_ICON: Record<string, string> = { Particular: '👤', Compañías: '🏢', Chapista: '🔧' }
 
 function precioVenta(costo: number, margen: number) {
-  return Math.round(costo * (1 + margen / 100))
+  return Math.round(costo * (1 + margen))  // margen_pct viene como decimal: 0.45 = 45%
 }
 
 export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
@@ -119,7 +119,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         {tipos.map(t => (
           <button key={t.id} onClick={() => setTipoSel(tipoSel === t.id ? 'todos' : t.id)}
             style={{ background: tipoSel === t.id ? '#00A550' : '#fff', color: tipoSel === t.id ? '#fff' : '#4A6655', border: `1.5px solid ${tipoSel === t.id ? '#00A550' : '#C2DDD0'}`, borderRadius: 20, padding: '6px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            {TIPO_ICON[t.nombre] || '👥'} {t.nombre} {esGerencial && <span style={{ opacity: 0.7, fontWeight: 400 }}>+{t.margen_pct}%</span>}
+            {TIPO_ICON[t.nombre] || '👥'} {t.nombre} {esGerencial && <span style={{ opacity: 0.7, fontWeight: 400 }}>+{Math.round(t.margen_pct * 100)}%</span>}
           </button>
         ))}
       </div>
@@ -175,7 +175,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                                 <div>
                                   <p className="text-[11px] font-semibold text-p-ink2">
                                     {TIPO_ICON[tipo.nombre] || '👥'} {tipo.nombre}
-                                    {esGerencial && <span className="text-p-gray ml-1">+{tipo.margen_pct}%</span>}
+                                    {esGerencial && <span className="text-p-gray ml-1">+{Math.round(tipo.margen_pct * 100)}%</span>}
                                   </p>
                                   <p className={`font-saira font-bold text-xl mt-0.5 ${isBest ? 'text-p-green' : 'text-p-ink'}`}>
                                     {moneyARS(precio)}
