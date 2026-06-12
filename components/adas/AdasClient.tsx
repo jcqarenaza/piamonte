@@ -1,4 +1,5 @@
 'use client'
+import { LOGO_BASE64 } from '@/lib/logo'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
@@ -137,7 +138,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 <div class="header">
   <div class="logo-area">
     <div style="font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">★ PARABRISAS ★</div>
-    <div class="logo-name">PIAMONTE</div>
+    <img src={LOGO_BASE64} alt="El Piamonte" style={{height:40,objectFit:'contain',filter:'brightness(0) invert(1)'}}/>
     <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
   </div>
   <div class="shield">
@@ -244,7 +245,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 <!-- FOOTER -->
 <div class="footer-bar">
   <div>
-    <div class="footer-logo-name">PARABRISAS <span>PIAMONTE</span></div>
+    <img src={LOGO_BASE64} alt="El Piamonte" style={{height:30,objectFit:'contain',filter:'brightness(0) invert(1)'}}/>
     <div style="font-size:9px;color:#aaa">Especialistas en cristales automotrices.</div>
     <div style="font-size:8px;color:#aaa">INSTALACIÓN PROFESIONAL • DIAGNÓSTICO ELECTRÓNICO • CALIBRACIÓN DE SISTEMAS ADAS</div>
   </div>

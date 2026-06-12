@@ -1,4 +1,5 @@
 'use client'
+import { LOGO_BASE64 } from '@/lib/logo'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Presupuesto, VentaItem } from '@/lib/types/database'
@@ -155,6 +156,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     // Header verde
     doc.setFillColor(0,165,80)
     doc.rect(0,0,W,28,'F')
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,42,24) } catch(e){}
     doc.setTextColor(255,255,255)
     doc.setFont('helvetica','bold')
     doc.setFontSize(18); doc.text('PARABRISAS EL PIAMONTE',pad,12)
