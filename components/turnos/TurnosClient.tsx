@@ -152,12 +152,14 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                     {e === 'confirmado' ? 'conf.' : 'hecho'}
                   </button>
                 ))}
-                {t.telefono && (
+                {t.telefono ? (
                   <a href={`https://wa.me/${t.telefono.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(buildWaMsg(t))}`}
                     target="_blank" rel="noopener noreferrer"
                     className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
+                ) : (
+                  <span className="text-xs text-p-gray border border-p-line rounded-lg px-2.5 py-1 opacity-40">WA</span>
                 )}
-                <button onClick={() => openEdit(t)} className="text-xs text-p-ink2 hover:text-p-ink border border-p-line rounded-lg px-2 py-1">✏</button>
+                <button onClick={() => openEdit(t)} className="text-xs text-p-ink2 hover:text-p-ink border border-p-line rounded-lg px-2 py-1">editar</button>
                 <button onClick={() => del(t.id)} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-2 py-1">✕</button>
               </div>
             </div>
@@ -184,8 +186,8 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
           </div>
           <Field label="Notas"><Input value={form.notas} onChange={e => f('notas', e.target.value)} placeholder="Observaciones opcionales" /></Field>
           <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="secondary" onClick={() => setOpen(false)}>Cancelar</Btn>
-            <Btn onClick={save}>Guardar turno</Btn>
+            <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar turno</button>
           </div>
         </div>
       </Modal>
