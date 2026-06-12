@@ -33,6 +33,8 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
   const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
+  const [filtroAseg, setFiltroAseg] = useState('')
+  const [editId, setEditId]     = useState<string|null>(null)
 
   // Pre-cargar desde presupuesto
   useEffect(() => {
@@ -59,6 +61,17 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     setItem({d:'',c:'1',p:''})
   }
 
+  function openEdit(o: any) {
+    setEditId(o.id)
+    setForm({
+      cli: o.cliente||'', tel: o.telefono||'', veh: o.vehiculo||'',
+      pat: o.patente||'', aseg: o.aseguradora||'', sin: o.siniestro||'',
+      pol: o.poliza||'', obs: o.obs||''
+    })
+    setItems(o.items||[])
+    setOpen(true)
+  }
+
   async function save() {
     if(!items.length) return
     setLoading(true)
@@ -80,6 +93,14 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     const { data: nuevas } = await supabase.from('ordenes_servicio').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = ((nuevas?.[0] as any)?.numero ?? 0) + 1
 
+    if(editId) {
+      await supabase.from('ordenes_servicio').update({
+        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
+        patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
+        poliza:form.pol||null, obs:form.obs||null, items, total, iva:ivaOn||null,
+      }).eq('id', editId)
+      setEditId(null)
+    } else {
     await supabase.from('ordenes_servicio').insert({
       numero: nextNum, fecha: todayStr(),
       aseguradora: form.aseg||null, siniestro: form.sin||null, poliza: form.pol||null,
@@ -88,6 +109,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       items, neto, iva_pct:IVA_RATE, iva, total,
       tiene_adas: conADAS, numero_adas, user_id: userId
     })
+    }
 
     setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:''})
     setLoading(false); load()
@@ -258,6 +280,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                 </div>
                 <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
                   <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
+                  <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                   <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
                   <button onClick={()=>{
                     const params = new URLSearchParams({
@@ -275,7 +298,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Nueva orden de servicio">
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
         <div className="flex flex-col gap-3">
           {/* Cliente */}
           <div className="grid grid-cols-2 gap-3">

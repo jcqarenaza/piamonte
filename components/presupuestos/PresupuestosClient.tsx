@@ -25,6 +25,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [tipos, setTipos]     = useState<TipoCliente[]>([])
   const [rubros, setRubros]   = useState<RubroPrecio[]>([])
   const [open, setOpen]       = useState(false)
+  const [editId, setEditId]   = useState<string|null>(null)
   const [ivaOn, setIvaOn]     = useState(true)
   const [cotiz, setCotiz]     = useState<{blue:number;mep:number}|null>(null)
   const supabase = createClient()
@@ -132,15 +133,24 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(!items.length) return
     const dias=+form.dias||7
     const venc=new Date(); venc.setDate(venc.getDate()+dias)
-    await supabase.from('presupuestos').insert({
-      fecha:todayStr(), vencimiento:venc.toISOString().slice(0,10),
-      cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
-      items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
-      dolar_blue:cotiz?.blue??null, dolar_mep:cotiz?.mep??null, user_id:userId,
-      tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
-      margen_aplicado:tipoSel?.margen_pct??null
-    })
-    setOpen(false); setItems([]); setCliSel(null); setTipoSel(null)
+    if(editId) {
+      await supabase.from('presupuestos').update({
+        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
+        items, total:total, iva:iva||null,
+        tipo_cliente_id:tipoSel?.id||null, tipo_cliente_nombre:tipoSel?.nombre||null,
+      }).eq('id', editId)
+      setEditId(null)
+    } else {
+      await supabase.from('presupuestos').insert({
+        fecha:todayStr(), vencimiento:venc.toISOString().slice(0,10),
+        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
+        items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
+        dolar_blue:cotiz?.blue??null, dolar_mep:cotiz?.mep??null, user_id:userId,
+        tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
+        margen_aplicado:tipoSel?.margen_pct??null
+      })
+    }
+    setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
     setForm({cli:'',tel:'',veh:'',dias:'7'})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
@@ -297,7 +307,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo presupuesto">
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"}>
         <div className="flex flex-col gap-3">
 
           {/* Selección de cliente */}
