@@ -28,6 +28,7 @@ const GRUPOS = [
     label: 'CATÁLOGO',
     items: [
       { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
+      { id:'precios',      href:'/precios',      label:'Precios',       icon:'💰' },
       { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
       { id:'equivalencias', href:'/equivalencias', label:'Equivalencias',  icon:'🔗' },
       { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
