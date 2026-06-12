@@ -37,7 +37,7 @@ export default function EquivalenciasClient() {
   const [loading, setLoading]   = useState(false)
   const [modo, setModo]         = useState<Modo>('buscar')
   const [piezaA, setPiezaA]     = useState<Pieza|null>(null)  // pieza a enlazar
-  const [autoSugs, setAutoSugs] = useState<{pieza:Pieza;s:number}[]|null>(null)  // null = no buscado aún
+  const [autoSugs, setAutoSugs] = useState<{pieza:Pieza;s:number;sameProv?:boolean}[]|null>(null)
   const [loadAutoSugs, setLoadAutoSugs] = useState(false)
   const [qB, setQB]             = useState('')
   const [resB, setResB]         = useState<Pieza[]>([])
@@ -144,14 +144,29 @@ export default function EquivalenciasClient() {
   // Iniciar enlace manual
   async function iniciarEnlace(p: Pieza) {
     setPiezaA(p); setModo('enlazando'); setQB(''); setResB([])
-    setAutoSugs([]); setLoadAutoSugs(true)
-    const { data } = await supabase.from('catalogo')
+    setAutoSugs(null); setLoadAutoSugs(true)
+
+    // Buscar en otros proveedores (similitud descripción ≥50%)
+    const { data: otros } = await supabase.from('catalogo')
       .select('id,proveedor,codigo,descripcion,pos,costo_neto,precio_lista,grupo_id')
       .eq('pos', p.pos || 'PARABRISAS').neq('proveedor', p.proveedor).limit(400)
-    const matches = (data??[] as Pieza[])
+
+    // Buscar variantes del mismo proveedor con descripción muy similar y diferente código
+    const { data: mismos } = await supabase.from('catalogo')
+      .select('id,proveedor,codigo,descripcion,pos,costo_neto,precio_lista,grupo_id')
+      .eq('proveedor', p.proveedor).eq('pos', p.pos || 'PARABRISAS')
+      .neq('id', p.id).is('grupo_id', null).limit(100)
+
+    const matchesOtros = (otros??[] as Pieza[])
       .map(x=>({pieza:x as Pieza,s:sim(p.descripcion,x.descripcion)}))
-      .filter(m=>m.s>=50).sort((a,b)=>b.s-a.s).slice(0,10)
-    setAutoSugs(matches); setLoadAutoSugs(false)
+      .filter(m=>m.s>=50).sort((a,b)=>b.s-a.s).slice(0,8)
+
+    const matchesMismos = (mismos??[] as Pieza[])
+      .map(x=>({pieza:x as Pieza,s:sim(p.descripcion,x.descripcion),sameProv:true}))
+      .filter(m=>m.s>=80).sort((a,b)=>b.s-a.s).slice(0,4)
+
+    setAutoSugs([...matchesOtros, ...matchesMismos])
+    setLoadAutoSugs(false)
   }
 
   // Piezas sin grupo (para enlazar manualmente)
@@ -190,10 +205,11 @@ export default function EquivalenciasClient() {
                 {loadAutoSugs ? 'Buscando equivalencias…' : autoSugs?.length ? `${autoSugs.length} sugerencias por similitud:` : 'Sin sugerencias con ≥50% de similitud.'}
               </p>
               <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
-                {(autoSugs??[]).map(({pieza:s,s:pct})=>(
+                {(autoSugs??[]).map(({pieza:s,s:pct,sameProv})=>(
                   <button key={s.id} onClick={()=>enlazar(s)}
                     className="flex items-center gap-2 bg-white hover:bg-green-50 border border-p-line rounded-lg px-3 py-2 text-left transition-colors w-full">
                     <span className="font-bold text-[10px] px-2 py-0.5 rounded-full text-white shrink-0" style={{background:PROV_COLOR[s.proveedor]||'#6b7280'}}>{s.proveedor}</span>
+                    {sameProv && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded shrink-0">variante</span>}
                     {s.codigo&&<span className="font-mono text-[10px] text-p-ink2 shrink-0">cód {s.codigo}</span>}
                     <span className="text-xs text-p-ink flex-1 min-w-0 truncate">{s.descripcion}</span>
                     <span className="font-mono text-xs font-bold text-p-dark shrink-0">{moneyARS(s.costo_neto)}</span>
