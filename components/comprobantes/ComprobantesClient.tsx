@@ -212,8 +212,16 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   // ── Adjuntos ──────────────────────────────────────────────────────────────
   async function abrirAdjuntos(c: Comprobante) {
     setAdjModal(c)
-    const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', c.id).order('orden')
-    setAdjuntos(data ?? [])
+    // Cargar adjuntos del comprobante + adjuntos de la OS vinculada
+    const [adjComp, adjOS] = await Promise.all([
+      supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', c.id).order('orden'),
+      c.orden_id
+        ? supabase.from('comprobante_adjuntos').select('*').eq('os_id', c.orden_id).order('orden')
+        : Promise.resolve({ data: [] })
+    ])
+    // Marcar los de la OS para distinguirlos visualmente
+    const osAdj = (adjOS.data ?? []).map((a:any) => ({...a, _de_os: true}))
+    setAdjuntos([...(adjComp.data ?? []), ...osAdj])
   }
 
   async function subirArchivo(file: File, tipo: string) {

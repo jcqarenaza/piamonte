@@ -34,6 +34,9 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [filtroAseg, setFiltroAseg] = useState('')
+  const [adjModal, setAdjModal]   = useState<any|null>(null)
+  const [adjuntos, setAdjuntos]   = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
   const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
   const [presCli, setPresCli]   = useState<any[]>([])
@@ -71,6 +74,37 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     if(!item.d||!item.p) return
     setItems(prev=>[...prev,{d:item.d,c:+item.c||1,p:+item.p.replace(/[^0-9.]/g,'')}])
     setItem({d:'',c:'1',p:''})
+  }
+
+  async function abrirAdjuntos(o: any) {
+    setAdjModal(o)
+    const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('os_id', o.id).order('orden')
+    setAdjuntos(data ?? [])
+  }
+
+  async function subirArchivoOS(file: File, tipo: string) {
+    if (!adjModal) return
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `os/${adjModal.id}/${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('comprobante-adjuntos').upload(path, file)
+      if (error) throw error
+      const { data: urlData } = supabase.storage.from('comprobante-adjuntos').getPublicUrl(path)
+      await supabase.from('comprobante_adjuntos').insert({
+        os_id: adjModal.id, comprobante_id: null, tipo, nombre: file.name,
+        url: urlData.publicUrl, storage_path: path, orden: adjuntos.length
+      })
+      const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('os_id', adjModal.id).order('orden')
+      setAdjuntos(data ?? [])
+    } catch(e) { console.error(e) }
+    setUploading(false)
+  }
+
+  async function eliminarAdjuntoOS(id: string, path: string) {
+    await supabase.storage.from('comprobante-adjuntos').remove([path])
+    await supabase.from('comprobante_adjuntos').delete().eq('id', id)
+    setAdjuntos(prev=>prev.filter(a=>a.id!==id))
   }
 
   function openEdit(o: any) {
@@ -292,6 +326,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                 </div>
                 <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
                   <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
+                  <button onClick={()=>abrirAdjuntos(o)}
+                    style={{...btnSm,background:'#7c3aed'}}>
+                    📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
+                  </button>
                   <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                   <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
                   <button onClick={async()=>{
@@ -308,6 +346,82 @@ export default function OrdenesClient({ userId }: { userId: string }) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal fotos OS */}
+      {adjModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={e=>{if(e.target===e.currentTarget)setAdjModal(null)}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-start justify-between p-5 border-b border-p-line">
+              <div>
+                <h2 className="font-saira font-bold text-xl text-p-ink">📸 Fotos del trabajo</h2>
+                <p className="text-sm text-p-ink2 mt-0.5">
+                  OS {adjModal.numero ? `N° OS-${String(adjModal.numero).padStart(4,'0')}` : 'S/N'} · {adjModal.cliente}
+                </p>
+                <p className="text-[11px] text-p-green font-semibold mt-1">
+                  ✓ Las fotos quedan disponibles en el comprobante vinculado
+                </p>
+              </div>
+              <button onClick={()=>setAdjModal(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5 flex flex-col gap-4">
+              {/* Upload fotos */}
+              <div>
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">
+                  Fotos ({adjuntos.filter(a=>a.tipo==='foto').length}/4)
+                </p>
+                {adjuntos.filter(a=>a.tipo==='foto').length < 4 && (
+                  <label className={`flex items-center justify-center gap-2 border-2 border-dashed border-p-line rounded-xl p-4 cursor-pointer hover:border-p-green transition-colors ${uploading?'opacity-50':''}`}>
+                    <span className="text-2xl">📷</span>
+                    <span className="text-sm text-p-ink2">{uploading?'Subiendo…':'Agregar foto del trabajo'}</span>
+                    <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                      onChange={e=>{const f=e.target.files?.[0]; if(f)subirArchivoOS(f,'foto'); e.target.value=''}}/>
+                  </label>
+                )}
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {adjuntos.filter(a=>a.tipo==='foto').map(a=>(
+                    <div key={a.id} className="relative rounded-xl overflow-hidden border border-p-line shadow-sm">
+                      <img src={a.url} alt={a.nombre} className="w-full h-32 object-cover"/>
+                      <button onClick={()=>eliminarAdjuntoOS(a.id,a.storage_path)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* OS firmada */}
+              <div>
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">
+                  OS firmada por el cliente ({adjuntos.filter(a=>a.tipo==='os_firmada').length}/1)
+                </p>
+                {adjuntos.filter(a=>a.tipo==='os_firmada').length === 0 ? (
+                  <label className={`flex items-center justify-center gap-2 border-2 border-dashed border-blue-200 rounded-xl p-4 cursor-pointer hover:border-blue-400 bg-blue-50 ${uploading?'opacity-50':''}`}>
+                    <span className="text-2xl">📄</span>
+                    <span className="text-sm text-blue-600">{uploading?'Subiendo…':'Subir OS escaneada'}</span>
+                    <input type="file" accept="image/*,application/pdf" className="hidden" disabled={uploading}
+                      onChange={e=>{const f=e.target.files?.[0]; if(f)subirArchivoOS(f,'os_firmada'); e.target.value=''}}/>
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <span className="text-2xl">📄</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-blue-700 truncate">{adjuntos.find(a=>a.tipo==='os_firmada')?.nombre}</p>
+                      <a href={adjuntos.find(a=>a.tipo==='os_firmada')?.url} target="_blank" className="text-[11px] text-blue-500 hover:underline">Ver archivo</a>
+                    </div>
+                    <button onClick={()=>{const a=adjuntos.find(x=>x.tipo==='os_firmada'); if(a)eliminarAdjuntoOS(a.id,a.storage_path)}}
+                      className="text-red-400 hover:text-red-600 text-sm">✕</button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-p-line flex justify-end">
+              <button onClick={()=>setAdjModal(null)}
+                style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
