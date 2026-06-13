@@ -38,6 +38,13 @@ export default function ComprasClient() {
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [ivaOn, setIvaOn] = useState(true)
+  // Modal procesamiento remito
+  const [remitoModal, setRemitoModal] = useState<Comprobante|null>(null)
+  const [stockItems, setStockItems] = useState<any[]>([])
+  const [mappings, setMappings] = useState<Record<number,{stock_id:string;qty:number;costo:number}|null>>({})
+  const [stockQ, setStockQ] = useState<Record<number,string>>({})
+  const [stockSugs, setStockSugs] = useState<Record<number,any[]>>({})
+  const [procesando, setProcesando] = useState(false)
 
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
@@ -64,6 +71,8 @@ export default function ComprasClient() {
     load()
     supabase.from('proveedores_compra').select('id,nombre,razon_social').eq('activo',true).order('nombre')
       .then(({data})=>setProveedores(data??[]))
+    supabase.from('stock').select('id,descripcion,codigo,cantidad,costo,precio_venta').eq('activo',true).order('descripcion')
+      .then(({data})=>setStockItems(data??[]))
   }, [supabase])
 
   function addItem() {
@@ -92,9 +101,75 @@ export default function ComprasClient() {
     load()
   }
 
-  async function procesarRemito(id:string) {
-    // Marcar como procesado — en Fase 2 aquí irá el ajuste de stock
-    await supabase.from('comprobantes_compra').update({estado:'procesado'}).eq('id',id)
+  function abrirRemito(c:Comprobante) {
+    setRemitoModal(c)
+    // Pre-mapear ítems: intentar match por descripción
+    const init: Record<number,{stock_id:string;qty:number;costo:number}|null> = {}
+    const initQ: Record<number,string> = {}
+    c.items.forEach((it,i) => {
+      const match = stockItems.find(s =>
+        s.descripcion?.toLowerCase().includes(it.d.toLowerCase()) ||
+        it.d.toLowerCase().includes(s.descripcion?.toLowerCase() || '')
+      )
+      init[i] = match ? { stock_id: match.id, qty: it.c, costo: it.p } : null
+      initQ[i] = match ? match.descripcion : ''
+    })
+    setMappings(init)
+    setStockQ(initQ)
+    setStockSugs({})
+  }
+
+  function buscarStock(idx:number, q:string) {
+    setStockQ(prev=>({...prev,[idx]:q}))
+    if (q.length < 2) { setStockSugs(prev=>({...prev,[idx]:[]})); return }
+    const res = stockItems.filter(s =>
+      (s.descripcion||'').toLowerCase().includes(q.toLowerCase()) ||
+      (s.codigo||'').toLowerCase().includes(q.toLowerCase())
+    ).slice(0,6)
+    setStockSugs(prev=>({...prev,[idx]:res}))
+  }
+
+  function pickStock(idx:number, s:any, qty:number, costo:number) {
+    setMappings(prev=>({...prev,[idx]:{ stock_id:s.id, qty, costo }}))
+    setStockQ(prev=>({...prev,[idx]:s.descripcion}))
+    setStockSugs(prev=>({...prev,[idx]:[]}))
+  }
+
+  async function confirmarRecepcion() {
+    if (!remitoModal) return
+    setProcesando(true)
+    const prov = proveedores.find(p=>p.id===remitoModal.proveedor_id)
+    const fecha = new Date().toISOString().slice(0,10)
+
+    for (const [idxStr, map] of Object.entries(mappings)) {
+      const idx = parseInt(idxStr)
+      const item = remitoModal.items[idx]
+      if (!map) continue  // ítem sin vincular → omitir
+
+      // Insertar ajuste de stock
+      await supabase.from('ajustes_stock').insert({
+        fecha, tipo:'entrada',
+        stock_id: map.stock_id,
+        descripcion: item.d,
+        cantidad: map.qty,
+        costo_unitario: map.costo,
+        proveedor: prov?.nombre || remitoModal.proveedor_nombre || null,
+        nota: `Remito ${remitoModal.numero || 'S/N'} — recepción automática`,
+      })
+
+      // Actualizar cantidad en stock
+      const { data: st } = await supabase.from('stock').select('cantidad').eq('id', map.stock_id).maybeSingle()
+      if (st) {
+        await supabase.from('stock').update({ cantidad: (st.cantidad||0) + map.qty }).eq('id', map.stock_id)
+      }
+    }
+
+    // Marcar comprobante como procesado
+    await supabase.from('comprobantes_compra').update({ estado:'procesado', afecta_stock:true }).eq('id', remitoModal.id)
+
+    setProcesando(false)
+    setRemitoModal(null)
+    setMappings({})
     load()
   }
 
@@ -203,7 +278,7 @@ export default function ComprasClient() {
               {/* Acciones */}
               <div className="flex gap-2 mt-3 pt-2 border-t border-p-line2 flex-wrap">
                 {c.tipo==='remito' && c.estado==='pendiente' && (
-                  <button onClick={()=>procesarRemito(c.id)}
+                  <button onClick={()=>abrirRemito(c)}
                     style={{...btnSm,background:'#00A550'}}>
                     📦 Marcar recibido
                   </button>
@@ -214,6 +289,84 @@ export default function ComprasClient() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal recepción de remito */}
+      {remitoModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setRemitoModal(null)}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-p-line">
+              <div>
+                <h2 className="font-saira font-bold text-xl text-p-ink">📦 Recepcionar remito</h2>
+                <p className="text-sm text-p-ink2 mt-0.5">
+                  {remitoModal.proveedor_nombre} · Rem. {remitoModal.numero||'S/N'}
+                </p>
+              </div>
+              <button onClick={()=>setRemitoModal(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <p className="text-xs text-p-ink2 mb-4">
+                Vinculá cada ítem del remito con su correspondiente ítem en stock. Los vinculados sumarán la cantidad al stock actual.
+              </p>
+              <div className="flex flex-col gap-4">
+                {remitoModal.items.map((it,i) => (
+                  <div key={i} className="bg-p-light rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-semibold text-sm text-p-ink">{it.d}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-p-ink2">Cant:</span>
+                        <input type="number" value={mappings[i]?.qty ?? it.c}
+                          onChange={e=>setMappings(prev=>({...prev,[i]:prev[i]?{...prev[i]!,qty:+e.target.value}:null}))}
+                          className="w-16 border border-p-line rounded-lg px-2 py-1 text-sm text-center"/>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <input
+                        value={stockQ[i]||''}
+                        onChange={e=>buscarStock(i,e.target.value)}
+                        placeholder="Buscar en stock para vincular…"
+                        className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white"/>
+                      {stockSugs[i]?.length>0 && (
+                        <div className="absolute z-10 w-full bg-white border border-p-line rounded-xl shadow-lg mt-1 overflow-hidden">
+                          {stockSugs[i].map(s=>(
+                            <button key={s.id} onClick={()=>pickStock(i,s,mappings[i]?.qty??it.c,it.p)}
+                              className="w-full text-left px-3 py-2 hover:bg-p-light text-sm border-b border-p-line2 last:border-0">
+                              <span className="font-medium">{s.descripcion}</span>
+                              {s.codigo&&<span className="font-mono text-xs text-p-ink2 ml-2">{s.codigo}</span>}
+                              <span className="text-xs text-p-ink2 ml-2">stock actual: {s.cantidad}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {mappings[i] && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✓ Vinculado</span>
+                        <button onClick={()=>{setMappings(prev=>({...prev,[i]:null}));setStockQ(prev=>({...prev,[i]:''}))}}
+                          className="text-[10px] text-red-400 hover:text-red-600">Desvincular</button>
+                      </div>
+                    )}
+                    {!mappings[i] && (
+                      <p className="text-[10px] text-amber-600 mt-1.5">⚠ Sin vincular — no afectará el stock</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-5 border-t border-p-line flex justify-between items-center">
+              <p className="text-sm text-p-ink2">
+                {Object.values(mappings).filter(Boolean).length} de {remitoModal.items.length} ítems vinculados
+              </p>
+              <div className="flex gap-2">
+                <button onClick={()=>setRemitoModal(null)} style={{...btnGray}}>Cancelar</button>
+                <button onClick={confirmarRecepcion} disabled={procesando}
+                  style={{...btn,opacity:procesando?.7:1}}>
+                  {procesando?'Procesando…':'✓ Confirmar recepción'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
