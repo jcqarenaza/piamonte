@@ -17,6 +17,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [stockSug, setStockSug] = useState<StockItem[]>([])
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
   const supabase = createClient()
+  const [blueRate, setBlueRate] = useState<number|null>(null)
   const isAdmin = perfil.rol !== 'ventas'
 
   const [form, setForm] = useState({
@@ -37,6 +38,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   useEffect(() => { loadVentas() }, [loadVentas])
 
   useEffect(() => {
+    supabase.from('cotizaciones').select('blue').order('fecha',{ascending:false}).limit(1).maybeSingle()
+      .then(({data})=>setBlueRate(data?.blue??null))
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
   }, [supabase])
 
@@ -53,11 +56,13 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
   function pickStock(s: StockItem) {
     setForm(p => ({
-      ...p, descripcion: s.descripcion, costo: s.costo ? String(Math.round(s.costo)) : '',
+      ...p, descripcion: (s.codigo ? `[${s.codigo}] ` : '') + s.descripcion, costo: s.costo ? String(Math.round(s.costo)) : '',
       precio: s.precio_venta ? String(Math.round(s.precio_venta)) : '', origen: 'stock', stock_id: s.id
     }))
     setStockQ(''); setStockSug([])
   }
+
+  const toUsd = (n: number) => blueRate ? ' · USD ' + Math.round(n/blueRate).toLocaleString('es-AR') : ''
 
   const gan = () => {
     const c = +form.costo.replace(/[^0-9.]/g, ''), p = +form.precio.replace(/[^0-9.]/g, '')
@@ -197,7 +202,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
                     <button key={s.id} onClick={() => pickStock(s)}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
                       <span className="font-medium">{s.descripcion}</span>
-                      <span className="text-p-ink2 text-xs ml-2">{s.marca} · stock {s.cantidad}</span>
+                      <span className="text-p-ink2 text-xs ml-2">{s.codigo && <span className="font-mono mr-1 text-p-dark">{s.codigo}</span>}{s.marca} · stock {s.cantidad}</span>
                     </button>
                   ))}
                 </div>

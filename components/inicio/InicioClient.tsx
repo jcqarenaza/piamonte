@@ -106,7 +106,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
           <Link key={i} href={k.href || '#'} className="bg-white rounded-xl border border-p-line p-4 shadow-sm hover:shadow-md transition-shadow no-underline block">
             <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1">{k.label}</p>
             <p className="font-saira font-bold text-xl" style={{ color: k.color || '#0C1810' }}>{k.value}</p>
-            {k.sub && <p className="text-[10px] text-amber-500 font-semibold mt-0.5">{k.sub}</p>}
+            {k.sub && <p className={`text-[10px] font-semibold mt-0.5 ${k.sub.startsWith('USD') ? 'text-p-green' : 'text-amber-500'}`}>{k.sub}</p>}
           </Link>
         ))}
       </div>

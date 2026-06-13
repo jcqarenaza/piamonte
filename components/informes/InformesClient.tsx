@@ -38,6 +38,12 @@ export default function InformesClient() {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'general'|'rentabilidad'>('general')
   const supabase = createClient()
+  const [blueRate, setBlueRate] = useState<number|null>(null)
+
+  useEffect(() => {
+    supabase.from('cotizaciones').select('blue').order('fecha',{ascending:false}).limit(1).maybeSingle()
+      .then(({data})=>setBlueRate(data?.blue??null))
+  }, [supabase])
 
   useEffect(() => {
     const p = periodos[pIdx]
@@ -52,6 +58,7 @@ export default function InformesClient() {
   const costo    = ventas.filter(v=>!v.pendiente).reduce((a,v)=>a+(v.costo??0), 0)
   const ganancia = total - costo
   const margen   = total > 0 ? Math.round((ganancia/total)*100) : 0
+  const toUsd    = (n: number) => blueRate ? 'USD ' + Math.round(n/blueRate).toLocaleString('es-AR') : null
   const pendientes = ventas.filter(v=>v.pendiente).length
   const ticket   = ventas.length > 0 ? Math.round(total/ventas.length) : 0
 
@@ -105,8 +112,8 @@ export default function InformesClient() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <KpiCard label="Facturado"    value={moneyARS(total)} />
-            <KpiCard label={`Ganancia${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={`${margen}% margen`} />
+            <KpiCard label="Facturado"    value={moneyARS(total)} sub={toUsd(total)??undefined} />
+            <KpiCard label={`Ganancia${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={toUsd(ganancia) ?? `${margen}% margen`} />
             <KpiCard label="Operaciones"  value={`${ventas.length}`} sub={pendientes?`${pendientes} s/costo`:undefined} />
             <KpiCard label="Ticket prom." value={moneyARS(ticket)} />
           </div>
