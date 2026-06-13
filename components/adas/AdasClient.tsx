@@ -98,48 +98,47 @@ export default function AdasClient({ userId }: { userId: string }) {
 <title>Certificado ADAS N° ${c.numero}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:12px}
-  .header{background:#1a1a1a;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:11px}
+  .header{background:#fff;color:#1a1a1a;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A550}
   .logo-area{display:flex;flex-direction:column}
   .logo-name{font-size:28px;font-weight:900;letter-spacing:-1px;color:#fff}
   .logo-name span{color:#00A550}
-  .logo-sub{font-size:10px;letter-spacing:3px;color:#aaa;margin-top:2px}
+  .logo-sub{font-size:10px;letter-spacing:3px;color:#555;margin-top:2px}
   .shield{background:#00A550;color:#fff;border-radius:12px;padding:10px 14px;text-align:center;border:2px solid #fff}
   .shield .sv{font-size:10px;font-weight:bold;letter-spacing:1px}
   .shield .sa{font-size:20px;font-weight:900;line-height:1}
   .shield .sb{font-size:10px;letter-spacing:2px}
-  .title-bar{background:#fff;padding:16px 20px 8px;border-bottom:4px solid #00A550}
-  .cert-title{font-size:32px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
+  .title-bar{background:#fff;padding:10px 16px 6px;border-bottom:4px solid #00A550}
+  .cert-title{font-size:26px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
   .cert-title .accent{color:#00A550}
-  .cert-num{font-size:13px;font-weight:bold;color:#00A550;margin-top:6px}
+  .cert-num{font-size:13px;font-weight:bold;color:#00A550;margin-top:4px}
   .cert-fecha{font-size:12px;color:#555;margin-top:2px}
-  .body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:12px 20px}
+  .body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:8px 16px}
   .section{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
   .sec-title{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;color:#1a1a1a}
   .sec-title span{color:#00A550}
   .field-line{border:none;border-bottom:1px solid #888;width:100%;margin:4px 0 8px;display:block;font-size:11.5px;color:#1a1a1a}
   .field-label{font-size:10px;color:#555;margin-top:4px}
-  .equip-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:8px 20px}
+  .equip-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:6px 16px}
   .equip-box{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
   .result-box{background:#00A550;color:#fff;border-radius:8px;padding:12px 14px;margin-top:8px;text-align:center}
   .result-check{font-size:28px;font-weight:900}
   .result-label{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
-  .footer-sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:8px 20px}
+  .footer-sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:6px 16px}
   .sig-box{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
   .sig-line{border-bottom:1px solid #888;height:40px;margin:8px 0 4px}
-  .footer-bar{background:#1a1a1a;color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+  .footer-bar{background:#f5f5f5;color:#1a1a1a;padding:8px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:2px solid #00A550}
   .footer-logo-name{font-size:16px;font-weight:900;color:#fff}
   .footer-logo-name span{color:#00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
-  .footer-slogan{font-size:9px;color:#aaa;text-align:center;padding:4px 20px;background:#111}
-  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:5mm 8mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
+  .footer-slogan{font-size:9px;color:#555;text-align:center;padding:3px 20px;background:#f0f0f0}
+  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:4mm 7mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
 </style></head><body>
 
 <!-- HEADER -->
 <div class="header">
   <div class="logo-area">
-    <div style="font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">★ PARABRISAS ★</div>
-    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;filter:brightness(0) invert(1)"/>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;"/>
     <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
   </div>
   <div class="shield">
@@ -250,7 +249,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 <!-- FOOTER -->
 <div class="footer-bar">
   <div>
-    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;filter:brightness(0) invert(1)"/>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;"/>
     <div style="font-size:9px;color:#aaa">Especialistas en cristales automotrices.</div>
     <div style="font-size:8px;color:#aaa">INSTALACIÓN PROFESIONAL • DIAGNÓSTICO ELECTRÓNICO • CALIBRACIÓN DE SISTEMAS ADAS</div>
   </div>
