@@ -58,6 +58,12 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   const [stockQ, setStockQ]     = useState('')
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
+  const [toast, setToast]       = useState('')
+  // Adjuntos
+  const [adjModal, setAdjModal]   = useState<Comprobante|null>(null)
+  const [adjuntos, setAdjuntos]   = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
   const [obs, setObs]           = useState('')
 
@@ -203,6 +209,79 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
     setComps(data??[])
   }
 
+  // ── Adjuntos ──────────────────────────────────────────────────────────────
+  async function abrirAdjuntos(c: Comprobante) {
+    setAdjModal(c)
+    const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', c.id).order('orden')
+    setAdjuntos(data ?? [])
+  }
+
+  async function subirArchivo(file: File, tipo: string) {
+    if (!adjModal) return
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${adjModal.id}/${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('comprobante-adjuntos').upload(path, file)
+      if (error) throw error
+      const { data: urlData } = supabase.storage.from('comprobante-adjuntos').getPublicUrl(path)
+      await supabase.from('comprobante_adjuntos').insert({
+        comprobante_id: adjModal.id, tipo, nombre: file.name,
+        url: urlData.publicUrl, storage_path: path,
+        orden: adjuntos.length
+      })
+      const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', adjModal.id).order('orden')
+      setAdjuntos(data ?? [])
+    } catch(e) { console.error(e) }
+    setUploading(false)
+  }
+
+  async function eliminarAdjunto(id: string, path: string) {
+    await supabase.storage.from('comprobante-adjuntos').remove([path])
+    await supabase.from('comprobante_adjuntos').delete().eq('id', id)
+    setAdjuntos(prev=>prev.filter(a=>a.id!==id))
+  }
+
+  async function generarPDFCombinado() {
+    if (!adjModal) return
+    setGenPDF(true)
+    try {
+      const { jsPDF } = await import('jspdf')
+      // Página 1: Comprobante
+      const doc = new jsPDF({ format:'a4', unit:'mm' })
+      // Agregar texto básico del comprobante
+      doc.setFontSize(16); doc.setFont('helvetica','bold')
+      doc.text(`${adjModal.tipo?.toUpperCase() || 'COMPROBANTE'} N° ${adjModal.numero||''}`, 15, 20)
+      doc.setFontSize(11); doc.setFont('helvetica','normal')
+      doc.text(`Cliente: ${adjModal.cliente_nombre || '—'}`, 15, 32)
+      doc.text(`Fecha: ${adjModal.fecha}`, 15, 40)
+      doc.text(`Vehículo: ${(adjModal as any).vehiculo || '—'}`, 15, 48)
+      doc.text(`Total: $${Math.round(adjModal.total).toLocaleString('es-AR')}`, 15, 56)
+
+      // Páginas adicionales: fotos y OS
+      for (const adj of adjuntos) {
+        doc.addPage()
+        doc.setFontSize(12); doc.setFont('helvetica','bold')
+        doc.text(adj.tipo === 'os_firmada' ? 'Orden de Servicio firmada' : `Foto — ${adj.nombre}`, 15, 15)
+        try {
+          const resp = await fetch(adj.url)
+          const blob = await resp.blob()
+          const reader = new FileReader()
+          const b64: string = await new Promise(res=>{ reader.onload=()=>res(reader.result as string); reader.readAsDataURL(blob) })
+          const ext = adj.nombre?.split('.').pop()?.toUpperCase() || 'JPEG'
+          const fmt = ext === 'PNG' ? 'PNG' : 'JPEG'
+          doc.addImage(b64, fmt, 10, 20, 190, 240, undefined, 'MEDIUM')
+        } catch(e) {
+          doc.text('(No se pudo cargar la imagen)', 15, 30)
+        }
+      }
+
+      const nombre = `expediente-${adjModal.numero||adjModal.id.slice(0,8)}.pdf`
+      doc.save(nombre)
+    } catch(e) { console.error(e) }
+    setGenPDF(false)
+  }
+
   async function generarPDF(c:Comprobante): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({format:'a4',unit:'mm'})
@@ -341,6 +420,10 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
                 <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(c.total)}</p>
               </div>
               <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
+                <button onClick={()=>abrirAdjuntos(c)}
+                  style={{...btnSm,background:'#7c3aed'}}>
+                  📎 Adjuntos
+                </button>
                 {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                 <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
