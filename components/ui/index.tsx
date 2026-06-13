@@ -86,7 +86,7 @@ export function KpiCard({ label, value, accent = false, sub }: { label: string; 
   return (
     <div className={`rounded-xl border px-4 py-4 ${accent ? 'border-p-green bg-p-light' : 'border-p-line bg-white'}`}>
       <p className={`font-saira font-bold text-2xl ${accent ? 'text-p-dark' : 'text-p-ink'}`}>{value}</p>
-      {sub && <p className="font-mono text-xs text-p-ink2 mt-0.5">{sub}</p>}
+      {sub && <p className={`font-mono text-xs mt-0.5 ${sub.startsWith('USD') ? 'text-p-green font-semibold' : 'text-p-ink2'}`}>{sub}</p>}
       <p className="text-[10px] text-p-ink2 uppercase tracking-wider mt-1">{label}</p>
     </div>
   )

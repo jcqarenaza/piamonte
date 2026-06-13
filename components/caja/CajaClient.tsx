@@ -139,9 +139,9 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <KpiCard label="Facturado" value={moneyARS(fact)} />
-        {isAdmin && <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} />}
-        {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent />}
+        <KpiCard label="Facturado" value={moneyARS(fact)} sub={blueRate ? 'USD ' + Math.round(fact/blueRate).toLocaleString('es-AR') : undefined} />
+        {isAdmin && <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={blueRate ? 'USD ' + Math.round(costo/blueRate).toLocaleString('es-AR') : undefined} />}
+        {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={blueRate ? 'USD ' + Math.round(gan2/blueRate).toLocaleString('es-AR') : undefined} />}
         <KpiCard label="Operaciones" value={`${ventas.length}`} sub={pend ? `${pend} s/costo` : undefined} />
       </div>
 
