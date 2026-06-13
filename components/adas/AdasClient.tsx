@@ -139,7 +139,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 <div class="header">
   <div class="logo-area">
     <div style="font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">★ PARABRISAS ★</div>
-    <img src={LOGO_BASE64} alt="El Piamonte" style={{height:40,objectFit:'contain',filter:'brightness(0) invert(1)'}}/>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;filter:brightness(0) invert(1)"/>
     <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
   </div>
   <div class="shield">
@@ -224,14 +224,16 @@ export default function AdasClient({ userId }: { userId: string }) {
   <div class="sig-box">
     <div class="sec-title">✍ RESPONSABLE TÉCNICO</div>
     <div style="margin:4px 0">
-      <img src={FIRMA_SAPPA} alt="firma" style={{height:'44px',objectFit:'contain',maxWidth:'120px'}}/>
+      <img src="${FIRMA_SAPPA}" alt="firma" style="height:44px;object-fit:contain;max-width:120px"/>
     </div>
     <div style="font-size:12px;font-weight:bold;margin-top:4px">Mario Sappa</div>
     <div style="font-size:10px;color:#555">Técnico Especialista en ADAS</div>
   </div>
   <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
-    <div style="border:3px solid #00A550;border-radius:50%;width:80px;height:80px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;font-weight:900;color:#00A550;line-height:1.3;letter-spacing:.5px">
-      PARABRISAS<br>PIAMONTE<br>⚙<br>SERVICIO<br>PROFESIONAL<br>GARANTÍA Y CALIDAD
+    <div style="border:3px solid #00A550;border-radius:50%;width:88px;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px">
+      <div style="font-size:7px;font-weight:900;color:#00A550;letter-spacing:.5px;line-height:1.2">PARABRISAS<br>EL PIAMONTE</div>
+      <div style="color:#00A550;font-size:16px">🛡</div>
+      <div style="font-size:6.5px;font-weight:700;color:#555;letter-spacing:.3px">GARANTÍA Y CALIDAD</div>
     </div>
   </div>
   <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
@@ -241,14 +243,14 @@ export default function AdasClient({ userId }: { userId: string }) {
       📱 2302 595969
     </div>
     <div style="font-size:9px;color:#555;text-align:center">General Pico, La Pampa</div>
-    <div style="font-size:9px;color:#00A550;font-weight:bold">Cert. N° {c.numero.toString().padStart(7,'0')}</div>
+    <div style="font-size:9px;color:#00A550;font-weight:bold">Cert. N° ${c.numero.toString().padStart(7,'0')}</div>
   </div>
 </div>
 
 <!-- FOOTER -->
 <div class="footer-bar">
   <div>
-    <img src={LOGO_BASE64} alt="El Piamonte" style={{height:30,objectFit:'contain',filter:'brightness(0) invert(1)'}}/>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;filter:brightness(0) invert(1)"/>
     <div style="font-size:9px;color:#aaa">Especialistas en cristales automotrices.</div>
     <div style="font-size:8px;color:#aaa">INSTALACIÓN PROFESIONAL • DIAGNÓSTICO ELECTRÓNICO • CALIBRACIÓN DE SISTEMAS ADAS</div>
   </div>
@@ -283,7 +285,7 @@ export default function AdasClient({ userId }: { userId: string }) {
           {certs.map(c => (
             <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
               <div className="bg-p-green text-white font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0">
-                N° {c.numero}
+                N° ${c.numero.toString().padStart(7,'0')}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-saira font-bold text-p-ink">{c.cliente || c.razon_social || '—'}</p>
