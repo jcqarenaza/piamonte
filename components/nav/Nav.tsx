@@ -46,7 +46,9 @@ const GRUPOS = [
     items: [
       { id:'articulos',    href:'/articulos',    label:'Artículos',     icon:'🏷️' },
       { id:'proveedores',  href:'/proveedores',  label:'Listas',        icon:'📋' },
-      { id:'informes',     href:'/informes',     label:'Informes',      icon:'📊' },
+      { id:'informes',              href:'/informes',              label:'Informes',       icon:'📊' },
+      { id:'rentabilidades-avanzadas', href:'/rentabilidades-avanzadas', label:'Rentabilidades', icon:'💹' },
+      { id:'tarjetas',               href:'/tarjetas',               label:'Tarjetas/Banco', icon:'💳' },
       { id:'usuarios',      href:'/usuarios',      label:'Usuarios',      icon:'👤' },
       { id:'auditoria',    href:'/auditoria',    label:'Auditoría',     icon:'🛡️' },
       { id:'proveedores-compra', href:'/proveedores-compra', label:'Proveedores', icon:'🏢' },
