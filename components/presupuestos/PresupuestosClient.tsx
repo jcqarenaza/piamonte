@@ -210,14 +210,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const W=210, pad=15
     let y=20
 
-    // Header verde
-    doc.setFillColor(0,165,80)
-    doc.rect(0,0,W,28,'F')
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,42,24) } catch(e){}
-    doc.setTextColor(255,255,255)
-    doc.setFont('helvetica','bold')
-    doc.setFontSize(18); doc.text('PARABRISAS EL PIAMONTE',pad,12)
-    doc.setFontSize(10); doc.text('Especialistas en cristales automotrices',pad,19)
+    // Header blanco
+    doc.setFillColor(255,255,255); doc.rect(0,0,W,28,'F')
+    doc.setFillColor(0,165,80); doc.rect(0,26,W,2,'F')
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
+    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE',pad+50,11)
+    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
+    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969',pad+50,19)
     doc.setFontSize(11); doc.text(`PRESUPUESTO`,W-pad,12,{align:'right'})
     doc.setFontSize(9); doc.text(p.fecha.split('-').reverse().join('/'),W-pad,19,{align:'right'})
     y=36

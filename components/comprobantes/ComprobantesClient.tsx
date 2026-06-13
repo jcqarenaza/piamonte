@@ -209,12 +209,14 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
     const W=210, pad=16
     let y=20
 
-    // Header
-    doc.setFillColor(0,165,80); doc.rect(0,0,W,30,'F')
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,42,24) } catch(e){}
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold')
-    doc.setFontSize(18); doc.text('PARABRISAS EL PIAMONTE', pad, 13)
-    doc.setFontSize(9); doc.text('Especialistas en cristales automotrices', pad, 20)
+    // Header blanco
+    doc.setFillColor(255,255,255); doc.rect(0,0,W,30,'F')
+    doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
+    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 12)
+    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
+    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 20)
     const tipoLabel = c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE'
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
     doc.setFontSize(10); doc.text(`N° ${String(c.numero||0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
