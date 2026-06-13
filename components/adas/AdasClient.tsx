@@ -132,7 +132,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   .footer-logo-name span{color:#00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
   .footer-slogan{font-size:9px;color:#aaa;text-align:center;padding:4px 20px;background:#111}
-  @media print{body{width:auto;margin:0}@page{margin:6mm;size:A4}*{page-break-inside:avoid!important}.header,.footer{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:5mm 8mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
 </style></head><body>
 
 <!-- HEADER -->
@@ -223,8 +223,9 @@ export default function AdasClient({ userId }: { userId: string }) {
 <div class="footer-sig">
   <div class="sig-box">
     <div class="sec-title">✍ RESPONSABLE TÉCNICO</div>
-    <div class="sig-line"></div>
-    <div style="font-size:10px;color:#555">Firma</div>
+    <div style="margin:4px 0">
+      <img src={FIRMA_SAPPA} alt="firma" style={{height:'44px',objectFit:'contain',maxWidth:'120px'}}/>
+    </div>
     <div style="font-size:12px;font-weight:bold;margin-top:4px">Mario Sappa</div>
     <div style="font-size:10px;color:#555">Técnico Especialista en ADAS</div>
   </div>
@@ -234,12 +235,13 @@ export default function AdasClient({ userId }: { userId: string }) {
     </div>
   </div>
   <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
-    <div style="font-size:10px;font-weight:bold;text-align:center">VERIFICÁ ESTE CERTIFICADO</div>
-    <div style="font-size:9px;color:#555;text-align:center">Escaneá el QR o comunicate con nosotros</div>
-    <div style="background:#1a1a1a;color:#fff;border-radius:6px;padding:8px 14px;font-size:10px;text-align:center">
+    <div style="font-size:10px;font-weight:bold;text-align:center;color:#1a1a1a">CONSULTAS Y GARANTÍA</div>
+    <div style="font-size:9px;color:#555;text-align:center">Parabrisas El Piamonte</div>
+    <div style="background:#00A550;color:#fff;border-radius:6px;padding:6px 14px;font-size:10px;text-align:center;font-weight:bold">
       📱 2302 595969
     </div>
-    <div style="font-size:9px;color:#00A550;font-weight:bold">N° ${c.numero}</div>
+    <div style="font-size:9px;color:#555;text-align:center">General Pico, La Pampa</div>
+    <div style="font-size:9px;color:#00A550;font-weight:bold">Cert. N° {c.numero.toString().padStart(7,'0')}</div>
   </div>
 </div>
 
