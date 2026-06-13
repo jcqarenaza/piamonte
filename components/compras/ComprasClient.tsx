@@ -45,6 +45,7 @@ export default function ComprasClient() {
   const [stockQ, setStockQ] = useState<Record<number,string>>({})
   const [stockSugs, setStockSugs] = useState<Record<number,any[]>>({})
   const [procesando, setProcesando] = useState(false)
+  const [nuevoItem, setNuevoItem] = useState<Record<number,{desc:string;codigo:string;precio:string}|null>>({})
 
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
@@ -133,6 +134,27 @@ export default function ComprasClient() {
     setMappings(prev=>({...prev,[idx]:{ stock_id:s.id, qty, costo }}))
     setStockQ(prev=>({...prev,[idx]:s.descripcion}))
     setStockSugs(prev=>({...prev,[idx]:[]}))
+  }
+
+  async function crearYVincular(idx:number, it:{d:string;c:number;p:number}) {
+    const n = nuevoItem[idx]
+    if (!n?.desc) return
+    // Crear nuevo ítem en stock
+    const { data } = await supabase.from('stock').insert({
+      descripcion: n.desc,
+      codigo: n.codigo || null,
+      precio_venta: parseFloat(n.precio)||null,
+      costo: it.p||null,
+      cantidad: 0,          // empieza en 0, el ajuste del remito lo suma
+      activo: true,
+      pos: 'STOCK'
+    }).select('id,descripcion,codigo,cantidad').single()
+    if (data) {
+      // Actualizar stockItems local
+      setStockItems(prev=>[...prev, data])
+      pickStock(idx, data, mappings[idx]?.qty??it.c, it.p)
+      setNuevoItem(prev=>({...prev,[idx]:null}))
+    }
   }
 
   async function confirmarRecepcion() {
@@ -321,33 +343,77 @@ export default function ComprasClient() {
                           className="w-16 border border-p-line rounded-lg px-2 py-1 text-sm text-center"/>
                       </div>
                     </div>
-                    <div className="relative">
-                      <input
-                        value={stockQ[i]||''}
-                        onChange={e=>buscarStock(i,e.target.value)}
-                        placeholder="Buscar en stock para vincular…"
-                        className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white"/>
-                      {stockSugs[i]?.length>0 && (
-                        <div className="absolute z-10 w-full bg-white border border-p-line rounded-xl shadow-lg mt-1 overflow-hidden">
-                          {stockSugs[i].map(s=>(
-                            <button key={s.id} onClick={()=>pickStock(i,s,mappings[i]?.qty??it.c,it.p)}
-                              className="w-full text-left px-3 py-2 hover:bg-p-light text-sm border-b border-p-line2 last:border-0">
-                              <span className="font-medium">{s.descripcion}</span>
-                              {s.codigo&&<span className="font-mono text-xs text-p-ink2 ml-2">{s.codigo}</span>}
-                              <span className="text-xs text-p-ink2 ml-2">stock actual: {s.cantidad}</span>
-                            </button>
-                          ))}
+                    {/* Búsqueda por descripción o código */}
+                    {!nuevoItem[i] && (
+                      <div className="relative">
+                        <input
+                          value={stockQ[i]||''}
+                          onChange={e=>buscarStock(i,e.target.value)}
+                          placeholder="Buscar por descripción o código…"
+                          className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white"/>
+                        {(stockSugs[i]?.length>0 || (stockQ[i]?.length>=2 && !stockSugs[i]?.length)) && (
+                          <div className="absolute z-10 w-full bg-white border border-p-line rounded-xl shadow-lg mt-1 overflow-hidden">
+                            {stockSugs[i]?.map(s=>(
+                              <button key={s.id} onClick={()=>pickStock(i,s,mappings[i]?.qty??it.c,it.p)}
+                                className="w-full text-left px-3 py-2 hover:bg-p-light text-sm border-b border-p-line2 last:border-0">
+                                {s.codigo&&<span className="font-mono text-[10px] bg-p-light px-1.5 py-0.5 rounded mr-2 text-p-dark">{s.codigo}</span>}
+                                <span className="font-medium">{s.descripcion}</span>
+                                <span className="text-xs text-p-ink2 ml-2">stock: {s.cantidad}</span>
+                              </button>
+                            ))}
+                            {stockQ[i]?.length>=2 && !stockSugs[i]?.length && (
+                              <div className="px-3 py-3 text-sm text-p-ink2">
+                                <p className="mb-2">No encontrado en stock.</p>
+                                <button onClick={()=>setNuevoItem(prev=>({...prev,[i]:{desc:it.d,codigo:'',precio:''}}))}
+                                  style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                                  + Crear nuevo artículo
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Formulario crear nuevo artículo */}
+                    {nuevoItem[i] && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-col gap-2">
+                        <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Nuevo artículo en stock</p>
+                        <input value={nuevoItem[i]!.desc}
+                          onChange={e=>setNuevoItem(prev=>({...prev,[i]:{...prev[i]!,desc:e.target.value}}))}
+                          placeholder="Descripción *"
+                          className="border border-p-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"/>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={nuevoItem[i]!.codigo}
+                            onChange={e=>setNuevoItem(prev=>({...prev,[i]:{...prev[i]!,codigo:e.target.value}}))}
+                            placeholder="Código (opcional)"
+                            className="border border-p-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"/>
+                          <input value={nuevoItem[i]!.precio}
+                            onChange={e=>setNuevoItem(prev=>({...prev,[i]:{...prev[i]!,precio:e.target.value}}))}
+                            placeholder="Precio de venta"
+                            className="border border-p-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"/>
                         </div>
-                      )}
-                    </div>
-                    {mappings[i] && (
+                        <div className="flex gap-2">
+                          <button onClick={()=>crearYVincular(i,it)}
+                            style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                            ✓ Crear y vincular
+                          </button>
+                          <button onClick={()=>setNuevoItem(prev=>({...prev,[i]:null}))}
+                            style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {mappings[i] && !nuevoItem[i] && (
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✓ Vinculado</span>
                         <button onClick={()=>{setMappings(prev=>({...prev,[i]:null}));setStockQ(prev=>({...prev,[i]:''}))}}
                           className="text-[10px] text-red-400 hover:text-red-600">Desvincular</button>
                       </div>
                     )}
-                    {!mappings[i] && (
+                    {!mappings[i] && !nuevoItem[i] && (
                       <p className="text-[10px] text-amber-600 mt-1.5">⚠ Sin vincular — no afectará el stock</p>
                     )}
                   </div>
