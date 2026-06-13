@@ -44,7 +44,7 @@ const GRUPOS = [
   {
     label: 'ADMINISTRACIÓN',
     items: [
-      { id:'proveedores',  href:'/proveedores',  label:'Proveedores',   icon:'🏭' },
+      { id:'proveedores',  href:'/proveedores',  label:'Listas',        icon:'📋' },
       { id:'informes',     href:'/informes',     label:'Informes',      icon:'📊' },
       { id:'usuarios',      href:'/usuarios',      label:'Usuarios',      icon:'👤' },
       { id:'auditoria',    href:'/auditoria',    label:'Auditoría',     icon:'🛡️' },
