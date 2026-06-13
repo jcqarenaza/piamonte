@@ -153,7 +153,12 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
             {ventas.map(v => (
               <div key={v.id} className={`bg-white border rounded-xl p-4 shadow-sm flex items-center gap-3 flex-wrap ${v.pendiente ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'}`}>
                 <div className="flex-1 min-w-0">
-                  <p className="font-saira font-bold text-p-ink">{v.descripcion}</p>
+                  {(() => {
+                const m = v.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
+                return m
+                  ? <p className="font-saira font-bold text-p-ink"><span className="font-mono text-xs text-p-ink2 mr-2 bg-p-light px-1.5 py-0.5 rounded">{m[1]}</span>{m[2]}</p>
+                  : <p className="font-saira font-bold text-p-ink">{v.descripcion}</p>
+              })()}
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {[v.comprobante ? 'Comp. ' + v.comprobante : null, v.cliente, v.pago, v.origen === 'stock' ? 'de stock' : 'comprada'].filter(Boolean).join(' · ')}
                   </p>

@@ -10,6 +10,9 @@ const ESTADOS = ['pendiente', 'confirmado', 'hecho', 'ausente'] as const
 function buildWaMsg(t: Turno) {
   return `¡Hola ${t.cliente || ''}! Te recordamos tu turno en *Parabrisas El Piamonte* para el ${fmtFecha(t.fecha)} a las ${t.hora?.slice(0,5) || '--:--'} hs. Trabajo: ${t.trabajo || 'el trabajo acordado'}${t.vehiculo ? ` en tu ${t.vehiculo}` : ''}${t.patente ? ` (${t.patente})` : ''}. ¡Hasta entonces!`
 }
+function buildWaMsgListo(t: Turno) {
+  return `Nos comunicamos de *El Piamonte*. Para informarle que su vehículo/producto está listo.${t.vehiculo ? ` (${t.vehiculo}${t.patente ? ' - ' + t.patente : ''})` : ''} Puede pasar a retirarlo dentro de nuestro horario de lunes a viernes de 8:00 a 12:00 y de 14:30 a 19:30 hs.`
+}
 
 function Toast({ msg, ok }: { msg: string; ok: boolean }) {
   return (
@@ -174,10 +177,10 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 )}
                 {/* WA */}
                 {t.telefono ? (
-                  <a href={`https://wa.me/${t.telefono.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(buildWaMsg(t))}`}
+                  <a href={`https://wa.me/${t.telefono.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(t.estado === 'hecho' ? buildWaMsgListo(t) : buildWaMsg(t))}`}
                     target="_blank" rel="noopener noreferrer"
                     style={{background:'#25d366',color:'#fff',border:'none',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12,textDecoration:'none',display:'inline-block'}}>
-                    WA
+                    {t.estado === 'hecho' ? '✅ WA' : 'WA'}
                   </a>
                 ) : (
                   <span style={{background:'#f3f4f6',color:'#d1d5db',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12}}>WA</span>
