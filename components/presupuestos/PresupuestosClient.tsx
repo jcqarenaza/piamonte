@@ -1,6 +1,7 @@
 'use client'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Presupuesto, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
@@ -21,11 +22,15 @@ interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en
 interface ClienteMin  { id:string; nombre:string; telefono:string|null; tipo_cliente_id:string|null; tipo_nombre?:string; tipo_margen?:number }
 
 export default function PresupuestosClient({ userId }: { userId:string }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [presus, setPresus]   = useState<Presupuesto[]>([])
   const [tipos, setTipos]     = useState<TipoCliente[]>([])
   const [rubros, setRubros]   = useState<RubroPrecio[]>([])
   const [open, setOpen]       = useState(false)
   const [editId, setEditId]   = useState<string|null>(null)
+  const [histCli, setHistCli] = useState<any[]>([])
   const [ivaOn, setIvaOn]     = useState(true)
   const [cotiz, setCotiz]     = useState<{blue:number;mep:number}|null>(null)
   const supabase = createClient()
@@ -43,6 +48,21 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number}[]>([])
   const [rubrosEdit, setRubrosEdit] = useState<Record<string,number>>({})
   const [itemManual, setItemManual] = useState({ d:'', c:'1', p:'' })
+
+  // Leer params desde módulo Precios
+  useEffect(() => {
+    const piezaDesc  = searchParams.get('pieza_desc')
+    const piezaPrecio = searchParams.get('pieza_precio')
+    const tipoId     = searchParams.get('tipo_id')
+    const tipoNombre = searchParams.get('tipo_nombre')
+    if (piezaDesc && piezaPrecio) {
+      setItems([{ d: piezaDesc, c: 1, p: +piezaPrecio }])
+      if (tipoId) {
+        setTipoSel(tipos.find(t => t.id === tipoId) || null)
+      }
+      setOpen(true)
+    }
+  }, [searchParams, tipos])
 
   useEffect(() => {
     supabase.from('presupuestos').select('*').order('created_at',{ascending:false}).then(({data})=>setPresus(data??[]))
@@ -84,14 +104,19 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     })
   },[cliQ,supabase])
 
-  function selectCliente(c: ClienteMin) {
-    setCliSel(c); setForm(p=>({...p,cli:c.nombre,tel:c.telefono??''})); setCliQ(''); setCliSugs([])
-    if(c.tipo_cliente_id) {
-      const t = tipos.find(t=>t.id===c.tipo_cliente_id)
-      if(t) setTipoSel(t)
-    }
+  async function selectCliente(c: ClienteMin){
+    setCliQ(c.nombre); setCliSugs([])
+    setTipoSel(tipos.find(t=>t.id===c.tipo_cliente_id)||null)
+    // Presupuestos anteriores NO convertidos
+    const {data} = await supabase.from('presupuestos')
+      .select('id,fecha,total,items,vehiculo')
+      .ilike('cliente',`%${c.nombre}%`)
+      .eq('convertido_os', false).eq('convertido_comp', false)
+      .order('created_at',{ascending:false}).limit(3)
+    setHistCli(data??[])
   }
 
+  
   function selectConsumidorFinal() {
     const t = tipos.find(t=>t.nombre==='Particular')
     setCliSel(null); setTipoSel(t??null)
@@ -127,6 +152,27 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const minPrecio = Math.round(it.costo*(1+tipoSel.margen_pct))
     if(it.p < minPrecio) return `⚠ Mínimo ${tipoSel.nombre}: ${moneyARS(minPrecio)}`
     return null
+  }
+
+  function openEdit(p: any) {
+    setEditId(p.id)
+    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', dias: String(p.validez_dias||7) })
+    setItems(p.items||[])
+    if(p.tipo_cliente_id) setTipoSel(tipos.find((t:any)=>t.id===p.tipo_cliente_id)||null)
+    setOpen(true)
+  }
+
+  async function toOS(p: any) {
+    // Marcar presupuesto como convertido a OS
+    await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', p.id)
+    const params = new URLSearchParams({
+      cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
+      items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
+      pid: p.id,
+      ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
+      ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
+    })
+    router.push(`/ordenes?${params.toString()}`)
   }
 
   async function save() {
@@ -297,7 +343,20 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   </div>
                 </div>
                 <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                  <button onClick={()=>compartirWA(p)} style={btnWa}>📱 WhatsApp PDF</button>
+                  <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                  <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
+                  <button onClick={async()=>{
+                    await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
+                    const params = new URLSearchParams({
+                      cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
+                      items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
+                      pid: p.id,
+                      ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
+                      ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
+                    })
+                    router.push(`/comprobantes?${params.toString()}`)
+                  }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                  <button onClick={()=>compartirWA(p)} style={btnWa}>📱 WA</button>
                   <button onClick={()=>descargarPDF(p)} style={btnSm}>⬇ PDF</button>
                   <button onClick={()=>del(p.id)} style={btnRed}>Borrar</button>
                 </div>
@@ -342,6 +401,23 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
           {/* Tipo + Margen */}
           <div className="grid grid-cols-2 gap-3">
+            {/* Historial del cliente */}
+            {histCli.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-1">
+                <p className="text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-2">📋 Presupuestos anteriores — click para cargar</p>
+                <div className="flex flex-col gap-1.5">
+                  {histCli.map((p:any) => (
+                    <button key={p.id} onClick={()=>{ setItems(p.items||[]); setForm((prev:any)=>({...prev,veh:p.vehiculo||prev.veh})); setHistCli([]) }}
+                      className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-blue-50 border border-blue-100 w-full">
+                      <span className="text-xs text-p-ink flex-1 truncate">{p.vehiculo||'Sin vehículo'} · {p.items?.length||0} ítem(s)</span>
+                      <span className="text-xs font-mono font-bold text-p-dark shrink-0">{'$'+Math.round(p.total||0).toLocaleString('es-AR')}</span>
+                      <span className="text-[10px] text-p-ink2 shrink-0">{p.fecha?.split('-').reverse().join('/')}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Field label="Tipo de cliente">
               <Select value={tipoSel?.id??''} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setTipoSel(t??null)}}>
                 <option value="">Sin tipo</option>

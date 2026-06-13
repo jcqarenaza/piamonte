@@ -113,6 +113,9 @@ export interface Presupuesto {
   dolar_blue: number | null
   dolar_mep: number | null
   user_id: string | null
+  tipo_cliente_id: string | null
+  tipo_cliente_nombre: string | null
+  margen_aplicado: number | null
   created_at: string
 }
 

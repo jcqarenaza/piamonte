@@ -57,6 +57,7 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   const [stockQ, setStockQ]     = useState('')
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
+  const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
   const [obs, setObs]           = useState('')
 
   // Búsqueda de stock
@@ -112,14 +113,24 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
       .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
   },[cliQ,supabase])
 
-  function selectCliente(c:ClienteMin){
+  async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
     setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'' }))
     if(c.tipo_fiscal && c.tipo_fiscal !== 'consumidor_final') setShowFiscal(true)
+    // Cargar historial del cliente
+    const [pres, ords] = await Promise.all([
+      supabase.from('presupuestos').select('id,fecha,total,items,vehiculo,tipo_cliente_nombre')
+        .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
+        .eq('convertido_os',false).eq('convertido_comp',false).order('created_at',{ascending:false}).limit(4),
+      supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora')
+        .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
+        .order('created_at',{ascending:false}).limit(4),
+    ])
+    setHistorialCli({ presupuestos: pres.data??[], ordenes: ords.data??[] })
   }
 
   function usarConsumidorFinal(){
-    setCli(null)
+    setCli(null); setHistorialCli(null)
     setFiscal(p=>({...p, tipo_fiscal:'consumidor_final', cuit:'' }))
     setShowFiscal(false)
   }
@@ -397,6 +408,39 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
                 }
                 setShowFiscal(false)
               }} style={{...btnSm,alignSelf:'flex-end'}}>Guardar</button>
+            </div>
+          )}
+
+          {/* Historial del cliente */}
+          {historialCli && (historialCli.presupuestos.length > 0 || historialCli.ordenes.length > 0) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">📋 Documentos pendientes de este cliente</p>
+              <div className="flex flex-col gap-1.5">
+                {historialCli.presupuestos.map((p:any) => (
+                  <button key={p.id} onClick={()=>{
+                    setItems(p.items||[])
+                    setFiscal(prev=>({...prev, vehiculo:p.vehiculo||prev.vehiculo, tipo_cliente_id:p.tipo_cliente_id||prev.tipo_cliente_id}))
+                    setHistorialCli(null)
+                  }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-amber-50 border border-amber-100 transition-colors w-full">
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">PRES</span>
+                    <span className="text-xs text-p-ink flex-1 truncate">{p.vehiculo||'Sin vehículo'} · {p.items?.length||0} ítem(s)</span>
+                    <span className="text-xs font-mono font-bold text-p-dark shrink-0">{moneyARS(p.total)}</span>
+                    <span className="text-[10px] text-p-ink2 shrink-0">{p.fecha?.split('-').reverse().join('/')}</span>
+                  </button>
+                ))}
+                {historialCli.ordenes.map((o:any) => (
+                  <button key={o.id} onClick={()=>{
+                    setItems(o.items||[])
+                    setFiscal(prev=>({...prev, vehiculo:o.vehiculo||prev.vehiculo}))
+                    setHistorialCli(null)
+                  }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-amber-50 border border-amber-100 transition-colors w-full">
+                    <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">OS-{String(o.numero||0).padStart(4,'0')}</span>
+                    <span className="text-xs text-p-ink flex-1 truncate">{o.vehiculo||'Sin vehículo'}{o.aseguradora?' · '+o.aseguradora:''}</span>
+                    <span className="text-xs font-mono font-bold text-p-dark shrink-0">{moneyARS(o.total)}</span>
+                    <span className="text-[10px] text-p-ink2 shrink-0">{o.fecha?.split('-').reverse().join('/')}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

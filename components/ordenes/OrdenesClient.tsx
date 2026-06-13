@@ -15,7 +15,6 @@ const btnRed   = { ...btnSm,background:'#ef4444' } as const
 const btnWa    = { ...btnSm,background:'#25d366' } as const
 const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
 
-const RUBROS_RAPIDOS = ['Mano de obra','Pegamento','Activador','Primer/gel','Sensor','Calibración ADAS']
 
 function tieneADAS(items: VentaItem[]): boolean {
   return items.some(it => it.d.toLowerCase().includes('adas') || it.d.toLowerCase().includes('calibración'))
@@ -35,6 +34,8 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [filtroAseg, setFiltroAseg] = useState('')
   const [editId, setEditId]     = useState<string|null>(null)
+  const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
+  const [presCli, setPresCli]   = useState<any[]>([])
 
   // Pre-cargar desde presupuesto
   useEffect(() => {
@@ -45,7 +46,17 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     if (cli || tel) setOpen(true)
   }, [searchParams])
 
+  // Presupuestos del cliente al escribir su nombre
+  useEffect(() => {
+    const nombre = form.cli.trim()
+    if(nombre.length < 3){ setPresCli([]); return }
+    supabase.from('presupuestos').select('id,fecha,total,items,vehiculo,telefono,tipo_cliente_nombre')
+      .ilike('cliente', `%${nombre}%`).eq('convertido_os', false).eq('convertido_comp', false).order('created_at',{ascending:false}).limit(4)
+      .then(({data}) => setPresCli(data??[]))
+  }, [form.cli, supabase])
+
   const load = useCallback(() => {
+    supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('ordenes_servicio').select('*').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
   }, [supabase])
 
@@ -282,7 +293,8 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                   <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
                   <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                   <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
-                  <button onClick={()=>{
+                  <button onClick={async()=>{
+                    await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
                     const params = new URLSearchParams({
                       cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
                       items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0),
@@ -306,7 +318,28 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            {/* Presupuestos del cliente */}
+          {presCli.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-2">📋 Presupuestos de este cliente — click para cargar</p>
+              <div className="flex flex-col gap-1.5">
+                {presCli.map((p:any) => (
+                  <button key={p.id} onClick={()=>{
+                    setItems(p.items||[])
+                    setForm(prev=>({...prev, tel:p.telefono||prev.tel, veh:p.vehiculo||prev.veh}))
+                    setPresCli([])
+                  }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-blue-50 border border-blue-100 w-full">
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">PRES</span>
+                    <span className="text-xs text-p-ink flex-1 truncate">{p.vehiculo||'Sin vehículo'} · {p.items?.length||0} ítem(s)</span>
+                    <span className="text-xs font-mono font-bold text-p-dark shrink-0">{('$'+Math.round(p.total||0).toLocaleString('es-AR'))}</span>
+                    <span className="text-[10px] text-p-ink2 shrink-0">{p.fecha?.split('-').reverse().join('/')}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
             <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value}))} placeholder="AB 123 CD"/></Field>
           </div>
           {/* Seguro */}
@@ -324,10 +357,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
           <div className="border-t border-p-line2 pt-3">
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Rubros rápidos</label>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {RUBROS_RAPIDOS.map(r=>(
-                <button key={r} onClick={()=>setItems(prev=>[...prev,{d:r,c:1,p:0}])}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${r.toLowerCase().includes('adas')?'border-blue-300 bg-blue-50 text-blue-700':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
-                  + {r}
+              {rubros.map(r=>(
+                <button key={r.id} onClick={()=>setItems(prev=>[...prev,{d:r.nombre,c:1,p:r.precio_base}])}
+                  className={`text-xs px-2.5 py-1 rounded-full border ${r.nombre.toLowerCase().includes('adas')?'border-blue-300 bg-blue-50 text-blue-700':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
+                  + {r.nombre}
                 </button>
               ))}
             </div>
