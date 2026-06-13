@@ -1,5 +1,6 @@
 'use client'
 import { LOGO_BASE64 } from '@/lib/logo'
+import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

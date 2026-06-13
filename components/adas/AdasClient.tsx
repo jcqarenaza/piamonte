@@ -1,4 +1,5 @@
 'use client'
+import { FIRMA_SAPPA } from '@/lib/firma'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -131,7 +132,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   .footer-logo-name span{color:#00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
   .footer-slogan{font-size:9px;color:#aaa;text-align:center;padding:4px 20px;background:#111}
-  @media print{body{width:auto;margin:0}@page{margin:6mm;size:A4}}
+  @media print{body{width:auto;margin:0}@page{margin:6mm;size:A4}*{page-break-inside:avoid!important}.header,.footer{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <!-- HEADER -->
