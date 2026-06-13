@@ -126,7 +126,7 @@ export default function Nav({ rol }: { rol?: string }) {
     items: g.items.filter(m => {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
     if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
-    if (rol === 'ventas' && ['proveedores-compra','compras','articulos'].includes(m.id)) return false
+    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas'].includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)
