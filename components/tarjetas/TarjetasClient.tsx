@@ -7,7 +7,6 @@ import { moneyARS } from '@/lib/utils/format'
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm   = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
-const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
 
 const RED_COLOR: Record<string,string> = {
   visa:'#1A1F71', mastercard:'#EB001B', naranja:'#FF6B35',
@@ -19,10 +18,7 @@ const RED_LABEL: Record<string,string> = {
 }
 
 interface Terminal { id:string; nombre:string; banco:string|null; red:string|null; nro_terminal:string|null; descuento_pct:number; dias_acreditacion:number; activo:boolean }
-interface TarjetaConfig {
-  id:string; banco:string; red:string; tipo:string; cuotas:number
-  recargo_pct:number; retencion_pct:number; dias_acreditacion:number; descripcion:string|null; activo:boolean
-}
+interface TarjetaConfig { id:string; banco:string; red:string; tipo:string; cuotas:number; recargo_pct:number; retencion_pct:number; dias_acreditacion:number; descripcion:string|null; activo:boolean }
 interface Acreditacion {
   id:string; terminal_nombre:string|null; fecha_cobro:string; fecha_acred:string|null
   monto_bruto:number; descuento:number; monto_neto:number; cuotas:number
@@ -30,23 +26,15 @@ interface Acreditacion {
 }
 
 export default function TarjetasClient() {
-  const [tab, setTab]         = useState<'acreditaciones'|'terminales'|'config'>('acreditaciones')
-  const [terminales, setTerminales]     = useState<Terminal[]>([])
-  const [configs, setConfigs]           = useState<TarjetaConfig[]>([])
+  const [tab, setTab]             = useState<'acreditaciones'|'terminales'|'config'>('acreditaciones')
+  const [terminales, setTerminales] = useState<Terminal[]>([])
+  const [configs, setConfigs]     = useState<TarjetaConfig[]>([])
   const [filtroConfig, setFiltroConfig] = useState({ banco:'', red:'', tipo:'' })
-  const [acreds, setAcreds]   = useState<Acreditacion[]>([])
+  const [acreds, setAcreds]       = useState<Acreditacion[]>([])
   const [filtroEstado, setFiltroEstado] = useState('')
-  const [openAcred, setOpenAcred] = useState(false)
   const [openTerm, setOpenTerm]   = useState(false)
   const [editTerm, setEditTerm]   = useState<Terminal|null>(null)
-
-  const [formAcred, setFormAcred] = useState({
-    terminal_id:'', fecha_cobro:'', fecha_acred:'', monto_bruto:'',
-    cuotas:'1', lote:'', notas:''
-  })
-  const [formTerm, setFormTerm] = useState({
-    nombre:'', banco:'', red:'visa', nro_terminal:'', descuento_pct:'', dias_acreditacion:'2', notas:''
-  })
+  const [formTerm, setFormTerm]   = useState({ nombre:'', banco:'', red:'visa', nro_terminal:'', descuento_pct:'', dias_acreditacion:'2', notas:'' })
 
   const supabase = createClient()
 
@@ -63,29 +51,6 @@ export default function TarjetasClient() {
 
   useEffect(()=>{ load() },[supabase])
 
-  async function saveAcred() {
-    const cfg   = configs.find(c=>c.id===formAcred.terminal_id)
-    const bruto = +formAcred.monto_bruto||0
-    const desc  = cfg ? Math.round(bruto * (cfg.retencion_pct/100)) : 0
-    const rec   = cfg ? Math.round(bruto * (cfg.recargo_pct/100)) : 0
-    await supabase.from('acreditaciones_tarjeta').insert({
-      terminal_id: null,
-      tarjeta_config_id: formAcred.terminal_id||null,
-      terminal_nombre: cfg?.descripcion||null,
-      recargo_pct: cfg?.recargo_pct||0,
-      monto_recargo: rec,
-      fecha_cobro: formAcred.fecha_cobro,
-      fecha_acred: formAcred.fecha_acred||null,
-      monto_bruto: bruto, descuento: desc, monto_neto: bruto-desc,
-      cuotas: +formAcred.cuotas||1,
-      lote: formAcred.lote||null, notas: formAcred.notas||null,
-      estado: 'pendiente'
-    })
-    setOpenAcred(false)
-    setFormAcred({terminal_id:'',fecha_cobro:'',fecha_acred:'',monto_bruto:'',cuotas:'1',lote:'',notas:''})
-    load()
-  }
-
   async function saveTerm() {
     const payload = {
       nombre: formTerm.nombre, banco: formTerm.banco||null, red: formTerm.red||null,
@@ -94,11 +59,8 @@ export default function TarjetasClient() {
       dias_acreditacion: +formTerm.dias_acreditacion||2,
       notas: formTerm.notas||null
     }
-    if (editTerm) {
-      await supabase.from('terminales').update(payload).eq('id',editTerm.id)
-    } else {
-      await supabase.from('terminales').insert(payload)
-    }
+    if (editTerm) await supabase.from('terminales').update(payload).eq('id',editTerm.id)
+    else          await supabase.from('terminales').insert(payload)
     setOpenTerm(false); setEditTerm(null)
     setFormTerm({nombre:'',banco:'',red:'visa',nro_terminal:'',descuento_pct:'',dias_acreditacion:'2',notas:''})
     load()
@@ -110,14 +72,13 @@ export default function TarjetasClient() {
   }
 
   // KPIs
-  const hoy = new Date()
-  const mes = hoy.toISOString().slice(0,7)
-  const acredsMes   = acreds.filter(a=>a.fecha_cobro.startsWith(mes))
-  const totalBruto  = acredsMes.reduce((s,a)=>s+a.monto_bruto,0)
-  const totalDesc   = acredsMes.reduce((s,a)=>s+a.descuento,0)
-  const totalNeto   = acredsMes.reduce((s,a)=>s+a.monto_neto,0)
-  const pendientes  = acreds.filter(a=>a.estado==='pendiente')
-  const totalPend   = pendientes.reduce((s,a)=>s+a.monto_neto,0)
+  const mes = new Date().toISOString().slice(0,7)
+  const acredsMes  = acreds.filter(a=>a.fecha_cobro.startsWith(mes))
+  const totalBruto = acredsMes.reduce((s,a)=>s+a.monto_bruto,0)
+  const totalDesc  = acredsMes.reduce((s,a)=>s+a.descuento,0)
+  const totalNeto  = acredsMes.reduce((s,a)=>s+a.monto_neto,0)
+  const pendientes = acreds.filter(a=>a.estado==='pendiente')
+  const totalPend  = pendientes.reduce((s,a)=>s+a.monto_neto,0)
 
   const filtradas = acreds.filter(a=>!filtroEstado||a.estado===filtroEstado)
 
@@ -153,12 +114,12 @@ export default function TarjetasClient() {
 
       {/* Tabs */}
       <div className="flex border-b border-p-line mb-4">
-        <button style={tabStyle('acreditaciones')} onClick={()=>setTab('acreditaciones')}>💳 Acreditaciones</button>
+        <button style={tabStyle('acreditaciones')} onClick={()=>setTab('acreditaciones')}>💳 Liquidaciones</button>
         <button style={tabStyle('terminales')} onClick={()=>setTab('terminales')}>⚙ Terminales</button>
-
+        <button style={tabStyle('config')} onClick={()=>setTab('config')}>📋 Config cuotas</button>
       </div>
 
-      {/* Tab Acreditaciones */}
+      {/* Tab Liquidaciones — solo lectura, vienen de Comprobantes */}
       {tab === 'acreditaciones' && (
         <>
           <div className="flex gap-3 mb-4 flex-wrap items-center">
@@ -169,12 +130,12 @@ export default function TarjetasClient() {
               <option value="acreditado">Acreditado</option>
               <option value="rechazado">Rechazado</option>
             </select>
-            <div className="ml-auto">
-              <button onClick={()=>setOpenAcred(true)} style={btn}>+ Registrar cobro</button>
+            <div className="ml-auto text-xs text-p-ink2 bg-p-light px-3 py-2 rounded-xl">
+              💡 Las liquidaciones se generan automáticamente al registrar un comprobante con pago en Tarjeta
             </div>
           </div>
 
-          {filtradas.length===0 ? <Empty msg="Sin acreditaciones registradas." /> : (
+          {filtradas.length===0 ? <Empty msg="Sin liquidaciones registradas." /> : (
             <div className="flex flex-col gap-2">
               {filtradas.map(a=>(
                 <div key={a.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
@@ -240,10 +201,11 @@ export default function TarjetasClient() {
                     setOpenTerm(true)
                   }} style={btnGray}>✏</button>
                 </div>
-                <div className="flex gap-4 mt-2 flex-wrap text-xs">
+                {/* Cuotas de esta terminal */}
+                <div className="flex gap-2 mt-3 flex-wrap">
                   {configs.filter(c=>c.banco===t.banco&&c.red===t.red).sort((a,b)=>a.cuotas-b.cuotas).map(c=>(
                     <div key={c.id} className="bg-p-light rounded-lg px-2 py-1 text-center">
-                      <p className="font-bold text-p-dark">{c.cuotas}c</p>
+                      <p className="font-bold text-p-dark text-xs">{c.cuotas}c</p>
                       {c.recargo_pct>0&&<p className="text-amber-600 font-bold text-[10px]">+{c.recargo_pct}%</p>}
                       <p className="text-red-400 text-[9px]">ret.{c.retencion_pct}%</p>
                     </div>
@@ -258,7 +220,6 @@ export default function TarjetasClient() {
       {/* Tab Config cuotas */}
       {tab === 'config' && (
         <div>
-          {/* Filtros */}
           <div className="flex gap-3 mb-4 flex-wrap items-center">
             <select value={filtroConfig.banco} onChange={e=>setFiltroConfig(p=>({...p,banco:e.target.value}))}
               className="border border-p-line rounded-xl px-3 py-2 text-sm bg-white focus:outline-none shadow-sm">
@@ -276,15 +237,7 @@ export default function TarjetasClient() {
               <option value="debito">Solo débito</option>
               <option value="credito">Solo crédito</option>
             </select>
-            <span className="text-xs text-p-ink2 ml-1">
-              {configs.filter(c=>
-                (!filtroConfig.banco||c.banco===filtroConfig.banco)&&
-                (!filtroConfig.red||c.red===filtroConfig.red)&&
-                (!filtroConfig.tipo||c.tipo===filtroConfig.tipo)
-              ).length} configuraciones
-            </span>
           </div>
-
           <div className="overflow-x-auto rounded-xl border border-p-line shadow-sm">
             <table className="w-full text-sm">
               <thead>
@@ -305,11 +258,9 @@ export default function TarjetasClient() {
                   (!filtroConfig.tipo||c.tipo===filtroConfig.tipo)
                 ).map((c,i)=>(
                   <tr key={c.id} className={`border-t border-p-line2 ${i%2===0?'bg-white':'bg-p-light/40'}`}>
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-bold text-p-dark">{c.banco}</span>
-                    </td>
+                    <td className="px-4 py-2.5 font-bold text-xs text-p-dark">{c.banco}</td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full"
+                      <span className="text-[10px] font-bold text-white px-2 py-0.5 rounded-full"
                         style={{background:RED_COLOR[c.red]||'#6b7280'}}>
                         {RED_LABEL[c.red]||c.red}
                       </span>
@@ -325,9 +276,7 @@ export default function TarjetasClient() {
                         {c.recargo_pct>0?`+${c.recargo_pct}%`:'—'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="font-bold text-sm text-red-500">{c.retencion_pct}%</span>
-                    </td>
+                    <td className="px-3 py-2.5 text-center font-bold text-sm text-red-500">{c.retencion_pct}%</td>
                     <td className="px-3 py-2.5 text-center text-xs text-p-ink2">{c.dias_acreditacion}d hábiles</td>
                   </tr>
                 ))}
@@ -335,78 +284,10 @@ export default function TarjetasClient() {
             </table>
           </div>
           <p className="text-[11px] text-p-ink2 mt-3 text-center">
-            💡 El recargo se incorpora al precio — el cliente nunca lo ve en el comprobante. La retención es lo que descuenta el banco.
+            💡 El recargo se incorpora al precio — el cliente nunca lo ve. La retención es lo que descuenta el banco.
           </p>
         </div>
       )}
-
-      {/* Modal registrar cobro */}
-      <Modal open={openAcred} onClose={()=>setOpenAcred(false)} title="Registrar cobro con tarjeta">
-        <div className="flex flex-col gap-3">
-          <Field label="Banco / Red / Cuotas *">
-            <Select value={formAcred.terminal_id} onChange={e=>setFormAcred(p=>({...p,terminal_id:e.target.value}))}>
-              <option value="">Seleccionar…</option>
-              {configs.map(c=><option key={c.id} value={c.id}>
-                {c.descripcion||`${c.banco} ${RED_LABEL[c.red]||c.red} ${c.cuotas}c`} — ret.{c.retencion_pct}%{c.recargo_pct>0?` rec.+${c.recargo_pct}%`:''}
-              </option>)}
-            </Select>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Fecha cobro *">
-              <Input type="date" value={formAcred.fecha_cobro} onChange={e=>setFormAcred(p=>({...p,fecha_cobro:e.target.value}))}/>
-            </Field>
-            <Field label="Cuotas">
-              <Select value={formAcred.cuotas} onChange={e=>setFormAcred(p=>({...p,cuotas:e.target.value}))}>
-                {[1,2,3,6,9,12,18,24].map(c=><option key={c} value={c}>{c} cuota{c>1?'s':''}</option>)}
-              </Select>
-            </Field>
-          </div>
-          <Field label="Monto bruto *">
-            <Input value={formAcred.monto_bruto} onChange={e=>setFormAcred(p=>({...p,monto_bruto:e.target.value}))} placeholder="$0"/>
-          </Field>
-          {formAcred.terminal_id && formAcred.monto_bruto && (() => {
-            const cfg = configs.find(c=>c.id===formAcred.terminal_id)
-            const bruto = +formAcred.monto_bruto||0
-            const ret   = Math.round(bruto*(cfg?.retencion_pct||0)/100)
-            const rec   = Math.round(bruto*(cfg?.recargo_pct||0)/100)
-            const neto  = bruto - ret
-            return (
-              <div className="bg-p-light rounded-xl p-3 text-sm">
-                <div className="flex justify-between mb-1">
-                  <span className="text-p-ink2 text-xs">Retención banco ({cfg?.retencion_pct||0}%)</span>
-                  <span className="font-bold text-red-500">-{moneyARS(ret)}</span>
-                </div>
-                {rec>0&&<div className="flex justify-between mb-1">
-                  <span className="text-p-ink2 text-xs">Recargo cuotas incorporado ({cfg?.recargo_pct||0}%)</span>
-                  <span className="text-[11px] text-amber-600 font-semibold">+{moneyARS(rec)} (lo absorbe El Piamonte)</span>
-                </div>}
-                <div className="flex justify-between border-t border-p-line pt-1 mt-1">
-                  <span className="text-p-ink2 text-xs font-bold">Neto a recibir</span>
-                  <span className="font-bold text-p-green text-lg">{moneyARS(neto)}</span>
-                </div>
-              </div>
-            )
-          })()}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="N° Lote / Cupón">
-              <Input value={formAcred.lote} onChange={e=>setFormAcred(p=>({...p,lote:e.target.value}))} placeholder="001234"/>
-            </Field>
-            <Field label="Fecha acreditación estimada">
-              <Input type="date" value={formAcred.fecha_acred} onChange={e=>setFormAcred(p=>({...p,fecha_acred:e.target.value}))}/>
-            </Field>
-          </div>
-          <Field label="Notas">
-            <Input value={formAcred.notas} onChange={e=>setFormAcred(p=>({...p,notas:e.target.value}))} placeholder="Observaciones…"/>
-          </Field>
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={()=>setOpenAcred(false)} style={btnGray}>Cancelar</button>
-            <button onClick={saveAcred} disabled={!formAcred.terminal_id||!formAcred.fecha_cobro||!formAcred.monto_bruto}
-              style={{...btn,opacity:(!formAcred.terminal_id||!formAcred.fecha_cobro||!formAcred.monto_bruto)?.5:1}}>
-              ✓ Registrar
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Modal terminal */}
       <Modal open={openTerm} onClose={()=>setOpenTerm(false)} title={editTerm?'Editar terminal':'Nueva terminal'}>
@@ -437,9 +318,8 @@ export default function TarjetasClient() {
                     <thead><tr className="bg-p-light">
                       <th className="text-left px-3 py-2 font-bold text-p-ink2">Tipo</th>
                       <th className="text-center px-3 py-2 font-bold text-p-ink2">Cuotas</th>
-                      <th className="text-center px-3 py-2 font-bold text-p-ink2 text-amber-600">Recargo</th>
-                      <th className="text-center px-3 py-2 font-bold text-p-ink2 text-red-500">Retención</th>
-                      <th className="text-center px-3 py-2 font-bold text-p-ink2">Días</th>
+                      <th className="text-center px-3 py-2 font-bold text-amber-600">Recargo</th>
+                      <th className="text-center px-3 py-2 font-bold text-red-500">Retención</th>
                     </tr></thead>
                     <tbody>
                       {cfgs.sort((a,b)=>a.cuotas-b.cuotas).map(c=>(
@@ -448,7 +328,6 @@ export default function TarjetasClient() {
                           <td className="px-3 py-1.5 text-center font-bold">{c.cuotas}c</td>
                           <td className="px-3 py-1.5 text-center font-bold text-amber-600">{c.recargo_pct>0?`+${c.recargo_pct}%`:'—'}</td>
                           <td className="px-3 py-1.5 text-center font-bold text-red-500">{c.retencion_pct}%</td>
-                          <td className="px-3 py-1.5 text-center text-p-ink2">{c.dias_acreditacion}d</td>
                         </tr>
                       ))}
                     </tbody>
