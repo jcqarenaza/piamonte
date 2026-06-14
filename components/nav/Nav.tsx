@@ -13,6 +13,7 @@ const GRUPOS = [
       { id:'proveedores-compra',href:'/proveedores-compra',label:'Proveedores',  icon:'🏢' },
       { id:'articulos',         href:'/articulos',         label:'Artículos',    icon:'🏷️' },
       { id:'equivalencias',     href:'/equivalencias',     label:'Equivalencias',icon:'🔗' },
+      { id:'depositos',        href:'/depositos',        label:'Depósitos',    icon:'🏭' },
     ]
   },
   {
@@ -140,7 +141,7 @@ export default function Nav({ rol }: { rol?: string }) {
     items: g.items.filter(m => {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
     if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
-    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad'].includes(m.id)) return false
+    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos'].includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)
