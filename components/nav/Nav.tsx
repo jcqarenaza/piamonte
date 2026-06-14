@@ -26,7 +26,8 @@ const GRUPOS = [
       { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
       { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
       { id:'adas',            href:'/adas',            label:'Cert. ADAS',      icon:'🛡️' },
-      { id:'cuenta-corriente', href:'/cuenta-corriente', label:'Cta. Corriente',  icon:'📒' },
+      { id:'cuenta-corriente',       href:'/cuenta-corriente',       label:'Cta. Corriente',  icon:'📒' },
+      { id:'busqueda-comprobantes',   href:'/busqueda-comprobantes',   label:'Búsqueda',        icon:'🔎' },
     ]
   },
   {
@@ -143,7 +144,7 @@ export default function Nav({ rol }: { rol?: string }) {
     items: g.items.filter(m => {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
     if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
-    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos'].includes(m.id)) return false
+    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)

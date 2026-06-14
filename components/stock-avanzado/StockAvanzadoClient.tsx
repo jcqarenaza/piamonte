@@ -109,6 +109,15 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
     (i.codigo||'').toLowerCase().includes(q.toLowerCase())
   )
 
+  // Al buscar por código exacto → ir directo a movimientos
+  function handleSearch(val: string) {
+    setQ(val)
+    const exacto = items.find(i =>
+      i.codigo?.toLowerCase() === val.toLowerCase().trim()
+    )
+    if (exacto) { setSel(exacto); setTab('movimientos') }
+  }
+
   const movFiltrados = movimientos.filter(m=>!filtroTipo||m.tipo===filtroTipo)
 
   const tabStyle = (t:string) => ({
@@ -153,8 +162,8 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
       {tab === 'inventario' && (
         <>
           <div className="flex gap-3 mb-4 flex-wrap">
-            <input value={q} onChange={e=>setQ(e.target.value)}
-              placeholder="Buscar por descripción o código…"
+            <input value={q} onChange={e=>handleSearch(e.target.value)}
+              placeholder="Descripción o código de barras… (código exacto → ver movimientos)"
               className="flex-1 min-w-[180px] border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white shadow-sm"/>
             {isAdmin && <button onClick={()=>setOpen(true)} style={btn}>+ Registrar movimiento</button>}
           </div>
