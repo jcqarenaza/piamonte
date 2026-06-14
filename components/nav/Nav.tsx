@@ -93,9 +93,14 @@ const C = {
   content:    '#F9FAFB',
 }
 
+const MODULOS_FASE2 = ['proveedores-compra','compras','articulos','depositos',
+  'remitos-internos','arqueo','tarjetas','rentabilidades-avanzadas',
+  'cuenta-corriente','busqueda-comprobantes']
+const MODULOS_FASE3 = ['contabilidad']
+
 type Module = typeof ALL_MODULES[0]
 
-export default function Nav({ rol }: { rol?: string }) {
+export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
@@ -145,6 +150,8 @@ export default function Nav({ rol }: { rol?: string }) {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
     if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
     if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
+    if (fase < 2 && MODULOS_FASE2.includes(m.id)) return false
+    if (fase < 3 && MODULOS_FASE3.includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)

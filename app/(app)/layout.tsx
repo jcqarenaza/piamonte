@@ -9,10 +9,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle()
+  const { data: config } = await supabase.from('config_sistema').select('fase_habilitada').eq('id', 1).maybeSingle()
+  const fase = config?.fase_habilitada ?? 1
   return (
     <div style={{ minHeight:'100vh', background:'#F9FAFB' }}>
       <style>{`@media (min-width: 1024px) { #mc { margin-left: 210px; } }`}</style>
-      <Nav rol={perfil?.rol} />
+      <Nav rol={perfil?.rol} fase={fase} />
       <div id="mc">
         <DolarBar />
         <main className="px-4 lg:px-8 py-6" style={{ paddingBottom:80 }}>
