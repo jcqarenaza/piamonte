@@ -65,6 +65,8 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   const [uploading, setUploading] = useState(false)
   const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
+  const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
+  const [pagoTarjConfig, setPagoTarjConfig] = useState('')  // config_id seleccionado para tarjeta
   const [obs, setObs]           = useState('')
 
   // Búsqueda de stock
@@ -84,6 +86,7 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
 
   useEffect(() => {
     supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
+    supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
   },[supabase])
 

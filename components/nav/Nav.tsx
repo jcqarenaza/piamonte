@@ -50,6 +50,7 @@ const GRUPOS = [
       { id:'rentabilidades-avanzadas', href:'/rentabilidades-avanzadas', label:'Rentabilidades', icon:'💹' },
       { id:'tarjetas',               href:'/tarjetas',               label:'Tarjetas/Banco', icon:'💳' },
       { id:'usuarios',      href:'/usuarios',      label:'Usuarios',      icon:'👤' },
+      { id:'contabilidad',  href:'/contabilidad',  label:'Contabilidad',  icon:'📒' },
       { id:'auditoria',    href:'/auditoria',    label:'Auditoría',     icon:'🛡️' },
       { id:'proveedores-compra', href:'/proveedores-compra', label:'Proveedores', icon:'🏢' },
       { id:'compras',       href:'/compras',       label:'Compras',       icon:'🛒' },
@@ -128,7 +129,7 @@ export default function Nav({ rol }: { rol?: string }) {
     items: g.items.filter(m => {
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
     if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
-    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas'].includes(m.id)) return false
+    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad'].includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)

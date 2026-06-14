@@ -31,6 +31,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [rubros, setRubros]   = useState<RubroPrecio[]>([])
   const [open, setOpen]       = useState(false)
   const [editId, setEditId]   = useState<string|null>(null)
+  const [tarjConfigs, setTarjConfigs] = useState<any[]>([])
   const [histCli, setHistCli] = useState<any[]>([])
   const [ivaOn, setIvaOn]     = useState(true)
   const [cotiz, setCotiz]     = useState<{blue:number;mep:number}|null>(null)
@@ -296,6 +297,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const texto = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte. Total: ${moneyARS(p.total)}. Válido hasta el ${p.vencimiento.split('-').reverse().join('/')}.`
     setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`,'_blank'),800)
   }
+
+  const moneyStr = (n:number) => '$' + Math.round(n).toLocaleString('es-AR')
 
   async function descargarPDF(p: Presupuesto) {
     const blob = await generarPDF(p)

@@ -155,7 +155,7 @@ export default function TarjetasClient() {
       <div className="flex border-b border-p-line mb-4">
         <button style={tabStyle('acreditaciones')} onClick={()=>setTab('acreditaciones')}>💳 Acreditaciones</button>
         <button style={tabStyle('terminales')} onClick={()=>setTab('terminales')}>⚙ Terminales</button>
-        <button style={tabStyle('config')} onClick={()=>setTab('config')}>📋 Config cuotas</button>
+
       </div>
 
       {/* Tab Acreditaciones */}
@@ -240,9 +240,14 @@ export default function TarjetasClient() {
                     setOpenTerm(true)
                   }} style={btnGray}>✏</button>
                 </div>
-                <div className="flex gap-4 mt-3 text-xs">
-                  <div><span className="text-p-ink2">Descuento</span><p className="font-bold text-red-500">{t.descuento_pct}%</p></div>
-                  <div><span className="text-p-ink2">Acreditación</span><p className="font-bold">{t.dias_acreditacion} días hábiles</p></div>
+                <div className="flex gap-4 mt-2 flex-wrap text-xs">
+                  {configs.filter(c=>c.banco===t.banco&&c.red===t.red).sort((a,b)=>a.cuotas-b.cuotas).map(c=>(
+                    <div key={c.id} className="bg-p-light rounded-lg px-2 py-1 text-center">
+                      <p className="font-bold text-p-dark">{c.cuotas}c</p>
+                      {c.recargo_pct>0&&<p className="text-amber-600 font-bold text-[10px]">+{c.recargo_pct}%</p>}
+                      <p className="text-red-400 text-[9px]">ret.{c.retencion_pct}%</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -420,6 +425,38 @@ export default function TarjetasClient() {
             <Field label="Descuento %"><Input value={formTerm.descuento_pct} onChange={e=>setFormTerm(p=>({...p,descuento_pct:e.target.value}))} placeholder="2.35"/></Field>
             <Field label="Días acred."><Input type="number" value={formTerm.dias_acreditacion} onChange={e=>setFormTerm(p=>({...p,dias_acreditacion:e.target.value}))} placeholder="2"/></Field>
           </div>
+          {/* Cuotas de esta red */}
+          {editTerm && (()=>{
+            const cfgs = configs.filter(c=>c.banco===editTerm.banco&&c.red===editTerm.red)
+            if(!cfgs.length) return null
+            return (
+              <div className="border-t border-p-line pt-3">
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Configuración de cuotas</p>
+                <div className="overflow-x-auto rounded-lg border border-p-line">
+                  <table className="w-full text-xs">
+                    <thead><tr className="bg-p-light">
+                      <th className="text-left px-3 py-2 font-bold text-p-ink2">Tipo</th>
+                      <th className="text-center px-3 py-2 font-bold text-p-ink2">Cuotas</th>
+                      <th className="text-center px-3 py-2 font-bold text-p-ink2 text-amber-600">Recargo</th>
+                      <th className="text-center px-3 py-2 font-bold text-p-ink2 text-red-500">Retención</th>
+                      <th className="text-center px-3 py-2 font-bold text-p-ink2">Días</th>
+                    </tr></thead>
+                    <tbody>
+                      {cfgs.sort((a,b)=>a.cuotas-b.cuotas).map(c=>(
+                        <tr key={c.id} className="border-t border-p-line2">
+                          <td className="px-3 py-1.5">{c.tipo}</td>
+                          <td className="px-3 py-1.5 text-center font-bold">{c.cuotas}c</td>
+                          <td className="px-3 py-1.5 text-center font-bold text-amber-600">{c.recargo_pct>0?`+${c.recargo_pct}%`:'—'}</td>
+                          <td className="px-3 py-1.5 text-center font-bold text-red-500">{c.retencion_pct}%</td>
+                          <td className="px-3 py-1.5 text-center text-p-ink2">{c.dias_acreditacion}d</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })()}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpenTerm(false)} style={btnGray}>Cancelar</button>
             <button onClick={saveTerm} disabled={!formTerm.nombre} style={{...btn,opacity:!formTerm.nombre?.5:1}}>Guardar</button>
