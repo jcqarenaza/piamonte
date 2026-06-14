@@ -56,7 +56,7 @@ export default function LoginPage() {
           </div>
           {error && <p className="text-sm text-red-600 text-center">{error}</p>}
           <button type="submit" disabled={loading}
-            className="w-full bg-p-green hover:bg-p-dark text-white font-saira font-bold text-base py-3 rounded-lg transition-colors disabled:opacity-60">
+            style={{background: loading?'#5CBF2A':'#00A550', color:'#fff', width:'100%', border:'none', borderRadius:8, padding:'12px', fontWeight:700, fontSize:16, cursor:loading?'not-allowed':'pointer', opacity:loading?.7:1, fontFamily:'var(--font-saira)'}}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
