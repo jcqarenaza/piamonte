@@ -7,7 +7,11 @@
 
 * { box-sizing: border-box; }
 
-body { font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); }
+body {
+  font-family: var(--font-sans, 'IBM Plex Sans', sans-serif);
+  color: #111827;
+  background: #F9FAFB;
+}
 
 .font-saira { font-family: var(--font-saira); }
 .font-mono  { font-family: var(--font-mono); }
@@ -15,3 +19,41 @@ body { font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); }
 /* Scroll suave sin scrollbar */
 .scroll-x { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .scroll-x::-webkit-scrollbar { display: none; }
+
+/* ── Tablas más limpias — headers claros en lugar de verde oscuro ─────────── */
+table thead tr {
+  background: #F8FAFC !important;
+}
+table thead th {
+  color: #374151 !important;
+  font-weight: 600 !important;
+  border-bottom: 2px solid #E5E7EB !important;
+}
+
+/* ── Cards más suaves ────────────────────────────────────────────────────────── */
+.bg-white {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+/* ── Bordes más neutros ─────────────────────────────────────────────────────── */
+.border-p-line { border-color: #E5E7EB !important; }
+.border-p-line2 { border-color: #F3F4F6 !important; }
+
+/* ── Tipografía más liviana en labels ────────────────────────────────────────── */
+.text-p-ink2 { color: #6B7280 !important; }
+.text-p-ink  { color: #111827 !important; }
+
+/* ── Inputs más limpios ─────────────────────────────────────────────────────── */
+input, select, textarea {
+  font-size: 14px;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #00A550 !important;
+  box-shadow: 0 0 0 3px rgba(0,165,80,0.1) !important;
+}
+
+/* ── Badge / Tag más suave ──────────────────────────────────────────────────── */
+.rounded-full {
+  font-size: 11px;
+}

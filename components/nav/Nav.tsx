@@ -89,7 +89,7 @@ const C = {
   activeBorder:'#00A550',
   logo:       '#00A550',
   userBg:     '#F9FAFB',
-  content:    '#F5F0E8',  // fondo crema del contenido
+  content:    '#F9FAFB',
 }
 
 type Module = typeof ALL_MODULES[0]

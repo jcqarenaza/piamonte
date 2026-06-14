@@ -10,7 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect('/login')
   const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle()
   return (
-    <div style={{ minHeight:'100vh', background:'#F5F0E8' }}>
+    <div style={{ minHeight:'100vh', background:'#F9FAFB' }}>
       <style>{`@media (min-width: 1024px) { #mc { margin-left: 210px; } }`}</style>
       <Nav rol={perfil?.rol} />
       <div id="mc">
