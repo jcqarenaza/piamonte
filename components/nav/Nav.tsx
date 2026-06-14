@@ -7,54 +7,65 @@ import { createClient } from '@/lib/supabase/client'
 // ── Grupos de módulos ─────────────────────────────────────────────────────────
 const GRUPOS = [
   {
-    label: 'OPERACIÓN',
+    label: 'ARCHIVOS',
     items: [
-      { id:'inicio',       href:'/inicio',       label:'Inicio',        icon:'🏠' },
-      { id:'turnos',       href:'/turnos',       label:'Turnos',        icon:'📅' },
-      { id:'caja',         href:'/caja',         label:'Caja del día',  icon:'💰' },
-      { id:'clientes',     href:'/clientes',     label:'Clientes',      icon:'👥' },
+      { id:'clientes',          href:'/clientes',          label:'Clientes',     icon:'👥' },
+      { id:'proveedores-compra',href:'/proveedores-compra',label:'Proveedores',  icon:'🏢' },
+      { id:'articulos',         href:'/articulos',         label:'Artículos',    icon:'🏷️' },
+      { id:'equivalencias',     href:'/equivalencias',     label:'Equivalencias',icon:'🔗' },
     ]
   },
   {
-    label: 'DOCUMENTOS',
+    label: 'VENTAS',
     items: [
+      { id:'inicio',       href:'/inicio',       label:'Inicio',        icon:'🏠' },
+      { id:'turnos',       href:'/turnos',       label:'Turnos',        icon:'📅' },
+      { id:'precios',      href:'/precios',      label:'Precios',       icon:'💰' },
       { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
-      { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
       { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
+      { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
       { id:'adas',         href:'/adas',         label:'Cert. ADAS',    icon:'🛡️' },
     ]
   },
   {
-    label: 'CATÁLOGO',
+    label: 'COMPRAS',
     items: [
-      { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
-      { id:'precios',      href:'/precios',      label:'Precios',       icon:'💰' },
-      { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
-      { id:'equivalencias', href:'/equivalencias', label:'Equivalencias',  icon:'🔗' },
-      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
-    ]
-  },
-  {
-    label: 'INVENTARIO',
-    items: [
-      { id:'stock',        href:'/stock',        label:'Mi stock',      icon:'📦' },
-      { id:'ofertas',      href:'/ofertas',      label:'Ofertas',       icon:'📄' },
-    ]
-  },
-  {
-    label: 'ADMINISTRACIÓN',
-    items: [
-      { id:'articulos',    href:'/articulos',    label:'Artículos',     icon:'🏷️' },
+      { id:'compras',      href:'/compras',      label:'Compras',       icon:'🛒' },
       { id:'proveedores',  href:'/proveedores',  label:'Listas',        icon:'📋' },
-      { id:'informes',              href:'/informes',              label:'Informes',       icon:'📊' },
-      { id:'rentabilidades-avanzadas', href:'/rentabilidades-avanzadas', label:'Rentabilidades', icon:'💹' },
-      { id:'tarjetas',               href:'/tarjetas',               label:'Tarjetas/Banco', icon:'💳' },
-      { id:'usuarios',      href:'/usuarios',      label:'Usuarios',      icon:'👤' },
-      { id:'contabilidad',  href:'/contabilidad',  label:'Contabilidad',  icon:'📒' },
+      { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
+      { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
+      { id:'ofertas',      href:'/ofertas',      label:'Ofertas',       icon:'⭐' },
+    ]
+  },
+  {
+    label: 'STOCK',
+    items: [
+      { id:'stock',        href:'/stock',        label:'Stock',         icon:'📦' },
+    ]
+  },
+  {
+    label: 'INFORMES',
+    items: [
+      { id:'informes',               href:'/informes',               label:'Informes',       icon:'📊' },
+      { id:'rentabilidades-avanzadas',href:'/rentabilidades-avanzadas',label:'Rentabilidades',icon:'💹' },
+    ]
+  },
+  {
+    label: 'CONTABILIDAD',
+    items: [
+      { id:'caja',         href:'/caja',         label:'Caja',          icon:'💵' },
+      { id:'arqueo',       href:'/arqueo',       label:'Arqueo',        icon:'🔒' },
+      { id:'tarjetas',     href:'/tarjetas',     label:'Tarjetas',      icon:'💳' },
+      { id:'contabilidad', href:'/contabilidad', label:'Contabilidad',  icon:'📒' },
+    ]
+  },
+  {
+    label: 'CONFIGURACIÓN',
+    items: [
+      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
+      { id:'usuarios',     href:'/usuarios',     label:'Usuarios',      icon:'👤' },
       { id:'auditoria',    href:'/auditoria',    label:'Auditoría',     icon:'🛡️' },
-      { id:'proveedores-compra', href:'/proveedores-compra', label:'Proveedores', icon:'🏢' },
-      { id:'compras',       href:'/compras',       label:'Compras',       icon:'🛒' },
-      { id:'configuracion', href:'/configuracion', label:'Configuración', icon:'⚙️' },
+      { id:'configuracion',href:'/configuracion',label:'Configuración', icon:'⚙️' },
     ]
   },
 ]
