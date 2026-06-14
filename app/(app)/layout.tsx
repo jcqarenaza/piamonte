@@ -1,26 +1,24 @@
-import type { Metadata } from 'next'
-import { Saira, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
-import './globals.css'
+export const dynamic = 'force-dynamic'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import Nav from '@/components/nav/Nav'
+import { DolarBar } from '@/components/dolar/DolarBar'
 
-const saira = Saira({ subsets: ['latin'], weight: ['500','600','700','800'], variable: '--font-saira' })
-const ibmSans = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400','500','600'], variable: '--font-sans' })
-const ibmMono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['500','600'], variable: '--font-mono' })
-
-export const metadata: Metadata = {
-  title: 'Gestión · El Piamonte',
-  description: 'Sistema de gestión — Parabrisas El Piamonte',
-  icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
-  },
-}
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+  const { data: perfil } = await supabase.from('perfiles').select('rol,nombre').eq('id', user.id).maybeSingle()
   return (
-    <html lang="es">
-      <body className={`${saira.variable} ${ibmSans.variable} ${ibmMono.variable} bg-p-paper text-p-ink antialiased`}>
-        {children}
-      </body>
-    </html>
+    <div style={{ minHeight:'100vh', background:'#F5F0E8' }}>
+      <style>{`@media (min-width: 1024px) { #mc { margin-left: 210px; } }`}</style>
+      <Nav rol={perfil?.rol} />
+      <div id="mc">
+        <DolarBar />
+        <main className="px-4 lg:px-8 py-6" style={{ paddingBottom:80 }}>
+          {children}
+        </main>
+      </div>
+    </div>
   )
 }

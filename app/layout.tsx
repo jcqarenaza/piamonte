@@ -9,6 +9,10 @@ const ibmMono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['500','600'], varia
 export const metadata: Metadata = {
   title: 'Gestión · El Piamonte',
   description: 'Sistema de gestión — Parabrisas El Piamonte',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
