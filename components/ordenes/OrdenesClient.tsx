@@ -296,15 +296,47 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     const a = document.createElement('a'); a.href=url; a.download=`${nombre}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
+  // Aseguradoras únicas presentes en las órdenes
+  const aseguradorasEnUso = Array.from(new Set(ordenes.map(o => o.aseguradora).filter(Boolean))) as string[]
+
+  // Órdenes filtradas
+  const ordenesFiltradas = filtroAseg === ''
+    ? ordenes
+    : filtroAseg === '__sin__'
+      ? ordenes.filter(o => !o.aseguradora)
+      : ordenes.filter(o => o.aseguradora === filtroAseg)
+
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
+        {/* Filtro por compañía */}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <button
+            onClick={()=>setFiltroAseg('')}
+            style={{...btnSm, background: filtroAseg==='' ? '#00A550' : '#e5e7eb', color: filtroAseg==='' ? '#fff' : '#374151'}}>
+            Todas
+          </button>
+          {aseguradorasEnUso.map(a=>(
+            <button key={a}
+              onClick={()=>setFiltroAseg(filtroAseg===a ? '' : a)}
+              style={{...btnSm, background: filtroAseg===a ? '#00A550' : '#e5e7eb', color: filtroAseg===a ? '#fff' : '#374151'}}>
+              {a}
+            </button>
+          ))}
+          {ordenes.some(o=>!o.aseguradora) && (
+            <button
+              onClick={()=>setFiltroAseg('__sin__')}
+              style={{...btnSm, background: filtroAseg==='__sin__' ? '#6b7280' : '#e5e7eb', color: filtroAseg==='__sin__' ? '#fff' : '#374151'}}>
+              Sin seguro
+            </button>
+          )}
+        </div>
         <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>
       </div>
 
-      {ordenes.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
+      {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
-          {ordenes.map(o => {
+          {ordenesFiltradas.map(o => {
             const conADAS = (o as any).tiene_adas
             const numADAS = (o as any).numero_adas
             const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
