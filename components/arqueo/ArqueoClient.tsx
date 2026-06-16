@@ -6,7 +6,7 @@ import { moneyARS } from '@/lib/utils/format'
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 
-export default function ArqueoClient() {
+export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: boolean }) {
   const [fecha, setFecha]         = useState(new Date().toISOString().slice(0,10))
   const [arqueo, setArqueo]       = useState<any|null>(null)
   const [loading, setLoading]     = useState(false)
@@ -219,28 +219,44 @@ export default function ArqueoClient() {
                 </div>
               </div>
 
-              {/* ── NEGRO ── */}
+              {/* ── NEGRO / AJUSTES ── */}
               <div className="border-t border-p-line pt-4">
-                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span className="bg-gray-800 text-white px-2 py-0.5 rounded-full">⚫ EN NEGRO</span>
-                  <span>Movimientos en efectivo</span>
-                </p>
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
-                    <span className="text-sm text-p-ink">💰 Ventas negro</span>
-                    <span className="font-mono font-bold text-green-600">{moneyARS(arqueo.negroVentas)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
-                    <span className="text-sm text-p-ink">🛒 Compras negro</span>
-                    <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.negroCompras)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="font-bold text-p-dark text-sm">NETO NEGRO</span>
-                    <span className={`font-mono font-bold ${arqueo.negroNeto >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {moneyARS(arqueo.negroNeto)}
-                    </span>
-                  </div>
-                </div>
+                {esPiamonte ? (
+                  <>
+                    <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <span className="bg-gray-800 text-white px-2 py-0.5 rounded-full">⚫ EN NEGRO</span>
+                      <span>Movimientos en efectivo</span>
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
+                        <span className="text-sm text-p-ink">💰 Ventas negro</span>
+                        <span className="font-mono font-bold text-green-600">{moneyARS(arqueo.negroVentas)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
+                        <span className="text-sm text-p-ink">🛒 Compras negro</span>
+                        <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.negroCompras)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="font-bold text-p-dark text-sm">NETO NEGRO</span>
+                        <span className={`font-mono font-bold ${arqueo.negroNeto >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {moneyARS(arqueo.negroNeto)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3">
+                      🔧 Ajustes de caja
+                    </p>
+                    <div className="flex justify-between items-center py-1.5">
+                      <span className="text-sm text-p-ink">Movimientos varios</span>
+                      <span className={`font-mono font-bold ${arqueo.negroNeto >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {moneyARS(arqueo.negroNeto)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* ── TOTAL GENERAL ── */}
