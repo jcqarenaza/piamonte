@@ -147,11 +147,17 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
   const visibleGrupos = GRUPOS.map(g => ({
     ...g,
     items: g.items.filter(m => {
+      // Rol caja: solo ve Proveedores y Caja
+      if (rol === 'caja' && !['proveedores-compra','caja'].includes(m.id)) return false
+      // Rol ventas: ocultar algunos módulos
       if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
-    if (rol !== 'gerencial' && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
-    if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
-    if (fase < 2 && MODULOS_FASE2.includes(m.id)) return false
-    if (fase < 3 && MODULOS_FASE3.includes(m.id)) return false
+      if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
+      // Configuración solo gerencial/admin
+      if (!['gerencial','admin'].includes(rol ?? '') && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
+      // Arqueo solo gerencial/admin
+      if (!['gerencial','admin'].includes(rol ?? '') && m.id === 'arqueo') return false
+      if (fase < 2 && MODULOS_FASE2.includes(m.id)) return false
+      if (fase < 3 && MODULOS_FASE3.includes(m.id)) return false
       return true
     })
   })).filter(g => g.items.length > 0)

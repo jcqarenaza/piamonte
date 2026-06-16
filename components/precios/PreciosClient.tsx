@@ -17,8 +17,18 @@ const PROV_COLOR: Record<string, string> = {
 const TIPO_ORDER = ['Particular', 'Compañías', 'Chapista']
 const TIPO_ICON: Record<string, string> = { Particular: '👤', Compañías: '🏢', Chapista: '🔧' }
 
+const IVA_RATE = 0.21
+// Tipos que ven precio con IVA discriminado
+const TIPOS_CON_IVA_DISCRIMINADO = ['Compañías', 'Chapista']
+
 function precioVenta(costo: number, margen: number) {
   return Math.round(costo * (1 + margen))  // margen_pct viene como decimal: 0.45 = 45%
+}
+function precioSinIva(precio: number) {
+  return Math.round(precio / (1 + IVA_RATE))
+}
+function ivaMonto(precio: number) {
+  return precio - precioSinIva(precio)
 }
 
 export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
@@ -180,6 +190,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                                   <p className={`font-saira font-bold text-xl mt-0.5 ${isBest ? 'text-p-green' : 'text-p-ink'}`}>
                                     {moneyARS(precio)}
                                   </p>
+                                  {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && (
+                                    <div className="mt-0.5 text-[10px] text-p-ink2 leading-tight">
+                                      <span>Neto: <span className="font-mono font-semibold">{moneyARS(precioSinIva(precio))}</span></span>
+                                      <span className="mx-1">·</span>
+                                      <span>IVA 21%: <span className="font-mono font-semibold">{moneyARS(ivaMonto(precio))}</span></span>
+                                    </div>
+                                  )}
                                 </div>
                                 <button onClick={() => irAPresupuesto(pieza, tipo)}
                                   style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
