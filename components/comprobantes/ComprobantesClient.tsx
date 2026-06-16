@@ -8,6 +8,12 @@ import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
 
 const IVA = 0.21
+const IVA_NEGRO_OPTS = [
+  { label: '75% del total declarado', pct: 75 },
+  { label: '50% del total declarado', pct: 50 },
+  { label: '25% del total declarado', pct: 25 },
+  { label: 'Sin IVA declarado',       pct: 0  },
+]
 const btn      = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm    = { ...btn,padding:'6px 14px',fontSize:13 } as const
 const btnGray  = { ...btnSm,background:'#6b7280' } as const
@@ -37,7 +43,7 @@ interface Comprobante {
   presupuesto_id:string|null; orden_id:string|null; created_at:string
 }
 
-export default function ComprobantesClient({ userId }: { userId:string }) {
+export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
   const [comps, setComps]     = useState<Comprobante[]>([])
   const [open, setOpen]       = useState(false)
   const [tipos, setTipos]     = useState<TipoCliente[]>([])
@@ -51,6 +57,7 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   const [cliSel, setCli]        = useState<ClienteMin|null>(null)
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaOn, setIvaOn]       = useState(false)
+  const [ivaNegroP, setIvaNegroP] = useState(75) // % del total que se declara como base imponible
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
@@ -78,8 +85,12 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
   },[stockQ,supabase])
 
   // Totales
+  const esNegro = rol === 'caja'
   const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
-  const iva   = ivaOn ? Math.round(neto*IVA) : 0
+  // En negro: el IVA se calcula sobre el % declarado del total
+  const iva   = esNegro
+    ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA) : 0)
+    : (ivaOn ? Math.round(neto*IVA) : 0)
   const total = neto + iva
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
@@ -177,6 +188,8 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
       presupuesto_id: pid||null,
       orden_id: oid||null,
       items, neto, iva_pct:IVA, iva, total,
+      es_negro: esNegro,
+      iva_negro_pct: esNegro ? ivaNegroP : null,
       pagos: pagos.filter(p=>p.monto),
       observaciones: obs||null,
       user_id: userId,
@@ -420,6 +433,7 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
                     <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
                       {c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X'}-{String(c.numero||0).padStart(8,'0')}
                     </span>
+                    {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
                     <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||'Consumidor Final'}</p>
                     {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
                     {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
@@ -590,12 +604,25 @@ export default function ComprobantesClient({ userId }: { userId:string }) {
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
                 </div>
               ))}
-              <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Incluir IVA 21%
-              </label>
+              {esNegro ? (
+                <div className="mt-2">
+                  <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">IVA a declarar</label>
+                  <select value={ivaNegroP} onChange={e=>setIvaNegroP(+e.target.value)}
+                    style={{width:'100%',border:'1.5px solid #C2DDD0',borderRadius:10,padding:'9px 12px',fontSize:13,color:'#0C1810',background:'#fff',outline:'none'}}>
+                    {IVA_NEGRO_OPTS.map(o=><option key={o.pct} value={o.pct}>{o.label}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Incluir IVA 21%
+                </label>
+              )}
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
-                {ivaOn&&<div className="flex justify-between text-p-ink2"><span>Subtotal</span><span className="font-mono">{moneyARS(neto)}</span></div>}
-                {ivaOn&&<div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
+                {(ivaOn||esNegro)&&<div className="flex justify-between text-p-ink2"><span>Subtotal neto</span><span className="font-mono">{moneyARS(neto)}</span></div>}
+                {iva>0&&<div className="flex justify-between text-p-ink2">
+                  <span>{esNegro?`IVA 21% (sobre ${ivaNegroP}% declarado)`:'IVA 21%'}</span>
+                  <span className="font-mono">{moneyARS(iva)}</span>
+                </div>}
                 <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
               </div>
             </div>

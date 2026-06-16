@@ -12,8 +12,9 @@ const ROLES = [
   { id:'gerencial', label:'Gerencial — acceso total' },
   { id:'admin',     label:'Administrador — operación completa' },
   { id:'ventas',    label:'Ventas — sin ver costos ni proveedores' },
+  { id:'caja',      label:'Caja — ventas y compras en efectivo' },
 ]
-const ROL_COLOR: Record<string,string> = { gerencial:'#7c3aed', admin:'#2563eb', ventas:'#059669' }
+const ROL_COLOR: Record<string,string> = { gerencial:'#7c3aed', admin:'#2563eb', ventas:'#059669', caja:'#d97706' }
 
 interface Usuario { id:string; nombre:string; rol:string; email?:string }
 

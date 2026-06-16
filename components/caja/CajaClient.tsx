@@ -18,7 +18,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
   const supabase = createClient()
   const [blueRate, setBlueRate] = useState<number|null>(null)
-  const isAdmin = perfil.rol !== 'ventas'
+  const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
 
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cliente: '', comprobante: '',
