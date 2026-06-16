@@ -94,7 +94,7 @@ const C = {
 }
 
 const MODULOS_FASE2 = ['proveedores-compra','compras','articulos','depositos',
-  'remitos-internos','arqueo','tarjetas','rentabilidades-avanzadas',
+  'remitos-internos','tarjetas','rentabilidades-avanzadas',
   'cuenta-corriente','busqueda-comprobantes']
 const MODULOS_FASE3 = ['contabilidad']
 
