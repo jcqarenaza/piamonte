@@ -667,40 +667,45 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       )}
 
       <Modal open={open} onClose={()=>setOpen(false)} title="">
-        <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
+        <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto overflow-x-hidden">
 
           {/* Header estilo factura */}
-          <div style={{margin:'-16px -16px 8px',background:'#00A550',padding:'14px 20px',borderRadius:'12px 12px 0 0'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
-              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
-                {/* Logo */}
-                <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="logo"
-                  style={{width:48,height:48,objectFit:'contain',borderRadius:6,background:'rgba(255,255,255,.15)',padding:4,flexShrink:0}}
-                  onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
+          <div style={{margin:'-16px -16px 12px',background:'#00A550',padding:'16px 20px',borderRadius:'12px 12px 0 0'}}>
+            {/* Fila superior: nombre fantasía + número */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:40,height:40,background:'rgba(255,255,255,.2)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <img src={`data:image/png;base64,${LOGO_BASE64}`} alt=""
+                    style={{width:32,height:32,objectFit:'contain'}}
+                    onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
+                </div>
                 <div>
-                  <p style={{color:'#fff',fontSize:15,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)',marginBottom:1}}>
-                    PARABRISAS EL PIAMONTE
+                  <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)',lineHeight:1.1}}>
+                    Parabrisas El Piamonte
                   </p>
-                  <p style={{color:'rgba(255,255,255,.75)',fontSize:10,marginBottom:4}}>
-                    KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4 · Resp. Inscripto IVA
-                  </p>
-                  <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)'}}>
-                    {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
-                  </p>
-                  <p style={{color:'rgba(255,255,255,.7)',fontSize:11,marginTop:2}}>
-                    Punto de venta: <strong style={{color:'#fff'}}>00006</strong>
+                  <p style={{color:'rgba(255,255,255,.7)',fontSize:10,marginTop:2}}>
+                    KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4
                   </p>
                 </div>
               </div>
-              <div style={{textAlign:'right',flexShrink:0}}>
-                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>N° Comprobante</p>
-                <p style={{color:'#fff',fontSize:20,fontWeight:800,fontFamily:'monospace'}}>
+              <div style={{textAlign:'right'}}>
+                <p style={{color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:1}}>N° Comprobante</p>
+                <p style={{color:'#fff',fontSize:18,fontWeight:800,fontFamily:'monospace',lineHeight:1.2}}>
                   {nextNum ? String(nextNum).padStart(8,'0') : '--------'}
                 </p>
-                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,marginTop:2}}>
+                <p style={{color:'rgba(255,255,255,.6)',fontSize:10}}>
                   {new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}
                 </p>
               </div>
+            </div>
+            {/* Fila inferior: tipo de factura + punto de venta */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid rgba(255,255,255,.2)',paddingTop:8}}>
+              <p style={{color:'#fff',fontSize:18,fontWeight:900,fontFamily:'var(--font-saira,sans-serif)',letterSpacing:1}}>
+                {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
+              </p>
+              <p style={{color:'rgba(255,255,255,.8)',fontSize:11}}>
+                Punto de venta <strong style={{color:'#fff'}}>00006</strong> · Resp. Inscripto IVA
+              </p>
             </div>
           </div>
 
