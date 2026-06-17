@@ -241,6 +241,25 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       user_id: userId,
     }).select().single()
 
+    // Si algún pago es cuenta corriente, registrar movimiento en CC
+    const pagosCC = pagos.filter(p => p.metodo === 'Cuenta corriente' && parseFloat(p.monto.replace(/[^0-9.]/g,'')) > 0)
+    if (pagosCC.length > 0 && comp) {
+      const nombreCliente = cliSel?.nombre || cliQ
+      const montCC = pagosCC.reduce((a,p) => a + (parseFloat(p.monto.replace(/[^0-9.]/g,'')) || 0), 0)
+      await supabase.from('cuenta_corriente').insert({
+        cliente_id: cliSel?.id || null,
+        cliente_nombre: nombreCliente,
+        fecha: todayStr(),
+        tipo: 'comprobante',
+        descripcion: `Comprobante N°${nextNum}`,
+        debe: montCC,
+        haber: 0,
+        comprobante_id: (comp as any).id,
+        notas: null,
+        user_id: userId,
+      })
+    }
+
     // Descontar stock para items vinculados
     for(const it of items){
       if(it.stock_id && it.c > 0){

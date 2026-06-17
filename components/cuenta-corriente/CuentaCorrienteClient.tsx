@@ -8,7 +8,7 @@ const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
 
-interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number }
+interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number; plazo_cc_dias?:number }
 interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|null; debe:number; haber:number; saldo:number; notas:string|null; created_at:string }
 
 export default function CuentaCorrienteClient() {
@@ -92,6 +92,18 @@ export default function CuentaCorrienteClient() {
               <div key={s.cliente_nombre}
                 onClick={()=>setSel(sel?.cliente_nombre===s.cliente_nombre?null:s)}
                 className={`bg-white border rounded-xl p-4 cursor-pointer shadow-sm transition-all ${sel?.cliente_nombre===s.cliente_nombre?'border-red-400 ring-1 ring-red-300':'border-p-line hover:border-red-300'}`}>
+                {/* Alerta de plazo vencido */}
+                {(() => {
+                  if (!s.ultima_operacion || !s.saldo_actual || s.saldo_actual <= 0) return null
+                  const plazo = s.plazo_cc_dias ?? 30
+                  const diasTranscurridos = Math.floor((Date.now() - new Date(s.ultima_operacion).getTime()) / 86400000)
+                  if (diasTranscurridos < plazo) return null
+                  return (
+                    <div style={{background:'#fee2e2',borderRadius:8,padding:'6px 10px',marginBottom:8,fontSize:12,fontWeight:700,color:'#dc2626'}}>
+                      ⚠️ Plazo vencido — {diasTranscurridos} días sin pago (límite: {plazo} días)
+                    </div>
+                  )
+                })()}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-saira font-bold text-p-ink">{s.cliente_nombre}</p>
