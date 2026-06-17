@@ -365,7 +365,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       </>
       )}
 
-      {/* Modal gasto */
+      {/* Modal gasto */}
       <Modal open={gastoOpen} onClose={()=>setGastoOpen(false)} title="Registrar gasto">
         <div className="flex flex-col gap-3">
           <Field label="Categoría">
@@ -391,7 +391,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
         </div>
       </Modal>
 
-      {/* Modal venta */
+      {/* Modal venta */}
       <Modal open={open} onClose={() => setOpen(false)} title="Registrar venta">
         <div className="flex flex-col gap-3">
           {/* Buscar en stock */}
