@@ -86,6 +86,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ncObs, setNcObs] = useState('')
   const [ncSaving, setNcSaving] = useState(false)
   const [ncPago, setNcPago] = useState<'devolver'|'acreditar'|null>(null)
+  const [osPendientes, setOsPendientes] = useState<any[]>([])
+  const [osModal, setOsModal] = useState(false)
+  const [osSel, setOsSel] = useState<string|null>(null) // id de la OS seleccionada
+
+  // Buscar OS pendientes del cliente seleccionado
+  useEffect(()=>{
+    if (!cliSel && !cliQ) { setOsPendientes([]); return }
+    const nombre = cliSel?.nombre || cliQ
+    if (nombre.length < 3) { setOsPendientes([]); return }
+    supabase.from('ordenes_servicio')
+      .select('id,numero,fecha,cliente,vehiculo,items,neto,iva,total')
+      .ilike('cliente', `%${nombre}%`)
+      .eq('convertido_comp', false)
+      .order('created_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => setOsPendientes(data ?? []))
+  }, [cliSel, cliQ, supabase])
 
   // Búsqueda de stock
   useEffect(()=>{
@@ -183,7 +200,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(!items.length) return
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
-    const pid = searchParams.get('pid'), oid = searchParams.get('oid')
+    const pid = searchParams.get('pid'), oid = osSel || searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
     const { data:comp } = await supabase.from('comprobantes').insert({
@@ -228,6 +245,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
     }
 
+    // Marcar OS como facturada si viene de una OS
+    if (oid) {
+      await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', oid)
+      setOsSel(null)
+    }
+
     // Emitir factura electrónica en ARCA automáticamente
     if (comp && !esNegro) {
       setEmitiendo(true)
@@ -264,7 +287,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
-    setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
+    setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false); setOsSel(null)
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
@@ -490,7 +513,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
     y+=4
 
-    // Búsqueda de stock
+    // Buscar OS pendientes del cliente seleccionado
+  useEffect(()=>{
+    if (!cliSel && !cliQ) { setOsPendientes([]); return }
+    const nombre = cliSel?.nombre || cliQ
+    if (nombre.length < 3) { setOsPendientes([]); return }
+    supabase.from('ordenes_servicio')
+      .select('id,numero,fecha,cliente,vehiculo,items,neto,iva,total')
+      .ilike('cliente', `%${nombre}%`)
+      .eq('convertido_comp', false)
+      .order('created_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => setOsPendientes(data ?? []))
+  }, [cliSel, cliQ, supabase])
+
+  // Búsqueda de stock
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);return}
     supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
