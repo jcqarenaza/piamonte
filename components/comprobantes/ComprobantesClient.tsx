@@ -37,7 +37,7 @@ interface Pago { metodo:string; monto:string; cuotas?:number }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
-  cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
+  cliente_id:string|null; cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:any[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
