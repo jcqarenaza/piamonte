@@ -443,9 +443,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
     try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
     doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
-    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 12)
-    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
-    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 20)
+    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 10)
+    doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80)
+    doc.setFontSize(7.5); doc.text('KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4 · Resp. Inscripto IVA', pad+50, 17)
+    doc.setTextColor(120,120,120)
+    doc.setFontSize(7); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 23)
     const tipoLabel = c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE'
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
     doc.setFontSize(10); doc.text(`N° ${String(c.numero||0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
@@ -635,7 +637,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
               <div>
                 <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>
-                  Parabrisas El Piamonte · CUIT 27-24265717-4
+                  KNUTH VERONICA ALEJANDRA
+                </p>
+                <p style={{color:'rgba(255,255,255,.6)',fontSize:10,marginBottom:2}}>
+                  CUIT 27-24265717-4 · Responsable Inscripto IVA
                 </p>
                 <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)'}}>
                   {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
