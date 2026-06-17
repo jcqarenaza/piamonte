@@ -86,6 +86,16 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
   const toUsd = (n: number) => blueRate ? ' · USD ' + Math.round(n/blueRate).toLocaleString('es-AR') : ''
 
+  // Rentabilidad real (sin IVA, con flete 1.5%)
+  function calcRentabilidad(precio: number, costo: number | null) {
+    if (!costo) return null
+    const precioNeto = precio / 1.21
+    const costoNeto  = costo / 1.21 / 1.015
+    const ganancia   = precioNeto - costoNeto
+    const margen     = Math.round((ganancia / precioNeto) * 100)
+    return { precioNeto: Math.round(precioNeto), costoNeto: Math.round(costoNeto), ganancia: Math.round(ganancia), margen }
+  }
+
   const gan = () => {
     const c = +form.costo.replace(/[^0-9.]/g, ''), p = +form.precio.replace(/[^0-9.]/g, '')
     return c && p ? p - c : null
@@ -255,7 +265,15 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
                 )}
                 <div className="text-right">
                   <p className="font-mono font-bold text-p-ink">{moneyARS(v.precio)}</p>
-                  {isAdmin && !v.pendiente && <p className={`text-xs font-mono ${(v.ganancia ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{moneyARS(v.ganancia)}</p>}
+                  {isAdmin && !v.pendiente && (() => {
+                    const r = calcRentabilidad(v.precio, v.costo)
+                    return r ? (
+                      <div className="text-right">
+                        <p className={`text-xs font-mono font-bold ${r.ganancia >= 0 ? 'text-green-600' : 'text-red-500'}`}>{moneyARS(r.ganancia)} <span className="text-[10px] opacity-70">({r.margen}%)</span></p>
+                        <p className="text-[10px] text-p-ink2">neto s/IVA+flete</p>
+                      </div>
+                    ) : null
+                  })()}
                   {v.pendiente && <p className="text-xs text-amber-500 font-mono">s/costo</p>}
                 </div>
                 <div className="flex flex-col gap-1">
@@ -295,11 +313,22 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
             </Field>
             <Field label="Precio de venta *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
           </div>
-          {gan() !== null && (
-            <p className={`text-sm font-mono font-bold ${(gan() ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-              Ganancia: {moneyARS(gan())} ({form.costo ? Math.round(((gan() ?? 0) / +form.costo.replace(/[^0-9.]/g,'')) * 100) : 0}%)
-            </p>
-          )}
+          {gan() !== null && (() => {
+            const precio = +form.precio.replace(/[^0-9.]/g,'')
+            const costo  = +form.costo.replace(/[^0-9.]/g,'')
+            const r = calcRentabilidad(precio, costo)
+            return r ? (
+              <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
+                <p style={{fontWeight:700,color:'#374151',marginBottom:4}}>📊 Rentabilidad real</p>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3}}>
+                  <span style={{color:'#6b7280'}}>Precio neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.precioNeto)}</span>
+                  <span style={{color:'#6b7280'}}>Costo neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.costoNeto)}</span>
+                  <span style={{color:'#6b7280',fontWeight:700}}>Ganancia:</span>
+                  <span style={{fontFamily:'monospace',fontWeight:800,color:r.ganancia>=0?'#00A550':'#ef4444'}}>{moneyARS(r.ganancia)} ({r.margen}%)</span>
+                </div>
+              </div>
+            ) : null
+          })()}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tipo de cliente">
               <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
@@ -375,6 +404,23 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
                   {PAGOS.map(p => <option key={p}>{p}</option>)}
                 </Select>
               </Field>
+              {/* Desglose rentabilidad real */}
+              {(() => {
+                const precio = +editForm.precio.replace(/[^0-9.]/g,'')
+                const costo  = +editForm.costo.replace(/[^0-9.]/g,'')
+                const r = precio && costo ? calcRentabilidad(precio, costo) : null
+                return r ? (
+                  <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
+                    <p style={{fontWeight:700,color:'#374151',marginBottom:6}}>📊 Rentabilidad real (sin IVA + flete 1.5%)</p>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+                      <span style={{color:'#6b7280'}}>Precio neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.precioNeto)}</span>
+                      <span style={{color:'#6b7280'}}>Costo neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.costoNeto)}</span>
+                      <span style={{color:'#6b7280',fontWeight:700}}>Ganancia:</span>
+                      <span style={{fontFamily:'monospace',fontWeight:800,color:r.ganancia>=0?'#00A550':'#ef4444'}}>{moneyARS(r.ganancia)} ({r.margen}%)</span>
+                    </div>
+                  </div>
+                ) : null
+              })()}
               <div className="flex justify-end gap-2 pt-2">
                 <button onClick={() => setEditId(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
                 <button onClick={() => guardarEdicion(v)} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar</button>
