@@ -156,6 +156,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if(cli) {
         setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
         setCliQ(cli)
+        setCliSugs([]) // No mostrar dropdown al pre-cargar
       }
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }

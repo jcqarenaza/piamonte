@@ -161,6 +161,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   function openEdit(p: any) {
     setEditId(p.id)
     setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', dias: String(p.validez_dias||7) })
+    setCliQ(p.cliente||'')
+    setCliSugs([])
     setItems(p.items||[])
     if(p.tipo_cliente_id) setTipoSel(tipos.find((t:any)=>t.id===p.tipo_cliente_id)||null)
     setOpen(true)
