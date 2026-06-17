@@ -43,7 +43,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
       await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, user_id:userId })
     }
     setSaving(false); setOpen(false)
-    setForm({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'' })
+    setForm({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30 })
     load()
   }
 
