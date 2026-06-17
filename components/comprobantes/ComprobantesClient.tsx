@@ -106,7 +106,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const diferencia  = total - totalPagado
 
   useEffect(() => {
-    supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
+    supabase.from('comprobantes').select('*, facturacion_electronica(cae,nro_cbte,estado)').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
   },[supabase])
@@ -263,7 +263,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
     setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     router.push('/comprobantes')
-    const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
+    const {data}=await supabase.from('comprobantes').select('*, facturacion_electronica(cae,nro_cbte,estado)').order('created_at',{ascending:false})
     setComps(data??[])
   }
 
@@ -543,45 +543,84 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   return (
     <div>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
-        <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>
+        <button onClick={()=>setOpen(true)} style={btn}>🧾 Nueva factura</button>
       </div>
 
       {comps.length===0 ? <Empty msg="Sin comprobantes todavía." /> : (
         <div className="flex flex-col gap-3">
           {comps.map(c=>(
-            <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
-                      {c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X'}-{String(c.numero||0).padStart(8,'0')}
-                    </span>
-                    {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
-                    <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||'Consumidor Final'}</p>
-                    {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
-                    {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
-                  </div>
-                  <p className="text-xs text-p-ink2 mt-0.5">
-                    {[c.vehiculo, c.fecha.split('-').reverse().join('/'), c.items.length+' ítem(s)'].filter(Boolean).join(' · ')}
+            <div key={c.id} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,boxShadow:'0 1px 4px rgba(0,0,0,.06)',overflow:'hidden'}}>
+              {/* Header tipo factura */}
+              <div style={{background:(c as any).es_negro?'#1f2937':c.tipo?.startsWith('NC')?'#ef4444':'#00A550',padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontFamily:'monospace',fontWeight:800,fontSize:13,color:'#fff',letterSpacing:1}}>
+                    {c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':c.tipo?.startsWith('NC')?'NOTA DE CRÉDITO':'COMPROBANTE'}
+                  </span>
+                  {(c as any).es_negro&&<span style={{fontSize:10,background:'rgba(255,255,255,.2)',color:'#fff',borderRadius:4,padding:'1px 6px',fontWeight:700}}>⚫ NEGRO</span>}
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <p style={{fontFamily:'monospace',fontSize:12,color:'rgba(255,255,255,.9)',fontWeight:700}}>
+                    N° {String(c.numero||0).padStart(8,'0')}
+                  </p>
+                  <p style={{fontSize:10,color:'rgba(255,255,255,.7)'}}>
+                    {c.fecha.split('-').reverse().join('/')}
                   </p>
                 </div>
-                <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(c.total)}</p>
               </div>
-              <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                <button onClick={()=>abrirAdjuntos(c)}
-                  style={{...btnSm,background:'#7c3aed'}}>
-                  📎 Adjuntos
-                </button>
+
+              {/* Cuerpo */}
+              <div style={{padding:'12px 16px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+                  <div>
+                    <p style={{fontWeight:700,fontSize:15,color:'#111827'}}>{c.cliente_nombre||'Consumidor Final'}</p>
+                    <p style={{fontSize:11,color:'#6b7280',marginTop:2}}>
+                      {[
+                        c.cliente_cuit && `CUIT ${c.cliente_cuit}`,
+                        c.cliente_cuit && tipoFiscalLabel(c.cliente_tipo_fiscal),
+                        c.vehiculo,
+                        c.items.length + ' ítem(s)',
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                    {/* CAE si existe */}
+                    {(c as any).facturacion_electronica?.cae && (
+                      <p style={{fontSize:10,color:'#059669',marginTop:4,fontFamily:'monospace',fontWeight:600}}>
+                        ✅ CAE: {(c as any).facturacion_electronica.cae}
+                      </p>
+                    )}
+                  </div>
+                  <p style={{fontFamily:'var(--font-saira,sans-serif)',fontWeight:800,fontSize:22,color:'#111827',flexShrink:0}}>
+                    {moneyARS(c.total)}
+                  </p>
+                </div>
+
+                {/* Formas de pago resumen */}
+                {c.pagos?.length > 0 && (
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+                    {c.pagos.map((p:any,i:number)=>(
+                      <span key={i} style={{fontSize:10,background:'#f3f4f6',borderRadius:6,padding:'2px 8px',color:'#374151',fontWeight:600}}>
+                        {p.metodo}{p.cuotas&&p.cuotas>1?` ${p.cuotas}c`:''}: {moneyARS(parseFloat(p.monto)||0)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Acciones */}
+              <div style={{padding:'8px 16px',borderTop:'1px solid #f3f4f6',display:'flex',gap:6,flexWrap:'wrap'}}>
+                <button onClick={()=>abrirAdjuntos(c)} style={{...btnSm,background:'#7c3aed'}}>📎 Adjuntos</button>
                 {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
-                <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
+                {!c.tipo?.startsWith('NC') && (
+                  <button onClick={()=>abrirNC(c)} style={{...btnRed,fontSize:11}}>📋 Nota de crédito</button>
+                )}
+                <button onClick={()=>del(c.id)} style={{...btnRed,background:'#9ca3af'}}>Borrar</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante">
+      <Modal open={open} onClose={()=>setOpen(false)} title="Emitir factura electrónica">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
           {/* Búsqueda de cliente */}
