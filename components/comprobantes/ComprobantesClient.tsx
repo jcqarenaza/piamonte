@@ -160,7 +160,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }
     if(iva_&&+iva_>0) setIvaOn(true)
-    if(cli||tel) setOpen(true)
+    if(cli||tel) {
+      // Calcular próximo número al abrir desde presupuesto/OS
+      supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+        .then(({data})=>setNextNum(((data?.[0] as any)?.numero ?? 0) + 1))
+      setOpen(true)
+    }
   },[searchParams])
 
   // Búsqueda de clientes por nombre o celular
