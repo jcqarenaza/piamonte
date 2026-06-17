@@ -108,6 +108,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   async function selectCliente(c: ClienteMin){
     setCliQ(c.nombre); setCliSugs([])
+    setCliSel(c)
+    setForm(p=>({...p, cli:c.nombre, tel:c.telefono||p.tel}))
     setTipoSel(tipos.find(t=>t.id===c.tipo_cliente_id)||null)
     // Presupuestos anteriores NO convertidos
     const {data} = await supabase.from('presupuestos')
@@ -377,7 +379,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
             <div className="relative">
-              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCliSel(null)}} placeholder="Buscar cliente existente…"/>
+              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCliSel(null);setForm(p=>({...p,cli:e.target.value}))}} placeholder="Buscar cliente existente o escribí el nombre…"/>
               {cliSugs.length>0&&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                   <button onClick={selectConsumidorFinal} className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 font-semibold text-p-dark">
@@ -439,7 +441,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
           {/* Datos de contacto */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Nombre (si no está en clientes)"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
+            <Field label="Nombre del cliente *"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre completo"/></Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
 
