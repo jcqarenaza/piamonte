@@ -75,6 +75,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')  // config_id seleccionado para tarjeta
   const [obs, setObs]           = useState('')
+  const [nextNum, setNextNum]     = useState<number|null>(null)
   const [emitiendo, setEmitiendo] = useState(false)
   const [caeResult, setCaeResult] = useState<{cae:string;nro:number}|null>(null)
   // Nota de crédito
@@ -545,7 +546,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   return (
     <div>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
-        <button onClick={()=>setOpen(true)} style={btn}>🧾 Nueva factura</button>
+        <button onClick={async()=>{
+        const {data} = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+        setNextNum(((data?.[0] as any)?.numero ?? 0) + 1)
+        setOpen(true)
+      }} style={btn}>🧾 Nueva factura</button>
       </div>
 
       {comps.length===0 ? <Empty msg="Sin comprobantes todavía." /> : (
@@ -622,8 +627,34 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Emitir factura electrónica">
+      <Modal open={open} onClose={()=>setOpen(false)} title="">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
+
+          {/* Header estilo factura */}
+          <div style={{margin:'-16px -16px 8px',background:'#00A550',padding:'14px 20px',borderRadius:'12px 12px 0 0'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <div>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>
+                  Parabrisas El Piamonte · CUIT 27-24265717-4
+                </p>
+                <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)'}}>
+                  {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
+                </p>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:11,marginTop:2}}>
+                  Punto de venta: <strong style={{color:'#fff'}}>00006</strong>
+                </p>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>N° Comprobante</p>
+                <p style={{color:'#fff',fontSize:20,fontWeight:800,fontFamily:'monospace'}}>
+                  {nextNum ? String(nextNum).padStart(8,'0') : '--------'}
+                </p>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,marginTop:2}}>
+                  {new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* Búsqueda de cliente */}
           <div>
