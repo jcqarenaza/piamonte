@@ -115,14 +115,29 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     if (!form.descripcion || !form.precio) { alert('Cargá descripción y precio.'); return }
     const c = +form.costo.replace(/[^0-9.]/g, '') || null
     const p = +form.precio.replace(/[^0-9.]/g, '')
-    await supabase.from('ventas').insert({
+    const { data: ventaIns } = await supabase.from('ventas').insert({
       fecha, descripcion: form.descripcion, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
       pago: form.pago, origen: form.origen, pendiente: !c,
       stock_id: form.stock_id, user_id: userId,
       tipo_cliente_id: form.tipo_id||null,
       tipo_cliente_nombre: form.tipo_nombre||null
-    })
+    }).select('id').single()
+
+    // Si es cuenta corriente, registrar deuda del cliente
+    if (form.pago === 'Cuenta corriente' && form.cliente) {
+      await supabase.from('cuenta_corriente').insert({
+        cliente_nombre: form.cliente,
+        fecha,
+        tipo: 'venta',
+        descripcion: form.descripcion,
+        debe: p,
+        haber: 0,
+        saldo: p,
+        notas: form.comprobante ? `Comp. ${form.comprobante}` : null,
+        user_id: userId,
+      })
+    }
     // Descontar stock
     if (form.origen === 'stock' && form.stock_id) {
       const s = stockItems.find(x => x.id === form.stock_id)
