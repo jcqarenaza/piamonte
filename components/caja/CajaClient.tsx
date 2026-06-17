@@ -16,6 +16,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [stockQ, setStockQ] = useState('')
   const [stockSug, setStockSug] = useState<StockItem[]>([])
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
+  const [editId, setEditId]     = useState<string|null>(null)
+  const [editForm, setEditForm] = useState({ descripcion:'', costo:'', precio:'', cliente:'', pago:'', comprobante:'' })
   const supabase = createClient()
   const [blueRate, setBlueRate] = useState<number|null>(null)
   const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
@@ -112,6 +114,56 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
     setEditCosto(p => { const n = { ...p }; delete n[v.id]; return n })
   }
 
+  async function registrarAuditoria(ventaId: string, accion: string, campo: string, anterior: string, nuevo: string) {
+    await supabase.from('auditoria_ventas').insert({
+      venta_id: ventaId, accion, campo,
+      valor_anterior: String(anterior),
+      valor_nuevo: String(nuevo),
+      user_id: userId,
+    })
+  }
+
+  function abrirEditar(v: Venta) {
+    setEditId(v.id)
+    setEditForm({
+      descripcion: v.descripcion ?? '',
+      costo: v.costo ? String(Math.round(v.costo)) : '',
+      precio: String(Math.round(v.precio)),
+      cliente: v.cliente ?? '',
+      pago: v.pago ?? 'Efectivo',
+      comprobante: v.comprobante ?? '',
+    })
+  }
+
+  async function guardarEdicion(v: Venta) {
+    const campos: Array<[string, string, string]> = []
+    const upd: Record<string, any> = {}
+    if (editForm.descripcion !== v.descripcion) { campos.push(['descripcion', v.descripcion ?? '', editForm.descripcion]); upd.descripcion = editForm.descripcion }
+    const newCosto = +editForm.costo.replace(/[^0-9.]/g, '') || null
+    if (newCosto !== v.costo) { campos.push(['costo', String(v.costo ?? ''), String(newCosto ?? '')]); upd.costo = newCosto; upd.pendiente = !newCosto }
+    const newPrecio = +editForm.precio.replace(/[^0-9.]/g, '')
+    if (newPrecio !== v.precio) { campos.push(['precio', String(v.precio), String(newPrecio)]); upd.precio = newPrecio }
+    if (editForm.cliente !== (v.cliente ?? '')) { campos.push(['cliente', v.cliente ?? '', editForm.cliente]); upd.cliente = editForm.cliente || null }
+    if (editForm.pago !== v.pago) { campos.push(['pago', v.pago ?? '', editForm.pago]); upd.pago = editForm.pago }
+    if (editForm.comprobante !== (v.comprobante ?? '')) { campos.push(['comprobante', v.comprobante ?? '', editForm.comprobante]); upd.comprobante = editForm.comprobante || null }
+    if (Object.keys(upd).length === 0) { setEditId(null); return }
+    await supabase.from('ventas').update(upd).eq('id', v.id)
+    for (const [campo, ant, nvo] of campos) await registrarAuditoria(v.id, 'editar', campo, ant, nvo)
+    setEditId(null)
+    loadVentas()
+  }
+
+  async function delVentaAudit(v: Venta) {
+    if (!confirm('¿Borrar venta?')) return
+    await registrarAuditoria(v.id, 'eliminar', 'venta', JSON.stringify({ descripcion: v.descripcion, precio: v.precio, cliente: v.cliente }), '')
+    if (v.origen === 'stock' && v.stock_id) {
+      const s = stockItems.find(x => x.id === v.stock_id)
+      if (s) await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
+    }
+    await supabase.from('ventas').delete().eq('id', v.id)
+    loadVentas()
+  }
+
   function changeDay(d: number) {
     const dt = new Date(fecha + 'T12:00:00'); dt.setDate(dt.getDate() + d)
     setFecha(dt.toISOString().slice(0, 10))
@@ -183,7 +235,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
                   {isAdmin && !v.pendiente && <p className={`text-xs font-mono ${(v.ganancia ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{moneyARS(v.ganancia)}</p>}
                   {v.pendiente && <p className="text-xs text-amber-500 font-mono">s/costo</p>}
                 </div>
-                <button onClick={() => delVenta(v)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
+                <div className="flex flex-col gap-1">
+                  {isAdmin && <button onClick={() => abrirEditar(v)} style={{background:'#2563eb',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>✏ Editar</button>}
+                  <button onClick={() => isAdmin ? delVentaAudit(v) : delVenta(v)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
+                </div>
               </div>
             ))}
           </div>
@@ -252,6 +307,35 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
           </div>
         </div>
       </Modal>
+      {/* Modal edición (solo admin) */}
+      {editId && (() => {
+        const v = ventas.find(x => x.id === editId)
+        if (!v) return null
+        return (
+          <Modal open={!!editId} onClose={() => setEditId(null)} title="Editar venta">
+            <div className="flex flex-col gap-3">
+              <Field label="Descripción"><Input value={editForm.descripcion} onChange={e => setEditForm(p => ({ ...p, descripcion: e.target.value }))} /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Costo"><Input value={editForm.costo} onChange={e => setEditForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
+                <Field label="Precio"><Input value={editForm.precio} onChange={e => setEditForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Cliente"><Input value={editForm.cliente} onChange={e => setEditForm(p => ({ ...p, cliente: e.target.value }))} /></Field>
+                <Field label="N° comprobante"><Input value={editForm.comprobante} onChange={e => setEditForm(p => ({ ...p, comprobante: e.target.value }))} /></Field>
+              </div>
+              <Field label="Forma de pago">
+                <Select value={editForm.pago} onChange={e => setEditForm(p => ({ ...p, pago: e.target.value }))}>
+                  {PAGOS.map(p => <option key={p}>{p}</option>)}
+                </Select>
+              </Field>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setEditId(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+                <button onClick={() => guardarEdicion(v)} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar</button>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
     </div>
   )
 }
