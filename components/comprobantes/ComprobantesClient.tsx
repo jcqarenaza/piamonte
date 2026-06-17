@@ -40,7 +40,7 @@ interface Comprobante {
   cliente_id:string|null; cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:any[]; neto:number; iva:number; total:number; pagos:Pago[]
-  presupuesto_id:string|null; orden_id:string|null; created_at:string
+  presupuesto_id:string|null; orden_id:string|null; created_at:string; cae_emitido?:string
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -106,7 +106,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const diferencia  = total - totalPagado
 
   useEffect(() => {
-    supabase.from('comprobantes').select('*, facturacion_electronica(cae,nro_cbte,estado)').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
+    supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
   },[supabase])
@@ -254,6 +254,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const arcaData = await resp.json()
         if (arcaData.ok) {
           setCaeResult({ cae: arcaData.cae, nro: arcaData.nro_cbte })
+          // Guardar CAE en el comprobante para mostrarlo en la lista
+          await supabase.from('comprobantes').update({ cae_emitido: arcaData.cae }).eq('id', (comp as any).id)
         }
       } catch(e) { console.error('Error ARCA:', e) }
       setEmitiendo(false)
@@ -263,7 +265,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
     setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     router.push('/comprobantes')
-    const {data}=await supabase.from('comprobantes').select('*, facturacion_electronica(cae,nro_cbte,estado)').order('created_at',{ascending:false})
+    const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
   }
 
@@ -582,9 +584,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       ].filter(Boolean).join(' · ')}
                     </p>
                     {/* CAE si existe */}
-                    {(c as any).facturacion_electronica?.cae && (
+                    {(c as any).cae_emitido && (
                       <p style={{fontSize:10,color:'#059669',marginTop:4,fontFamily:'monospace',fontWeight:600}}>
-                        ✅ CAE: {(c as any).facturacion_electronica.cae}
+                        ✅ CAE: {(c as any).cae_emitido}
                       </p>
                     )}
                   </div>
