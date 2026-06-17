@@ -228,6 +228,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
               </div>
             )}
             {form.tiene_cuenta_corriente && (
+              <>
               <Field label="Plazo en días (alerta de vencimiento)">
                 <Input type="number" value={String(form.plazo_cc_dias)}
                   onChange={e=>setForm(p=>({...p,plazo_cc_dias:+e.target.value||30}))}
@@ -238,6 +239,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                   onChange={e=>setForm(p=>({...p,tope_credito:e.target.value}))}
                   placeholder="Ej: 500000 (dejar vacío = sin límite)"/>
               </Field>
+              </>
             )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
