@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
 
-interface Cliente { id:string; nombre:string; telefono:string|null; email:string|null; notas:string|null; tipo_cliente_id:string|null; created_at:string; tiene_cuenta_corriente:boolean; plazo_cc_dias:number }
+interface Cliente { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; notas:string|null; tipo_cliente_id:string|null; created_at:string; tiene_cuenta_corriente:boolean; plazo_cc_dias:number; tope_credito:number|null }
 interface Historial {
   turnos: { id:string; fecha:string; trabajo:string|null; estado:string; precio_acordado:number|null }[]
   presupuestos: { id:string; fecha:string; total:number; vehiculo:string|null }[]
@@ -22,7 +22,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const [saving, setSaving]     = useState(false)
   const supabase = createClient()
 
-  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30 })
+  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
 
   const load = useCallback(async () => {
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
@@ -37,13 +37,13 @@ export default function ClientesClient({ userId }: { userId:string }) {
   async function save() {
     if (!form.nombre.trim()) return
     setSaving(true)
-    if (selected?.id && !open) {
-      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias }).eq('id', selected.id)
+    if (selected?.id) {
+      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null }).eq('id', selected.id)
     } else {
-      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, user_id:userId })
+      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null, user_id:userId })
     }
     setSaving(false); setOpen(false)
-    setForm({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30 })
+    setForm({ nombre:'', telefono:'', email:'', cuit:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
     load()
   }
 
@@ -78,7 +78,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente…"
           className="flex-1 min-w-[200px] border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green" />
-        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30 }); setOpen(true) }}
+        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', cuit:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' }); setOpen(true) }}
           style={{ background:'#00A550', color:'#fff', border:'none', borderRadius:10, padding:'10px 20px', fontWeight:700, fontSize:14, cursor:'pointer' }}>
           + Nuevo cliente
         </button>
@@ -117,7 +117,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                       onClick={e=>e.stopPropagation()}
                       className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
                   )}
-                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30 }); setSelected(c); setOpen(true) }}
+                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
                     className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink2 hover:bg-p-light">✏</button>
                   <button onClick={e=>{ e.stopPropagation(); del(c.id) }}
                     className="text-xs border border-red-200 rounded-lg px-2 py-1 text-red-400 hover:text-red-600">✕</button>
@@ -213,6 +213,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
               {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
           </Field>
+          <Field label="CUIT / CUIL"><Input value={form.cuit} onChange={e=>setForm(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9" /></Field>
           <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
           <div style={{borderTop:'1px solid #e5e7eb',paddingTop:12,marginTop:4}}>
             <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',marginBottom:8}}>
@@ -221,11 +222,21 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 className="accent-p-green w-4 h-4"/>
               <span style={{fontSize:14,fontWeight:600,color:'#111827'}}>📒 Habilitar cuenta corriente</span>
             </label>
+            {form.tiene_cuenta_corriente && !form.cuit && (
+              <div style={{background:'#fee2e2',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#dc2626',fontWeight:600}}>
+                ⚠️ La cuenta corriente requiere CUIT o CUIL del cliente
+              </div>
+            )}
             {form.tiene_cuenta_corriente && (
               <Field label="Plazo en días (alerta de vencimiento)">
                 <Input type="number" value={String(form.plazo_cc_dias)}
                   onChange={e=>setForm(p=>({...p,plazo_cc_dias:+e.target.value||30}))}
                   placeholder="30"/>
+              </Field>
+              <Field label="Tope de crédito ($)">
+                <Input type="number" value={form.tope_credito}
+                  onChange={e=>setForm(p=>({...p,tope_credito:e.target.value}))}
+                  placeholder="Ej: 500000 (dejar vacío = sin límite)"/>
               </Field>
             )}
           </div>

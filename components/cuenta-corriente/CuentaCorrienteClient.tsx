@@ -8,7 +8,7 @@ const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
 
-interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number; plazo_cc_dias?:number }
+interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number; plazo_cc_dias?:number; tope_credito?:number }
 interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|null; debe:number; haber:number; saldo:number; notas:string|null; created_at:string }
 
 export default function CuentaCorrienteClient() {
@@ -104,6 +104,11 @@ export default function CuentaCorrienteClient() {
                     </div>
                   )
                 })()}
+                {s.tope_credito && s.saldo_actual >= s.tope_credito && (
+                  <div style={{background:'#fef3c7',borderRadius:8,padding:'6px 10px',marginBottom:8,fontSize:12,fontWeight:700,color:'#d97706'}}>
+                    🚫 Tope de crédito superado — {moneyARS(s.saldo_actual)} / {moneyARS(s.tope_credito)}
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-saira font-bold text-p-ink">{s.cliente_nombre}</p>
