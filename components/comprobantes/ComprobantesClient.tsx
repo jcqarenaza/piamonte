@@ -75,6 +75,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')  // config_id seleccionado para tarjeta
   const [obs, setObs]           = useState('')
+  const [emitiendo, setEmitiendo] = useState(false)
+  const [caeResult, setCaeResult] = useState<{cae:string;nro:number}|null>(null)
+  // Nota de crédito
+  const [ncModal, setNcModal] = useState<Comprobante|null>(null)
+  const [ncTipo, setNcTipo] = useState<'total'|'parcial'>('total')
+  const [ncItems, setNcItems] = useState<{d:string;c:number;p:number}[]>([])
+  const [ncDevolucion, setNcDevolucion] = useState<'efectivo'|'vale'|'tarjeta'|'cuenta_corriente'>('efectivo')
+  const [ncObs, setNcObs] = useState('')
+  const [ncSaving, setNcSaving] = useState(false)
+  const [ncPago, setNcPago] = useState<'devolver'|'acreditar'|null>(null)
 
   // Búsqueda de stock
   useEffect(()=>{
@@ -217,11 +227,124 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
     }
 
+    // Emitir factura electrónica en ARCA automáticamente
+    if (comp && !esNegro) {
+      setEmitiendo(true)
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        const tipoCbte = tipoDoc() === 'A' ? 1 : tipoDoc() === 'C' ? 11 : 6
+        const impNeto = neto
+        const impIva  = iva
+        const resp = await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+          body: JSON.stringify({
+            comprobante_id: (comp as any).id,
+            tipoCbte,
+            impTotal: total,
+            impNeto,
+            impIva,
+            concepto: 1,
+            docTipo: fiscal.tipo_fiscal === 'responsable_inscripto' ? 80 : 99,
+            docNro: fiscal.cuit?.replace(/-/g,'') || '0',
+            ivaAlicuota: iva > 0 ? 5 : undefined,
+          })
+        })
+        const arcaData = await resp.json()
+        if (arcaData.ok) {
+          setCaeResult({ cae: arcaData.cae, nro: arcaData.nro_cbte })
+        }
+      } catch(e) { console.error('Error ARCA:', e) }
+      setEmitiendo(false)
+    }
+
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
     setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
+    setComps(data??[])
+  }
+
+  // ── Nota de Crédito ──────────────────────────────────────────────────────────
+  function abrirNC(comp: Comprobante) {
+    setNcModal(comp)
+    setNcTipo('total')
+    setNcItems(comp.items.map((it:any) => ({d:it.d, c:it.c, p:it.p})))
+    // Detectar forma de pago predominante
+    const pagosComp = comp.pagos ?? []
+    const tieneTarjeta = pagosComp.some((p:any) => p.metodo?.startsWith('Créd') || p.metodo?.startsWith('Déb'))
+    const tieneCuentaCorriente = pagosComp.some((p:any) => p.metodo === 'Cuenta corriente')
+    setNcDevolucion(tieneCuentaCorriente ? 'cuenta_corriente' : tieneTarjeta ? 'tarjeta' : 'efectivo')
+    setNcObs('')
+    setNcPago(null)
+  }
+
+  async function emitirNC() {
+    if (!ncModal) return
+    setNcSaving(true)
+    const itemsNC = ncTipo === 'total' ? ncModal.items : ncItems.filter(it => it.c > 0 && it.p > 0)
+    const netoNC  = itemsNC.reduce((a:number, it:any) => a + it.c * it.p, 0)
+    const ivaNC   = ncModal.iva > 0 ? Math.round(netoNC * IVA) : 0
+    const totalNC = netoNC + ivaNC
+
+    // Determinar tipo NC según tipo de factura original
+    const tipoNC = ncModal.tipo === 'A' ? 'NCA' : ncModal.tipo === 'C' ? 'NCC' : 'NCB'
+    const tipoCbteNC = ncModal.tipo === 'A' ? 3 : ncModal.tipo === 'C' ? 13 : 8
+
+    // Guardar NC en DB
+    const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
+
+    const { data:ncComp } = await supabase.from('comprobantes').insert({
+      numero: nextNum,
+      fecha: todayStr(),
+      tipo: tipoNC,
+      cliente_id: ncModal.cliente_id ?? null,
+      cliente_nombre: ncModal.cliente_nombre,
+      cliente_telefono: ncModal.cliente_telefono,
+      cliente_cuit: ncModal.cliente_cuit,
+      cliente_tipo_fiscal: ncModal.cliente_tipo_fiscal,
+      vehiculo: ncModal.vehiculo,
+      items: itemsNC,
+      neto: netoNC,
+      iva_pct: IVA,
+      iva: ivaNC,
+      total: totalNC,
+      pagos: [{ metodo: ncDevolucion === 'vale' ? 'Vale' : ncDevolucion === 'tarjeta' ? 'Devolución tarjeta' : ncDevolucion === 'cuenta_corriente' ? 'Crédito cuenta corriente' : 'Devolución efectivo', monto: String(totalNC) }],
+      comprobante_origen_id: ncModal.id,
+      user_id: userId,
+      es_nc: true,
+      observaciones: `NC de Comprobante N°${ncModal.numero}${ncPago === 'acreditar' ? ' — Crédito a cuenta' : ncPago === 'devolver' ? ' — Devolución' : ''}${ncObs ? ' - ' + ncObs : ''}`,
+    }).select().single()
+
+    // Emitir NC en ARCA
+    if (ncComp) {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+          body: JSON.stringify({
+            comprobante_id: (ncComp as any).id,
+            tipoCbte: tipoCbteNC,
+            impTotal: totalNC,
+            impNeto: netoNC,
+            impIva: ivaNC,
+            concepto: 1,
+            docTipo: ncModal.cliente_tipo_fiscal === 'responsable_inscripto' ? 80 : 99,
+            docNro: ncModal.cliente_cuit?.replace(/-/g,'') || '0',
+            ivaAlicuota: ivaNC > 0 ? 5 : undefined,
+          })
+        })
+      } catch(e) { console.error('Error ARCA NC:', e) }
+    }
+
+    setNcModal(null)
+    setNcSaving(false)
+    const {data} = await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
   }
 
@@ -676,6 +799,136 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
         </div>
       </Modal>
+      {/* Toast CAE */}
+      {caeResult && (
+        <div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',background:'#00A550',color:'#fff',padding:'12px 24px',borderRadius:14,fontWeight:700,fontSize:14,zIndex:200,boxShadow:'0 4px 20px rgba(0,0,0,.2)',textAlign:'center'}}>
+          ✅ Factura emitida · CAE: {caeResult.cae} · N°: {String(caeResult.nro).padStart(8,'0')}
+          <button onClick={()=>setCaeResult(null)} style={{marginLeft:16,background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'2px 10px',cursor:'pointer'}}>✕</button>
+        </div>
+      )}
+
+      {/* Modal Nota de Crédito */}
+      {ncModal && (
+        <Modal open={!!ncModal} onClose={()=>setNcModal(null)} title={`Nota de Crédito — Comp. N°${ncModal.numero}`}>
+          <div className="flex flex-col gap-4">
+            {/* Advertencia tarjeta */}
+            {ncDevolucion === 'tarjeta' && (
+              <div style={{background:'#fef3c7',border:'1px solid #d97706',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#92400e'}}>
+                ⚠️ El comprobante fue pagado con tarjeta. Verificá con el banco si el plazo permite devolución antes de proceder.
+              </div>
+            )}
+            {ncDevolucion === 'cuenta_corriente' && (
+              <div style={{background:'#eff6ff',border:'1px solid #3b82f6',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#1e40af'}}>
+                📒 La devolución se acreditará como crédito en la cuenta corriente del cliente.
+              </div>
+            )}
+
+            {/* Tipo de NC */}
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Tipo de nota de crédito</label>
+              <div className="flex gap-3">
+                <button onClick={()=>setNcTipo('total')}
+                  style={{...btnSm, background: ncTipo==='total'?'#00A550':'#e5e7eb', color: ncTipo==='total'?'#fff':'#374151'}}>
+                  Por el total
+                </button>
+                <button onClick={()=>setNcTipo('parcial')}
+                  style={{...btnSm, background: ncTipo==='parcial'?'#00A550':'#e5e7eb', color: ncTipo==='parcial'?'#fff':'#374151'}}>
+                  Por ítems específicos
+                </button>
+              </div>
+            </div>
+
+            {/* Ítems parciales */}
+            {ncTipo === 'parcial' && (
+              <div>
+                <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Seleccioná los ítems a acreditar</label>
+                {ncItems.map((it, i) => (
+                  <div key={i} className="flex items-center gap-3 py-2 border-b border-p-line2 text-sm">
+                    <input type="checkbox" checked={it.c > 0}
+                      onChange={e => setNcItems(prev => prev.map((x,j) => j===i ? {...x, c: e.target.checked ? (ncModal.items[i]?.c||1) : 0} : x))}
+                      className="accent-p-green"/>
+                    <span className="flex-1">{it.d}</span>
+                    <input type="number" value={it.c} min={0} max={ncModal.items[i]?.c||1}
+                      onChange={e => setNcItems(prev => prev.map((x,j) => j===i ? {...x, c: +e.target.value} : x))}
+                      className="w-16 border border-p-line rounded px-2 py-1 text-xs text-center"/>
+                    <span className="font-mono text-xs w-20 text-right">{moneyARS(it.c * it.p)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between font-bold text-sm pt-2">
+                  <span>Total NC:</span>
+                  <span className="font-mono">{moneyARS(ncItems.filter(it=>it.c>0).reduce((a,it)=>a+it.c*it.p,0))}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Forma de devolución */}
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Forma de devolución</label>
+              <div className="flex gap-2 flex-wrap">
+                {(['efectivo','vale','tarjeta','cuenta_corriente'] as const).map(d => (
+                  <button key={d} onClick={()=>setNcDevolucion(d)}
+                    style={{...btnSm, background: ncDevolucion===d?'#1d4ed8':'#e5e7eb', color: ncDevolucion===d?'#fff':'#374151', textTransform:'capitalize'}}>
+                    {d === 'efectivo' ? '💵 Efectivo' : d === 'vale' ? '🎟️ Vale' : d === 'tarjeta' ? '💳 Tarjeta' : '📒 Cta. Corriente'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Field label="Observaciones (opcional)">
+              <Input value={ncObs} onChange={e=>setNcObs(e.target.value)} placeholder="Motivo de la devolución…"/>
+            </Field>
+
+            {/* Aviso si el comprobante está pago */}
+            {(() => {
+              const totalPagadoComp = (ncModal.pagos ?? []).reduce((a:number, p:any) => a + (parseFloat(p.monto) || 0), 0)
+              const estaPago = totalPagadoComp >= ncModal.total * 0.99
+              if (!estaPago) return null
+              return (
+                <div style={{background:'#fef3c7',border:'2px solid #d97706',borderRadius:10,padding:'12px 14px',fontSize:13}}>
+                  <p style={{fontWeight:700,color:'#92400e',marginBottom:8}}>⚠️ Este comprobante ya fue cobrado por {moneyARS(totalPagadoComp)}</p>
+                  <p style={{color:'#92400e',marginBottom:10,fontSize:12}}>¿Qué hacemos con el importe de la nota de crédito?</p>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>setNcPago('devolver')}
+                      style={{...btnSm, background: ncPago==='devolver'?'#ef4444':'#e5e7eb', color: ncPago==='devolver'?'#fff':'#374151'}}>
+                      💵 Devolver dinero
+                    </button>
+                    <button onClick={()=>setNcPago('acreditar')}
+                      style={{...btnSm, background: ncPago==='acreditar'?'#2563eb':'#e5e7eb', color: ncPago==='acreditar'?'#fff':'#374151'}}>
+                      📒 Dejar a cuenta del cliente
+                    </button>
+                  </div>
+                  {ncPago === 'acreditar' && (
+                    <p style={{marginTop:8,fontSize:11,color:'#1e40af',fontStyle:'italic'}}>
+                      El crédito quedará registrado en la cuenta corriente del cliente para su próxima compra.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Resumen */}
+            <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:13}}>
+              <div className="flex justify-between"><span>Tipo:</span><span className="font-bold">{ncModal.tipo==='A'?'Nota de Crédito A':ncModal.tipo==='C'?'Nota de Crédito C':'Nota de Crédito B'}</span></div>
+              <div className="flex justify-between"><span>Devolución:</span><span className="font-bold">{ncDevolucion === 'efectivo' ? '💵 Efectivo' : ncDevolucion === 'vale' ? '🎟️ Vale' : ncDevolucion === 'tarjeta' ? '💳 Tarjeta' : '📒 Cta. Corriente'}</span></div>
+              <div className="flex justify-between font-bold text-base mt-1 pt-1 border-t border-p-line">
+                <span>Total a acreditar:</span>
+                <span className="text-red-600">{moneyARS(
+                  ncTipo === 'total'
+                    ? ncModal.total
+                    : ncItems.filter(it=>it.c>0).reduce((a,it)=>a+it.c*it.p,0) * (ncModal.iva > 0 ? 1 + IVA : 1)
+                )}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={()=>setNcModal(null)} style={btnGray}>Cancelar</button>
+              <button onClick={emitirNC} disabled={ncSaving} style={{...btnRed, opacity: ncSaving ? .6 : 1}}>
+                {ncSaving ? 'Emitiendo…' : '✓ Emitir Nota de Crédito'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
