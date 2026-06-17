@@ -314,7 +314,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
           </div>
         )
       ) : (
-      {loading ? <p className="text-sm text-p-gray py-8 text-center">Cargando…</p> :
+      <>{loading ? <p className="text-sm text-p-gray py-8 text-center">Cargando…</p> :
         ventas.length === 0 ? <Empty msg="Sin ventas en este día. Registrá una con + Registrar venta." /> :
           <div className="flex flex-col gap-3">
             {ventas.map(v => (
@@ -362,9 +362,10 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
           </div>
       }
 
+      </>
       )}
 
-      {/* Modal gasto */}
+      {/* Modal gasto */
       <Modal open={gastoOpen} onClose={()=>setGastoOpen(false)} title="Registrar gasto">
         <div className="flex flex-col gap-3">
           <Field label="Categoría">
