@@ -5,13 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { moneyARS } from '@/lib/utils/format'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
-const hora = () => new Date().getHours()
-
-function saludo(nombre: string) {
-  const h = hora()
-  const s = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches'
-  return `${s}, ${nombre.split(' ')[0]}`
-}
 
 interface KPI { label: string; value: string; sub?: string; color?: string; href?: string }
 
@@ -23,12 +16,20 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
   const [chart, setChart]     = useState<{d:string;v:number}[]>([])
   const [dolar, setDolar]     = useState<{blue:number;fecha:string}|null>(null)
   const [loading, setLoading] = useState(true)
+  const [saludoStr, setSaludoStr] = useState('')
+  const [fechaStr, setFechaStr]   = useState('')
   const supabase = createClient()
 
   useEffect(() => {
     const hoy = todayStr()
     const hace7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
     const mes = hoy.slice(0, 7)
+
+    // Calcular saludo y fecha solo en el cliente para evitar hydration mismatch
+    const h = new Date().getHours()
+    const s = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches'
+    setSaludoStr(`${s}, ${nombre.split(' ')[0]}`)
+    setFechaStr(new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))
 
     Promise.all([
       // KPIs del día — ventas es la fuente de verdad (caja + comprobantes)
@@ -87,9 +88,9 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       {/* Saludo */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-saira font-black text-2xl text-p-ink">{saludo(nombre)}</h1>
+          <h1 className="font-saira font-black text-2xl text-p-ink">{saludoStr || `Hola, ${nombre.split(' ')[0]}`}</h1>
           <p className="text-sm text-p-ink2 mt-0.5">
-            {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {fechaStr}
             {dolar && <span className="ml-3 font-mono text-p-dark font-bold">💵 Blue ${dolar.blue.toLocaleString('es-AR')}</span>}
           </p>
         </div>
