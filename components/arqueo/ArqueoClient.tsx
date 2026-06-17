@@ -21,16 +21,15 @@ export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: bool
     setLoading(true)
     const fechaSig = new Date(new Date(f).getTime() + 86400000).toISOString().slice(0,10)
 
-    const [comprobantes, movNegro, arqueoExist] = await Promise.all([
-      // Blanco: comprobantes con pagos detallados
+    const [comprobantes, movNegro, gastosRes, arqueoExist] = await Promise.all([
       supabase.from('comprobantes').select('total,pagos')
         .gte('created_at', f + 'T00:00:00')
         .lt('created_at', fechaSig + 'T00:00:00'),
-      // Negro: movimientos_caja del rol caja
       supabase.from('movimientos_caja').select('tipo,monto')
         .gte('created_at', f + 'T00:00:00')
         .lt('created_at', fechaSig + 'T00:00:00'),
-      // Arqueo existente
+      supabase.from('gastos').select('monto,forma_pago,categoria')
+        .eq('fecha', f),
       supabase.from('arqueos_caja').select('*').eq('fecha', f).maybeSingle()
     ])
 
@@ -60,14 +59,23 @@ export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: bool
     }
     const negroNeto = negroVentas - negroCompras
 
+    // ── Gastos del día ──
+    let gastosEfectivo = 0, gastosTarjeta = 0, gastosTransfer = 0
+    for (const g of gastosRes.data ?? []) {
+      const m = g.monto ?? 0
+      if (g.forma_pago === 'Efectivo') gastosEfectivo += m
+      else if (g.forma_pago === 'Tarjeta') gastosTarjeta += m
+      else if (g.forma_pago === 'Transferencia') gastosTransfer += m
+      else gastosEfectivo += m
+    }
+    const gastosTotal = gastosEfectivo + gastosTarjeta + gastosTransfer
+
     setArqueo({
       fecha: f,
-      // Blanco
       sysEfectivo, sysTarjeta, sysTransfer, sysTotal,
-      // Negro
       negroVentas, negroCompras, negroNeto,
-      // Total general
-      totalGeneral: sysTotal + negroNeto,
+      gastosEfectivo, gastosTarjeta, gastosTransfer, gastosTotal,
+      totalGeneral: sysTotal + negroNeto - gastosTotal,
       ...(arqueoExist.data || {})
     })
 
@@ -102,6 +110,7 @@ export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: bool
       sys_transfer: arqueo.sysTransfer, sys_total: arqueo.sysTotal,
       negro_ventas: arqueo.negroVentas, negro_compras: arqueo.negroCompras,
       negro_neto: arqueo.negroNeto,
+      gastos_total: arqueo.gastosTotal,
       fis_efectivo, fis_tarjeta, fis_transfer, fis_total,
       diferencia, estado: 'cerrado', notas: notas || null,
       cerrado_at: new Date().toISOString()
@@ -259,9 +268,34 @@ export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: bool
                 )}
               </div>
 
+              {/* ── GASTOS ── */}
+              <div className="border-t border-p-line pt-4">
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3">
+                  💸 Gastos del día
+                </p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
+                    <span className="text-sm text-p-ink">💵 Efectivo</span>
+                    <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.gastosEfectivo ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
+                    <span className="text-sm text-p-ink">💳 Tarjeta</span>
+                    <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.gastosTarjeta ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1.5 border-b border-p-line2">
+                    <span className="text-sm text-p-ink">🏦 Transferencia</span>
+                    <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.gastosTransfer ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="font-bold text-p-dark text-sm">TOTAL GASTOS</span>
+                    <span className="font-mono font-bold text-red-500">− {moneyARS(arqueo.gastosTotal ?? 0)}</span>
+                  </div>
+                </div>
+              </div>
+
               {/* ── TOTAL GENERAL ── */}
               <div className="border-t-2 border-p-line pt-4 flex justify-between items-center">
-                <span className="font-saira font-bold text-p-ink text-lg">TOTAL GENERAL</span>
+                <span className="font-saira font-bold text-p-ink text-lg">TOTAL GENERAL (neto)</span>
                 <span className="font-saira font-bold text-2xl text-p-green">{moneyARS(arqueo.totalGeneral)}</span>
               </div>
 
