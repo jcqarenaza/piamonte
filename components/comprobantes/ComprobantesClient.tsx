@@ -568,32 +568,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
     y+=4
 
-    // Buscar OS pendientes del cliente seleccionado
-  useEffect(()=>{
-    if (!cliSel && !cliQ) { setOsPendientes([]); return }
-    const nombre = cliSel?.nombre || cliQ
-    if (nombre.length < 3) { setOsPendientes([]); return }
-    supabase.from('ordenes_servicio')
-      .select('id,numero,fecha,cliente,vehiculo,items,neto,iva,total')
-      .ilike('cliente', `%${nombre}%`)
-      .eq('convertido_comp', false)
-      .order('created_at', { ascending: false })
-      .limit(5)
-      .then(({ data }) => setOsPendientes(data ?? []))
-  }, [cliSel, cliQ, supabase])
-
-  // Búsqueda de stock
-  useEffect(()=>{
-    if(stockQ.trim().length<2){setStockSugs([]);return}
-    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${stockQ}%`).limit(8)
-      .then(({data})=>setStockSugs(data??[]))
-  },[stockQ,supabase])
-
-  // Totales
+    // Totales
     const totX=W-pad-70
-    if(c.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(c.neto),W-pad,y,{align:'right'}); y+=6 }
-    if(c.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(c.iva),W-pad,y,{align:'right'}); y+=6 }
+    if(c.iva && c.iva > 0) {
+      // Precio/1.21 = neto real sin IVA
+      const netoReal = Math.round(c.total / 1.21)
+      const ivaReal  = c.total - netoReal
+      doc.setFont('helvetica','normal'); doc.setFontSize(9)
+      doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(netoReal),W-pad,y,{align:'right'}); y+=6
+      doc.text('IVA 21%:',totX,y); doc.text(moneyARS(ivaReal),W-pad,y,{align:'right'}); y+=6
+    }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
     doc.text('TOTAL:',totX,y); doc.text(moneyARS(c.total),W-pad,y,{align:'right'})
     y+=10
@@ -604,6 +588,35 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.setFont('helvetica','normal')
       c.pagos.forEach((p:Pago)=>{ doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`,pad+4,y); y+=5 })
       y+=4
+    }
+
+    // CAE si existe
+    if((c as any).cae_emitido) {
+      doc.setFillColor(232,245,233); doc.rect(pad, y, W-pad*2, 10, 'F')
+      doc.setTextColor(0,120,50); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+      doc.text('CAE:', pad+2, y+4)
+      doc.setFont('helvetica','normal')
+      doc.text((c as any).cae_emitido, pad+14, y+4)
+      doc.setFont('helvetica','bold')
+      doc.text('Vto. CAE:', pad+70, y+4)
+      doc.setFont('helvetica','normal')
+      doc.text('27/06/2026', pad+90, y+4)
+      y+=14
+    }
+
+    // Saldo cuenta corriente si aplica
+    const pagosCC = (c.pagos||[]).filter((p:Pago)=>p.metodo==='Cuenta corriente')
+    if(pagosCC.length>0) {
+      const montCC = pagosCC.reduce((a:number,p:Pago)=>a+(parseFloat(p.monto)||0),0)
+      const vencCC = new Date(c.fecha)
+      vencCC.setDate(vencCC.getDate()+30)
+      doc.setFillColor(254,243,199); doc.rect(pad, y, W-pad*2, 14, 'F')
+      doc.setTextColor(146,64,14); doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      doc.text('📒 SALDO EN CUENTA CORRIENTE', pad+2, y+5)
+      doc.setFont('helvetica','normal'); doc.setFontSize(8)
+      doc.text(`Importe: ${moneyARS(montCC)}`, pad+2, y+11)
+      doc.text(`Vencimiento: ${vencCC.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}`, pad+60, y+11)
+      y+=18
     }
 
     // Footer
