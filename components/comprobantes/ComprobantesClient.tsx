@@ -59,7 +59,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ivaOn, setIvaOn]       = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75) // % del total que se declara como base imponible
 
-  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
+  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', dni:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
   const [items, setItems]       = useState<{d:string;c:number;p:number;costo?:number;stock_id?:string}[]>([])
   const [stockQ, setStockQ]     = useState('')
@@ -122,6 +122,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const total = neto + iva
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
+  // Validaciones
+  const esFacturaA    = fiscal.tipo_fiscal === 'responsable_inscripto'
+  const esCF          = !fiscal.tipo_fiscal || fiscal.tipo_fiscal === 'consumidor_final'
+  const nombreCliente = cliSel?.nombre || cliQ
+  const faltaNombre   = !nombreCliente.trim()
+  const faltaCuit     = !esCF && !fiscal.cuit
+  const faltaDni      = esCF && !fiscal.dni
+  const hayError      = faltaNombre || faltaCuit || faltaDni
+  const puedeEmitir   = !hayError && items.length > 0
 
   useEffect(() => {
     supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
@@ -197,6 +206,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function save(){
     if(!items.length) return
+    if(faltaNombre) { alert('El nombre del cliente es obligatorio.'); return }
+    if(faltaDni) { alert('El DNI es obligatorio para Consumidor Final.'); setShowFiscal(true); return }
+    if(faltaCuit) { alert(`El CUIT es obligatorio para ${tipoFiscalLabel(fiscal.tipo_fiscal)}.`); setShowFiscal(true); return }
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
     const pid = searchParams.get('pid'), oid = osSel || searchParams.get('oid')
@@ -208,6 +220,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_nombre: cliSel?.nombre||cliQ||null,
       cliente_telefono: cliSel?.telefono||null,
       cliente_cuit: fiscal.cuit||null,
+      cliente_dni: fiscal.dni||null,
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
@@ -259,13 +272,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const tipoCbte = tipoDoc() === 'A' ? 1 : 6
         const esFacturaA = tipoCbte === 1
 
-        // Validar Factura A: requiere CUIT
-        if (esFacturaA && !fiscal.cuit) {
-          alert('Para emitir Factura A se requiere el CUIT del cliente.')
-          setEmitiendo(false)
-          return
-        }
-
         // Cálculo correcto de IVA:
         // Los precios cargados YA incluyen IVA (precio final al cliente)
         // ARCA necesita: impNeto (sin IVA) + impIva + impTotal
@@ -275,8 +281,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const impIva   = tieneIva ? Math.round((total - impNeto) * 100) / 100 : 0
 
         // DocTipo y DocNro según tipo de cliente
-        const docTipo = esFacturaA ? 80 : 99  // 80=CUIT, 99=Sin identificar
-        const docNro  = esFacturaA ? (fiscal.cuit?.replace(/[^0-9]/g,'') || '0') : '0'
+        // DocTipo: 80=CUIT, 96=DNI, 99=Sin identificar
+        const docTipo = esFacturaA ? 80 : (fiscal.dni ? 96 : 99)
+        const docNro  = esFacturaA
+          ? (fiscal.cuit?.replace(/[^0-9]/g,'') || '0')
+          : (fiscal.dni?.replace(/[^0-9]/g,'') || '0')
 
         const resp = await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
           method: 'POST',
@@ -761,6 +770,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 {fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
               </button>
               {cliSel&&<span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>}
+            {faltaNombre && (
+              <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
+                ⚠️ Nombre del cliente obligatorio
+              </span>
+            )}
+            {faltaCuit && !faltaNombre && (
+              <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
+                ⚠️ CUIT obligatorio para {tipoFiscalLabel(fiscal.tipo_fiscal)}
+              </span>
+            )}
+            {faltaDni && !faltaNombre && (
+              <span style={{background:'#fef3c7',color:'#d97706',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
+                ⚠️ DNI obligatorio para Consumidor Final
+              </span>
+            )}
             </div>
           </div>
 
@@ -780,8 +804,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </Select>
                 </Field>
               </div>
-              {fiscal.tipo_fiscal!=='consumidor_final'&&(
-                <Field label="CUIT"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/></Field>
+              {fiscal.tipo_fiscal==='consumidor_final' ? (
+                <Field label="DNI *"><Input value={fiscal.dni} onChange={e=>setFiscal(p=>({...p,dni:e.target.value}))} placeholder="12345678"/></Field>
+              ) : (
+                <Field label="CUIT *"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/></Field>
               )}
               <button onClick={async()=>{
                 if(cliSel?.id){
