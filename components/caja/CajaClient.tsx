@@ -18,6 +18,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
   const [editId, setEditId]     = useState<string|null>(null)
   const [editForm, setEditForm] = useState({ codigo:'', descripcion:'', costo:'', precio:'', cliente:'', pago:'', comprobante:'' })
+  const [editStockQ, setEditStockQ]   = useState('')
+  const [editStockSug, setEditStockSug] = useState<StockItem[]>([])
   const supabase = createClient()
   const [blueRate, setBlueRate] = useState<number|null>(null)
   const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
@@ -48,6 +50,24 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   useEffect(() => {
     supabase.from("stock").select("id,descripcion,codigo,marca,pos,precio_venta,costo,cantidad").gt("cantidad",0).then(({ data }) => setStockItems((data as unknown as StockItem[]) ?? []))
   }, [supabase])
+
+  // Sugerir stock en modal edición
+  useEffect(() => {
+    if (editStockQ.length < 2) { setEditStockSug([]); return }
+    const q = editStockQ.toUpperCase()
+    setEditStockSug(stockItems.filter(s => (s.descripcion + ' ' + (s.marca??'') + ' ' + (s.codigo??'')).toUpperCase().includes(q)).slice(0, 6))
+  }, [editStockQ, stockItems])
+
+  function pickEditStock(s: StockItem) {
+    setEditForm(p => ({
+      ...p,
+      codigo: s.codigo ?? '',
+      descripcion: s.descripcion,
+      costo: s.costo ? String(Math.round(s.costo)) : p.costo,
+      precio: s.precio_venta ? String(Math.round(s.precio_venta)) : p.precio,
+    }))
+    setEditStockQ(''); setEditStockSug([])
+  }
 
   // Sugerir stock
   useEffect(() => {
@@ -317,6 +337,23 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
         return (
           <Modal open={!!editId} onClose={() => setEditId(null)} title="Editar venta">
             <div className="flex flex-col gap-3">
+              {/* Buscador de stock para edición */}
+              <Field label="Buscar pieza en stock (opcional)">
+                <div className="relative">
+                  <Input value={editStockQ} onChange={e => setEditStockQ(e.target.value)} placeholder="Escribí para buscar y autocompletar…" />
+                  {editStockSug.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 bg-white border border-p-line rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {editStockSug.map(s => (
+                        <button key={s.id} onClick={() => pickEditStock(s)}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                          <span className="font-medium">{s.descripcion}</span>
+                          <span className="text-p-ink2 text-xs ml-2">{s.codigo && <span className="font-mono mr-1">{s.codigo}</span>}{s.marca}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Código pieza">
                   <Input value={editForm.codigo} onChange={e => setEditForm(p => ({ ...p, codigo: e.target.value }))} placeholder="Ej: ABC123" />
