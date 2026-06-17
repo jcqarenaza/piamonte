@@ -671,22 +671,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
           {/* Header estilo factura */}
           <div style={{margin:'-16px -16px 8px',background:'#00A550',padding:'14px 20px',borderRadius:'12px 12px 0 0'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-              <div>
-                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>
-                  KNUTH VERONICA ALEJANDRA
-                </p>
-                <p style={{color:'rgba(255,255,255,.6)',fontSize:10,marginBottom:2}}>
-                  CUIT 27-24265717-4 · Responsable Inscripto IVA
-                </p>
-                <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)'}}>
-                  {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
-                </p>
-                <p style={{color:'rgba(255,255,255,.7)',fontSize:11,marginTop:2}}>
-                  Punto de venta: <strong style={{color:'#fff'}}>00006</strong>
-                </p>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                {/* Logo */}
+                <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="logo"
+                  style={{width:48,height:48,objectFit:'contain',borderRadius:6,background:'rgba(255,255,255,.15)',padding:4,flexShrink:0}}
+                  onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
+                <div>
+                  <p style={{color:'#fff',fontSize:15,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)',marginBottom:1}}>
+                    PARABRISAS EL PIAMONTE
+                  </p>
+                  <p style={{color:'rgba(255,255,255,.75)',fontSize:10,marginBottom:4}}>
+                    KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4 · Resp. Inscripto IVA
+                  </p>
+                  <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)'}}>
+                    {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
+                  </p>
+                  <p style={{color:'rgba(255,255,255,.7)',fontSize:11,marginTop:2}}>
+                    Punto de venta: <strong style={{color:'#fff'}}>00006</strong>
+                  </p>
+                </div>
               </div>
-              <div style={{textAlign:'right'}}>
+              <div style={{textAlign:'right',flexShrink:0}}>
                 <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>N° Comprobante</p>
                 <p style={{color:'#fff',fontSize:20,fontWeight:800,fontFamily:'monospace'}}>
                   {nextNum ? String(nextNum).padStart(8,'0') : '--------'}
