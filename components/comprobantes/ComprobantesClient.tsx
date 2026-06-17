@@ -674,9 +674,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             {/* Fila superior: nombre fantasía + número */}
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{width:40,height:40,background:'rgba(255,255,255,.2)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <div style={{width:42,height:42,background:'rgba(255,255,255,.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,position:'relative',overflow:'hidden'}}>
+                  <span style={{color:'#fff',fontWeight:900,fontSize:14,fontFamily:'var(--font-saira,sans-serif)',letterSpacing:-1}}>EP</span>
                   <img src={`data:image/png;base64,${LOGO_BASE64}`} alt=""
-                    style={{width:32,height:32,objectFit:'contain'}}
+                    style={{width:42,height:42,objectFit:'contain',position:'absolute',inset:0}}
                     onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
                 </div>
                 <div>
