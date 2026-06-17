@@ -17,7 +17,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [stockSug, setStockSug] = useState<StockItem[]>([])
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
   const [editId, setEditId]     = useState<string|null>(null)
-  const [editForm, setEditForm] = useState({ descripcion:'', costo:'', precio:'', cliente:'', pago:'', comprobante:'' })
+  const [editForm, setEditForm] = useState({ codigo:'', descripcion:'', costo:'', precio:'', cliente:'', pago:'', comprobante:'' })
   const supabase = createClient()
   const [blueRate, setBlueRate] = useState<number|null>(null)
   const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
@@ -125,8 +125,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
   function abrirEditar(v: Venta) {
     setEditId(v.id)
+    const m = v.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
     setEditForm({
-      descripcion: v.descripcion ?? '',
+      codigo: m ? m[1] : '',
+      descripcion: m ? m[2] : (v.descripcion ?? ''),
       costo: v.costo ? String(Math.round(v.costo)) : '',
       precio: String(Math.round(v.precio)),
       cliente: v.cliente ?? '',
@@ -138,7 +140,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   async function guardarEdicion(v: Venta) {
     const campos: Array<[string, string, string]> = []
     const upd: Record<string, any> = {}
-    if (editForm.descripcion !== v.descripcion) { campos.push(['descripcion', v.descripcion ?? '', editForm.descripcion]); upd.descripcion = editForm.descripcion }
+    const descConCodigo = editForm.codigo ? `[${editForm.codigo}] ${editForm.descripcion}` : editForm.descripcion
+    if (descConCodigo !== v.descripcion) { campos.push(['descripcion', v.descripcion ?? '', descConCodigo]); upd.descripcion = descConCodigo }
     const newCosto = +editForm.costo.replace(/[^0-9.]/g, '') || null
     if (newCosto !== v.costo) { campos.push(['costo', String(v.costo ?? ''), String(newCosto ?? '')]); upd.costo = newCosto; upd.pendiente = !newCosto }
     const newPrecio = +editForm.precio.replace(/[^0-9.]/g, '')
@@ -314,7 +317,14 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
         return (
           <Modal open={!!editId} onClose={() => setEditId(null)} title="Editar venta">
             <div className="flex flex-col gap-3">
-              <Field label="Descripción"><Input value={editForm.descripcion} onChange={e => setEditForm(p => ({ ...p, descripcion: e.target.value }))} /></Field>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Código pieza">
+                  <Input value={editForm.codigo} onChange={e => setEditForm(p => ({ ...p, codigo: e.target.value }))} placeholder="Ej: ABC123" />
+                </Field>
+                <div className="col-span-2">
+                  <Field label="Descripción"><Input value={editForm.descripcion} onChange={e => setEditForm(p => ({ ...p, descripcion: e.target.value }))} /></Field>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Costo"><Input value={editForm.costo} onChange={e => setEditForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
                 <Field label="Precio"><Input value={editForm.precio} onChange={e => setEditForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
