@@ -191,9 +191,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
-    if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final') return 'B'
     if(fiscal.tipo_fiscal==='responsable_inscripto') return 'A'
-    return 'C'
+    return 'B' // RI emite solo A o B — nunca C (esa la emite el monotributista)
   }
 
   async function save(){
@@ -257,29 +256,51 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
         const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        const tipoCbte = tipoDoc() === 'A' ? 1 : tipoDoc() === 'C' ? 11 : 6
-        const impNeto = neto
-        const impIva  = iva
+        const tipoCbte = tipoDoc() === 'A' ? 1 : 6
+        const esFacturaA = tipoCbte === 1
+
+        // Validar Factura A: requiere CUIT
+        if (esFacturaA && !fiscal.cuit) {
+          alert('Para emitir Factura A se requiere el CUIT del cliente.')
+          setEmitiendo(false)
+          return
+        }
+
+        // Cálculo correcto de IVA:
+        // Los precios cargados YA incluyen IVA (precio final al cliente)
+        // ARCA necesita: impNeto (sin IVA) + impIva + impTotal
+        const tieneIva = ivaOn && iva > 0
+        const impTotal = total
+        const impNeto  = tieneIva ? Math.round(total / 1.21 * 100) / 100 : total
+        const impIva   = tieneIva ? Math.round((total - impNeto) * 100) / 100 : 0
+
+        // DocTipo y DocNro según tipo de cliente
+        const docTipo = esFacturaA ? 80 : 99  // 80=CUIT, 99=Sin identificar
+        const docNro  = esFacturaA ? (fiscal.cuit?.replace(/[^0-9]/g,'') || '0') : '0'
+
         const resp = await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
           body: JSON.stringify({
             comprobante_id: (comp as any).id,
             tipoCbte,
-            impTotal: total,
+            impTotal,
             impNeto,
             impIva,
             concepto: 1,
-            docTipo: fiscal.tipo_fiscal === 'responsable_inscripto' ? 80 : 99,
-            docNro: fiscal.cuit?.replace(/-/g,'') || '0',
-            ivaAlicuota: iva > 0 ? 5 : undefined,
+            docTipo,
+            docNro,
+            // ivaAlicuota 5 = 21% — solo se manda si hay IVA
+            ivaAlicuota: tieneIva ? 5 : undefined,
           })
         })
         const arcaData = await resp.json()
         if (arcaData.ok) {
           setCaeResult({ cae: arcaData.cae, nro: arcaData.nro_cbte })
-          // Guardar CAE en el comprobante para mostrarlo en la lista
           await supabase.from('comprobantes').update({ cae_emitido: arcaData.cae }).eq('id', (comp as any).id)
+        } else {
+          console.error('ARCA error:', arcaData.error)
+          alert(`Error ARCA: ${arcaData.error}`)
         }
       } catch(e) { console.error('Error ARCA:', e) }
       setEmitiendo(false)
@@ -316,8 +337,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const totalNC = netoNC + ivaNC
 
     // Determinar tipo NC según tipo de factura original
-    const tipoNC = ncModal.tipo === 'A' ? 'NCA' : ncModal.tipo === 'C' ? 'NCC' : 'NCB'
-    const tipoCbteNC = ncModal.tipo === 'A' ? 3 : ncModal.tipo === 'C' ? 13 : 8
+    const tipoNC = ncModal.tipo === 'A' ? 'NCA' : 'NCB'
+    const tipoCbteNC = ncModal.tipo === 'A' ? 3 : 8
 
     // Guardar NC en DB
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
@@ -702,7 +723,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             {/* Fila inferior: tipo de factura + punto de venta */}
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid rgba(255,255,255,.2)',paddingTop:8}}>
               <p style={{color:'#fff',fontSize:18,fontWeight:900,fontFamily:'var(--font-saira,sans-serif)',letterSpacing:1}}>
-                {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : fiscal.tipo_fiscal==='monotributo' ? 'FACTURA C' : 'FACTURA B'}
+                {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : 'FACTURA B'}
               </p>
               <p style={{color:'rgba(255,255,255,.8)',fontSize:11}}>
                 Punto de venta <strong style={{color:'#fff'}}>00006</strong> · Resp. Inscripto IVA
