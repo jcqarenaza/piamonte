@@ -17,6 +17,8 @@ const ROLES = [
 const ROL_COLOR: Record<string,string> = { gerencial:'#7c3aed', admin:'#2563eb', ventas:'#059669', caja:'#d97706' }
 
 interface Usuario { id:string; nombre:string; rol:string; email?:string }
+
+
 interface ConfigPrecios { recargo_tarjeta_pct:number; descuento_transferencia_pct:number; descuento_efectivo_pct:number }
 
 function ConfigPreciosPanel() {
@@ -42,15 +44,17 @@ function ConfigPreciosPanel() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  // Ejemplo con costo de $100 y margen 45%
   const costo = 100, margen = 0.45
   const tarjeta = Math.round(costo * (1+margen) * (1 + cfg.recargo_tarjeta_pct/100))
   const transf  = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct/100))
   const efect   = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct/100))
 
+  const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer' } as const
+
   return (
     <div className="bg-white border border-p-line rounded-2xl shadow-sm p-6 mb-6">
-      <h3 className="font-saira font-bold text-p-ink text-lg mb-4">💰 Configuración de precios</h3>
+      <h3 className="font-saira font-bold text-p-ink text-lg mb-1">💰 Configuración de precios</h3>
+      <p className="text-xs text-p-ink2 mb-4">Define los porcentajes de recargo y descuento según la forma de pago.</p>
       <div className="grid grid-cols-3 gap-4 mb-4">
         <Field label="Recargo tarjeta (%)">
           <Input type="number" value={cfg.recargo_tarjeta_pct}
@@ -65,17 +69,15 @@ function ConfigPreciosPanel() {
             onChange={e=>setCfg(p=>({...p,descuento_efectivo_pct:+e.target.value}))}/>
         </Field>
       </div>
-      {/* Preview con costo $100 margen 45% */}
-      <div className="bg-p-light rounded-xl p-4 mb-4 text-sm">
-        <p className="text-xs text-p-ink2 uppercase font-bold tracking-wider mb-2">Preview — costo $100, margen 45%</p>
-        <div className="flex gap-6">
+      <div className="bg-p-light rounded-xl p-4 mb-4">
+        <p className="text-xs text-p-ink2 uppercase font-bold tracking-wider mb-2">Preview — costo $100 · margen 45%</p>
+        <div className="flex gap-6 text-sm">
           <div><span className="text-p-ink2">💳 Tarjeta</span> <span className="font-bold text-p-dark">${tarjeta}</span></div>
-          <div><span className="text-p-ink2">🏦 Transferencia</span> <span className="font-bold text-blue-600">${transf}</span></div>
-          <div><span className="text-p-ink2">💵 Efectivo</span> <span className="font-bold text-green-700">${efect}</span></div>
+          <div><span className="text-p-ink2">🏦 Transferencia</span> <span className="font-bold text-blue-600">${transf}</span> <span className="text-xs text-green-600">-{cfg.descuento_transferencia_pct}%</span></div>
+          <div><span className="text-p-ink2">💵 Efectivo</span> <span className="font-bold text-green-700">${efect}</span> <span className="text-xs text-green-600">-{cfg.descuento_efectivo_pct}%</span></div>
         </div>
       </div>
-      <button onClick={guardar} disabled={saving}
-        style={{...btn, opacity: saving?.7:1}}>
+      <button onClick={guardar} disabled={saving} style={{...btn, opacity: saving ? 0.7 : 1}}>
         {saved ? '✓ Guardado' : saving ? 'Guardando…' : 'Guardar configuración'}
       </button>
     </div>
@@ -137,6 +139,7 @@ export default function UsuariosClient() {
 
   return (
     <div className="max-w-2xl">
+      <ConfigPreciosPanel/>
       {toast&&(
         <div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',background:'#00A550',color:'#fff',padding:'10px 24px',borderRadius:12,fontWeight:700,fontSize:14,zIndex:100,boxShadow:'0 4px 16px rgba(0,0,0,.2)'}}>
           {toast}
