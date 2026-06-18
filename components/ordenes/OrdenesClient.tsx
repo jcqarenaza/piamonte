@@ -31,7 +31,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'' })
+  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [filtroAseg, setFiltroAseg] = useState('')
   const [adjModal, setAdjModal]   = useState<any|null>(null)
@@ -40,6 +40,18 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [editId, setEditId]     = useState<string|null>(null)
   const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
   const [presCli, setPresCli]   = useState<any[]>([])
+  const [productores, setProductores] = useState<any[]>([])
+  const [formProd, setFormProd] = useState('')  // productor_id seleccionado
+  const [stockQ, setStockQ]     = useState('')
+  const [stockSugs, setStockSugs] = useState<any[]>([])
+  const [stockSel, setStockSel] = useState<any|null>(null)
+  const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'>('todas')
+  // Factura manual (Sancor)
+  const [factManualModal, setFactManualModal] = useState<any|null>(null)
+  const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
+  // Turno desde OS
+  const [turnoModal, setTurnoModal] = useState<any|null>(null)
+  const [turnoForm, setTurnoForm] = useState({ fecha:'', hora:'', trabajo:'' })
 
   // Pre-cargar desde presupuesto
   useEffect(() => {
@@ -62,9 +74,17 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const load = useCallback(() => {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('ordenes_servicio').select('*').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
+    supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
   }, [supabase])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(()=>{
+    if(stockQ.trim().length<2){setStockSugs([]);return}
+    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).gt('cantidad',0)
+      .ilike('descripcion',`%${stockQ}%`).limit(6)
+      .then(({data})=>setStockSugs(data??[]))
+  },[stockQ,supabase])
 
   const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
   const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
@@ -112,8 +132,9 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     setForm({
       cli: o.cliente||'', tel: o.telefono||'', veh: o.vehiculo||'',
       pat: o.patente||'', aseg: o.aseguradora||'', sin: o.siniestro||'',
-      pol: o.poliza||'', obs: o.obs||''
+      pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente'
     })
+    setFormProd(o.productor_id||'')
     setItems(o.items||[])
     setOpen(true)
   }
@@ -153,11 +174,19 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       cliente: form.cli||null, telefono: form.tel||null, vehiculo: form.veh||null,
       patente: form.pat||null, obs: form.obs||null,
       items, neto, iva_pct:IVA_RATE, iva, total,
-      tiene_adas: conADAS, numero_adas, user_id: userId
+      tiene_adas: conADAS, numero_adas, user_id: userId,
+      productor_id: formProd || null,
+      stock_id: stockSel?.id || null,
+      estado: 'pendiente',
     })
+    // Descontar stock si se seleccionó una pieza
+    if(stockSel?.id) {
+      await supabase.from('stock').update({ cantidad: Math.max(0, (stockSel.cantidad||1) - 1) }).eq('id', stockSel.id)
+    }
     }
 
-    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:''})
+    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente'})
+    setStockSel(null); setStockQ(''); setFormProd('')
     setLoading(false); load()
   }
 
@@ -323,7 +352,11 @@ export default function OrdenesClient({ userId }: { userId: string }) {
               {a}
             </button>
           ))}
-          {ordenes.some(o=>!o.aseguradora) && (
+          {ordenes.filter(o=>{
+            if(filtroEstado==='todas') return true
+            if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
+            return (o as any).estado===filtroEstado
+          }).some(o=>!o.aseguradora) && (
             <button
               onClick={()=>setFiltroAseg('__sin__')}
               style={{...btnSm, background: filtroAseg==='__sin__' ? '#6b7280' : '#e5e7eb', color: filtroAseg==='__sin__' ? '#fff' : '#374151'}}>
@@ -336,7 +369,11 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
-          {ordenesFiltradas.map(o => {
+          {ordenes.filter(o=>{
+            if(filtroEstado==='todas') return true
+            if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
+            return (o as any).estado===filtroEstado
+          })Filtradas.map(o => {
             const conADAS = (o as any).tiene_adas
             const numADAS = (o as any).numero_adas
             const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
@@ -357,22 +394,43 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                   <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(o.total)}</p>
                 </div>
                 <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                  <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp PDF</button>
-                  <button onClick={()=>abrirAdjuntos(o)}
-                    style={{...btnSm,background:'#7c3aed'}}>
+                  {/* Estado badge */}
+                  {(o as any).estado && (o as any).estado !== 'pendiente' && (
+                    <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:6,background:(o as any).estado==='realizado'?'#dcfce7':'#dbeafe',color:(o as any).estado==='realizado'?'#16a34a':'#1d4ed8'}}>
+                      {(o as any).estado==='realizado'?'✅ Realizado':'🧾 Facturada'}
+                    </span>
+                  )}
+                  <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp</button>
+                  <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                     📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
                   </button>
                   <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                   <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
-                  <button onClick={async()=>{
-                    await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
-                    const params = new URLSearchParams({
-                      cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
-                      items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0),
-                      oid: o.id,
-                    })
-                    router.push(`/comprobantes?${params.toString()}`)
-                  }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                  {/* Generar turno */}
+                  <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
+                    style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
+                  {/* Marcar realizado */}
+                  {(o as any).estado==='pendiente' && (
+                    <button onClick={async()=>{
+                      await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
+                    }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
+                  )}
+                  {/* Factura: normal o manual para Sancor */}
+                  {!(o as any).convertido_comp && (
+                    o.aseguradora==='Sancor Seguros' ? (
+                      <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
+                        style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
+                    ) : (
+                      <button onClick={async()=>{
+                        await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
+                        const params = new URLSearchParams({
+                          cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
+                          items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                        })
+                        router.push(`/comprobantes?${params.toString()}`)
+                      }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                    )
+                  )}
                   <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
                 </div>
               </div>
@@ -545,6 +603,33 @@ export default function OrdenesClient({ userId }: { userId: string }) {
               </div>
             </div>
           )}
+          {/* Productor */}
+          <Field label="Productor de seguros (opcional)">
+            <Select value={formProd} onChange={e=>setFormProd(e.target.value)}>
+              <option value="">Sin productor</option>
+              {productores.map((p:any)=><option key={p.id} value={p.id}>{p.nombre}{p.telefono?` · ${p.telefono}`:''}</option>)}
+            </Select>
+          </Field>
+          {/* Stock */}
+          <Field label="Artículo de stock (se descuenta al guardar)">
+            <div className="relative">
+              <Input value={stockSel?`${stockSel.descripcion} (quedan ${stockSel.cantidad})`:stockQ}
+                onChange={e=>{setStockQ(e.target.value);setStockSel(null)}}
+                placeholder="Buscar código o descripción…"/>
+              {stockSugs.length>0&&!stockSel&&(
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-40 overflow-y-auto mt-1">
+                  {stockSugs.map((s:any)=>(
+                    <button key={s.id} onClick={()=>{setStockSel(s);setStockSugs([]);setStockQ('')}}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                      <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
+                      <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {stockSel&&<button onClick={()=>{setStockSel(null);setStockQ('')}} className="absolute right-2 top-2 text-red-400 text-xs">✕</button>}
+            </div>
+          </Field>
           <Field label="Observaciones"><Input value={form.obs} onChange={e=>setForm(p=>({...p,obs:e.target.value}))} placeholder="Opcional…"/></Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
@@ -554,6 +639,66 @@ export default function OrdenesClient({ userId }: { userId: string }) {
           </div>
         </div>
       </Modal>
+
+      {/* Modal generar turno desde OS */}
+      <Modal open={!!turnoModal} onClose={()=>setTurnoModal(null)} title={`Nuevo turno — ${turnoModal?.cliente||''}`}>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha"><Input type="date" value={turnoForm.fecha} onChange={e=>setTurnoForm(p=>({...p,fecha:e.target.value}))}/></Field>
+            <Field label="Hora"><Input type="time" value={turnoForm.hora} onChange={e=>setTurnoForm(p=>({...p,hora:e.target.value}))}/></Field>
+          </div>
+          <Field label="Trabajo a realizar"><Input value={turnoForm.trabajo} onChange={e=>setTurnoForm(p=>({...p,trabajo:e.target.value}))} placeholder="Descripción del trabajo"/></Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setTurnoModal(null)} style={{...btnGray}}>Cancelar</button>
+            <button onClick={async()=>{
+              if(!turnoModal) return
+              await supabase.from('turnos').insert({
+                fecha: turnoForm.fecha, hora: turnoForm.hora,
+                cliente: turnoModal.cliente||null, telefono: turnoModal.telefono||null,
+                vehiculo: turnoModal.vehiculo||null, trabajo: turnoForm.trabajo||null,
+                estado: 'confirmado', user_id: userId,
+              })
+              await supabase.from('ordenes_servicio').update({ turno_id: turnoModal.id }).eq('id', turnoModal.id)
+              setTurnoModal(null)
+            }} style={btn}>✓ Crear turno</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal factura manual (Sancor) */}
+      <Modal open={!!factManualModal} onClose={()=>setFactManualModal(null)} title={`Factura manual — ${factManualModal?.aseguradora||''}`}>
+        <div className="flex flex-col gap-3">
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-sm text-purple-800">
+            OS N° {factManualModal?.numero} · {factManualModal?.cliente} · {moneyARS(factManualModal?.total||0)}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Punto de venta"><Input value={factManualForm.pv} onChange={e=>setFactManualForm(p=>({...p,pv:e.target.value}))} placeholder="00001"/></Field>
+            <Field label="N° Factura"><Input value={factManualForm.nro} onChange={e=>setFactManualForm(p=>({...p,nro:e.target.value}))} placeholder="00000001"/></Field>
+          </div>
+          <Field label="CAE"><Input value={factManualForm.cae} onChange={e=>setFactManualForm(p=>({...p,cae:e.target.value}))} placeholder="00000000000000"/></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha factura"><Input type="date" value={factManualForm.fecha} onChange={e=>setFactManualForm(p=>({...p,fecha:e.target.value}))}/></Field>
+            <Field label="Vencimiento CAE"><Input type="date" value={factManualForm.vto} onChange={e=>setFactManualForm(p=>({...p,vto:e.target.value}))}/></Field>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setFactManualModal(null)} style={btnGray}>Cancelar</button>
+            <button onClick={async()=>{
+              if(!factManualModal||!factManualForm.cae||!factManualForm.nro) return
+              await supabase.from('ordenes_servicio').update({
+                factura_manual_cae: factManualForm.cae,
+                factura_manual_nro: factManualForm.nro,
+                factura_manual_pv: factManualForm.pv,
+                factura_manual_vto: factManualForm.vto||null,
+                factura_manual_fecha: factManualForm.fecha||null,
+                convertido_comp: true,
+                estado: 'facturada',
+              }).eq('id', factManualModal.id)
+              setFactManualModal(null); load()
+            }} style={{...btn,background:'#7c3aed'}}>✓ Registrar factura</button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   )
 }
