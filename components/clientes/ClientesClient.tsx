@@ -31,26 +31,18 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (limpio.length !== 11) { setCuitData(null); return }
     setBuscandoCuit(true)
     try {
-      const resp = await fetch(`https://soa.afip.gob.ar/sr-padron/v2/persona/${limpio}`)
-      const json = await resp.json()
-      const d = json?.data
-      if (d) {
-        const razon = d.razonSocial || [d.apellido, d.nombre].filter(Boolean).join(', ')
-        const condicion = d.categoriasMonotributo?.length ? 'Monotributo'
-          : d.categoriasIva?.some((x:any)=>x.idCategoria===1) ? 'Responsable Inscripto'
-          : 'Consumidor Final'
-        const dom = d.domicilioFiscal
-        const direccion = dom ? [
-          dom.direccion,
-          dom.localidad,
-          dom.descripcionProvincia
-        ].filter(Boolean).join(', ') : ''
-        setCuitData({ razon, condicion, direccion })
-        // Auto-completar campos vacíos
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+      const resp = await fetch(`${supabaseUrl}/functions/v1/consulta-cuit?cuit=${limpio}`)
+      if (!resp.ok) { setCuitData(null); setBuscandoCuit(false); return }
+      const d = await resp.json()
+      if (d.razon) {
+        const condicionLabel = d.condicion === 'responsable_inscripto' ? 'Responsable Inscripto'
+          : d.condicion === 'monotributo' ? 'Monotributo' : 'Consumidor Final'
+        setCuitData({ razon: d.razon, condicion: condicionLabel, direccion: d.direccion || '' })
         setForm(p => ({
           ...p,
-          nombre: p.nombre || razon,
-          direccion: p.direccion || direccion,
+          nombre: p.nombre || d.razon,
+          direccion: p.direccion || d.direccion || '',
         }))
       } else {
         setCuitData(null)
@@ -238,16 +230,6 @@ export default function ClientesClient({ userId }: { userId:string }) {
 
       <Modal open={open} onClose={()=>setOpen(false)} title={selected && open ? 'Editar cliente' : 'Nuevo cliente'}>
         <div className="flex flex-col gap-3">
-          <Field label="Nombre *"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" /></Field>
-          <Field label="WhatsApp"><Input type="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="54 9 2302…" /></Field>
-          <Field label="Email"><Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional" /></Field>
-          <Field label="Tipo de cliente">
-            <select value={form.tipo_cliente_id} onChange={e=>setForm(p=>({...p,tipo_cliente_id:e.target.value}))}
-              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green bg-white">
-              <option value="">Sin tipo</option>
-              {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
-            </select>
-          </Field>
           <Field label="CUIT / CUIL">
             <div style={{position:'relative'}}>
               <Input value={form.cuit}
@@ -266,6 +248,16 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 {cuitData.direccion && <p style={{color:'#166534',marginTop:2}}>📍 {cuitData.direccion}</p>}
               </div>
             )}
+          </Field>
+          <Field label="Nombre *"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" /></Field>
+          <Field label="WhatsApp"><Input type="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="54 9 2302…" /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional" /></Field>
+          <Field label="Tipo de cliente">
+            <select value={form.tipo_cliente_id} onChange={e=>setForm(p=>({...p,tipo_cliente_id:e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green bg-white">
+              <option value="">Sin tipo</option>
+              {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+            </select>
           </Field>
           <Field label="Dirección fiscal"><Input value={form.direccion} onChange={e=>setForm(p=>({...p,direccion:e.target.value}))} placeholder="Calle, localidad, provincia" /></Field>
           <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
