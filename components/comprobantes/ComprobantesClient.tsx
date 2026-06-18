@@ -181,7 +181,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(cliQ.trim().length < 2){ setCliSugs([]); return }
     supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id,notas')
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
-      .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
+      .then(({data})=>setCliSugs((data??[]) as unknown as ClienteMin[]))
   },[cliQ,cliSel,supabase])
 
   async function selectCliente(c:ClienteMin){
