@@ -640,13 +640,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
               {stockSugs.length>0&&!stockSel&&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-40 overflow-y-auto mt-1">
                   {stockSugs.map((s:any)=>(
-                    <button key={s.id} onClick={()=>{setStockSel(s);setStockSugs([]);setStockQ('')}}
+                    <button key={s.id}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0"
                       onClick={()=>{
-                        setStockSel(s)
-                        setStockSugs([])
-                        setStockQ('')
-                        // Agregar como ítem automáticamente
+                        setStockSel(s); setStockSugs([]); setStockQ('')
                         setItems(prev=>[...prev,{d:s.descripcion+(s.codigo?` [${s.codigo}]`:''),c:1,p:s.precio_venta||0}])
                       }}>
                       <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
