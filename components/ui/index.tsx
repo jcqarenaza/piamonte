@@ -24,16 +24,39 @@ export function Btn({ variant = 'primary', size = 'md', className = '', children
 }
 
 // ── MODAL ───────────────────────────────────────────────────
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+interface ModalProps {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: ReactNode
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+  header?: ReactNode   // contenido fijo arriba (debajo del título)
+  footer?: ReactNode   // contenido fijo abajo
+}
+export function Modal({ open, onClose, title, children, size = 'md', header, footer }: ModalProps) {
   if (!open) return null
+  const maxW = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' }[size]
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-p-line">
-          <h2 className="font-saira font-bold text-lg text-p-ink">{title}</h2>
-          <button onClick={onClose} className="text-p-gray hover:text-p-ink text-xl leading-none">✕</button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className={`bg-white w-full ${maxW} rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col`}
+        style={{ maxHeight: '92vh' }}>
+        {/* Encabezado fijo */}
+        <div className="shrink-0">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-p-line">
+            {title ? <h2 className="font-saira font-bold text-lg text-p-ink">{title}</h2> : <div/>}
+            <button onClick={onClose} className="text-p-gray hover:text-p-ink text-xl leading-none">✕</button>
+          </div>
+          {header && <div className="border-b border-p-line">{header}</div>}
         </div>
-        <div className="p-5">{children}</div>
+        {/* Contenido scrolleable */}
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        {/* Pie fijo */}
+        {footer && (
+          <div className="shrink-0 border-t border-p-line px-5 py-4 bg-white rounded-b-2xl">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

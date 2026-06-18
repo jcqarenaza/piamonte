@@ -741,13 +741,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         </div>
       )}
 
-      <Modal
-        open={open}
-        onClose={()=>setOpen(false)}
-        title=""
-        size="lg"
-        header={
-          <div style={{background:'#00A550',padding:'14px 20px'}}>
+      <Modal open={open} onClose={()=>setOpen(false)} title="">
+        <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto overflow-x-hidden">
+
+          {/* Header estilo factura */}
+          <div style={{margin:'-16px -16px 12px',background:'#00A550',padding:'16px 20px',borderRadius:'12px 12px 0 0'}}>
             {/* Fila superior: nombre fantasía + número */}
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -786,28 +784,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </p>
             </div>
           </div>
-        }
-        footer={
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1">
-              {diferencia !== 0 && items.length > 0 && (
-                <p className="text-sm font-bold text-amber-600">
-                  {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
-                </p>
-              )}
-              {hayError && <p className="text-sm font-bold text-red-500">
-                {faltaNombre ? 'Falta nombre del cliente' : faltaDni ? 'Falta DNI' : 'Falta CUIT'}
-              </p>}
-            </div>
-            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={loading||!puedeEmitir}
-              style={{...btn,opacity:(loading||!puedeEmitir)?.5:1,minWidth:160}}>
-              {emitiendo ? '⏳ Emitiendo…' : '✓ Emitir factura'}
-            </button>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-3">
 
           {/* Búsqueda de cliente */}
           <div>
@@ -1030,6 +1006,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
           <Field label="Observaciones"><Input value={obs} onChange={e=>setObs(e.target.value)} placeholder="Opcional…"/></Field>
 
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
+            <button onClick={save} disabled={!items.length||!cliQ} style={{...btn,opacity:(!items.length||!cliQ)?.5:1}}>
+              ✓ Emitir comprobante
+            </button>
+          </div>
         </div>
       </Modal>
       {/* Modal de pagos */}
