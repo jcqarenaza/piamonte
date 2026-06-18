@@ -800,8 +800,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </p>}
             </div>
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={loading||!puedeEmitir}
-              style={{...btn,opacity:(loading||!puedeEmitir)?.5:1,minWidth:160}}>
+            <button onClick={save} disabled={saving||!puedeEmitir}
+              style={{...btn,opacity:(saving||!puedeEmitir)?.5:1,minWidth:160}}>
               {emitiendo ? '⏳ Emitiendo…' : '✓ Emitir factura'}
             </button>
           </div>
