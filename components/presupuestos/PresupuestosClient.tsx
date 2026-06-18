@@ -95,6 +95,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   // Búsqueda clientes
   useEffect(()=>{
+    if(cliSel){setCliSugs([]);return}
     if(cliQ.trim().length<2){setCliSugs([]);return}
     supabase.from('clientes').select('id,nombre,telefono,tipo_cliente_id,tipos_cliente(nombre,margen_pct)').ilike('nombre',`%${cliQ}%`).limit(8).then(({data})=>{
       setCliSugs((data??[]).map((c:any)=>({
@@ -104,7 +105,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         tipo_margen:c.tipos_cliente?.margen_pct
       })))
     })
-  },[cliQ,supabase])
+  },[cliQ,cliSel,supabase])
 
   async function selectCliente(c: ClienteMin){
     setCliQ(c.nombre)
