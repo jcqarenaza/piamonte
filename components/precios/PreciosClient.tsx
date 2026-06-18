@@ -21,8 +21,15 @@ const IVA_RATE = 0.21
 // Tipos que ven precio con IVA discriminado
 const TIPOS_CON_IVA_DISCRIMINADO = ['Compañías', 'Chapista']
 
+function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
+  const tarjeta     = Math.round(costo * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
+  const transferencia = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct / 100))
+  const efectivo    = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))
+  return { tarjeta, transferencia, efectivo }
+}
+// Backward compat
 function precioVenta(costo: number, margen: number) {
-  return Math.round(costo * (1 + margen))  // margen_pct viene como decimal: 0.45 = 45%
+  return Math.round(costo * (1 + margen))
 }
 function precioSinIva(precio: number) {
   return Math.round(precio / (1 + IVA_RATE))
@@ -34,12 +41,22 @@ function ivaMonto(precio: number) {
 export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const esGerencial = rol === 'gerencial' || rol === 'admin'
   const [q, setQ]           = useState('')
+  const [configPrecios, setConfigPrecios] = useState({
+    recargo_tarjeta_pct: 35,
+    descuento_transferencia_pct: 15,
+    descuento_efectivo_pct: 25,
+  })
   const [piezas, setPiezas] = useState<Pieza[]>([])
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoSel, setTipoSel] = useState<string>('todos')
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    supabase.from('config_precios').select('*').eq('id', 1).maybeSingle()
+      .then(({ data }) => { if (data) setConfigPrecios(data) })
+  }, [supabase])
 
   useEffect(() => {
     supabase.from('tipos_cliente').select('*').order('nombre')
@@ -108,10 +125,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const gruposArr = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length)
 
   function irAPresupuesto(pieza: Pieza, tipo: TipoCliente) {
+    const precios = calcPrecios(pieza.costo_neto, tipo.margen_pct, configPrecios)
     const params = new URLSearchParams({
       pieza_id: pieza.id,
       pieza_desc: pieza.descripcion,
-      pieza_precio: String(precioVenta(pieza.costo_neto, tipo.margen_pct)),
+      pieza_precio: String(precios.tarjeta),
+      pieza_precio_transf: String(precios.transferencia),
+      pieza_precio_efect: String(precios.efectivo),
       tipo_id: tipo.id,
       tipo_nombre: tipo.nombre,
     })

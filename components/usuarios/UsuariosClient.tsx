@@ -17,6 +17,70 @@ const ROLES = [
 const ROL_COLOR: Record<string,string> = { gerencial:'#7c3aed', admin:'#2563eb', ventas:'#059669', caja:'#d97706' }
 
 interface Usuario { id:string; nombre:string; rol:string; email?:string }
+interface ConfigPrecios { recargo_tarjeta_pct:number; descuento_transferencia_pct:number; descuento_efectivo_pct:number }
+
+function ConfigPreciosPanel() {
+  const supabase = createClient()
+  const [cfg, setCfg] = useState<ConfigPrecios>({ recargo_tarjeta_pct:35, descuento_transferencia_pct:15, descuento_efectivo_pct:25 })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    supabase.from('config_precios').select('*').eq('id',1).maybeSingle()
+      .then(({data}) => { if(data) setCfg(data) })
+  }, [supabase])
+
+  async function guardar() {
+    setSaving(true)
+    await supabase.from('config_precios').update({
+      recargo_tarjeta_pct: cfg.recargo_tarjeta_pct,
+      descuento_transferencia_pct: cfg.descuento_transferencia_pct,
+      descuento_efectivo_pct: cfg.descuento_efectivo_pct,
+      updated_at: new Date().toISOString()
+    }).eq('id', 1)
+    setSaving(false); setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  // Ejemplo con costo de $100 y margen 45%
+  const costo = 100, margen = 0.45
+  const tarjeta = Math.round(costo * (1+margen) * (1 + cfg.recargo_tarjeta_pct/100))
+  const transf  = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct/100))
+  const efect   = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct/100))
+
+  return (
+    <div className="bg-white border border-p-line rounded-2xl shadow-sm p-6 mb-6">
+      <h3 className="font-saira font-bold text-p-ink text-lg mb-4">💰 Configuración de precios</h3>
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <Field label="Recargo tarjeta (%)">
+          <Input type="number" value={cfg.recargo_tarjeta_pct}
+            onChange={e=>setCfg(p=>({...p,recargo_tarjeta_pct:+e.target.value}))}/>
+        </Field>
+        <Field label="Descuento transferencia (%)">
+          <Input type="number" value={cfg.descuento_transferencia_pct}
+            onChange={e=>setCfg(p=>({...p,descuento_transferencia_pct:+e.target.value}))}/>
+        </Field>
+        <Field label="Descuento efectivo (%)">
+          <Input type="number" value={cfg.descuento_efectivo_pct}
+            onChange={e=>setCfg(p=>({...p,descuento_efectivo_pct:+e.target.value}))}/>
+        </Field>
+      </div>
+      {/* Preview con costo $100 margen 45% */}
+      <div className="bg-p-light rounded-xl p-4 mb-4 text-sm">
+        <p className="text-xs text-p-ink2 uppercase font-bold tracking-wider mb-2">Preview — costo $100, margen 45%</p>
+        <div className="flex gap-6">
+          <div><span className="text-p-ink2">💳 Tarjeta</span> <span className="font-bold text-p-dark">${tarjeta}</span></div>
+          <div><span className="text-p-ink2">🏦 Transferencia</span> <span className="font-bold text-blue-600">${transf}</span></div>
+          <div><span className="text-p-ink2">💵 Efectivo</span> <span className="font-bold text-green-700">${efect}</span></div>
+        </div>
+      </div>
+      <button onClick={guardar} disabled={saving}
+        style={{...btn, opacity: saving?.7:1}}>
+        {saved ? '✓ Guardado' : saving ? 'Guardando…' : 'Guardar configuración'}
+      </button>
+    </div>
+  )
+}
 
 export default function UsuariosClient() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
