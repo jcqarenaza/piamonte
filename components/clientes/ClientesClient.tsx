@@ -31,7 +31,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (limpio.length !== 11) { setCuitData(null); return }
     setBuscandoCuit(true)
     try {
-      const resp = await fetch(`/api/cuit/${limpio}`)
+      const resp = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-cuit?cuit=${limpio}`)
       if (!resp.ok) { setCuitData(null); setBuscandoCuit(false); return }
       const d = await resp.json()
       if (d.razon) {
