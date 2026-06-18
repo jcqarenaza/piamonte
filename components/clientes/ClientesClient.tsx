@@ -113,7 +113,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente…"
           className="flex-1 min-w-[200px] border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green" />
-        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', cuit:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' }); setOpen(true) }}
+        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' }); setOpen(true) }}
           style={{ background:'#00A550', color:'#fff', border:'none', borderRadius:10, padding:'10px 20px', fontWeight:700, fontSize:14, cursor:'pointer' }}>
           + Nuevo cliente
         </button>

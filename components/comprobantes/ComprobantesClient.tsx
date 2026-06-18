@@ -31,7 +31,7 @@ const TIPO_FISCAL = [
 ]
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number }
-interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null; vehiculo_habitual?:string }
+interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; direccion:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null; vehiculo_habitual?:string }
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 
@@ -59,7 +59,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ivaOn, setIvaOn]       = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75) // % del total que se declara como base imponible
 
-  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', dni:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
+  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', dni:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', direccion:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
   const [items, setItems]       = useState<{d:string;c:number;p:number;costo?:number;stock_id?:string}[]>([])
   const [stockQ, setStockQ]     = useState('')
@@ -186,7 +186,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
-    setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'' }))
+    setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'', direccion:c.direccion||'' }))
     if(c.tipo_fiscal && c.tipo_fiscal !== 'consumidor_final') setShowFiscal(true)
     // Cargar historial del cliente
     const [pres, ords] = await Promise.all([
