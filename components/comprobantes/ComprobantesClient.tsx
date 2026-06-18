@@ -88,7 +88,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ncPago, setNcPago] = useState<'devolver'|'acreditar'|null>(null)
   const [osPendientes, setOsPendientes] = useState<any[]>([])
   const [osModal, setOsModal] = useState(false)
-  const [osSel, setOsSel] = useState<string|null>(null) // id de la OS seleccionada
+  const [osSel, setOsSel] = useState<string|null>(null)
+  const [tarjetaModal, setTarjetaModal] = useState(false)
+  const [tarjetaIdx, setTarjetaIdx] = useState(0)
+  const [tarjetaForm, setTarjetaForm] = useState({ tipo:'credito', nombre:'Visa', cuotas:1 })
+
+  const TARJETAS = ['Visa','Mastercard','American Express','Naranja','Cabal','MODO','Mercado Pago']
+  const CUOTAS = [1,2,3,6,9,12,18,24] // id de la OS seleccionada
 
   // Buscar OS pendientes del cliente seleccionado
   useEffect(()=>{
@@ -175,7 +181,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id,notas')
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
       .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
-  },[cliQ,supabase])
+  },[cliQ,cliSel,supabase])
 
   async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
@@ -1010,6 +1016,54 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
         </div>
       </Modal>
+      {/* Modal tarjeta */}
+      {tarjetaModal && (
+        <Modal open={tarjetaModal} onClose={()=>setTarjetaModal(false)} title="Detalle de tarjeta">
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              {(['credito','debito'] as const).map(t=>(
+                <button key={t} onClick={()=>setTarjetaForm(p=>({...p,tipo:t}))}
+                  style={{flex:1,padding:'8px',borderRadius:8,border:'none',fontWeight:700,fontSize:13,cursor:'pointer',
+                    background:tarjetaForm.tipo===t?'#1d4ed8':'#e5e7eb',
+                    color:tarjetaForm.tipo===t?'#fff':'#374151'}}>
+                  {t==='credito'?'💳 Crédito':'🏧 Débito'}
+                </button>
+              ))}
+            </div>
+            <Field label="Tarjeta">
+              <select value={tarjetaForm.nombre} onChange={e=>setTarjetaForm(p=>({...p,nombre:e.target.value}))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
+                {TARJETAS.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            {tarjetaForm.tipo==='credito' && (
+              <Field label="Cuotas">
+                <div className="flex gap-2 flex-wrap">
+                  {CUOTAS.map(q=>(
+                    <button key={q} onClick={()=>setTarjetaForm(p=>({...p,cuotas:q}))}
+                      style={{padding:'6px 12px',borderRadius:8,border:'none',fontWeight:700,fontSize:13,cursor:'pointer',
+                        background:tarjetaForm.cuotas===q?'#00A550':'#e5e7eb',
+                        color:tarjetaForm.cuotas===q?'#fff':'#374151'}}>
+                      {q===1?'Contado':`${q}c`}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={()=>setTarjetaModal(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+              <button onClick={()=>{
+                const label = `Tarjeta ${tarjetaForm.tipo==='credito'?'Cred.':'Déb.'} ${tarjetaForm.nombre}${tarjetaForm.tipo==='credito'&&tarjetaForm.cuotas>1?` ${tarjetaForm.cuotas}c`:''}`
+                setPagos(prev=>prev.map((x,j)=>j===tarjetaIdx?{...x,metodo:label}:x))
+                setTarjetaModal(false)
+              }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Toast CAE */}
       {caeResult && (
         <div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',background:'#00A550',color:'#fff',padding:'12px 24px',borderRadius:14,fontWeight:700,fontSize:14,zIndex:200,boxShadow:'0 4px 20px rgba(0,0,0,.2)',textAlign:'center'}}>
