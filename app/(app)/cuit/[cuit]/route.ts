@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-// Forzar región sa-east-1 (São Paulo) para que AFIP no bloquee
 export const preferredRegion = 'sa-east-1'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { cuit: string } }
+  { params }: { params: Promise<{ cuit: string }> }
 ) {
-  const cuit = params.cuit.replace(/[^0-9]/g, '')
+  const { cuit: rawCuit } = await params
+  const cuit = rawCuit.replace(/[^0-9]/g, '')
 
   if (!cuit || cuit.length !== 11) {
     return NextResponse.json({ error: 'CUIT inválido' }, { status: 400 })
@@ -58,9 +58,7 @@ export async function GET(
       if (!resp.ok) continue
       const json = await resp.json()
       const parsed = api.parse(json)
-      if (parsed?.razon) {
-        return NextResponse.json(parsed)
-      }
+      if (parsed?.razon) return NextResponse.json(parsed)
     } catch (e) {
       console.error('Error consultando', api.url, e)
     }
