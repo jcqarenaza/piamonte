@@ -197,26 +197,35 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                         {tipos
                           .filter(t => tipoSel === 'todos' || t.id === tipoSel)
                           .map((tipo, idx) => {
-                            const precio = precioVenta(pieza.costo_neto, tipo.margen_pct)
+                            const precios = calcPrecios(pieza.costo_neto, tipo.margen_pct, configPrecios)
                             const isBest = pieza.costo_neto === bestCosto
                             return (
                               <div key={tipo.id}
                                 className={`flex items-center justify-between px-4 py-3 border-t border-p-line2 ${idx > 0 ? 'md:border-l' : ''} ${isBest ? 'bg-green-50/50' : ''}`}>
-                                <div>
-                                  <p className="text-[11px] font-semibold text-p-ink2">
+                                <div className="flex-1">
+                                  <p className="text-[11px] font-semibold text-p-ink2 mb-1">
                                     {TIPO_ICON[tipo.nombre] || '👥'} {tipo.nombre}
                                     {esGerencial && <span className="text-p-gray ml-1">+{Math.round(tipo.margen_pct * 100)}%</span>}
                                   </p>
-                                  <p className={`font-saira font-bold text-xl mt-0.5 ${isBest ? 'text-p-green' : 'text-p-ink'}`}>
-                                    {moneyARS(precio)}
-                                  </p>
-                                  {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && (
-                                    <div className="mt-0.5 text-[10px] text-p-ink2 leading-tight">
-                                      <span>Neto: <span className="font-mono font-semibold">{moneyARS(precioSinIva(precio))}</span></span>
-                                      <span className="mx-1">·</span>
-                                      <span>IVA 21%: <span className="font-mono font-semibold">{moneyARS(ivaMonto(precio))}</span></span>
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-p-ink2 w-24">💳 Tarjeta</span>
+                                      <span className={`font-saira font-bold text-base ${isBest ? 'text-p-green' : 'text-p-ink'}`}>{moneyARS(precios.tarjeta)}</span>
                                     </div>
-                                  )}
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-p-ink2 w-24">🏦 Transf. <span className="text-green-600">-{configPrecios.descuento_transferencia_pct}%</span></span>
+                                      <span className="font-saira font-bold text-base text-blue-600">{moneyARS(precios.transferencia)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-p-ink2 w-24">💵 Efectivo <span className="text-green-600">-{configPrecios.descuento_efectivo_pct}%</span></span>
+                                      <span className="font-saira font-bold text-base text-green-700">{moneyARS(precios.efectivo)}</span>
+                                    </div>
+                                    {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && (
+                                      <div className="mt-1 text-[10px] text-p-ink2">
+                                        Neto: {moneyARS(precioSinIva(precios.tarjeta))} · IVA: {moneyARS(ivaMonto(precios.tarjeta))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <button onClick={() => irAPresupuesto(pieza, tipo)}
                                   style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
