@@ -1004,32 +1004,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             )}
           </div>
 
-          {/* MODAL DE PAGOS — reemplaza la vieja sección inline */}
-          {false && pagos.map((p,i)=>(
-            <div key={i} className="grid grid-cols-12 gap-2 items-center">
-              <div className="col-span-5">
-                <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
-                  {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
-                </Select>
-              </div>
-                  {p.metodo.startsWith('Crédito')&&(
-                    <div className="col-span-2">
-                      <Select value={p.cuotas||1} onChange={e=>updPago(i,'cuotas',+e.target.value)}>
-                        {CUOTAS.map(c=><option key={c} value={c}>{c}c</option>)}
-                      </Select>
-                    </div>
-                  )}
-                  <div className={p.metodo.startsWith('Crédito')?'col-span-4':'col-span-6'}>
-                    <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
-                  </div>
-                  {pagos.length>1&&<button onClick={()=>delPago(i)} className="text-red-400 text-xs col-span-1">✕</button>}
-                </div>
-              ))}
-              {total>0&&Math.abs(diferencia)>1&&(
-                <p className={`text-xs font-bold mt-1 ${diferencia>0?'text-amber-600':'text-red-500'}`}>
-                  {diferencia>0?`Falta: ${moneyARS(diferencia)}`:`Exceso: ${moneyARS(Math.abs(diferencia))}`}
-                </p>
-              )}
+
             </div>
           </div>
 
