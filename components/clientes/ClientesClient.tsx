@@ -22,7 +22,42 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const [saving, setSaving]     = useState(false)
   const supabase = createClient()
 
-  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
+  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', direccion:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
+  const [buscandoCuit, setBuscandoCuit] = useState(false)
+  const [cuitData, setCuitData] = useState<{razon:string;condicion:string;direccion:string}|null>(null)
+
+  async function buscarCuit(cuit: string) {
+    const limpio = cuit.replace(/[^0-9]/g,'')
+    if (limpio.length !== 11) { setCuitData(null); return }
+    setBuscandoCuit(true)
+    try {
+      const resp = await fetch(`https://soa.afip.gob.ar/sr-padron/v2/persona/${limpio}`)
+      const json = await resp.json()
+      const d = json?.data
+      if (d) {
+        const razon = d.razonSocial || [d.apellido, d.nombre].filter(Boolean).join(', ')
+        const condicion = d.categoriasMonotributo?.length ? 'Monotributo'
+          : d.categoriasIva?.some((x:any)=>x.idCategoria===1) ? 'Responsable Inscripto'
+          : 'Consumidor Final'
+        const dom = d.domicilioFiscal
+        const direccion = dom ? [
+          dom.direccion,
+          dom.localidad,
+          dom.descripcionProvincia
+        ].filter(Boolean).join(', ') : ''
+        setCuitData({ razon, condicion, direccion })
+        // Auto-completar campos vacíos
+        setForm(p => ({
+          ...p,
+          nombre: p.nombre || razon,
+          direccion: p.direccion || direccion,
+        }))
+      } else {
+        setCuitData(null)
+      }
+    } catch { setCuitData(null) }
+    setBuscandoCuit(false)
+  }
 
   const load = useCallback(async () => {
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
@@ -38,12 +73,12 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (!form.nombre.trim()) return
     setSaving(true)
     if (selected?.id) {
-      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null }).eq('id', selected.id)
+      await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null }).eq('id', selected.id)
     } else {
-      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null, user_id:userId })
+      await supabase.from('clientes').insert({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null, user_id:userId })
     }
     setSaving(false); setOpen(false)
-    setForm({ nombre:'', telefono:'', email:'', cuit:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
+    setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
     load()
   }
 
@@ -117,7 +152,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                       onClick={e=>e.stopPropagation()}
                       className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
                   )}
-                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
+                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
                     className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink2 hover:bg-p-light">✏</button>
                   <button onClick={e=>{ e.stopPropagation(); del(c.id) }}
                     className="text-xs border border-red-200 rounded-lg px-2 py-1 text-red-400 hover:text-red-600">✕</button>
@@ -213,7 +248,26 @@ export default function ClientesClient({ userId }: { userId:string }) {
               {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
           </Field>
-          <Field label="CUIT / CUIL"><Input value={form.cuit} onChange={e=>setForm(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9" /></Field>
+          <Field label="CUIT / CUIL">
+            <div style={{position:'relative'}}>
+              <Input value={form.cuit}
+                onChange={e=>{
+                  const v = e.target.value
+                  setForm(p=>({...p,cuit:v}))
+                  buscarCuit(v)
+                }}
+                placeholder="20-12345678-9"/>
+              {buscandoCuit && <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'#6b7280'}}>🔍</span>}
+            </div>
+            {cuitData && (
+              <div style={{marginTop:6,background:'#f0fdf4',border:'1px solid #86efac',borderRadius:8,padding:'8px 12px',fontSize:12}}>
+                <p style={{fontWeight:700,color:'#15803d'}}>{cuitData.razon}</p>
+                <p style={{color:'#16a34a',marginTop:2}}>{cuitData.condicion}</p>
+                {cuitData.direccion && <p style={{color:'#166534',marginTop:2}}>📍 {cuitData.direccion}</p>}
+              </div>
+            )}
+          </Field>
+          <Field label="Dirección fiscal"><Input value={form.direccion} onChange={e=>setForm(p=>({...p,direccion:e.target.value}))} placeholder="Calle, localidad, provincia" /></Field>
           <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Vehículo habitual, observaciones…" /></Field>
           <div style={{borderTop:'1px solid #e5e7eb',paddingTop:12,marginTop:4}}>
             <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',marginBottom:8}}>
