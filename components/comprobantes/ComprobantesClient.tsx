@@ -90,6 +90,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [osModal, setOsModal] = useState(false)
   const [osSel, setOsSel] = useState<string|null>(null)
   const [tarjetaModal, setTarjetaModal] = useState(false)
+  const [pagosModal, setPagosModal] = useState(false)
   const [tarjetaIdx, setTarjetaIdx] = useState(0)
   const [tarjetaForm, setTarjetaForm] = useState({ tipo:'credito', nombre:'Visa', cuotas:1 })
 
@@ -787,48 +788,49 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           {/* Búsqueda de cliente */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
-            <div className="relative">
-              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null)}}
-                placeholder="Nombre o celular…"/>
-              {cliSugs.length>0&&(
-                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                  <button onClick={usarConsumidorFinal}
-                    className="w-full text-left px-3 py-2.5 text-sm font-semibold text-p-dark hover:bg-p-light border-b border-p-line2">
-                    👤 Consumidor Final
-                  </button>
-                  {cliSugs.map(c=>(
-                    <button key={c.id} onClick={()=>selectCliente(c)}
-                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
-                      <p className="font-medium text-p-ink">{c.nombre}</p>
-                      <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
-                    </button>
-                  ))}
+            {cliSel ? (
+              <div className="flex items-center gap-2 bg-p-light rounded-xl px-3 py-2.5 border border-p-green">
+                <div className="flex-1">
+                  <p className="font-semibold text-sm text-p-ink">{cliSel.nombre}</p>
+                  <p className="text-[10px] text-p-ink2">{[cliSel.telefono, tipoFiscalLabel(fiscal.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
                 </div>
-              )}
-            </div>
-            {/* Badge tipo fiscal */}
+                <button onClick={()=>{setCli(null);setCliQ('');setCliSugs([])}}
+                  className="text-p-ink2 hover:text-red-500 text-xs font-bold px-2 py-1 rounded-lg hover:bg-red-50">
+                  ✕ cambiar
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null)}}
+                  placeholder="Nombre o celular…"/>
+                {cliSugs.length>0&&(
+                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    <button onClick={usarConsumidorFinal}
+                      className="w-full text-left px-3 py-2.5 text-sm font-semibold text-p-dark hover:bg-p-light border-b border-p-line2">
+                      👤 Consumidor Final
+                    </button>
+                    {cliSugs.map(c=>(
+                      <button key={c.id} onClick={()=>selectCliente(c)}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                        <p className="font-medium text-p-ink">{c.nombre}</p>
+                        <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Badge tipo fiscal y alertas */}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <button onClick={()=>setShowFiscal(!showFiscal)}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${showFiscal?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
                 {showFiscal ? '▲ ' : '▼ '}{tipoFiscalLabel(fiscal.tipo_fiscal)}
-                {fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
+                {fiscal.cuit&&` · ${fiscal.cuit}`}
+                {fiscal.dni&&` · DNI ${fiscal.dni}`}
               </button>
-              {cliSel&&<span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>}
-            {faltaNombre && (
-              <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
-                ⚠️ Nombre del cliente obligatorio
-              </span>
-            )}
-            {faltaCuit && !faltaNombre && (
-              <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
-                ⚠️ CUIT obligatorio para {tipoFiscalLabel(fiscal.tipo_fiscal)}
-              </span>
-            )}
-            {faltaDni && !faltaNombre && (
-              <span style={{background:'#fef3c7',color:'#d97706',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>
-                ⚠️ DNI obligatorio para Consumidor Final
-              </span>
-            )}
+              {faltaNombre && <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ Nombre obligatorio</span>}
+              {faltaCuit && !faltaNombre && <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ CUIT obligatorio</span>}
+              {faltaDni && !faltaNombre && <span style={{background:'#fef3c7',color:'#d97706',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ DNI obligatorio</span>}
             </div>
           </div>
 
@@ -968,23 +970,48 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {/* Formas de pago */}
+          {/* Formas de pago — botón que abre modal */}
           <div className="border-t border-p-line2 pt-3">
             <div className="flex items-center justify-between mb-2">
               <label className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Formas de pago</label>
-              <div className="flex gap-2">
-                {total>0&&<button onClick={distribuirTotal} style={{...btnGray,padding:'4px 10px',fontSize:11}}>Distribuir total</button>}
-                <button onClick={addPago} style={{...btnSm,padding:'4px 10px',fontSize:11}}>+ Agregar</button>
-              </div>
+              <button onClick={()=>setPagosModal(true)} style={{...btnSm,padding:'6px 14px',fontSize:12}}>
+                {pagos.some(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0) ? '✏ Editar pagos' : '+ Agregar'}
+              </button>
             </div>
-            <div className="flex flex-col gap-2">
-              {pagos.map((p,i)=>(
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-5">
-                    <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
-                      {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
-                    </Select>
+            {/* Resumen pagos */}
+            {pagos.filter(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0).length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {pagos.filter(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0).map((p,i)=>(
+                  <div key={i} className="flex justify-between items-center bg-p-light rounded-lg px-3 py-2 text-sm">
+                    <span className="font-medium text-p-ink">{p.metodo}</span>
+                    <span className="font-mono font-bold text-p-dark">{moneyARS(+p.monto.replace(/[^0-9.]/g,'')||0)}</span>
                   </div>
+                ))}
+                {diferencia !== 0 && (
+                  <p className="text-xs font-bold text-amber-600">
+                    {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <button onClick={()=>setPagosModal(true)}
+                className="w-full border-2 border-dashed border-p-line rounded-xl py-3 text-sm text-p-ink2 hover:border-p-green hover:text-p-green transition-colors">
+                Tap para agregar forma de pago
+              </button>
+            )}
+            {diferencia > 0 && pagos.some(p=>p.monto) && (
+              <p className="text-xs font-bold text-red-500 mt-1">Falta: {moneyARS(diferencia)}</p>
+            )}
+          </div>
+
+          {/* MODAL DE PAGOS — reemplaza la vieja sección inline */}
+          {false && pagos.map((p,i)=>(
+            <div key={i} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-5">
+                <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
+                  {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
+                </Select>
+              </div>
                   {p.metodo.startsWith('Crédito')&&(
                     <div className="col-span-2">
                       <Select value={p.cuotas||1} onChange={e=>updPago(i,'cuotas',+e.target.value)}>
@@ -1016,6 +1043,70 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
         </div>
       </Modal>
+      {/* Modal de pagos */}
+      {pagosModal && (
+        <Modal open={pagosModal} onClose={()=>setPagosModal(false)} title="Formas de pago">
+          <div className="flex flex-col gap-3">
+            <div className="bg-p-light rounded-xl px-4 py-3 flex justify-between items-center">
+              <span className="text-sm text-p-ink2">Total a pagar</span>
+              <span className="font-saira font-bold text-xl text-p-dark">{moneyARS(total)}</span>
+            </div>
+
+            {pagos.map((p,i)=>(
+              <div key={i} className="bg-white border border-p-line rounded-xl p-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Select value={p.metodo.startsWith('Tarjeta')?'Tarjeta':p.metodo}
+                    onChange={e=>{
+                      if(e.target.value==='Tarjeta'){
+                        setTarjetaIdx(i); setTarjetaForm({tipo:'credito',nombre:'Visa',cuotas:1}); setTarjetaModal(true)
+                      } else {
+                        updPago(i,'metodo',e.target.value)
+                      }
+                    }}>
+                    {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
+                  </Select>
+                  {p.metodo.startsWith('Tarjeta') && (
+                    <button onClick={()=>{setTarjetaIdx(i);setTarjetaModal(true)}}
+                      style={{fontSize:11,background:'#dbeafe',color:'#1d4ed8',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',whiteSpace:'nowrap',fontWeight:700}}>
+                      {p.metodo} ✏
+                    </button>
+                  )}
+                  {pagos.length > 1 && (
+                    <button onClick={()=>setPagos(prev=>prev.filter((_,j)=>j!==i))}
+                      className="text-red-400 hover:text-red-600 text-xs ml-auto">✕</button>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
+                  {total > 0 && (
+                    <button onClick={()=>{
+                      const resto = total - pagos.reduce((a,x,j)=>j===i?a:a+(parseFloat(x.monto.replace(/[^0-9.]/g,''))||0),0)
+                      updPago(i,'monto',String(Math.round(resto)))
+                    }} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:6,padding:'4px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>
+                      resto
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <button onClick={addPago} style={{...btnGray,width:'100%',textAlign:'center'}}>+ Agregar otro método</button>
+
+            {diferencia !== 0 && (
+              <div style={{background:diferencia>0?'#fee2e2':'#f0fdf4',border:`1px solid ${diferencia>0?'#fca5a5':'#86efac'}`,borderRadius:10,padding:'8px 12px',textAlign:'center'}}>
+                <p style={{fontSize:13,fontWeight:700,color:diferencia>0?'#dc2626':'#16a34a'}}>
+                  {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setPagosModal(false)} style={{...btn}}>✓ Confirmar</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Modal tarjeta */}
       {tarjetaModal && (
         <Modal open={tarjetaModal} onClose={()=>setTarjetaModal(false)} title="Detalle de tarjeta">
