@@ -84,9 +84,7 @@ export default function DepositosClient() {
                     {d.descripcion&&<p className="text-sm text-p-ink2 mt-0.5">{d.descripcion}</p>}
                     {d.direccion&&<p className="text-xs text-p-ink2 mt-0.5">📍 {d.direccion}</p>}
                   </div>
-                  {!d.es_principal && (
-                    <button onClick={e=>{e.stopPropagation();openEditar(d)}} style={btnGray}>✏</button>
-                  )}
+                  <button onClick={e=>{e.stopPropagation();openEditar(d)}} style={btnGray}>✏</button>
                 </div>
               </div>
             ))}
