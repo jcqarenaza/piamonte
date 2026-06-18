@@ -22,7 +22,7 @@ const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
 const btnWa    = { ...btnSm,background:'#25d366' } as const
 
 // Formas de pago
-const METODOS = ['Efectivo','Transferencia','Débito','Crédito Visa','Crédito Master','Crédito Naranja','Crédito AMEX','Cheque','Cuenta corriente']
+const METODOS = ['Efectivo','Transferencia','Tarjeta','Cuenta corriente']
 const CUOTAS  = [1,2,3,6,9,12,18,24]
 const TIPO_FISCAL = [
   { id:'consumidor_final', label:'Consumidor Final' },
