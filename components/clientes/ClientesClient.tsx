@@ -31,18 +31,12 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (limpio.length !== 11) { setCuitData(null); return }
     setBuscandoCuit(true)
     try {
-      // Intentar API Route de Next.js primero, luego edge function como fallback
+      // Consultar padrón ARCA con certificado propio
       let d: any = null
       try {
-        const r1 = await fetch(`/api/cuit/${limpio}`)
-        if (r1.ok) d = await r1.json()
+        const r = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-padron?cuit=${limpio}`)
+        if (r.ok) d = await r.json()
       } catch {}
-      if (!d?.razon) {
-        try {
-          const r2 = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-cuit?cuit=${limpio}`)
-          if (r2.ok) d = await r2.json()
-        } catch {}
-      }
       if (!d?.razon) { setCuitData(null); setBuscandoCuit(false); return }
       const condicionLabel = d.condicion === 'responsable_inscripto' ? 'Responsable Inscripto'
           : d.condicion === 'monotributo' ? 'Monotributo' : 'Consumidor Final'
