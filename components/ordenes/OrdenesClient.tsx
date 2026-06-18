@@ -370,10 +370,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
           {ordenes.filter(o=>{
-            if(filtroEstado==='todas') return true
-            if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
-            return (o as any).estado===filtroEstado
-          })Filtradas.map(o => {
+            const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? ((o as any).estado==='realizado' && !(o as any).convertido_comp) : (o as any).estado===filtroEstado
+            const asegOk = !filtroAseg||o.aseguradora===filtroAseg
+            return estadoOk && asegOk
+          }).map(o => {
             const conADAS = (o as any).tiene_adas
             const numADAS = (o as any).numero_adas
             const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
