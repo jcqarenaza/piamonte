@@ -141,6 +141,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
   async function save() {
     if(!items.length) return
+    if(!form.aseg) { alert('La aseguradora es obligatoria en una Orden de Servicio.'); return }
     setLoading(true)
     const conADAS = tieneADAS(items)
     let numero_adas: number|null = null
@@ -536,9 +537,24 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
         <div className="flex flex-col gap-3">
-          {/* Cliente */}
+          {/* Header aseguradora si corresponde */}
+          {form.aseg && (
+            <div style={{background:'#00A550',margin:'-16px -16px 4px',padding:'12px 20px',borderRadius:'12px 12px 0 0',display:'flex',alignItems:'center',gap:10}}>
+              <div>
+                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Facturado a</p>
+                <p style={{color:'#fff',fontSize:16,fontWeight:800}}>{form.aseg}</p>
+              </div>
+              {form.sin && (
+                <div style={{marginLeft:'auto',textAlign:'right'}}>
+                  <p style={{color:'rgba(255,255,255,.7)',fontSize:10}}>Siniestro</p>
+                  <p style={{color:'#fff',fontSize:13,fontWeight:700,fontFamily:'monospace'}}>{form.sin}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Cliente — label cambia según si tiene aseguradora */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Cliente"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
+            <Field label={form.aseg ? "Asegurado" : "Cliente"}><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -570,7 +586,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
           <div className="grid grid-cols-3 gap-3">
             <Field label="Aseguradora">
               <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
-                <option value="">Sin seguro</option>
+                <option value="">— Seleccioná aseguradora *</option>
                 {ASEGURADORAS.map(a=><option key={a} value={a}>{a}</option>)}
               </Select>
             </Field>
