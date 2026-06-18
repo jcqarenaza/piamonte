@@ -40,14 +40,26 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
 
   const loadVentas = useCallback(async () => {
     setLoading(true)
+    const esGerencial = perfil.rol === 'gerencial'
+    const esCaja = perfil.rol === 'caja'
+
+    // Filtrar por es_caja2 según el rol
+    let q = supabase.from('ventas').select('*').eq('fecha', fecha).order('created_at', { ascending: false })
+    if (esCaja) {
+      q = q.eq('es_caja2', true)   // Caja solo ve sus ventas (caja2)
+    } else if (!esGerencial) {
+      q = q.eq('es_caja2', false)  // Admin/Ventas solo ven caja1
+    }
+    // Gerencial ve todo (sin filtro)
+
     const [ventasRes, gastosRes] = await Promise.all([
-      supabase.from('ventas').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
+      q,
       supabase.from('gastos').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
     ])
     setVentas(ventasRes.data ?? [])
     setGastos(gastosRes.data ?? [])
     setLoading(false)
-  }, [fecha, supabase])
+  }, [fecha, supabase, perfil.rol])
 
   useEffect(() => { loadVentas() }, [loadVentas])
 
@@ -121,7 +133,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       pago: form.pago, origen: form.origen, pendiente: !c,
       stock_id: form.stock_id, user_id: userId,
       tipo_cliente_id: form.tipo_id||null,
-      tipo_cliente_nombre: form.tipo_nombre||null
+      tipo_cliente_nombre: form.tipo_nombre||null,
+      es_caja2: perfil.rol === 'caja'
     }).select('id').single()
 
     // Si es cuenta corriente, registrar deuda del cliente
