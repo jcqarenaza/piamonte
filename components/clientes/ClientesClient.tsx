@@ -31,21 +31,27 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (limpio.length !== 11) { setCuitData(null); return }
     setBuscandoCuit(true)
     try {
-      const resp = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-cuit?cuit=${limpio}`)
-      if (!resp.ok) { setCuitData(null); setBuscandoCuit(false); return }
-      const d = await resp.json()
-      if (d.razon) {
-        const condicionLabel = d.condicion === 'responsable_inscripto' ? 'Responsable Inscripto'
-          : d.condicion === 'monotributo' ? 'Monotributo' : 'Consumidor Final'
-        setCuitData({ razon: d.razon, condicion: condicionLabel, direccion: d.direccion || '' })
-        setForm(p => ({
-          ...p,
-          nombre: p.nombre || d.razon,
-          direccion: p.direccion || d.direccion || '',
-        }))
-      } else {
-        setCuitData(null)
+      // Intentar API Route de Next.js primero, luego edge function como fallback
+      let d: any = null
+      try {
+        const r1 = await fetch(`/api/cuit/${limpio}`)
+        if (r1.ok) d = await r1.json()
+      } catch {}
+      if (!d?.razon) {
+        try {
+          const r2 = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-cuit?cuit=${limpio}`)
+          if (r2.ok) d = await r2.json()
+        } catch {}
       }
+      if (!d?.razon) { setCuitData(null); setBuscandoCuit(false); return }
+      const condicionLabel = d.condicion === 'responsable_inscripto' ? 'Responsable Inscripto'
+          : d.condicion === 'monotributo' ? 'Monotributo' : 'Consumidor Final'
+      setCuitData({ razon: d.razon, condicion: condicionLabel, direccion: d.direccion || '' })
+      setForm(p => ({
+        ...p,
+        nombre: p.nombre || d.razon,
+        direccion: p.direccion || d.direccion || '',
+      }))
     } catch { setCuitData(null) }
     setBuscandoCuit(false)
   }
