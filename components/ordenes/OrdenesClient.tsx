@@ -652,13 +652,15 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             <button onClick={()=>setTurnoModal(null)} style={{...btnGray}}>Cancelar</button>
             <button onClick={async()=>{
               if(!turnoModal) return
-              await supabase.from('turnos').insert({
+              const { data: nuevoTurno } = await supabase.from('turnos').insert({
                 fecha: turnoForm.fecha, hora: turnoForm.hora,
                 cliente: turnoModal.cliente||null, telefono: turnoModal.telefono||null,
                 vehiculo: turnoModal.vehiculo||null, trabajo: turnoForm.trabajo||null,
                 estado: 'confirmado', user_id: userId,
-              })
-              await supabase.from('ordenes_servicio').update({ turno_id: turnoModal.id }).eq('id', turnoModal.id)
+                os_id: turnoModal.id,  // vincula el turno a la OS
+              }).select('id').single()
+              // Guardar también el turno_id en la OS
+              if(nuevoTurno) await supabase.from('ordenes_servicio').update({ turno_id: nuevoTurno.id }).eq('id', turnoModal.id)
               setTurnoModal(null)
             }} style={btn}>✓ Crear turno</button>
           </div>
