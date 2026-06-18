@@ -161,7 +161,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       setFiscal(p=>({...p, vehiculo:veh||'', tipo_cliente_id:tipoId||'' }))
       // Pre-fill como consumidor final con el nombre
       if(cli) {
-        setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
+        setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, direccion:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
         setCliQ(cli)
         setCliSugs([]) // No mostrar dropdown al pre-cargar
       }
