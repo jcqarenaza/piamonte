@@ -221,30 +221,49 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     doc.setFontSize(8);  doc.text(o.fecha.split('-').reverse().join('/'), W-pad, 26, {align:'right'})
     y = 38
 
-    // ── Datos cliente / vehículo ──
+    // ── Datos ──
     doc.setTextColor(30,30,30)
+    const hasAseg = !conADAS && !!o.aseguradora
+    const boxH = conADAS ? 24 : hasAseg ? 42 : 22
     doc.setFillColor(245,250,247)
-    doc.rect(pad, y-4, W-pad*2, conADAS ? 24 : (o.aseguradora ? 34 : 22), 'F')
+    doc.rect(pad, y-4, W-pad*2, boxH, 'F')
 
-    doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    doc.text('Cliente:', pad+2, y); doc.setFont('helvetica','normal')
-    doc.text(o.cliente||'—', pad+22, y)
-    if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
-    y+=6
+    if(hasAseg) {
+      // Aseguradora como destinatario principal
+      doc.setFont('helvetica','bold'); doc.setFontSize(10)
+      doc.setTextColor(0,120,60)
+      doc.text('ASEGURADORA:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.setTextColor(30,30,30)
+      doc.text(o.aseguradora!, pad+38, y); y+=7
 
-    doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
-    doc.text(o.vehiculo||'—', pad+22, y)
-    if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
-    y+=6
+      // Datos del asegurado
+      doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      doc.text('Asegurado:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.text(o.cliente||'—', pad+26, y)
+      if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
+      y+=6
 
-    if(!conADAS && o.aseguradora) {
-      doc.setFont('helvetica','bold'); doc.text('Aseguradora:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(o.aseguradora, pad+30, y); y+=6
+      doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.text(o.vehiculo||'—', pad+22, y)
+      if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
+      y+=6
+
       if(o.siniestro||o.poliza){
-        if(o.siniestro){ doc.setFont('helvetica','bold'); doc.text('Siniestro:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(o.siniestro, pad+24, y) }
-        if(o.poliza)   { doc.setFont('helvetica','bold'); doc.text('Póliza:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.poliza, pad+116, y) }
+        if(o.siniestro){ doc.setFont('helvetica','bold'); doc.text('Siniestro:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(o.siniestro!, pad+24, y) }
+        if(o.poliza)   { doc.setFont('helvetica','bold'); doc.text('Póliza:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.poliza!, pad+116, y) }
         y+=6
       }
+    } else {
+      doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      doc.text('Cliente:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.text(o.cliente||'—', pad+22, y)
+      if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
+      y+=6
+
+      doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
+      doc.text(o.vehiculo||'—', pad+22, y)
+      if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
+      y+=6
     }
     y+=6
 
