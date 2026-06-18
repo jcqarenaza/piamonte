@@ -357,6 +357,19 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
   return (
     <div>
+      {/* Filtros de estado */}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+        {(['todas','pendiente','realizado','facturada'] as const).map((val)=>{
+          const labels: Record<string,string> = {todas:'Todas',pendiente:'⏳ Pendientes',realizado:'✅ Realizadas',facturada:'🧾 Pend. facturar'}
+          return (
+            <button key={val} onClick={()=>setFiltroEstado(val)}
+              style={{...btnSm, background:filtroEstado===val?'#00A550':'#e5e7eb', color:filtroEstado===val?'#fff':'#374151'}}>
+              {labels[val]}
+            </button>
+          )
+        })}
+      </div>
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
         {/* Filtro por compañía */}
         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
