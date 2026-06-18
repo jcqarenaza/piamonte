@@ -1004,10 +1004,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             )}
           </div>
 
-
-            </div>
-          </div>
-
           <Field label="Observaciones"><Input value={obs} onChange={e=>setObs(e.target.value)} placeholder="Opcional…"/></Field>
 
           <div className="flex justify-end gap-2 pt-1">
