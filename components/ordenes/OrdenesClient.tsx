@@ -537,24 +537,20 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
         <div className="flex flex-col gap-3">
-          {/* Header aseguradora si corresponde */}
-          {form.aseg && (
-            <div style={{background:'#00A550',margin:'-16px -16px 4px',padding:'12px 20px',borderRadius:'12px 12px 0 0',display:'flex',alignItems:'center',gap:10}}>
-              <div>
-                <p style={{color:'rgba(255,255,255,.7)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Facturado a</p>
-                <p style={{color:'#fff',fontSize:16,fontWeight:800}}>{form.aseg}</p>
-              </div>
-              {form.sin && (
-                <div style={{marginLeft:'auto',textAlign:'right'}}>
-                  <p style={{color:'rgba(255,255,255,.7)',fontSize:10}}>Siniestro</p>
-                  <p style={{color:'#fff',fontSize:13,fontWeight:700,fontFamily:'monospace'}}>{form.sin}</p>
-                </div>
-              )}
-            </div>
-          )}
-          {/* Cliente — label cambia según si tiene aseguradora */}
+          {/* Aseguradora arriba — siempre obligatoria */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Aseguradora *">
+              <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
+                <option value="">— Seleccioná *</option>
+                {ASEGURADORAS.map(a=><option key={a} value={a}>{a}</option>)}
+              </Select>
+            </Field>
+            <Field label="N° Siniestro"><Input value={form.sin} onChange={e=>setForm(p=>({...p,sin:e.target.value}))} placeholder="000000"/></Field>
+            <Field label="Póliza"><Input value={form.pol} onChange={e=>setForm(p=>({...p,pol:e.target.value}))} placeholder="000000"/></Field>
+          </div>
+          {/* Asegurado */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label={form.aseg ? "Asegurado" : "Cliente"}><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
+            <Field label="Asegurado"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -582,17 +578,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
           <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
             <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value}))} placeholder="AB 123 CD"/></Field>
           </div>
-          {/* Seguro */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Aseguradora">
-              <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
-                <option value="">— Seleccioná aseguradora *</option>
-                {ASEGURADORAS.map(a=><option key={a} value={a}>{a}</option>)}
-              </Select>
-            </Field>
-            <Field label="N° Siniestro"><Input value={form.sin} onChange={e=>setForm(p=>({...p,sin:e.target.value}))} placeholder="000000"/></Field>
-            <Field label="Póliza"><Input value={form.pol} onChange={e=>setForm(p=>({...p,pol:e.target.value}))} placeholder="000000"/></Field>
-          </div>
+
           {/* Ítems */}
           <div className="border-t border-p-line2 pt-3">
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Rubros rápidos</label>
@@ -655,7 +641,14 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-40 overflow-y-auto mt-1">
                   {stockSugs.map((s:any)=>(
                     <button key={s.id} onClick={()=>{setStockSel(s);setStockSugs([]);setStockQ('')}}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0"
+                      onClick={()=>{
+                        setStockSel(s)
+                        setStockSugs([])
+                        setStockQ('')
+                        // Agregar como ítem automáticamente
+                        setItems(prev=>[...prev,{d:s.descripcion+(s.codigo?` [${s.codigo}]`:''),c:1,p:s.precio_venta||0}])
+                      }}>
                       <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
                       <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>
                     </button>
