@@ -52,7 +52,7 @@ interface Comprobante {
   id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null
   fecha:string; proveedor_id:string|null; proveedor_nombre:string|null
   items:Item[]; neto:number; iva:number; total:number
-  cae:string|null; cae_vencimiento:string|null
+  cae:string|null; cae_vencimiento:string|null; remito_id:string|null
   estado:string; afecta_stock:boolean; notas:string|null; created_at:string
 }
 
@@ -83,7 +83,7 @@ export default function ComprasClient() {
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
     proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
-    cae:'', cae_vencimiento:''
+    cae:'', cae_vencimiento:'', remito_vinculado_id:''
   })
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
@@ -143,6 +143,9 @@ export default function ComprasClient() {
   async function save() {
     if (!items.length && total === 0) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
+    // Si la factura está vinculada a un remito ya recibido, ese remito ya sumó el stock —
+    // la factura no debe volver a tocarlo, solo queda de respaldo fiscal.
+    const tieneRemitoVinculado = form.tipo==='factura' && !!form.remito_vinculado_id
     await supabase.from('comprobantes_compra').insert({
       tipo: form.tipo, letra: form.letra||null,
       punto_venta: form.punto_venta||null, numero: form.numero||null,
@@ -151,11 +154,17 @@ export default function ComprasClient() {
       items, neto, iva_pct: IVA, iva, total,
       cae: form.tipo==='factura' ? (form.cae||null) : null,
       cae_vencimiento: form.tipo==='factura' ? (form.cae_vencimiento||null) : null,
-      estado: 'pendiente', afecta_stock: form.afecta_stock, notas: form.notas||null,
+      remito_id: tieneRemitoVinculado ? form.remito_vinculado_id : null,
+      estado: 'pendiente', afecta_stock: tieneRemitoVinculado ? false : form.afecta_stock,
+      notas: form.notas||null,
     })
+    // Si vinculamos un remito, lo marcamos como facturado para que no aparezca disponible para vincular de nuevo
+    if (tieneRemitoVinculado) {
+      await supabase.from('comprobantes_compra').update({ notas: 'Facturado' }).eq('id', form.remito_vinculado_id)
+    }
     setOpen(false)
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
-      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:''})
+      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:''})
     setItems([]); setIvaOn(true)
     load()
   }
@@ -257,6 +266,11 @@ export default function ComprasClient() {
     load()
   }
 
+  // Remitos ya procesados (stock ya cargado) y aún no marcados como facturados — para vincular a una Factura
+  const remitosDisponibles = comprobantes.filter(c =>
+    c.tipo === 'remito' && c.estado === 'procesado' && c.notas !== 'Facturado'
+  )
+
   const filtrados = comprobantes.filter(c =>
     (!filtroTipo || c.tipo === filtroTipo) &&
     (!filtroEstado || c.estado === filtroEstado)
@@ -275,7 +289,7 @@ export default function ComprasClient() {
 
   // Puede vincularse a stock si es remito pendiente, o factura pendiente marcada con afecta_stock
   const puedeVincular = (c:Comprobante) =>
-    c.estado==='pendiente' && c.items?.length>0 &&
+    c.estado==='pendiente' && c.items?.length>0 && !c.remito_id &&
     (c.tipo==='remito' || (c.tipo==='factura' && c.afecta_stock))
 
   return (
@@ -337,6 +351,7 @@ export default function ComprasClient() {
                   <span className="text-sm font-semibold text-p-ink">{c.proveedor_nombre||'Sin proveedor'}</span>
                   <span className="text-xs text-p-ink2">{c.fecha.split('-').reverse().join('/')}</span>
                   {c.cae && <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">CAE {c.cae}</span>}
+                  {c.remito_id && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">📦 Stock ya cargado (remito)</span>}
                 </div>
                 <div className="text-right">
                   <p className="font-saira font-bold text-lg text-p-ink">{moneyARS(c.total)}</p>
@@ -605,6 +620,27 @@ export default function ComprasClient() {
                 <Input type="date" value={form.cae_vencimiento} onChange={e=>setForm(p=>({...p,cae_vencimiento:e.target.value}))}/>
               </Field>
             </div>
+          )}
+
+          {/* Vincular a remito ya recibido — evita duplicar la carga a stock */}
+          {form.tipo === 'factura' && remitosDisponibles.length > 0 && (
+            <Field label="¿Corresponde a un remito ya recibido?">
+              <select value={form.remito_vinculado_id}
+                onChange={e=>setForm(p=>({...p,remito_vinculado_id:e.target.value, afecta_stock: e.target.value ? false : p.afecta_stock}))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green bg-white">
+                <option value="">No — es independiente</option>
+                {remitosDisponibles.map(r=>(
+                  <option key={r.id} value={r.id}>
+                    REM-{r.numero||'S/N'} · {r.proveedor_nombre||'Sin proveedor'} · {r.fecha.split('-').reverse().join('/')}
+                  </option>
+                ))}
+              </select>
+              {form.remito_vinculado_id && (
+                <p className="text-[11px] text-blue-700 mt-1.5">
+                  ✓ El stock ya fue cargado con ese remito. Esta factura queda solo como respaldo fiscal, no vuelve a tocar el stock.
+                </p>
+              )}
+            </Field>
           )}
 
           <div className="grid grid-cols-2 gap-3">

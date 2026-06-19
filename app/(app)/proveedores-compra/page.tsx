@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ProveedoresClient from '@/components/proveedores-compra/ProveedoresClient'
+import ProveedoresCompraClient from '@/components/proveedores-compra/ProveedoresCompraClient'
 
 export default async function ProveedoresCompraPage() {
   const supabase = await createClient()
@@ -23,7 +23,7 @@ export default async function ProveedoresCompraPage() {
     <div>
       <h1 className="font-saira font-bold text-2xl text-p-ink mb-1">Proveedores</h1>
       <p className="text-p-ink2 text-sm mb-5">Gestioná tus proveedores de compra: datos fiscales, contacto e historial.</p>
-      <ProveedoresClient />
+      <ProveedoresCompraClient />
     </div>
   )
 }
