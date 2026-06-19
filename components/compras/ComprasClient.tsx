@@ -46,13 +46,15 @@ function formatCuit(v: string) {
   return `${limpio.slice(0,2)}-${limpio.slice(2,10)}-${limpio.slice(10)}`
 }
 
-interface Proveedor { id:string; nombre:string; razon_social:string|null; cuit?:string|null }
+interface Proveedor { id:string; nombre:string; razon_social:string|null; cuit?:string|null; descuento_pct?:number|null }
 interface Item { d:string; c:number; p:number }
 interface Comprobante {
   id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null
   fecha:string; proveedor_id:string|null; proveedor_nombre:string|null
   items:Item[]; neto:number; iva:number; total:number
   cae:string|null; cae_vencimiento:string|null; remito_id:string|null
+  descuento_pct:number|null; descuento_monto:number|null; flete:number|null
+  ret_iva:number|null; ret_ganancias:number|null; ret_iibb:number|null; ajuste_redondeo:number|null
   estado:string; afecta_stock:boolean; notas:string|null; created_at:string
 }
 
@@ -83,19 +85,33 @@ export default function ComprasClient() {
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
     proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
-    cae:'', cae_vencimiento:'', remito_vinculado_id:''
+    cae:'', cae_vencimiento:'', remito_vinculado_id:'',
+    descuento_pct:'', flete:'', ret_iva:'', ret_ganancias:'', ret_iibb:''
   })
+  const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
 
   const supabase = createClient()
 
-  const neto  = items.reduce((a,i)=>a+i.c*i.p, 0)
-  const iva   = ivaOn ? Math.round(neto*IVA) : 0
-  const total = neto + iva
+  // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
+  const netoItems    = items.reduce((a,i)=>a+i.c*i.p, 0)
+  const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
+  const descuentoMonto = Math.round(netoItems * descuentoPct) / 100
+  const netoConDescuento = netoItems - descuentoMonto
+  const iva   = ivaOn ? Math.round(netoConDescuento*IVA*100)/100 : 0
+  const flete = parseFloat(form.flete.replace(',','.')) || 0
+  const retIva = parseFloat(form.ret_iva.replace(',','.')) || 0
+  const retGanancias = parseFloat(form.ret_ganancias.replace(',','.')) || 0
+  const retIibb = parseFloat(form.ret_iibb.replace(',','.')) || 0
+  const totalRetenciones = retIva + retGanancias + retIibb
+  const [ajusteManual, setAjusteManual] = useState('')
+  const ajuste = parseFloat(ajusteManual.replace(',','.')) || 0
+  const neto  = netoConDescuento
+  const total = Math.round((netoConDescuento + iva + flete - totalRetenciones + ajuste) * 100) / 100
 
   const loadProveedores = useCallback(async () => {
-    const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit').eq('activo',true).order('nombre')
+    const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit,descuento_pct').eq('activo',true).order('nombre')
     setProveedores(data ?? [])
   }, [supabase])
 
@@ -113,6 +129,13 @@ export default function ComprasClient() {
     supabase.from('stock').select('id,descripcion,codigo,cantidad,costo,precio_venta').eq('activo',true).order('descripcion')
       .then(({data})=>setStockItems(data??[]))
   }, [supabase, loadProveedores])
+
+  // Sugerir el % de descuento habitual del proveedor al elegirlo — solo si el operador no lo tocó a mano
+  useEffect(() => {
+    if (!form.proveedor_id || descuentoTocadoAMano) return
+    const prov = proveedores.find(p=>p.id===form.proveedor_id)
+    setForm(p => ({ ...p, descuento_pct: prov?.descuento_pct ? String(prov.descuento_pct) : '' }))
+  }, [form.proveedor_id, proveedores, descuentoTocadoAMano])
 
   function addItem() {
     const p = parseFloat(itemForm.p.replace(/[^0-9.]/g,''))
@@ -152,6 +175,9 @@ export default function ComprasClient() {
       fecha: form.fecha, proveedor_id: form.proveedor_id||null,
       proveedor_nombre: prov?.nombre || form.proveedor_nombre || null,
       items, neto, iva_pct: IVA, iva, total,
+      descuento_pct: descuentoPct||0, descuento_monto: descuentoMonto||0,
+      flete: flete||0, ret_iva: retIva||0, ret_ganancias: retGanancias||0, ret_iibb: retIibb||0,
+      ajuste_redondeo: ajuste||0,
       cae: form.tipo==='factura' ? (form.cae||null) : null,
       cae_vencimiento: form.tipo==='factura' ? (form.cae_vencimiento||null) : null,
       remito_id: tieneRemitoVinculado ? form.remito_vinculado_id : null,
@@ -164,7 +190,10 @@ export default function ComprasClient() {
     }
     setOpen(false)
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
-      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:''})
+      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
+      descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:''})
+    setDescuentoTocadoAMano(false)
+    setAjusteManual('')
     setItems([]); setIvaOn(true)
     load()
   }
@@ -684,16 +713,59 @@ export default function ComprasClient() {
             ))}
           </div>
 
+          {/* Descuento del proveedor */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Descuento (%)">
+              <Input type="number" value={form.descuento_pct}
+                onChange={e=>{ setDescuentoTocadoAMano(true); setForm(p=>({...p,descuento_pct:e.target.value})) }}
+                placeholder="0"/>
+            </Field>
+            <Field label="Descuento ($)">
+              <div className="border border-p-line rounded-lg px-3 py-2 text-sm bg-p-light text-p-ink2 font-mono">
+                {moneyARS(descuentoMonto)}
+              </div>
+            </Field>
+          </div>
+
           {/* Totales */}
-          <div className="bg-p-light rounded-xl p-3">
-            <label className="flex items-center gap-2 mb-2 text-sm cursor-pointer">
+          <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1.5">
+            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
+            {descuentoMonto > 0 && (
+              <div className="flex justify-between text-sm text-red-600"><span>Descuento ({descuentoPct}%)</span><span className="font-mono">−{moneyARS(descuentoMonto)}</span></div>
+            )}
+            <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
               <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>
               Incluir IVA 21%
             </label>
-            {ivaOn && <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal</span><span className="font-mono">{moneyARS(neto)}</span></div>}
             {ivaOn && <div className="flex justify-between text-sm text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
+
+            <div className="border-t border-p-line my-1"/>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Flete">
+                <Input type="number" value={form.flete} onChange={e=>setForm(p=>({...p,flete:e.target.value}))} placeholder="0"/>
+              </Field>
+              <div></div>
+              <Field label="Ret. IVA">
+                <Input type="number" value={form.ret_iva} onChange={e=>setForm(p=>({...p,ret_iva:e.target.value}))} placeholder="0"/>
+              </Field>
+              <Field label="Ret. Ganancias">
+                <Input type="number" value={form.ret_ganancias} onChange={e=>setForm(p=>({...p,ret_ganancias:e.target.value}))} placeholder="0"/>
+              </Field>
+              <Field label="Ret. IIBB">
+                <Input type="number" value={form.ret_iibb} onChange={e=>setForm(p=>({...p,ret_iibb:e.target.value}))} placeholder="0"/>
+              </Field>
+              <Field label="Ajuste (redondeo)">
+                <Input type="number" value={ajusteManual} onChange={e=>setAjusteManual(e.target.value)} placeholder="±0"/>
+              </Field>
+            </div>
+
+            {flete > 0 && <div className="flex justify-between text-sm text-p-ink2"><span>Flete</span><span className="font-mono">+{moneyARS(flete)}</span></div>}
+            {totalRetenciones > 0 && <div className="flex justify-between text-sm text-red-600"><span>Retenciones</span><span className="font-mono">−{moneyARS(totalRetenciones)}</span></div>}
+            {ajuste !== 0 && <div className="flex justify-between text-sm text-p-ink2"><span>Ajuste</span><span className="font-mono">{ajuste>0?'+':''}{moneyARS(ajuste)}</span></div>}
+
             <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
-              <span>TOTAL</span><span>{moneyARS(total)}</span>
+              <span>TOTAL A PAGAR</span><span>{moneyARS(total)}</span>
             </div>
           </div>
 
