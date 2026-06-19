@@ -9,6 +9,7 @@ const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:1
 const btnSm   = { ...btn, padding:'6px 14px', fontSize:13 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
 const btnRed  = { ...btnSm, background:'#ef4444' } as const
+const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
 
 const TIPOS = [
   { id:'factura',   label:'Factura',        icon:'🧾' },
@@ -21,12 +22,37 @@ const TIPO_COLOR: Record<string,string> = {
   factura:'#1d4ed8', remito:'#00A550', nc:'#d97706', nd:'#7c3aed'
 }
 
-interface Proveedor { id:string; nombre:string; razon_social:string|null }
+// Validación de CUIT/CUIL — algoritmo módulo 11 de AFIP, sin consultar servicios externos
+function validarCuit(cuit: string): { ok:boolean; msg:string } {
+  const limpio = cuit.replace(/[^0-9]/g,'')
+  if (limpio.length === 0) return { ok:true, msg:'' }
+  if (limpio.length !== 11) return { ok:false, msg:'El CUIT/CUIL debe tener 11 números' }
+  const mult = [5,4,3,2,7,6,5,4,3,2]
+  const digitos = limpio.split('').map(Number)
+  const suma = mult.reduce((acc,m,i)=>acc + m*digitos[i], 0)
+  let resto = 11 - (suma % 11)
+  if (resto === 11) resto = 0
+  if (resto === 10) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador)' }
+  if (resto !== digitos[10]) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador no coincide)' }
+  const prefijo = limpio.slice(0,2)
+  const prefijosValidos = ['20','23','24','27','30','33','34','55']
+  if (!prefijosValidos.includes(prefijo)) return { ok:false, msg:'Prefijo de CUIT/CUIL no reconocido' }
+  return { ok:true, msg:'CUIT/CUIL válido' }
+}
+function formatCuit(v: string) {
+  const limpio = v.replace(/[^0-9]/g,'').slice(0,11)
+  if (limpio.length <= 2) return limpio
+  if (limpio.length <= 10) return `${limpio.slice(0,2)}-${limpio.slice(2)}`
+  return `${limpio.slice(0,2)}-${limpio.slice(2,10)}-${limpio.slice(10)}`
+}
+
+interface Proveedor { id:string; nombre:string; razon_social:string|null; cuit?:string|null }
 interface Item { d:string; c:number; p:number }
 interface Comprobante {
   id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null
   fecha:string; proveedor_id:string|null; proveedor_nombre:string|null
   items:Item[]; neto:number; iva:number; total:number
+  cae:string|null; cae_vencimiento:string|null
   estado:string; afecta_stock:boolean; notas:string|null; created_at:string
 }
 
@@ -38,7 +64,14 @@ export default function ComprasClient() {
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [ivaOn, setIvaOn] = useState(true)
-  // Modal procesamiento remito
+
+  // Alta rápida de proveedor
+  const [provModal, setProvModal] = useState(false)
+  const [provForm, setProvForm] = useState({ nombre:'', razon_social:'', cuit:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'' })
+  const [savingProv, setSavingProv] = useState(false)
+  const provCuitCheck = validarCuit(provForm.cuit)
+
+  // Modal vinculación a stock (remito o factura con afecta_stock)
   const [remitoModal, setRemitoModal] = useState<Comprobante|null>(null)
   const [stockItems, setStockItems] = useState<any[]>([])
   const [mappings, setMappings] = useState<Record<number,{stock_id:string;qty:number;costo:number}|null>>({})
@@ -49,7 +82,8 @@ export default function ComprasClient() {
 
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
-    proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false
+    proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
+    cae:'', cae_vencimiento:''
   })
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
@@ -59,6 +93,11 @@ export default function ComprasClient() {
   const neto  = items.reduce((a,i)=>a+i.c*i.p, 0)
   const iva   = ivaOn ? Math.round(neto*IVA) : 0
   const total = neto + iva
+
+  const loadProveedores = useCallback(async () => {
+    const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit').eq('activo',true).order('nombre')
+    setProveedores(data ?? [])
+  }, [supabase])
 
   async function load() {
     setLoading(true)
@@ -70,11 +109,10 @@ export default function ComprasClient() {
 
   useEffect(() => {
     load()
-    supabase.from('proveedores_compra').select('id,nombre,razon_social').eq('activo',true).order('nombre')
-      .then(({data})=>setProveedores(data??[]))
+    loadProveedores()
     supabase.from('stock').select('id,descripcion,codigo,cantidad,costo,precio_venta').eq('activo',true).order('descripcion')
       .then(({data})=>setStockItems(data??[]))
-  }, [supabase])
+  }, [supabase, loadProveedores])
 
   function addItem() {
     const p = parseFloat(itemForm.p.replace(/[^0-9.]/g,''))
@@ -82,6 +120,24 @@ export default function ComprasClient() {
     if (!itemForm.d || !p || !c) return
     setItems(prev=>[...prev, {d:itemForm.d, c, p}])
     setItemForm({d:'',c:'1',p:''})
+  }
+
+  async function guardarProveedor() {
+    if (!provForm.nombre.trim()) return
+    if (provForm.cuit && !validarCuit(provForm.cuit).ok) { alert('El CUIT/CUIL ingresado no es válido. Revisá los números.'); return }
+    setSavingProv(true)
+    const { data, error } = await supabase.from('proveedores_compra').insert({
+      nombre: provForm.nombre, razon_social: provForm.razon_social||null, cuit: provForm.cuit||null,
+      email: provForm.email||null, telefono: provForm.telefono||null, direccion: provForm.direccion||null,
+      localidad: provForm.localidad||null, contacto: provForm.contacto||null, notas: provForm.notas||null,
+      activo: true,
+    }).select('id,nombre,razon_social,cuit').single()
+    setSavingProv(false)
+    if (error || !data) { alert('No se pudo guardar el proveedor.'); return }
+    setProveedores(prev => [...prev, data].sort((a,b)=>a.nombre.localeCompare(b.nombre)))
+    setForm(p => ({ ...p, proveedor_id: data.id, proveedor_nombre: data.nombre }))
+    setProvModal(false)
+    setProvForm({ nombre:'', razon_social:'', cuit:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'' })
   }
 
   async function save() {
@@ -93,18 +149,20 @@ export default function ComprasClient() {
       fecha: form.fecha, proveedor_id: form.proveedor_id||null,
       proveedor_nombre: prov?.nombre || form.proveedor_nombre || null,
       items, neto, iva_pct: IVA, iva, total,
+      cae: form.tipo==='factura' ? (form.cae||null) : null,
+      cae_vencimiento: form.tipo==='factura' ? (form.cae_vencimiento||null) : null,
       estado: 'pendiente', afecta_stock: form.afecta_stock, notas: form.notas||null,
     })
     setOpen(false)
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
-      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false})
+      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:''})
     setItems([]); setIvaOn(true)
     load()
   }
 
-  function abrirRemito(c:Comprobante) {
+  // Abre el modal de vinculación a stock — funciona para remitos Y para facturas con afecta_stock
+  function abrirVinculacion(c:Comprobante) {
     setRemitoModal(c)
-    // Pre-mapear ítems: intentar match por descripción
     const init: Record<number,{stock_id:string;qty:number;costo:number}|null> = {}
     const initQ: Record<number,string> = {}
     c.items.forEach((it,i) => {
@@ -139,18 +197,16 @@ export default function ComprasClient() {
   async function crearYVincular(idx:number, it:{d:string;c:number;p:number}) {
     const n = nuevoItem[idx]
     if (!n?.desc) return
-    // Crear nuevo ítem en stock
     const { data } = await supabase.from('stock').insert({
       descripcion: n.desc,
       codigo: n.codigo || null,
       precio_venta: parseFloat(n.precio)||null,
       costo: it.p||null,
-      cantidad: 0,          // empieza en 0, el ajuste del remito lo suma
+      cantidad: 0,
       activo: true,
       pos: 'STOCK'
     }).select('id,descripcion,codigo,cantidad').single()
     if (data) {
-      // Actualizar stockItems local
       setStockItems(prev=>[...prev, data])
       pickStock(idx, data, mappings[idx]?.qty??it.c, it.p)
       setNuevoItem(prev=>({...prev,[idx]:null}))
@@ -162,13 +218,15 @@ export default function ComprasClient() {
     setProcesando(true)
     const prov = proveedores.find(p=>p.id===remitoModal.proveedor_id)
     const fecha = new Date().toISOString().slice(0,10)
+    const etiqueta = remitoModal.tipo === 'remito'
+      ? `Remito ${remitoModal.numero || 'S/N'}`
+      : `Factura ${remitoModal.letra||''} ${remitoModal.punto_venta||''}-${remitoModal.numero||'S/N'}`
 
     for (const [idxStr, map] of Object.entries(mappings)) {
       const idx = parseInt(idxStr)
       const item = remitoModal.items[idx]
-      if (!map) continue  // ítem sin vincular → omitir
+      if (!map) continue
 
-      // Insertar ajuste de stock
       await supabase.from('ajustes_stock').insert({
         fecha, tipo:'entrada',
         stock_id: map.stock_id,
@@ -176,17 +234,15 @@ export default function ComprasClient() {
         cantidad: map.qty,
         costo_unitario: map.costo,
         proveedor: prov?.nombre || remitoModal.proveedor_nombre || null,
-        nota: `Remito ${remitoModal.numero || 'S/N'} — recepción automática`,
+        nota: `${etiqueta} — recepción automática`,
       })
 
-      // Actualizar cantidad en stock
       const { data: st } = await supabase.from('stock').select('cantidad').eq('id', map.stock_id).maybeSingle()
       if (st) {
         await supabase.from('stock').update({ cantidad: (st.cantidad||0) + map.qty }).eq('id', map.stock_id)
       }
     }
 
-    // Marcar comprobante como procesado
     await supabase.from('comprobantes_compra').update({ estado:'procesado', afecta_stock:true }).eq('id', remitoModal.id)
 
     setProcesando(false)
@@ -206,7 +262,6 @@ export default function ComprasClient() {
     (!filtroEstado || c.estado === filtroEstado)
   )
 
-  // Totales del mes actual
   const mes = new Date().toISOString().slice(0,7)
   const totalMes = comprobantes.filter(c=>c.fecha.startsWith(mes)&&c.estado!=='anulado'&&c.tipo==='factura')
     .reduce((a,c)=>a+c.total,0)
@@ -217,6 +272,11 @@ export default function ComprasClient() {
     c.tipo==='nc' ? `NC ${c.letra||''}-${c.punto_venta||''}-${c.numero||''}` :
     c.tipo==='nd' ? `ND ${c.letra||''}-${c.punto_venta||''}-${c.numero||''}` :
     `${c.letra||''}${c.punto_venta ? ' '+c.punto_venta : ''}-${c.numero||'S/N'}`
+
+  // Puede vincularse a stock si es remito pendiente, o factura pendiente marcada con afecta_stock
+  const puedeVincular = (c:Comprobante) =>
+    c.estado==='pendiente' && c.items?.length>0 &&
+    (c.tipo==='remito' || (c.tipo==='factura' && c.afecta_stock))
 
   return (
     <div>
@@ -231,8 +291,8 @@ export default function ComprasClient() {
           <p className="font-saira font-bold text-xl text-p-ink mt-1">{comprobantes.filter(c=>c.tipo==='factura'&&c.estado!=='anulado').length}</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Remitos pendientes</p>
-          <p className="font-saira font-bold text-xl text-amber-600 mt-1">{comprobantes.filter(c=>c.tipo==='remito'&&c.estado==='pendiente').length}</p>
+          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Pendientes de stock</p>
+          <p className="font-saira font-bold text-xl text-amber-600 mt-1">{comprobantes.filter(puedeVincular).length}</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">NC / ND</p>
@@ -255,7 +315,8 @@ export default function ComprasClient() {
           <option value="anulado">Anulado</option>
         </select>
         <span className="text-sm text-p-ink2 ml-1">{filtrados.length} comprobantes</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-2">
+          <button onClick={()=>setProvModal(true)} style={btnGray}>+ Proveedor</button>
           <button onClick={()=>setOpen(true)} style={btn}>+ Cargar comprobante</button>
         </div>
       </div>
@@ -275,6 +336,7 @@ export default function ComprasClient() {
                   <span className="font-mono font-bold text-sm text-p-dark">{numComp(c)}</span>
                   <span className="text-sm font-semibold text-p-ink">{c.proveedor_nombre||'Sin proveedor'}</span>
                   <span className="text-xs text-p-ink2">{c.fecha.split('-').reverse().join('/')}</span>
+                  {c.cae && <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">CAE {c.cae}</span>}
                 </div>
                 <div className="text-right">
                   <p className="font-saira font-bold text-lg text-p-ink">{moneyARS(c.total)}</p>
@@ -284,6 +346,9 @@ export default function ComprasClient() {
                   }`}>{c.estado}</span>
                 </div>
               </div>
+              {c.cae_vencimiento && (
+                <p className="text-[11px] text-p-ink2 mt-1">Vto. CAE: {c.cae_vencimiento.split('-').reverse().join('/')}</p>
+              )}
               {/* Items */}
               {c.items?.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-p-line2">
@@ -299,10 +364,10 @@ export default function ComprasClient() {
               )}
               {/* Acciones */}
               <div className="flex gap-2 mt-3 pt-2 border-t border-p-line2 flex-wrap">
-                {c.tipo==='remito' && c.estado==='pendiente' && (
-                  <button onClick={()=>abrirRemito(c)}
+                {puedeVincular(c) && (
+                  <button onClick={()=>abrirVinculacion(c)}
                     style={{...btnSm,background:'#00A550'}}>
-                    📦 Marcar recibido
+                    📦 Cargar a stock
                   </button>
                 )}
                 {c.estado==='pendiente' && (
@@ -314,22 +379,22 @@ export default function ComprasClient() {
         </div>
       )}
 
-      {/* Modal recepción de remito */}
+      {/* Modal vinculación a stock — remito o factura con afecta_stock */}
       {remitoModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setRemitoModal(null)}}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-p-line">
               <div>
-                <h2 className="font-saira font-bold text-xl text-p-ink">📦 Recepcionar remito</h2>
+                <h2 className="font-saira font-bold text-xl text-p-ink">📦 Cargar mercadería a stock</h2>
                 <p className="text-sm text-p-ink2 mt-0.5">
-                  {remitoModal.proveedor_nombre} · Rem. {remitoModal.numero||'S/N'}
+                  {remitoModal.proveedor_nombre} · {remitoModal.tipo==='remito' ? `Rem. ${remitoModal.numero||'S/N'}` : numComp(remitoModal)}
                 </p>
               </div>
               <button onClick={()=>setRemitoModal(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
             </div>
             <div className="overflow-y-auto flex-1 p-5">
               <p className="text-xs text-p-ink2 mb-4">
-                Vinculá cada ítem del remito con su correspondiente ítem en stock. Los vinculados sumarán la cantidad al stock actual.
+                Vinculá cada ítem con su correspondiente artículo en stock. Los vinculados sumarán la cantidad al stock actual.
               </p>
               <div className="flex flex-col gap-4">
                 {remitoModal.items.map((it,i) => (
@@ -343,7 +408,6 @@ export default function ComprasClient() {
                           className="w-16 border border-p-line rounded-lg px-2 py-1 text-sm text-center"/>
                       </div>
                     </div>
-                    {/* Búsqueda por descripción o código */}
                     {!nuevoItem[i] && (
                       <div className="relative">
                         <input
@@ -375,7 +439,6 @@ export default function ComprasClient() {
                       </div>
                     )}
 
-                    {/* Formulario crear nuevo artículo */}
                     {nuevoItem[i] && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-col gap-2">
                         <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Nuevo artículo en stock</p>
@@ -428,13 +491,71 @@ export default function ComprasClient() {
                 <button onClick={()=>setRemitoModal(null)} style={{...btnGray}}>Cancelar</button>
                 <button onClick={confirmarRecepcion} disabled={procesando}
                   style={{...btn,opacity:procesando?.7:1}}>
-                  {procesando?'Procesando…':'✓ Confirmar recepción'}
+                  {procesando?'Procesando…':'✓ Confirmar carga a stock'}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal alta rápida de proveedor */}
+      <Modal open={provModal} onClose={()=>setProvModal(false)} title="Nuevo proveedor">
+        <div className="flex flex-col gap-3">
+          <Field label="Nombre / Fantasía *">
+            <Input value={provForm.nombre} onChange={e=>setProvForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre del proveedor"/>
+          </Field>
+          <Field label="Razón social">
+            <Input value={provForm.razon_social} onChange={e=>setProvForm(p=>({...p,razon_social:e.target.value}))} placeholder="Razón social (opcional)"/>
+          </Field>
+          <Field label="CUIT">
+            <Input value={provForm.cuit}
+              onChange={e=>setProvForm(p=>({...p,cuit:formatCuit(e.target.value)}))}
+              placeholder="30-12345678-9" maxLength={13}/>
+            {provForm.cuit && (
+              <div style={{
+                marginTop:6,
+                background: provCuitCheck.ok ? '#f0fdf4' : '#fef2f2',
+                border: `1px solid ${provCuitCheck.ok ? '#86efac' : '#fca5a5'}`,
+                borderRadius:8, padding:'6px 12px', fontSize:12
+              }}>
+                <p style={{fontWeight:600, color: provCuitCheck.ok ? '#15803d' : '#b91c1c'}}>
+                  {provCuitCheck.ok ? '✓ ' : '⚠ '}{provCuitCheck.msg}
+                </p>
+              </div>
+            )}
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Teléfono">
+              <Input value={provForm.telefono} onChange={e=>setProvForm(p=>({...p,telefono:e.target.value}))} placeholder="opcional"/>
+            </Field>
+            <Field label="Email">
+              <Input type="email" value={provForm.email} onChange={e=>setProvForm(p=>({...p,email:e.target.value}))} placeholder="opcional"/>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Dirección">
+              <Input value={provForm.direccion} onChange={e=>setProvForm(p=>({...p,direccion:e.target.value}))} placeholder="opcional"/>
+            </Field>
+            <Field label="Localidad">
+              <Input value={provForm.localidad} onChange={e=>setProvForm(p=>({...p,localidad:e.target.value}))} placeholder="opcional"/>
+            </Field>
+          </div>
+          <Field label="Contacto">
+            <Input value={provForm.contacto} onChange={e=>setProvForm(p=>({...p,contacto:e.target.value}))} placeholder="Persona de contacto (opcional)"/>
+          </Field>
+          <Field label="Notas">
+            <Input value={provForm.notas} onChange={e=>setProvForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones…"/>
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setProvModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={guardarProveedor} disabled={!provForm.nombre.trim()||savingProv}
+              style={{...btn,opacity:(!provForm.nombre.trim()||savingProv)?.6:1}}>
+              {savingProv?'Guardando…':'✓ Guardar proveedor'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal nuevo comprobante */}
       <Modal open={open} onClose={()=>setOpen(false)} title="Cargar comprobante de compra">
@@ -474,15 +595,30 @@ export default function ComprasClient() {
             </Field>
           )}
 
+          {/* CAE — solo para Factura */}
+          {form.tipo === 'factura' && (
+            <div className="grid grid-cols-2 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <Field label="CAE">
+                <Input value={form.cae} onChange={e=>setForm(p=>({...p,cae:e.target.value}))} placeholder="N° de CAE (opcional)"/>
+              </Field>
+              <Field label="Vencimiento CAE">
+                <Input type="date" value={form.cae_vencimiento} onChange={e=>setForm(p=>({...p,cae_vencimiento:e.target.value}))}/>
+              </Field>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Fecha">
               <Input type="date" value={form.fecha} onChange={e=>setForm(p=>({...p,fecha:e.target.value}))}/>
             </Field>
             <Field label="Proveedor">
-              <Select value={form.proveedor_id} onChange={e=>setForm(p=>({...p,proveedor_id:e.target.value}))}>
-                <option value="">Seleccionar…</option>
-                {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </Select>
+              <div className="flex gap-2">
+                <Select value={form.proveedor_id} onChange={e=>setForm(p=>({...p,proveedor_id:e.target.value}))}>
+                  <option value="">Seleccionar…</option>
+                  {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </Select>
+                <button type="button" onClick={()=>setProvModal(true)} style={{...btnBlue, padding:'9px 12px', whiteSpace:'nowrap'}}>+ Nuevo</button>
+              </div>
             </Field>
           </div>
 
@@ -527,8 +663,13 @@ export default function ComprasClient() {
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={form.afecta_stock} onChange={e=>setForm(p=>({...p,afecta_stock:e.target.checked}))} className="accent-p-green"/>
-            Este comprobante afecta el stock (remito con mercadería)
+            Este comprobante afecta el stock (carga mercadería al inventario)
           </label>
+          {form.afecta_stock && (
+            <p className="text-[11px] text-p-ink2 -mt-1">
+              Al guardar, vas a poder vincular cada ítem con su artículo en stock desde el listado.
+            </p>
+          )}
 
           <Field label="Notas">
             <Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones…"/>

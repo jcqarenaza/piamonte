@@ -23,32 +23,33 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const supabase = createClient()
 
   const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', direccion:'', tipo_cliente_id:'', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
-  const [buscandoCuit, setBuscandoCuit] = useState(false)
-  const [cuitData, setCuitData] = useState<{razon:string;condicion:string;direccion:string}|null>(null)
 
-  async function buscarCuit(cuit: string) {
+  // Validación local de CUIT/CUIL — algoritmo módulo 11 de AFIP, sin consultar servicios externos
+  function validarCuit(cuit: string): { ok:boolean; msg:string } {
     const limpio = cuit.replace(/[^0-9]/g,'')
-    if (limpio.length !== 11) { setCuitData(null); return }
-    setBuscandoCuit(true)
-    try {
-      // Consultar padrón ARCA con certificado propio
-      let d: any = null
-      try {
-        const r = await fetch(`https://hjzhatercccblhgaukgx.supabase.co/functions/v1/consulta-padron?cuit=${limpio}`)
-        if (r.ok) d = await r.json()
-      } catch {}
-      if (!d?.razon) { setCuitData(null); setBuscandoCuit(false); return }
-      const condicionLabel = d.condicion === 'responsable_inscripto' ? 'Responsable Inscripto'
-          : d.condicion === 'monotributo' ? 'Monotributo' : 'Consumidor Final'
-      setCuitData({ razon: d.razon, condicion: condicionLabel, direccion: d.direccion || '' })
-      setForm(p => ({
-        ...p,
-        nombre: p.nombre || d.razon,
-        direccion: p.direccion || d.direccion || '',
-      }))
-    } catch { setCuitData(null) }
-    setBuscandoCuit(false)
+    if (limpio.length === 0) return { ok:true, msg:'' }
+    if (limpio.length !== 11) return { ok:false, msg:'El CUIT/CUIL debe tener 11 números' }
+    const mult = [5,4,3,2,7,6,5,4,3,2]
+    const digitos = limpio.split('').map(Number)
+    const suma = mult.reduce((acc,m,i)=>acc + m*digitos[i], 0)
+    let resto = 11 - (suma % 11)
+    if (resto === 11) resto = 0
+    if (resto === 10) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador)' }
+    if (resto !== digitos[10]) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador no coincide)' }
+    const prefijo = limpio.slice(0,2)
+    const prefijosValidos = ['20','23','24','27','30','33','34','55']
+    if (!prefijosValidos.includes(prefijo)) return { ok:false, msg:'Prefijo de CUIT/CUIL no reconocido' }
+    return { ok:true, msg:'CUIT/CUIL válido' }
   }
+
+  function formatCuit(v: string) {
+    const limpio = v.replace(/[^0-9]/g,'').slice(0,11)
+    if (limpio.length <= 2) return limpio
+    if (limpio.length <= 10) return `${limpio.slice(0,2)}-${limpio.slice(2)}`
+    return `${limpio.slice(0,2)}-${limpio.slice(2,10)}-${limpio.slice(10)}`
+  }
+
+  const cuitCheck = validarCuit(form.cuit)
 
   const load = useCallback(async () => {
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
@@ -62,6 +63,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
 
   async function save() {
     if (!form.nombre.trim()) return
+    if (form.cuit && !validarCuit(form.cuit).ok) { alert('El CUIT/CUIL ingresado no es válido. Revisá los números.'); return }
     setSaving(true)
     if (selected?.id) {
       await supabase.from('clientes').update({ nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null }).eq('id', selected.id)
@@ -233,18 +235,22 @@ export default function ClientesClient({ userId }: { userId:string }) {
             <div style={{position:'relative'}}>
               <Input value={form.cuit}
                 onChange={e=>{
-                  const v = e.target.value
-                  setForm(p=>({...p,cuit:v}))
-                  buscarCuit(v)
+                  const f = formatCuit(e.target.value)
+                  setForm(p=>({...p,cuit:f}))
                 }}
-                placeholder="20-12345678-9"/>
-              {buscandoCuit && <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'#6b7280'}}>🔍</span>}
+                placeholder="20-12345678-9"
+                maxLength={13}/>
             </div>
-            {cuitData && (
-              <div style={{marginTop:6,background:'#f0fdf4',border:'1px solid #86efac',borderRadius:8,padding:'8px 12px',fontSize:12}}>
-                <p style={{fontWeight:700,color:'#15803d'}}>{cuitData.razon}</p>
-                <p style={{color:'#16a34a',marginTop:2}}>{cuitData.condicion}</p>
-                {cuitData.direccion && <p style={{color:'#166534',marginTop:2}}>📍 {cuitData.direccion}</p>}
+            {form.cuit && (
+              <div style={{
+                marginTop:6,
+                background: cuitCheck.ok ? '#f0fdf4' : '#fef2f2',
+                border: `1px solid ${cuitCheck.ok ? '#86efac' : '#fca5a5'}`,
+                borderRadius:8, padding:'6px 12px', fontSize:12
+              }}>
+                <p style={{fontWeight:600, color: cuitCheck.ok ? '#15803d' : '#b91c1c'}}>
+                  {cuitCheck.ok ? '✓ ' : '⚠ '}{cuitCheck.msg}
+                </p>
               </div>
             )}
           </Field>
