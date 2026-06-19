@@ -1,268 +1,432 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Modal, Field, Input, Empty } from '@/components/ui'
-import { moneyARS } from '@/lib/utils/format'
+import * as XLSX from 'xlsx'
 
-const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
-const btnSm   = { ...btn, padding:'6px 14px', fontSize:13 } as const
-const btnGray = { ...btnSm, background:'#6b7280' } as const
-const btnRed  = { ...btnSm, background:'#ef4444' } as const
+const FORMATOS = [
+  { id: 'gamma',        label: 'GAMMA — Catálogo',               ext: '.xlsx', tipo: 'excel' },
+  { id: 'malatesta',   label: 'Malatesta — Catálogo',            ext: '.xlsx', tipo: 'excel' },
+  { id: 'sekurit',     label: 'Sekurit — Lista disponible',      ext: '.xlsx', tipo: 'excel' },
+  { id: 'promo_ar',    label: 'Promo Alta Rotación 68%',         ext: '.xlsx', tipo: 'excel' },
+  { id: 'promo_bg',    label: 'Promo Bajo Giro 68%',             ext: '.xlsx', tipo: 'excel' },
+  { id: 'oferta_gamma',label: 'Oferta Especial Mixta (GAMMA)',   ext: '.pdf',  tipo: 'pdf'   },
+  { id: 'mix_malat',   label: 'Oferta Mix Pilkington/Euroglass', ext: '.pdf',  tipo: 'pdf'   },
+]
 
-// Validación de CUIT/CUIL — algoritmo módulo 11 de AFIP, sin consultar servicios externos
-function validarCuit(cuit: string): { ok:boolean; msg:string } {
-  const limpio = cuit.replace(/[^0-9]/g,'')
-  if (limpio.length === 0) return { ok:true, msg:'' }
-  if (limpio.length !== 11) return { ok:false, msg:'El CUIT/CUIL debe tener 11 números' }
-  const mult = [5,4,3,2,7,6,5,4,3,2]
-  const digitos = limpio.split('').map(Number)
-  const suma = mult.reduce((acc,m,i)=>acc + m*digitos[i], 0)
-  let resto = 11 - (suma % 11)
-  if (resto === 11) resto = 0
-  if (resto === 10) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador)' }
-  if (resto !== digitos[10]) return { ok:false, msg:'CUIT/CUIL inválido (dígito verificador no coincide)' }
-  const prefijo = limpio.slice(0,2)
-  const prefijosValidos = ['20','23','24','27','30','33','34','55']
-  if (!prefijosValidos.includes(prefijo)) return { ok:false, msg:'Prefijo de CUIT/CUIL no reconocido' }
-  return { ok:true, msg:'CUIT/CUIL válido' }
+interface Lista { id:string; nombre:string; proveedor:string; tipo:string; desc_pct:number; flete_pct:number; iva_pct:number }
+interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string }
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function norm(s:string) {
+  return s.toUpperCase()
+    .replace(/[ÁÀÄÂ]/g,'A').replace(/[ÉÈËÊ]/g,'E').replace(/[ÍÌÏÎ]/g,'I')
+    .replace(/[ÓÒÖÔ]/g,'O').replace(/[ÚÙÜÛ]/g,'U').replace(/Ñ/g,'N').trim()
 }
-function formatCuit(v: string) {
-  const limpio = v.replace(/[^0-9]/g,'').slice(0,11)
-  if (limpio.length <= 2) return limpio
-  if (limpio.length <= 10) return `${limpio.slice(0,2)}-${limpio.slice(2)}`
-  return `${limpio.slice(0,2)}-${limpio.slice(2,10)}-${limpio.slice(10)}`
+function decodePos(d:string) {
+  const s=norm(d).replace(/^E-/,'')
+  // GAMMA: PSAS. / Malatesta: PSAS. / Sekurit: PB
+  if(/^PSAS|^PB\b|^PB\s|PARABRISA/.test(s)) return 'PARABRISAS'
+  // Sekurit: Lu / GAMMA: LUNETA / LTA
+  if(/^LUNETA|^LTA|^LT\b|^LU\b|^LU\s/.test(s)) return 'LUNETA'
+  if(/^TECHO/.test(s)) return 'TECHO'
+  // Sekurit: Pta DD / Pta DI / Pta TD / Pta TI
+  if(/^PTA\s+DD|^P\.?D\.?D/.test(s)) return 'PUERTA_DD'
+  if(/^PTA\s+DI|^P\.?D\.?I/.test(s)) return 'PUERTA_DI'
+  if(/^PTA\s+TD|^P\.?T\.?D/.test(s)) return 'PUERTA_TD'
+  if(/^PTA\s+TI|^P\.?T\.?I/.test(s)) return 'PUERTA_TI'
+  // Sekurit: Pta (sin especificar) → genérico
+  if(/^PTA\s/.test(s)) return 'PUERTA_DD'
+  if(/^P\.?D\b/.test(s)) return 'PUERTA_DD'
+  if(/^P\.?I\b/.test(s)) return 'PUERTA_DI'
+  // Custodias / Sekurit: Cu D / Cu I
+  if(/^C\.?T?\.?D|^C\.?D|^CU\s+D/.test(s)||s.startsWith('CUSTODIA')) return 'CUSTODIA_D'
+  if(/^C\.?T?\.?I|^C\.?I|^CU\s+I/.test(s)) return 'CUSTODIA_I'
+  if(/^A\.?T?\.?D|^A\.?D\b|^ALETA\s+TD|^ALETA\s+DD/.test(s)) return 'ALETA_D'
+  if(/^A\.?T?\.?I|^A\.?I\b|^ALETA\s+TI|^ALETA\s+DI/.test(s)) return 'ALETA_I'
+  return 'OTRO'
+}
+function toNum(v:unknown) {
+  if(v==null) return 0
+  if(typeof v === 'number') return v  // xlsx ya parsea números — no tocar el punto decimal
+  const s = String(v).replace(/\./g,'').replace(',','.')
+  return parseFloat(s) || 0
+}
+function mkRow(prov:string,cod:string,desc:string,marca:string,pre:number,costo:number,disp='',promo=false): CatRow {
+  return { proveedor:prov, codigo:cod||null, descripcion:desc, marca:marca||null,
+    modelo:null, pos:decodePos(desc), precio_lista:pre,
+    costo_neto:Math.round(costo), disponible:disp||null,
+    es_promo:promo, lista_nombre:null, updated_at:new Date().toISOString() }
 }
 
-const CONDICIONES_IVA = ['Responsable Inscripto', 'Monotributo', 'Exento', 'Consumidor Final']
 
-interface Proveedor {
-  id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null
-  email:string|null; telefono:string|null; direccion:string|null; localidad:string|null
-  contacto:string|null; notas:string|null; activo:boolean; created_at:string
+// ── parsers Excel ─────────────────────────────────────────────────────────────
+async function parseGamma(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array' })
+  const ws = wb.Sheets['Lista General']
+  if(!ws) throw new Error('Hoja "Lista General" no encontrada')
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
+  let h=-1,iC=-1,iD=-1,iP=-1,iM=-1
+  for(let i=0;i<Math.min(rows.length,15);i++){
+    const r=rows[i].map((v:unknown)=>norm(String(v??'')))
+    if(r.includes('CODIGO')){h=i;iC=r.indexOf('CODIGO');iD=r.findIndex((x:string)=>x.includes('DESCRIP'));iP=r.indexOf('PRECIO');iM=r.indexOf('MARCA');break}
+  }
+  if(h<0) throw new Error('Sin encabezado en Lista General')
+  return rows.slice(h+1)
+    .filter(r=>r[iC]&&toNum(r[iP])&&String(r[iD]??'').trim())
+    .map(r=>mkRow('GAMMA',String(r[iC]).trim(),String(r[iD]??'').trim(),String(r[iM]??'').trim(),toNum(r[iP]),toNum(r[iP])*(1-0.48)*(1+0.015)))
 }
-interface Compra { id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null; fecha:string; total:number; estado:string }
 
+async function parseMalateseta(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array' })
+  const ws = wb.Sheets['Lista']
+  if(!ws) throw new Error('Hoja "Lista" no encontrada')
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
+  const cRe=/^[0-9]{4,}[A-Z0-9]+$/; let marca=''; const items:CatRow[]=[]
+  for(const r of rows){
+    const c1=String(r[1]??'').trim(),c2=String(r[2]??'').trim(),c5=r[5]
+    if(c1&&!/\d/.test(c1)&&!c2&&c5==null){marca=c1;continue}
+    if(cRe.test(c1)){const p=toNum(c5);if(!p)continue;items.push(mkRow('MALATESTA',c1,c2,marca,p,p*(1-0.53)*(1+0.01)))}
+  }
+  return items
+}
+
+async function parseSekurit(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array' })
+  const ws = wb.Sheets['LP']
+  if(!ws) throw new Error('Hoja "LP" no encontrada')
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' })
+
+  // Detectar posición desde descripción
+  function posFromDesc(desc:string): string {
+    const d = desc.toUpperCase()
+    if(d.startsWith('PB ') || d.startsWith('PB  ')) return 'PARABRISAS'
+    if(d.startsWith('LU ') || d.startsWith('LU  ') || d.startsWith('LUNETA')) return 'LUNETA'
+    if(d.startsWith('PTA DD') || d.startsWith('PTA  DD')) return 'PUERTA_DD'
+    if(d.startsWith('PTA DI') || d.startsWith('PTA  DI')) return 'PUERTA_DI'
+    if(d.startsWith('PTA TD') || d.startsWith('PTA  TD')) return 'PUERTA_TD'
+    if(d.startsWith('PTA TI') || d.startsWith('PTA  TI')) return 'PUERTA_TI'
+    if(d.startsWith('PTA ') || d.startsWith('PTA  ')) return 'PUERTA_DD' // fallback puerta
+    if(d.startsWith('CU D') || d.startsWith('CUS D') || d.startsWith('CUST D')) return 'CUSTODIA_D'
+    if(d.startsWith('CU I') || d.startsWith('CUS I') || d.startsWith('CUST I')) return 'CUSTODIA_I'
+    if(d.startsWith('TECHO') || d.startsWith('TCH')) return 'TECHO'
+    return ''
+  }
+
+  // Headers de posición que cambian el contexto
+  const POS_HEADERS: Record<string,string> = {
+    'PARABRISAS':'PARABRISAS','LUNETAS':'LUNETA','LUNETA':'LUNETA',
+    'LATERALES':'LATERAL','PUERTAS':'PUERTA_DD',
+    'CUSTODIAS':'CUSTODIA_D','TECHOS':'TECHO','TECHO':'TECHO',
+  }
+  // Headers de marcas conocidas (para no confundirlos con posición)
+  const KNOWN_BRANDS = new Set(['AUDI','BMW','CHERY','CHEVROLET','CITROEN','FIAT','FORD','HONDA',
+    'HYUNDAI','JEEP','KIA','MERCEDES','NISSAN','PEUGEOT','RENAULT','SUZUKI','TOYOTA','VOLKSWAGEN','VW'])
+
+  const items: CatRow[] = []
+  let currentPos = ''
+
+  for(let i=1; i<rows.length; i++) {
+    const r = rows[i]
+    const c0 = String(r[0]||'').trim()
+    const precio = toNum(r[7])
+
+    // Si no tiene precio es un header de sección
+    if(!precio) {
+      const c0up = c0.toUpperCase()
+      if(POS_HEADERS[c0up]) currentPos = POS_HEADERS[c0up]
+      // Si es marca conocida → no cambia pos
+      continue
+    }
+
+    const desc  = String(r[4]||'').trim()
+    const marca = String(r[6]||'').trim()
+    const cod   = String(r[0]||'').trim() || String(r[2]||'').trim()
+    const dispRaw = String(r[8]||'').trim().toUpperCase()
+    const disp  = dispRaw==='SI'||dispRaw==='SÍ'?'SI':dispRaw==='NO'?'NO':dispRaw.includes('MIN')?'MIN':''
+
+    if(!desc) continue
+
+    // Refinar pos desde descripción (más específico que el header de sección)
+    const posDesc = posFromDesc(desc)
+    const pos = posDesc || currentPos
+
+    const row = mkRow('SEKURIT', cod, desc, marca, precio, precio, disp, false)
+    row.pos = pos || null
+    items.push(row)
+  }
+  return items
+}
+
+async function parsePromo(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array' })
+  const ws = wb.Sheets['Hoja1']
+  if(!ws) throw new Error('Hoja "Hoja1" no encontrada')
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
+  let h=0
+  for(let i=0;i<Math.min(rows.length,5);i++){if(rows[i].map((v:unknown)=>norm(String(v??''))).some((x:string)=>x.includes('LISTA'))){h=i;break}}
+  let marca=''; const items:CatRow[]=[]
+  for(let i=h+1;i<rows.length;i++){
+    const r=rows[i],c1=String(r[1]??'').trim(),c2=String(r[2]??'').trim()
+    const c3=toNum(r[3]),c6=toNum(r[6])
+    if(!c1&&c2&&!c3){marca=c2;continue}
+    if(!c1||!c3)continue
+    items.push(mkRow('SEKURIT',c1,c2,marca,c3,c6>0?c6/1.21:0,'',true))
+  }
+  return items
+}
+
+// ── parsers PDF ───────────────────────────────────────────────────────────────
+async function extractPdfText(bytes:Uint8Array): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+  const parts: string[] = []
+  for(let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    // Cada item de pdfjs va en su propia línea para que los parsers funcionen
+    content.items
+      .filter((item: any) => 'str' in item && (item as any).str.trim())
+      .forEach((item: any) => parts.push((item as any).str.trim()))
+  }
+  return parts.join('\n')
+}
+async function parsePdfGamma(file:File): Promise<CatRow[]> {
+  const bytes=new Uint8Array(await file.arrayBuffer())
+  const text=await extractPdfText(bytes)
+  // pdfjs devuelve un item por línea. Formato GAMMA oferta:
+  // Línea N:   "080930VSLP"         (código)
+  // Línea N+1: "PILKINGTON"         (o segundo código XYG)
+  // Línea N+2: "PSAS. CHEV. AGILE"  (descripción)
+  // Línea N+3: "125803,00"          (precio)
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
+  const cRe=/^[0-9]{5,}[A-Z0-9]+$/
+  const pRe=/^[\d.,]+$/
+  const descRe=/^(E-)?PSAS/i
+  const items:CatRow[]=[]; let i=0
+  while(i<lines.length){
+    if(cRe.test(lines[i])){
+      const cod=lines[i]
+      let j=i+1
+      // Saltar segundo código o PILKINGTON
+      if(j<lines.length && (cRe.test(lines[j])||lines[j]==='PILKINGTON')) j++
+      // La siguiente línea debería ser la descripción
+      if(j<lines.length && descRe.test(lines[j])){
+        const desc=lines[j]; j++
+        // La siguiente línea debería ser el precio
+        if(j<lines.length && pRe.test(lines[j])){
+          const p=toNum(lines[j])
+          if(p>1000) items.push(mkRow('GAMMA',cod,desc,'',p,p,'',true))
+          j++
+        }
+      }
+      i=j
+    }else i++
+  }
+  return items
+}
+async function parsePdfMix(file:File): Promise<CatRow[]> {
+  const bytes=new Uint8Array(await file.arrayBuffer())
+  const text=await extractPdfText(bytes)
+  // pdfjs devuelve un item por línea. Formato Malatesta Mix:
+  // Línea N:   "PSAS. CHEVROLET AGILE / MONTANA '09/'15"  (descripción)
+  // Línea N+1: "125.803"  (precio Mix — el mayor, Pilkington+Euroglass)
+  // Línea N+2: "$"
+  // Línea N+3: "116.484"  (precio Euroglass solo)
+  // Línea N+4: "$"
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
+  const descRe=/^(E-)?PSAS/i
+  const numRe=/^[\d.,]+$/
+  const items:CatRow[]=[]; let i=0
+  while(i<lines.length){
+    if(descRe.test(lines[i])){
+      const desc=lines[i]
+      // El primer número tras la descripción es el precio Mix
+      let pMix=0, j=i+1
+      while(j<lines.length && j<i+4){
+        if(numRe.test(lines[j])){ pMix=toNum(lines[j]); j++; break }
+        j++
+      }
+      i=j
+      if(!pMix||pMix<1000)continue
+      items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
+    }else i++
+  }
+  return items
+}
+
+function pct(n:number){ return (n*100).toFixed(1) }
+
+// ── Componente ────────────────────────────────────────────────────────────────
 export default function ProveedoresClient() {
-  const [proveedores, setProveedores] = useState<Proveedor[]>([])
-  const [q, setQ]               = useState('')
-  const [open, setOpen]         = useState(false)
-  const [selected, setSelected] = useState<Proveedor|null>(null)
-  const [compras, setCompras]   = useState<Compra[]>([])
-  const [selectedHist, setSelectedHist] = useState<Proveedor|null>(null)
-  const [loadingCompras, setLoadingCompras] = useState(false)
+  const [listas, setListas]     = useState<Lista[]>([])
+  const [editId, setEditId]     = useState<string|null>(null)
+  const [editVals, setEditVals] = useState({ desc_pct:'', flete_pct:'', iva_pct:'' })
   const [saving, setSaving]     = useState(false)
-  const [mostrarInactivos, setMostrarInactivos] = useState(false)
+  const [formato, setFormato]   = useState('gamma')
+  const [file, setFile]         = useState<File|null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [progress, setProgress] = useState('')
+  const [result, setResult]     = useState<{ok:boolean;msg:string}|null>(null)
   const supabase = createClient()
 
-  const [form, setForm] = useState({
-    nombre:'', razon_social:'', cuit:'', condicion_iva:'', email:'', telefono:'',
-    direccion:'', localidad:'', contacto:'', notas:''
-  })
+  useEffect(() => {
+    supabase.from('listas_precio').select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct')
+      .order('proveedor').then(({ data }) => setListas(data ?? []))
+  }, [supabase])
 
-  const cuitCheck = validarCuit(form.cuit)
-
-  const load = useCallback(async () => {
-    const query = supabase.from('proveedores_compra').select('*').order('nombre')
-    if (!mostrarInactivos) query.eq('activo', true)
-    if (q.trim()) query.ilike('nombre', `%${q}%`)
-    const { data } = await query.limit(100)
-    setProveedores(data ?? [])
-  }, [q, mostrarInactivos, supabase])
-
-  useEffect(() => { load() }, [load])
-
-  function openNuevo() {
-    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'' })
-    setSelected(null)
-    setOpen(true)
-  }
-
-  function openEditar(p: Proveedor) {
-    setForm({
-      nombre: p.nombre, razon_social: p.razon_social||'', cuit: p.cuit||'', condicion_iva: p.condicion_iva||'',
-      email: p.email||'', telefono: p.telefono||'', direccion: p.direccion||'', localidad: p.localidad||'',
-      contacto: p.contacto||'', notas: p.notas||''
-    })
-    setSelected(p)
-    setOpen(true)
-  }
-
-  async function save() {
-    if (!form.nombre.trim()) return
-    if (form.cuit && !validarCuit(form.cuit).ok) { alert('El CUIT/CUIL ingresado no es válido. Revisá los números.'); return }
+  async function saveEdit(id:string) {
     setSaving(true)
-    const payload = {
-      nombre: form.nombre, razon_social: form.razon_social||null, cuit: form.cuit||null,
-      condicion_iva: form.condicion_iva||null, email: form.email||null, telefono: form.telefono||null,
-      direccion: form.direccion||null, localidad: form.localidad||null, contacto: form.contacto||null,
-      notas: form.notas||null,
+    await supabase.from('listas_precio').update({
+      desc_pct: parseFloat(editVals.desc_pct)/100,
+      flete_pct:parseFloat(editVals.flete_pct)/100,
+      iva_pct:  parseFloat(editVals.iva_pct)/100,
+    }).eq('id',id)
+    const { data } = await supabase.from('listas_precio')
+      .select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct').order('proveedor')
+    setListas(data??[]); setSaving(false); setEditId(null)
+  }
+
+  async function importar() {
+    if(!file) return
+    setLoading(true); setResult(null); setProgress('Leyendo archivo…')
+    try {
+      let items:CatRow[] = []
+      if(formato==='gamma')         items = await parseGamma(file)
+      else if(formato==='malatesta')items = await parseMalateseta(file)
+      else if(formato==='sekurit')  items = await parseSekurit(file)
+      else if(formato==='promo_ar'||formato==='promo_bg') items = await parsePromo(file)
+      else if(formato==='oferta_gamma') items = await parsePdfGamma(file)
+      else if(formato==='mix_malat')    items = await parsePdfMix(file)
+
+      if(!items.length) throw new Error('No se encontraron ítems en el archivo')
+
+      // Asignar lista_nombre según el formato importado
+      const listaNombre: Record<string,string> = {
+        gamma: 'Catálogo', malatesta: 'Catálogo', sekurit: 'Lista',
+        promo_ar: 'Promo Alta Rot.', promo_bg: 'Bajo Giro',
+        oferta_gamma: 'Oferta Mixta Jun26', mix_malat: 'Mix P/E Jun26',
+      }
+      const ln = listaNombre[formato] || ''
+      items = items.map(it => ({ ...it, lista_nombre: ln || null }))
+
+      // Deduplicar — Malatesta y otros pueden tener el mismo código más de una vez
+      const seen = new Set<string>()
+      items = items.filter(it => {
+        const key = `${it.proveedor}|${it.codigo ?? it.descripcion}`
+        if (seen.has(key)) return false
+        seen.add(key); return true
+      })
+
+      setProgress(`Importando ${items.length.toLocaleString('es-AR')} piezas…`)
+      let inserted=0
+      const BATCH=200
+      for(let i=0;i<items.length;i+=BATCH){
+        const batch=items.slice(i,i+BATCH)
+        const { error } = await supabase.from('catalogo')
+          .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:false })
+        if(error) throw new Error(error.message)
+        inserted+=batch.length
+        setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
+      }
+      setResult({ ok:true, msg:`✅ Se importaron ${inserted.toLocaleString('es-AR')} piezas correctamente.` })
+    } catch(e:unknown) {
+      setResult({ ok:false, msg:`❌ ${e instanceof Error ? e.message : String(e)}` })
     }
-    if (selected?.id) {
-      await supabase.from('proveedores_compra').update(payload).eq('id', selected.id)
-    } else {
-      await supabase.from('proveedores_compra').insert({ ...payload, activo: true })
-    }
-    setSaving(false); setOpen(false)
-    load()
+    setLoading(false); setProgress(''); setFile(null)
+    const inp=document.getElementById('fi') as HTMLInputElement
+    if(inp)inp.value=''
   }
 
-  async function loadCompras(p: Proveedor) {
-    if (selectedHist?.id === p.id) { setSelectedHist(null); setCompras([]); return }
-    setSelectedHist(p); setLoadingCompras(true); setCompras([])
-    const { data } = await supabase.from('comprobantes_compra')
-      .select('id,tipo,letra,punto_venta,numero,fecha,total,estado')
-      .eq('proveedor_id', p.id).order('fecha', {ascending:false}).limit(20)
-    setCompras(data ?? [])
-    setLoadingCompras(false)
-  }
-
-  async function desactivar(p: Proveedor) {
-    if (!confirm(`¿Desactivar a "${p.nombre}"? No se borran sus compras, solo deja de aparecer en los selectores.`)) return
-    await supabase.from('proveedores_compra').update({ activo:false }).eq('id', p.id)
-    load()
-  }
-  async function reactivar(p: Proveedor) {
-    await supabase.from('proveedores_compra').update({ activo:true }).eq('id', p.id)
-    load()
-  }
-
-  const totalCompras = compras.filter(c=>c.estado!=='anulado').reduce((a,c)=>a+c.total,0)
+  const fmt = FORMATOS.find(f=>f.id===formato)!
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
-        <div className="flex gap-2 items-center flex-wrap">
-          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar proveedor…" />
-          <label className="flex items-center gap-1.5 text-sm text-p-ink2 cursor-pointer whitespace-nowrap">
-            <input type="checkbox" checked={mostrarInactivos} onChange={e=>setMostrarInactivos(e.target.checked)} className="accent-p-green"/>
-            Mostrar inactivos
-          </label>
-        </div>
-        <button onClick={openNuevo} style={btn}>+ Nuevo proveedor</button>
-      </div>
+    <div style={{ maxWidth:560 }}>
 
-      {proveedores.length === 0 ? <Empty msg="Sin proveedores." /> : (
-        <div className="flex flex-col gap-2">
-          {proveedores.map(p => (
-            <div key={p.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${!p.activo ? 'opacity-50' : ''}`}>
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div onClick={()=>loadCompras(p)} className="cursor-pointer flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-saira font-bold text-p-ink text-base">{p.nombre}</p>
-                    {!p.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactivo</span>}
-                    {p.condicion_iva && <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{p.condicion_iva}</span>}
-                  </div>
-                  {p.razon_social && <p className="text-sm text-p-ink2 mt-0.5">{p.razon_social}</p>}
-                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-p-ink2">
-                    {p.cuit && <span className="font-mono">CUIT {p.cuit}</span>}
-                    {p.telefono && <span>📞 {p.telefono}</span>}
-                    {p.email && <span>✉ {p.email}</span>}
-                    {p.localidad && <span>📍 {p.localidad}</span>}
-                  </div>
+      {/* Descuentos */}
+      <h2 style={{ fontFamily:'var(--font-saira)',fontWeight:700,fontSize:16,marginBottom:12 }}>
+        Descuentos por proveedor
+      </h2>
+      <div style={{ display:'flex',flexDirection:'column',gap:8,marginBottom:32 }}>
+        {listas.map(l=>(
+          <div key={l.id} style={{ background:'#fff',border:'1px solid #C2DDD0',borderRadius:12,padding:'12px 16px' }}>
+            {editId===l.id ? (
+              <div>
+                <p style={{ fontWeight:700,marginBottom:8 }}>{l.nombre}</p>
+                <div style={{ display:'flex',gap:12,flexWrap:'wrap',marginBottom:8 }}>
+                  {([['desc_pct','Descuento %'],['flete_pct','Flete %'],['iva_pct','IVA %']] as const).map(([k,lbl])=>(
+                    <label key={k} style={{ fontSize:12,color:'#4A6655' }}>
+                      {lbl}<br/>
+                      <input type="number" step="0.1" min="0" max="100"
+                        value={editVals[k]}
+                        onChange={e=>setEditVals(p=>({...p,[k]:e.target.value}))}
+                        style={{ width:72,border:'1px solid #00A550',borderRadius:8,padding:'4px 8px',fontFamily:'monospace',fontSize:14,textAlign:'center' }}/>
+                    </label>
+                  ))}
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={()=>openEditar(p)} style={btnGray}>✏ Editar</button>
-                  {p.activo
-                    ? <button onClick={()=>desactivar(p)} style={btnRed}>Desactivar</button>
-                    : <button onClick={()=>reactivar(p)} style={{...btnSm,background:'#00A550'}}>Reactivar</button>}
+                <div style={{ display:'flex',gap:8 }}>
+                  <button onClick={()=>saveEdit(l.id)} disabled={saving}
+                    style={{ background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'6px 16px',fontWeight:700,fontSize:13,cursor:'pointer' }}>
+                    {saving?'Guardando…':'Guardar'}
+                  </button>
+                  <button onClick={()=>setEditId(null)}
+                    style={{ background:'#fff',border:'1px solid #C2DDD0',borderRadius:8,padding:'6px 16px',fontSize:13,cursor:'pointer' }}>
+                    Cancelar
+                  </button>
                 </div>
               </div>
-
-              {selectedHist?.id === p.id && (
-                <div className="mt-3 pt-3 border-t border-p-line2">
-                  {loadingCompras ? (
-                    <p className="text-xs text-p-ink2 text-center py-3">Cargando historial…</p>
-                  ) : compras.length === 0 ? (
-                    <p className="text-xs text-p-ink2 text-center py-3">Sin compras registradas a este proveedor.</p>
-                  ) : (
-                    <>
-                      <div className="flex justify-between items-center mb-2">
-                        <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Últimas compras</p>
-                        <p className="text-sm font-saira font-bold text-p-ink">{moneyARS(totalCompras)}</p>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {compras.map(c => (
-                          <div key={c.id} className={`flex items-center justify-between text-xs py-1 ${c.estado==='anulado'?'opacity-50':''}`}>
-                            <span className="font-mono">
-                              {c.tipo==='remito' ? `REM-${c.numero||'S/N'}` : `${c.letra||''} ${c.punto_venta||''}-${c.numero||'S/N'}`}
-                            </span>
-                            <span className="text-p-ink2">{c.fecha.split('-').reverse().join('/')}</span>
-                            <span className="font-mono font-bold">{moneyARS(c.total)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
+            ):(
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                <div>
+                  <p style={{ fontWeight:600,fontSize:14,margin:0 }}>{l.nombre}</p>
+                  <p style={{ fontFamily:'monospace',fontSize:12,color:'#4A6655',margin:'2px 0 0' }}>
+                    −{pct(l.desc_pct)}% desc{l.flete_pct>0?` + ${pct(l.flete_pct)}% flete`:''} + {pct(l.iva_pct)}% IVA
+                  </p>
                 </div>
-              )}
-            </div>
-          ))}
+                <button onClick={()=>{ setEditId(l.id); setEditVals({ desc_pct:pct(l.desc_pct),flete_pct:pct(l.flete_pct),iva_pct:pct(l.iva_pct) }) }}
+                  style={{ border:'1px solid #C2DDD0',background:'#fff',borderRadius:8,padding:'6px 14px',fontSize:13,cursor:'pointer' }}>
+                  ✏ Editar
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Importador */}
+      <h2 style={{ fontFamily:'var(--font-saira)',fontWeight:700,fontSize:16,marginBottom:12 }}>
+        Importar lista de precios
+      </h2>
+      <div style={{ marginBottom:16 }}>
+        <label style={{ fontSize:12,fontWeight:600,color:'#4A6655',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:6 }}>Tipo de lista</label>
+        <select value={formato} onChange={e=>{ setFormato(e.target.value); setFile(null); setResult(null) }}
+          style={{ width:'100%',border:'1px solid #C2DDD0',borderRadius:10,padding:'10px 12px',fontSize:14,background:'#fff' }}>
+          {FORMATOS.map(f=><option key={f.id} value={f.id}>{f.label} ({f.ext})</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom:16 }}>
+        <label style={{ fontSize:12,fontWeight:600,color:'#4A6655',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:6 }}>Archivo ({fmt.ext})</label>
+        <input key={fmt.ext} id="fi" type="file" accept={fmt.ext}
+          onChange={e=>{ setFile(e.target.files?.[0]??null); setResult(null) }}
+          style={{ width:'100%',border:'1px solid #C2DDD0',borderRadius:10,padding:'8px 12px',fontSize:14,background:'#fff',cursor:'pointer' }}/>
+        {file&&<p style={{ fontFamily:'monospace',fontSize:12,color:'#4A6655',marginTop:6 }}>📎 {file.name} · {(file.size/1024).toFixed(0)} KB</p>}
+      </div>
+      <button onClick={importar} disabled={!file||loading}
+        style={{ display:'block',width:'100%',padding:'14px',background:(!file||loading)?'#aaa':'#00A550',
+          color:'#fff',border:'none',borderRadius:12,fontSize:16,fontWeight:700,
+          cursor:(!file||loading)?'not-allowed':'pointer',marginBottom:12 }}>
+        {loading ? progress||'Procesando…' : '⬆ Importar al catálogo'}
+      </button>
+      {result&&(
+        <div style={{ padding:16,borderRadius:12,background:result.ok?'#f0faf4':'#fef2f2',
+          border:`1px solid ${result.ok?'#86efac':'#fca5a5'}`,color:result.ok?'#166534':'#991b1b',fontSize:14 }}>
+          {result.msg}
         </div>
       )}
-
-      <Modal open={open} onClose={()=>setOpen(false)} title={selected ? 'Editar proveedor' : 'Nuevo proveedor'}>
-        <div className="flex flex-col gap-3">
-          <Field label="Nombre / Fantasía *">
-            <Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre del proveedor"/>
-          </Field>
-          <Field label="Razón social">
-            <Input value={form.razon_social} onChange={e=>setForm(p=>({...p,razon_social:e.target.value}))} placeholder="Razón social (opcional)"/>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="CUIT">
-              <Input value={form.cuit}
-                onChange={e=>setForm(p=>({...p,cuit:formatCuit(e.target.value)}))}
-                placeholder="30-12345678-9" maxLength={13}/>
-            </Field>
-            <Field label="Condición IVA">
-              <select value={form.condicion_iva} onChange={e=>setForm(p=>({...p,condicion_iva:e.target.value}))}
-                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green bg-white">
-                <option value="">Sin especificar</option>
-                {CONDICIONES_IVA.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </Field>
-          </div>
-          {form.cuit && (
-            <div style={{
-              background: cuitCheck.ok ? '#f0fdf4' : '#fef2f2',
-              border: `1px solid ${cuitCheck.ok ? '#86efac' : '#fca5a5'}`,
-              borderRadius:8, padding:'6px 12px', fontSize:12, marginTop:-6
-            }}>
-              <p style={{fontWeight:600, color: cuitCheck.ok ? '#15803d' : '#b91c1c'}}>
-                {cuitCheck.ok ? '✓ ' : '⚠ '}{cuitCheck.msg}
-              </p>
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Teléfono">
-              <Input value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="opcional"/>
-            </Field>
-            <Field label="Email">
-              <Input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="opcional"/>
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Dirección">
-              <Input value={form.direccion} onChange={e=>setForm(p=>({...p,direccion:e.target.value}))} placeholder="opcional"/>
-            </Field>
-            <Field label="Localidad">
-              <Input value={form.localidad} onChange={e=>setForm(p=>({...p,localidad:e.target.value}))} placeholder="opcional"/>
-            </Field>
-          </div>
-          <Field label="Contacto">
-            <Input value={form.contacto} onChange={e=>setForm(p=>({...p,contacto:e.target.value}))} placeholder="Persona de contacto (opcional)"/>
-          </Field>
-          <Field label="Notas">
-            <Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones…"/>
-          </Field>
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={!form.nombre.trim()||saving} style={{...btn,opacity:(!form.nombre.trim()||saving)?.6:1}}>
-              {saving ? 'Guardando…' : 'Guardar'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
