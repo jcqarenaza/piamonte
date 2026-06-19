@@ -36,7 +36,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [gastoOpen, setGastoOpen] = useState(false)
   const [gastoForm, setGastoForm] = useState({ categoria:'', descripcion:'', monto:'', forma_pago:'Efectivo', comprobante:'' })
 
-const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad','Impuestos','Mantenimiento','Otros']
+const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad','Impuestos','Mantenimiento','Combustible','Otros']
 
   const loadVentas = useCallback(async () => {
     setLoading(true)
