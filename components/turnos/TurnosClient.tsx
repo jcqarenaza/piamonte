@@ -9,6 +9,7 @@ import { OfflineBanner, SyncingBanner } from '@/lib/offline/OfflineBanner'
 import {
   cacheTurnosDelDia, getTurnosDelDiaCache,
   agregarTurnoPendiente, getTurnosPendientes, quitarTurnoPendiente,
+  precargarTurnosRango, getTurnosPrecargaMeta,
   type TurnoPendiente
 } from '@/lib/offline/db'
 
@@ -77,6 +78,39 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
   useEffect(() => {
     getTurnosPendientes().then(setPendientes)
   }, [isOnline])
+
+  // Precarga automática: trae los turnos de los próximos 14 días de una sola consulta y los guarda
+  // en el dispositivo, agrupados por fecha. Así, si se corta la conexión, no solo el día que estabas
+  // mirando queda disponible — cualquiera de esos 14 días se puede ver y agendar turnos nuevos.
+  // Se repite como máximo una vez por hora para no recargar la red constantemente.
+  useEffect(() => {
+    if (!isOnline) return
+    let cancelado = false
+    async function precargar() {
+      const ultimaPrecarga = await getTurnosPrecargaMeta()
+      const haceMenosDeUnaHora = ultimaPrecarga && (Date.now() - new Date(ultimaPrecarga).getTime()) < 60 * 60 * 1000
+      if (haceMenosDeUnaHora) return
+
+      const desde = todayStr()
+      const hastaDate = new Date(); hastaDate.setDate(hastaDate.getDate() + 14)
+      const hasta = hastaDate.toISOString().slice(0,10)
+
+      const { data } = await supabase.from('turnos').select('*')
+        .gte('fecha', desde).lte('fecha', hasta)
+        .order('fecha').order('hora', { ascending: true, nullsFirst: true })
+
+      if (cancelado || !data) return
+
+      const porFecha: Record<string, any[]> = {}
+      for (const t of data) {
+        if (!porFecha[t.fecha]) porFecha[t.fecha] = []
+        porFecha[t.fecha].push(t)
+      }
+      precargarTurnosRango(porFecha)
+    }
+    precargar()
+    return () => { cancelado = true }
+  }, [isOnline, supabase])
 
   // Sincronización automática al recuperar conexión
   useEffect(() => {
