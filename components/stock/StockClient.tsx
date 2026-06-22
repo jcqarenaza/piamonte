@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { StockItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, Empty, AlarmBar } from '@/components/ui'
-import { moneyARS, POS_LABEL } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS, POS_LABEL } from '@/lib/utils/format'
 
 const FAM_MAP: Record<string, string> = {
   PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas',
@@ -27,6 +27,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [ajusteSugs, setAjusteSugs] = useState<StockItem[]>([])
   const [ajusteStockId, setAjusteStockId] = useState<string|null>(null)
   const [costoEdit, setCostoEdit] = useState<Record<string, string>>({})
+  const [editId, setEditId] = useState<string|null>(null)
   const supabase = createClient()
 
   const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
@@ -117,17 +118,41 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     load()
   }
 
-  async function addStock() {
+  function openNuevo() {
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+    setEditId(null)
+    setOpen(true)
+  }
+
+  function openEditar(s: StockItem) {
+    setForm({
+      desc: s.descripcion, cod: s.codigo || '', marca: s.marca || '',
+      pos: s.pos || '', anio: s.anio || '', cant: String(s.cantidad),
+      precio: s.precio_venta ? String(s.precio_venta) : '',
+      costo: s.costo ? String(s.costo) : '',
+      dep: s.deposito || 'Principal',
+    })
+    setEditId(s.id)
+    setOpen(true)
+  }
+
+  async function save() {
     if (!form.desc) { alert('Cargá la descripción.'); return }
-    await supabase.from('stock').insert({
+    const payload = {
       descripcion: form.desc, codigo: form.cod || null, marca: form.marca || null,
       pos: form.pos || null, anio: form.anio || null, cantidad: +form.cant || 0,
       precio_venta: form.precio ? +form.precio.replace(/[^0-9.]/g, '') : null,
       costo: form.costo ? +form.costo.replace(/[^0-9.]/g, '') : null,
-      deposito: form.dep || 'Principal',
-    })
+      deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
+    }
+    if (editId) {
+      await supabase.from('stock').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('stock').insert(payload)
+    }
     setOpen(false)
     setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+    setEditId(null)
     load()
   }
 
@@ -170,7 +195,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           className={`text-xs font-bold px-3 py-2 rounded-lg border transition-colors ${soloSinCosto ? 'bg-amber-100 text-amber-700 border-amber-300' : 'border-p-line text-p-ink2 hover:bg-p-light'}`}>
           {soloSinCosto ? '✕ Solo sin costo' : '⚠ Solo sin costo'}
         </button>}
-        <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>
+        <button onClick={openNuevo} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>
         <button onClick={() => setAjusteOpen(true)}
           style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📥 Cargar mercadería
@@ -205,6 +230,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex items-center gap-1">
                   <button onClick={() => chgCant(s.id, 1)} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">+</button>
                   <button onClick={() => chgCant(s.id, -1)} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">−</button>
+                  <button onClick={() => openEditar(s)} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50">✏</button>
                   {isAdmin && <button onClick={() => del(s.id)} className="w-7 h-7 border border-red-200 rounded-lg text-sm text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>}
                 </div>
               </div>
@@ -212,12 +238,16 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           </div>
         )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Agregar a stock">
+      <Modal open={open} onClose={() => setOpen(false)} title={editId ? 'Editar artículo' : 'Agregar a stock'}>
         <div className="flex flex-col gap-3">
           <Field label="Descripción *"><Input value={form.desc} onChange={e => setForm(p => ({ ...p, desc: e.target.value }))} placeholder="Ej: Parabrisas VW Gol" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Código proveedor"><Input value={form.cod} onChange={e => setForm(p => ({ ...p, cod: e.target.value }))} /></Field>
             <Field label="Marca / modelo"><Input value={form.marca} onChange={e => setForm(p => ({ ...p, marca: e.target.value }))} placeholder="VW Gol" /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Posición"><Input value={form.pos} onChange={e => setForm(p => ({ ...p, pos: e.target.value }))} placeholder="PARABRISAS" /></Field>
+            <Field label="Año"><Input value={form.anio} onChange={e => setForm(p => ({ ...p, anio: e.target.value }))} placeholder="2015-2020" /></Field>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Cantidad"><Input type="number" value={form.cant} onChange={e => setForm(p => ({ ...p, cant: e.target.value }))} min="0" /></Field>
@@ -227,7 +257,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           <Field label="Depósito"><Input value={form.dep} onChange={e => setForm(p => ({ ...p, dep: e.target.value }))} placeholder="Principal" /></Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={addStock} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Agregar</button>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>{editId ? 'Guardar cambios' : 'Agregar'}</button>
           </div>
         </div>
       </Modal>
