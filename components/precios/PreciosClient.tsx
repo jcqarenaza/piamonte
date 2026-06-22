@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { moneyARS } from '@/lib/utils/format'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { OfflineBanner } from '@/lib/offline/OfflineBanner'
-import { cachePreciosBusqueda, buscarEnCachePrecios } from '@/lib/offline/db'
+import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
 
 interface TipoCliente { id: string; nombre: string; margen_pct: number }
 interface Pieza {
@@ -75,6 +75,24 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       })
   }, [supabase])
 
+  // Precarga automática del catálogo completo para que la búsqueda offline funcione con cualquier
+  // término, sin depender de qué se buscó antes. Corre en segundo plano, no bloquea la pantalla,
+  // y se actualiza una vez por día como máximo para no consumir datos innecesariamente.
+  useEffect(() => {
+    if (!isOnline) return
+    let cancelado = false
+    async function precargar() {
+      const meta = await getCatalogoMeta()
+      const haceMenosDeUnDia = meta && (Date.now() - new Date(meta.value).getTime()) < 24 * 60 * 60 * 1000
+      if (haceMenosDeUnDia) return
+      const { data } = await supabase.from('catalogo')
+        .select('id,proveedor,codigo,descripcion,marca,pos,costo_neto,lista_nombre,es_promo,grupo_id')
+      if (!cancelado && data) precargarCatalogoCompleto(data)
+    }
+    precargar()
+    return () => { cancelado = true }
+  }, [isOnline, supabase])
+
   const POS_KW: Record<string,string> = {
     'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
     'LUNETA':'LUNETA','LU':'LUNETA','REAR':'LUNETA',
@@ -87,8 +105,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     setLoading(true)
 
     if (!isOnline) {
-      // Sin conexión: buscar solo en lo que ya quedó cacheado de búsquedas anteriores
-      const resultados = await buscarEnCachePrecios(q.trim())
+      // Sin conexión: buscar en el catálogo completo precargado al abrir la app
+      const resultados = await buscarEnCatalogoCompleto(q.trim())
       setPiezas(resultados as Pieza[])
       setLoading(false)
       return
@@ -109,8 +127,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
 
     const { data, error } = await query
     if (error) {
-      // Si falla la red a mitad de camino, caemos al cache como respaldo
-      const resultados = await buscarEnCachePrecios(q.trim())
+      // Si falla la red a mitad de camino, caemos al catálogo precargado como respaldo
+      const resultados = await buscarEnCatalogoCompleto(q.trim())
       setPiezas(resultados as Pieza[])
       setLoading(false)
       return
@@ -126,10 +144,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       const k = `${p.proveedor}|${p.descripcion}`
       if (!map.has(k) || p.costo_neto < map.get(k)!.costo_neto) map.set(k, p)
     }
-    const finalPiezas = [...map.values()]
-    setPiezas(finalPiezas)
-    // Guardamos esta búsqueda en cache para poder consultarla offline más tarde
-    cachePreciosBusqueda(q.trim(), finalPiezas)
+    setPiezas([...map.values()])
     setLoading(false)
   }, [q, supabase, isOnline])
 
