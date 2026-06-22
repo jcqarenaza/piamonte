@@ -76,20 +76,37 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   }, [supabase])
 
   // Precarga automática del catálogo completo para que la búsqueda offline funcione con cualquier
-  // término, sin depender de qué se buscó antes. Corre en segundo plano, no bloquea la pantalla,
-  // y se actualiza una vez por día como máximo para no consumir datos innecesariamente.
+  // término, sin depender de qué se buscó antes. Corre en segundo plano, no bloquea la pantalla.
+  // En vez de un timer fijo, chequea con una consulta liviana si algo relevante a precios cambió
+  // (catálogo, config de recargos/descuentos, o márgenes por tipo de cliente). Si nada cambió, no
+  // vuelve a descargar todo — si cambió algo, sí, sin importar cuánto tiempo pasó desde la última vez.
   useEffect(() => {
     if (!isOnline) return
     let cancelado = false
-    async function precargar() {
+    async function chequearYPrecargar() {
+      // Consulta liviana: solo trae lo necesario para armar la "huella" de cambios, no el catálogo completo
+      const [catalogoInfo, configInfo, tiposInfo] = await Promise.all([
+        supabase.from('catalogo').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('config_precios').select('updated_at').eq('id', 1).maybeSingle(),
+        supabase.from('tipos_cliente').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+      const { count } = await supabase.from('catalogo').select('id', { count: 'exact', head: true })
+
+      const fingerprint = [
+        count ?? 0,
+        catalogoInfo.data?.updated_at ?? '',
+        configInfo.data?.updated_at ?? '',
+        tiposInfo.data?.updated_at ?? '',
+      ].join('|')
+
       const meta = await getCatalogoMeta()
-      const haceMenosDeUnDia = meta && (Date.now() - new Date(meta.value).getTime()) < 24 * 60 * 60 * 1000
-      if (haceMenosDeUnDia) return
+      if (meta?.fingerprint === fingerprint) return // nada cambió, no hace falta volver a bajar todo
+
       const { data } = await supabase.from('catalogo')
         .select('id,proveedor,codigo,descripcion,marca,pos,costo_neto,lista_nombre,es_promo,grupo_id')
-      if (!cancelado && data) precargarCatalogoCompleto(data)
+      if (!cancelado && data) precargarCatalogoCompleto(data, fingerprint)
     }
-    precargar()
+    chequearYPrecargar()
     return () => { cancelado = true }
   }, [isOnline, supabase])
 

@@ -161,7 +161,7 @@ export async function getPreciosBusquedaCache(query: string): Promise<any[] | nu
 
 // ── Catálogo completo: precarga automática para que la búsqueda offline funcione con cualquier término ──
 // Guarda TODO el catálogo (no solo lo que se buscó antes), en bloques para no trabar el navegador.
-export async function precargarCatalogoCompleto(piezas: any[]) {
+export async function precargarCatalogoCompleto(piezas: any[], fingerprint: string) {
   try {
     const db = await openDB()
     const CHUNK = 500
@@ -176,19 +176,19 @@ export async function precargarCatalogoCompleto(piezas: any[]) {
       })
     }
     await withStore(STORE_META, 'readwrite', store => {
-      store.put({ key: 'catalogo_actualizado_at', value: new Date().toISOString(), count: piezas.length })
+      store.put({ key: 'catalogo_actualizado_at', value: new Date().toISOString(), count: piezas.length, fingerprint })
     })
   } catch { /* IndexedDB no disponible, falla silenciosamente */ }
 }
 
-export async function getCatalogoMeta(): Promise<{ value: string; count: number } | null> {
+export async function getCatalogoMeta(): Promise<{ value: string; count: number; fingerprint?: string } | null> {
   try {
     const db = await openDB()
     return new Promise((resolve) => {
       const tx = db.transaction(STORE_META, 'readonly')
       const store = tx.objectStore(STORE_META)
       const req = store.get('catalogo_actualizado_at')
-      req.onsuccess = () => resolve(req.result ? { value: req.result.value, count: req.result.count } : null)
+      req.onsuccess = () => resolve(req.result ? { value: req.result.value, count: req.result.count, fingerprint: req.result.fingerprint } : null)
       req.onerror = () => resolve(null)
     })
   } catch { return null }
