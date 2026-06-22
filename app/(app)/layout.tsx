@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Nav from '@/components/nav/Nav'
 import { DolarBar } from '@/components/dolar/DolarBar'
+import RegisterSW from '@/components/RegisterSW'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -13,6 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const fase = config?.fase_habilitada ?? 1
   return (
     <div style={{ minHeight:'100vh', background:'#F9FAFB' }}>
+      <RegisterSW />
       <style>{`@media (min-width: 1024px) { #mc { margin-left: 210px; } }`}</style>
       <Nav rol={perfil?.rol} fase={fase} />
       <div id="mc">

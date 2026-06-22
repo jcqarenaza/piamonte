@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { moneyARS } from '@/lib/utils/format'
+import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
+import { OfflineBanner } from '@/lib/offline/OfflineBanner'
+import { cachePreciosBusqueda, buscarEnCachePrecios } from '@/lib/offline/db'
 
 interface TipoCliente { id: string; nombre: string; margen_pct: number }
 interface Pieza {
@@ -50,6 +53,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoSel, setTipoSel] = useState<string>('todos')
+  const isOnline = useOnlineStatus()
   const router = useRouter()
   const supabase = createClient()
 
@@ -81,6 +85,15 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const buscar = useCallback(async () => {
     if (q.trim().length < 2) { setPiezas([]); return }
     setLoading(true)
+
+    if (!isOnline) {
+      // Sin conexión: buscar solo en lo que ya quedó cacheado de búsquedas anteriores
+      const resultados = await buscarEnCachePrecios(q.trim())
+      setPiezas(resultados as Pieza[])
+      setLoading(false)
+      return
+    }
+
     const words = q.toUpperCase().split(/\s+/).filter(Boolean)
     const posWord = words.find(w => POS_KW[w])
     const nonPos  = words.filter(w => !POS_KW[w])
@@ -94,7 +107,14 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       .order('proveedor').limit(300)
     if (pos) query = query.eq('pos', pos)
 
-    const { data } = await query
+    const { data, error } = await query
+    if (error) {
+      // Si falla la red a mitad de camino, caemos al cache como respaldo
+      const resultados = await buscarEnCachePrecios(q.trim())
+      setPiezas(resultados as Pieza[])
+      setLoading(false)
+      return
+    }
     const filtered = (data ?? []).filter((p: any) =>
       rest.every((w: string) =>
         (p.descripcion || '').toUpperCase().includes(w) || (p.marca || '').toUpperCase().includes(w)
@@ -106,9 +126,12 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       const k = `${p.proveedor}|${p.descripcion}`
       if (!map.has(k) || p.costo_neto < map.get(k)!.costo_neto) map.set(k, p)
     }
-    setPiezas([...map.values()])
+    const finalPiezas = [...map.values()]
+    setPiezas(finalPiezas)
+    // Guardamos esta búsqueda en cache para poder consultarla offline más tarde
+    cachePreciosBusqueda(q.trim(), finalPiezas)
     setLoading(false)
-  }, [q, supabase])
+  }, [q, supabase, isOnline])
 
   useEffect(() => {
     const t = setTimeout(buscar, 300)
@@ -140,6 +163,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
 
   return (
     <div>
+      {!isOnline && <OfflineBanner />}
       {/* Chips tipo cliente */}
       <div className="flex gap-2 flex-wrap mb-5">
         <button onClick={() => setTipoSel('todos')}
@@ -227,9 +251,9 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                                     )}
                                   </div>
                                 </div>
-                                <button onClick={() => irAPresupuesto(pieza, tipo)}
-                                  style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                                  → Presupuesto
+                                <button onClick={() => irAPresupuesto(pieza, tipo)} disabled={!isOnline}
+                                  style={{ background: isOnline ? '#00A550' : '#9ca3af', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: isOnline ? 'pointer' : 'not-allowed' }}>
+                                  {isOnline ? '→ Presupuesto' : 'Sin conexión'}
                                 </button>
                               </div>
                             )

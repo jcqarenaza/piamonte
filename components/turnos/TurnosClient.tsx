@@ -4,6 +4,13 @@ import { createClient } from '@/lib/supabase/client'
 import type { Turno } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, Badge, Empty } from '@/components/ui'
 import { fmtFecha, todayStr } from '@/lib/utils/format'
+import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
+import { OfflineBanner, SyncingBanner } from '@/lib/offline/OfflineBanner'
+import {
+  cacheTurnosDelDia, getTurnosDelDiaCache,
+  agregarTurnoPendiente, getTurnosPendientes, quitarTurnoPendiente,
+  type TurnoPendiente
+} from '@/lib/offline/db'
 
 const ESTADOS = ['pendiente', 'confirmado', 'hecho', 'ausente'] as const
 
@@ -29,6 +36,9 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
   const [open, setOpen]       = useState(false)
   const [editing, setEditing] = useState<Turno | null>(null)
   const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
+  const isOnline = useOnlineStatus()
+  const [pendientes, setPendientes] = useState<TurnoPendiente[]>([])
+  const [sincronizando, setSincronizando] = useState(false)
   const supabase = createClient()
 
   const emptyForm = { cliente: '', telefono: '', vehiculo: '', patente: '', trabajo: '', fecha, hora: '', precio_acordado: '', notas: '', estado: 'pendiente' as Turno['estado'] }
@@ -41,13 +51,71 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
 
   const load = useCallback(async () => {
     setLoading(true)
+    if (!isOnline) {
+      // Sin conexión: mostrar lo último cacheado para esta fecha, sin pegarle a Supabase
+      const cache = await getTurnosDelDiaCache(fecha)
+      setTurnos(cache ?? [])
+      setLoading(false)
+      return
+    }
     const { data, error } = await supabase.from('turnos').select('*').eq('fecha', fecha).order('hora', { ascending: true, nullsFirst: true })
-    if (error) showToast('Error al cargar turnos: ' + error.message, false)
-    else setTurnos(data ?? [])
+    if (error) {
+      showToast('Error al cargar turnos: ' + error.message, false)
+      // Si falla la red a mitad de camino, caemos al cache como respaldo
+      const cache = await getTurnosDelDiaCache(fecha)
+      if (cache) setTurnos(cache)
+    } else {
+      setTurnos(data ?? [])
+      cacheTurnosDelDia(fecha, data ?? [])
+    }
     setLoading(false)
-  }, [fecha, supabase])
+  }, [fecha, supabase, isOnline])
 
   useEffect(() => { load() }, [load])
+
+  // Cargar la cola de pendientes al montar, y cada vez que cambia el estado de conexión
+  useEffect(() => {
+    getTurnosPendientes().then(setPendientes)
+  }, [isOnline])
+
+  // Sincronización automática al recuperar conexión
+  useEffect(() => {
+    if (!isOnline) return
+    let cancelado = false
+    async function sincronizar() {
+      const pend = await getTurnosPendientes()
+      if (pend.length === 0) return
+      setSincronizando(true)
+      for (const p of pend) {
+        try {
+          if (p.accion === 'insert') {
+            const { error } = await supabase.from('turnos').insert(p.payload)
+            if (error) {
+              // Conflicto de horario u otro error — dejamos el pendiente para revisión manual, no lo perdemos
+              console.error('No se pudo sincronizar turno offline:', error.message)
+              continue
+            }
+          } else if (p.accion === 'update' && p.turno_id) {
+            await supabase.from('turnos').update(p.payload).eq('id', p.turno_id)
+          } else if (p.accion === 'delete' && p.turno_id) {
+            await supabase.from('turnos').delete().eq('id', p.turno_id)
+          }
+          await quitarTurnoPendiente(p.local_id)
+        } catch (e) {
+          console.error('Error sincronizando turno offline:', e)
+        }
+      }
+      if (!cancelado) {
+        setSincronizando(false)
+        const restantes = await getTurnosPendientes()
+        setPendientes(restantes)
+        if (restantes.length === 0) showToast('Cambios sincronizados ✓')
+        load()
+      }
+    }
+    sincronizar()
+    return () => { cancelado = true }
+  }, [isOnline, supabase, load])
 
   function openNew() {
     setEditing(null)
@@ -77,6 +145,25 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
       precio_acordado: form.precio_acordado ? +form.precio_acordado.replace(/[^0-9.]/g,'') : null,
       estado: form.estado, user_id: userId, updated_at: new Date().toISOString()
     }
+
+    if (!isOnline) {
+      // Sin conexión: guardamos en la cola local y mostramos el turno como "tentativo" en pantalla.
+      // Se sincroniza solo apenas vuelve la señal.
+      const localId = `offline_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      if (editing) {
+        await agregarTurnoPendiente({ local_id: localId, accion: 'update', turno_id: editing.id, payload, fecha: form.fecha, created_at: new Date().toISOString() })
+        setTurnos(prev => prev.map(t => t.id === editing.id ? { ...t, ...payload } as Turno : t))
+      } else {
+        await agregarTurnoPendiente({ local_id: localId, accion: 'insert', payload, fecha: form.fecha, created_at: new Date().toISOString() })
+        const tentativo = { ...payload, id: localId, created_at: new Date().toISOString() } as unknown as Turno
+        if (form.fecha === fecha) setTurnos(prev => [...prev, tentativo].sort((a,b) => (a.hora||'').localeCompare(b.hora||'')))
+      }
+      setPendientes(await getTurnosPendientes())
+      showToast(editing ? 'Guardado sin conexión — se sincroniza al volver internet' : 'Turno agendado sin conexión — pendiente de sincronizar')
+      setOpen(false)
+      return
+    }
+
     if (editing) {
       const { error } = await supabase.from('turnos').update(payload).eq('id', editing.id)
       if (error) { showToast('Error al guardar: ' + error.message, false); return }
@@ -90,12 +177,14 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
   }
 
   async function setEstado(id: string, estado: Turno['estado']) {
+    if (!isOnline) { showToast('Sin conexión — este cambio necesita internet', false); return }
     const { error } = await supabase.from('turnos').update({ estado, updated_at: new Date().toISOString() }).eq('id', id)
     if (error) { showToast('Error: ' + error.message, false); return }
     setTurnos(prev => prev.map(t => t.id === id ? { ...t, estado } : t))
   }
 
   async function del(id: string) {
+    if (!isOnline) { showToast('Sin conexión — borrar necesita internet', false); return }
     if (!confirm('¿Borrar este turno?')) return
     const { error } = await supabase.from('turnos').delete().eq('id', id)
     if (error) { showToast('Error al borrar: ' + error.message, false); return }
@@ -113,6 +202,8 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
   return (
     <div>
       {toast && <Toast msg={toast.msg} ok={toast.ok} />}
+      {!isOnline && <OfflineBanner pendientes={pendientes.length} />}
+      {isOnline && sincronizando && <SyncingBanner count={pendientes.length} />}
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-2">
@@ -133,8 +224,10 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
         <Empty msg="Sin turnos para este día. ¡Agendá uno!" />
       ) : (
         <div className="flex flex-col gap-3">
-          {turnos.map(t => (
-            <div key={t.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex gap-3 flex-wrap">
+          {turnos.map(t => {
+            const esTentativo = String(t.id).startsWith('offline_')
+            return (
+            <div key={t.id} className={`bg-white border rounded-xl p-4 shadow-sm flex gap-3 flex-wrap ${esTentativo ? 'border-amber-300 border-dashed' : 'border-p-line'}`}>
               <div className="text-center min-w-[44px]">
                 <p className="font-mono font-bold text-p-ink text-base">{t.hora?.slice(0,5) ?? '—'}</p>
               </div>
@@ -142,6 +235,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-saira font-bold text-p-ink">{t.cliente ?? '(sin nombre)'}</p>
                   <Badge label={t.estado} />
+                  {esTentativo && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏳ Sin sincronizar</span>}
                 </div>
                 <p className="text-sm text-p-ink2 mt-0.5">{t.trabajo ?? '—'}</p>
                 <p className="text-xs text-p-gray mt-0.5">
@@ -149,6 +243,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {!esTentativo && (<>
                 {/* Botón acción principal según estado */}
                 {t.estado === 'pendiente' && (
                   <button onClick={() => setEstado(t.id, 'confirmado')}
@@ -175,6 +270,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                     Ausente
                   </button>
                 )}
+                </>)}
                 {/* WA */}
                 {t.telefono ? (
                   <a href={`https://wa.me/${t.telefono.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(t.estado === 'hecho' ? buildWaMsgListo(t) : buildWaMsg(t))}`}
@@ -185,6 +281,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 ) : (
                   <span style={{background:'#f3f4f6',color:'#d1d5db',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12}}>WA</span>
                 )}
+                {!esTentativo && (<>
                 <button onClick={() => openEdit(t)}
                   style={{background:'#fff',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
                   ✏
@@ -193,9 +290,11 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                   style={{background:'#fff',color:'#ef4444',border:'1px solid #fecaca',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
                   ✕
                 </button>
+                </>)}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
