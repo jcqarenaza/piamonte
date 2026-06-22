@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, todayStr } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 
 const IVA = 0.21
 const IVA_NEGRO_OPTS = [
@@ -22,7 +22,7 @@ const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
 const btnWa    = { ...btnSm,background:'#25d366' } as const
 
 // Formas de pago
-const METODOS = ['Efectivo','Transferencia','Tarjeta','Cuenta corriente']
+const METODOS = ['Efectivo','Transferencia','Débito','Crédito Visa','Crédito Master','Crédito Naranja','Crédito AMEX','Cheque','Cuenta corriente']
 const CUOTAS  = [1,2,3,6,9,12,18,24]
 const TIPO_FISCAL = [
   { id:'consumidor_final', label:'Consumidor Final' },
@@ -31,16 +31,16 @@ const TIPO_FISCAL = [
 ]
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number }
-interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; direccion:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null; vehiculo_habitual?:string }
+interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null; vehiculo_habitual?:string }
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
-  cliente_id:string|null; cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
+  cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:any[]; neto:number; iva:number; total:number; pagos:Pago[]
-  presupuesto_id:string|null; orden_id:string|null; created_at:string; cae_emitido?:string
+  presupuesto_id:string|null; orden_id:string|null; created_at:string
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -59,7 +59,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ivaOn, setIvaOn]       = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75) // % del total que se declara como base imponible
 
-  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', dni:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', direccion:'' }
+  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
   const [items, setItems]       = useState<{d:string;c:number;p:number;costo?:number;stock_id?:string}[]>([])
   const [stockQ, setStockQ]     = useState('')
@@ -75,41 +75,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')  // config_id seleccionado para tarjeta
   const [obs, setObs]           = useState('')
-  const [nextNum, setNextNum]     = useState<number|null>(null)
-  const [emitiendo, setEmitiendo] = useState(false)
-  const [caeResult, setCaeResult] = useState<{cae:string;nro:number}|null>(null)
-  // Nota de crédito
-  const [ncModal, setNcModal] = useState<Comprobante|null>(null)
-  const [ncTipo, setNcTipo] = useState<'total'|'parcial'>('total')
-  const [ncItems, setNcItems] = useState<{d:string;c:number;p:number}[]>([])
-  const [ncDevolucion, setNcDevolucion] = useState<'efectivo'|'vale'|'tarjeta'|'cuenta_corriente'>('efectivo')
-  const [ncObs, setNcObs] = useState('')
-  const [ncSaving, setNcSaving] = useState(false)
-  const [ncPago, setNcPago] = useState<'devolver'|'acreditar'|null>(null)
-  const [osPendientes, setOsPendientes] = useState<any[]>([])
-  const [osModal, setOsModal] = useState(false)
-  const [osSel, setOsSel] = useState<string|null>(null)
-  const [tarjetaModal, setTarjetaModal] = useState(false)
-  const [pagosModal, setPagosModal] = useState(false)
-  const [tarjetaIdx, setTarjetaIdx] = useState(0)
-  const [tarjetaForm, setTarjetaForm] = useState({ tipo:'credito', nombre:'Visa', cuotas:1 })
-
-  const TARJETAS = ['Visa','Mastercard','American Express','Naranja','Cabal','MODO','Mercado Pago']
-  const CUOTAS = [1,2,3,6,9,12,18,24] // id de la OS seleccionada
-
-  // Buscar OS pendientes del cliente seleccionado
-  useEffect(()=>{
-    if (!cliSel && !cliQ) { setOsPendientes([]); return }
-    const nombre = cliSel?.nombre || cliQ
-    if (nombre.length < 3) { setOsPendientes([]); return }
-    supabase.from('ordenes_servicio')
-      .select('id,numero,fecha,cliente,vehiculo,items,neto,iva,total')
-      .ilike('cliente', `%${nombre}%`)
-      .eq('convertido_comp', false)
-      .order('created_at', { ascending: false })
-      .limit(5)
-      .then(({ data }) => setOsPendientes(data ?? []))
-  }, [cliSel, cliQ, supabase])
 
   // Búsqueda de stock
   useEffect(()=>{
@@ -121,23 +86,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   // Totales
   const esNegro = rol === 'caja'
-  const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
-  // En negro: el IVA se calcula sobre el % declarado del total
+  const neto  = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
+  // En negro: el IVA se calcula sobre el % declarado del total — redondeado a centavos, no a pesos enteros,
+  // para que neto + IVA coincida exacto con el total y no descuadre contra ARCA al pedir el CAE.
   const iva   = esNegro
-    ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA) : 0)
-    : (ivaOn ? Math.round(neto*IVA) : 0)
-  const total = neto + iva
+    ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
+    : (ivaOn ? Math.round(neto*IVA*100) / 100 : 0)
+  const total = Math.round((neto + iva) * 100) / 100
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
-  // Validaciones
-  const esFacturaA    = fiscal.tipo_fiscal === 'responsable_inscripto'
-  const esCF          = !fiscal.tipo_fiscal || fiscal.tipo_fiscal === 'consumidor_final'
-  const nombreCliente = cliSel?.nombre || cliQ
-  const faltaNombre   = !nombreCliente.trim()
-  const faltaCuit     = !esCF && !fiscal.cuit
-  const faltaDni      = esCF && !fiscal.dni
-  const hayError      = faltaNombre || faltaCuit || faltaDni
-  const puedeEmitir   = !hayError && items.length > 0
 
   useEffect(() => {
     supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
@@ -161,19 +118,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       setFiscal(p=>({...p, vehiculo:veh||'', tipo_cliente_id:tipoId||'' }))
       // Pre-fill como consumidor final con el nombre
       if(cli) {
-        setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, direccion:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
+        setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
         setCliQ(cli)
-        setCliSugs([]) // No mostrar dropdown al pre-cargar
       }
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }
     if(iva_&&+iva_>0) setIvaOn(true)
-    if(cli||tel) {
-      // Calcular próximo número al abrir desde presupuesto/OS
-      supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
-        .then(({data})=>setNextNum(((data?.[0] as any)?.numero ?? 0) + 1))
-      setOpen(true)
-    }
+    if(cli||tel) setOpen(true)
   },[searchParams])
 
   // Búsqueda de clientes por nombre o celular
@@ -181,12 +132,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(cliQ.trim().length < 2){ setCliSugs([]); return }
     supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id,notas')
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
-      .then(({data})=>setCliSugs((data??[]) as unknown as ClienteMin[]))
-  },[cliQ,cliSel,supabase])
+      .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
+  },[cliQ,supabase])
 
   async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
-    setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'', direccion:c.direccion||'' }))
+    setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'' }))
     if(c.tipo_fiscal && c.tipo_fiscal !== 'consumidor_final') setShowFiscal(true)
     // Cargar historial del cliente
     const [pres, ords] = await Promise.all([
@@ -213,18 +164,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
+    if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final') return 'B'
     if(fiscal.tipo_fiscal==='responsable_inscripto') return 'A'
-    return 'B' // RI emite solo A o B — nunca C (esa la emite el monotributista)
+    return 'C'
   }
 
   async function save(){
     if(!items.length) return
-    if(faltaNombre) { alert('El nombre del cliente es obligatorio.'); return }
-    if(faltaDni) { alert('El DNI es obligatorio para Consumidor Final.'); setShowFiscal(true); return }
-    if(faltaCuit) { alert(`El CUIT es obligatorio para ${tipoFiscalLabel(fiscal.tipo_fiscal)}.`); setShowFiscal(true); return }
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
-    const pid = searchParams.get('pid'), oid = osSel || searchParams.get('oid')
+    const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
     const { data:comp } = await supabase.from('comprobantes').insert({
@@ -233,7 +182,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_nombre: cliSel?.nombre||cliQ||null,
       cliente_telefono: cliSel?.telefono||null,
       cliente_cuit: fiscal.cuit||null,
-      cliente_dni: fiscal.dni||null,
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
@@ -247,25 +195,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       observaciones: obs||null,
       user_id: userId,
     }).select().single()
-
-    // Si algún pago es cuenta corriente, registrar movimiento en CC
-    const pagosCC = pagos.filter(p => p.metodo === 'Cuenta corriente' && parseFloat(p.monto.replace(/[^0-9.]/g,'')) > 0)
-    if (pagosCC.length > 0 && comp) {
-      const nombreCliente = cliSel?.nombre || cliQ
-      const montCC = pagosCC.reduce((a,p) => a + (parseFloat(p.monto.replace(/[^0-9.]/g,'')) || 0), 0)
-      await supabase.from('cuenta_corriente').insert({
-        cliente_id: cliSel?.id || null,
-        cliente_nombre: nombreCliente,
-        fecha: todayStr(),
-        tipo: 'comprobante',
-        descripcion: `Comprobante N°${nextNum}`,
-        debe: montCC,
-        haber: 0,
-        comprobante_id: (comp as any).id,
-        notas: null,
-        user_id: userId,
-      })
-    }
 
     // Descontar stock para items vinculados
     for(const it of items){
@@ -289,150 +218,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
     }
 
-    // Marcar OS como facturada si viene de una OS
-    if (oid) {
-      await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', oid)
-      setOsSel(null)
-    }
-
-    // Emitir factura electrónica en ARCA automáticamente
-    if (comp && !esNegro) {
-      setEmitiendo(true)
-      try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        const tipoCbte = tipoDoc() === 'A' ? 1 : 6
-        const esFacturaA = tipoCbte === 1
-
-        // Cálculo correcto de IVA:
-        // Los precios cargados YA incluyen IVA (precio final al cliente)
-        // ARCA necesita: impNeto (sin IVA) + impIva + impTotal
-        const tieneIva = ivaOn && iva > 0
-        const impTotal = total
-        const impNeto  = tieneIva ? Math.round(total / 1.21 * 100) / 100 : total
-        const impIva   = tieneIva ? Math.round((total - impNeto) * 100) / 100 : 0
-
-        // DocTipo y DocNro según tipo de cliente
-        // DocTipo: 80=CUIT, 96=DNI, 99=Sin identificar
-        const docTipo = esFacturaA ? 80 : (fiscal.dni ? 96 : 99)
-        const docNro  = esFacturaA
-          ? (fiscal.cuit?.replace(/[^0-9]/g,'') || '0')
-          : (fiscal.dni?.replace(/[^0-9]/g,'') || '0')
-
-        const resp = await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-          body: JSON.stringify({
-            comprobante_id: (comp as any).id,
-            tipoCbte,
-            impTotal,
-            impNeto,
-            impIva,
-            concepto: 1,
-            docTipo,
-            docNro,
-            // ivaAlicuota 5 = 21% — solo se manda si hay IVA
-            ivaAlicuota: tieneIva ? 5 : undefined,
-          })
-        })
-        const arcaData = await resp.json()
-        if (arcaData.ok) {
-          setCaeResult({ cae: arcaData.cae, nro: arcaData.nro_cbte })
-          await supabase.from('comprobantes').update({ cae_emitido: arcaData.cae }).eq('id', (comp as any).id)
-        } else {
-          console.error('ARCA error:', arcaData.error)
-          alert(`Error ARCA: ${arcaData.error}`)
-        }
-      } catch(e) { console.error('Error ARCA:', e) }
-      setEmitiendo(false)
-    }
-
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
-    setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false); setOsSel(null)
+    setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
-    setComps(data??[])
-  }
-
-  // ── Nota de Crédito ──────────────────────────────────────────────────────────
-  function abrirNC(comp: Comprobante) {
-    setNcModal(comp)
-    setNcTipo('total')
-    setNcItems(comp.items.map((it:any) => ({d:it.d, c:it.c, p:it.p})))
-    // Detectar forma de pago predominante
-    const pagosComp = comp.pagos ?? []
-    const tieneTarjeta = pagosComp.some((p:any) => p.metodo?.startsWith('Créd') || p.metodo?.startsWith('Déb'))
-    const tieneCuentaCorriente = pagosComp.some((p:any) => p.metodo === 'Cuenta corriente')
-    setNcDevolucion(tieneCuentaCorriente ? 'cuenta_corriente' : tieneTarjeta ? 'tarjeta' : 'efectivo')
-    setNcObs('')
-    setNcPago(null)
-  }
-
-  async function emitirNC() {
-    if (!ncModal) return
-    setNcSaving(true)
-    const itemsNC = ncTipo === 'total' ? ncModal.items : ncItems.filter(it => it.c > 0 && it.p > 0)
-    const netoNC  = itemsNC.reduce((a:number, it:any) => a + it.c * it.p, 0)
-    const ivaNC   = ncModal.iva > 0 ? Math.round(netoNC * IVA) : 0
-    const totalNC = netoNC + ivaNC
-
-    // Determinar tipo NC según tipo de factura original
-    const tipoNC = ncModal.tipo === 'A' ? 'NCA' : 'NCB'
-    const tipoCbteNC = ncModal.tipo === 'A' ? 3 : 8
-
-    // Guardar NC en DB
-    const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
-    const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
-
-    const { data:ncComp } = await supabase.from('comprobantes').insert({
-      numero: nextNum,
-      fecha: todayStr(),
-      tipo: tipoNC,
-      cliente_id: ncModal.cliente_id ?? null,
-      cliente_nombre: ncModal.cliente_nombre,
-      cliente_telefono: ncModal.cliente_telefono,
-      cliente_cuit: ncModal.cliente_cuit,
-      cliente_tipo_fiscal: ncModal.cliente_tipo_fiscal,
-      vehiculo: ncModal.vehiculo,
-      items: itemsNC,
-      neto: netoNC,
-      iva_pct: IVA,
-      iva: ivaNC,
-      total: totalNC,
-      pagos: [{ metodo: ncDevolucion === 'vale' ? 'Vale' : ncDevolucion === 'tarjeta' ? 'Devolución tarjeta' : ncDevolucion === 'cuenta_corriente' ? 'Crédito cuenta corriente' : 'Devolución efectivo', monto: String(totalNC) }],
-      comprobante_origen_id: ncModal.id,
-      user_id: userId,
-      es_nc: true,
-      observaciones: `NC de Comprobante N°${ncModal.numero}${ncPago === 'acreditar' ? ' — Crédito a cuenta' : ncPago === 'devolver' ? ' — Devolución' : ''}${ncObs ? ' - ' + ncObs : ''}`,
-    }).select().single()
-
-    // Emitir NC en ARCA
-    if (ncComp) {
-      try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        await fetch(`${supabaseUrl}/functions/v1/arca-facturar`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-          body: JSON.stringify({
-            comprobante_id: (ncComp as any).id,
-            tipoCbte: tipoCbteNC,
-            impTotal: totalNC,
-            impNeto: netoNC,
-            impIva: ivaNC,
-            concepto: 1,
-            docTipo: ncModal.cliente_tipo_fiscal === 'responsable_inscripto' ? 80 : 99,
-            docNro: ncModal.cliente_cuit?.replace(/-/g,'') || '0',
-            ivaAlicuota: ivaNC > 0 ? 5 : undefined,
-          })
-        })
-      } catch(e) { console.error('Error ARCA NC:', e) }
-    }
-
-    setNcModal(null)
-    setNcSaving(false)
-    const {data} = await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
   }
 
@@ -491,7 +281,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.text(`Cliente: ${adjModal.cliente_nombre || '—'}`, 15, 32)
       doc.text(`Fecha: ${adjModal.fecha}`, 15, 40)
       doc.text(`Vehículo: ${(adjModal as any).vehiculo || '—'}`, 15, 48)
-      doc.text(`Total: $${Math.round(adjModal.total).toLocaleString('es-AR')}`, 15, 56)
+      doc.text(`Total: ${moneyARS(adjModal.total)}`, 15, 56)
 
       // Páginas adicionales: fotos y OS
       for (const adj of adjuntos) {
@@ -528,11 +318,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
     try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
     doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
-    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 10)
-    doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80)
-    doc.setFontSize(7.5); doc.text('KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4 · Resp. Inscripto IVA', pad+50, 17)
-    doc.setTextColor(120,120,120)
-    doc.setFontSize(7); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 23)
+    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 12)
+    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
+    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 20)
     const tipoLabel = c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE'
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
     doc.setFontSize(10); doc.text(`N° ${String(c.numero||0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
@@ -575,16 +363,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
     y+=4
 
-    // Totales
+    // Búsqueda de stock
+  useEffect(()=>{
+    if(stockQ.trim().length<2){setStockSugs([]);return}
+    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
+      .ilike('descripcion',`%${stockQ}%`).limit(8)
+      .then(({data})=>setStockSugs(data??[]))
+  },[stockQ,supabase])
+
+  // Totales
     const totX=W-pad-70
-    if(c.iva && c.iva > 0) {
-      // Precio/1.21 = neto real sin IVA
-      const netoReal = Math.round(c.total / 1.21)
-      const ivaReal  = c.total - netoReal
-      doc.setFont('helvetica','normal'); doc.setFontSize(9)
-      doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(netoReal),W-pad,y,{align:'right'}); y+=6
-      doc.text('IVA 21%:',totX,y); doc.text(moneyARS(ivaReal),W-pad,y,{align:'right'}); y+=6
-    }
+    if(c.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(c.neto),W-pad,y,{align:'right'}); y+=6 }
+    if(c.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(c.iva),W-pad,y,{align:'right'}); y+=6 }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
     doc.text('TOTAL:',totX,y); doc.text(moneyARS(c.total),W-pad,y,{align:'right'})
     y+=10
@@ -595,35 +385,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.setFont('helvetica','normal')
       c.pagos.forEach((p:Pago)=>{ doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`,pad+4,y); y+=5 })
       y+=4
-    }
-
-    // CAE si existe
-    if((c as any).cae_emitido) {
-      doc.setFillColor(232,245,233); doc.rect(pad, y, W-pad*2, 10, 'F')
-      doc.setTextColor(0,120,50); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-      doc.text('CAE:', pad+2, y+4)
-      doc.setFont('helvetica','normal')
-      doc.text((c as any).cae_emitido, pad+14, y+4)
-      doc.setFont('helvetica','bold')
-      doc.text('Vto. CAE:', pad+70, y+4)
-      doc.setFont('helvetica','normal')
-      doc.text('27/06/2026', pad+90, y+4)
-      y+=14
-    }
-
-    // Saldo cuenta corriente si aplica
-    const pagosCC = (c.pagos||[]).filter((p:Pago)=>p.metodo==='Cuenta corriente')
-    if(pagosCC.length>0) {
-      const montCC = pagosCC.reduce((a:number,p:Pago)=>a+(parseFloat(p.monto)||0),0)
-      const vencCC = new Date(c.fecha)
-      vencCC.setDate(vencCC.getDate()+30)
-      doc.setFillColor(254,243,199); doc.rect(pad, y, W-pad*2, 14, 'F')
-      doc.setTextColor(146,64,14); doc.setFont('helvetica','bold'); doc.setFontSize(9)
-      doc.text('📒 SALDO EN CUENTA CORRIENTE', pad+2, y+5)
-      doc.setFont('helvetica','normal'); doc.setFontSize(8)
-      doc.text(`Importe: ${moneyARS(montCC)}`, pad+2, y+11)
-      doc.text(`Vencimiento: ${vencCC.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}`, pad+60, y+11)
-      y+=18
     }
 
     // Footer
@@ -660,201 +421,77 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   return (
     <div>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
-        <button onClick={async()=>{
-        const {data} = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
-        setNextNum(((data?.[0] as any)?.numero ?? 0) + 1)
-        setOpen(true)
-      }} style={btn}>🧾 Nueva factura</button>
+        <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>
       </div>
 
       {comps.length===0 ? <Empty msg="Sin comprobantes todavía." /> : (
         <div className="flex flex-col gap-3">
           {comps.map(c=>(
-            <div key={c.id} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:14,boxShadow:'0 1px 4px rgba(0,0,0,.06)',overflow:'hidden'}}>
-              {/* Header tipo factura */}
-              <div style={{background:(c as any).es_negro?'#1f2937':c.tipo?.startsWith('NC')?'#ef4444':'#00A550',padding:'8px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <span style={{fontFamily:'monospace',fontWeight:800,fontSize:13,color:'#fff',letterSpacing:1}}>
-                    {c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':c.tipo?.startsWith('NC')?'NOTA DE CRÉDITO':'COMPROBANTE'}
-                  </span>
-                  {(c as any).es_negro&&<span style={{fontSize:10,background:'rgba(255,255,255,.2)',color:'#fff',borderRadius:4,padding:'1px 6px',fontWeight:700}}>⚫ NEGRO</span>}
-                </div>
-                <div style={{textAlign:'right'}}>
-                  <p style={{fontFamily:'monospace',fontSize:12,color:'rgba(255,255,255,.9)',fontWeight:700}}>
-                    N° {String(c.numero||0).padStart(8,'0')}
-                  </p>
-                  <p style={{fontSize:10,color:'rgba(255,255,255,.7)'}}>
-                    {c.fecha.split('-').reverse().join('/')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Cuerpo */}
-              <div style={{padding:'12px 16px'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
-                  <div>
-                    <p style={{fontWeight:700,fontSize:15,color:'#111827'}}>{c.cliente_nombre||'Consumidor Final'}</p>
-                    <p style={{fontSize:11,color:'#6b7280',marginTop:2}}>
-                      {[
-                        c.cliente_cuit && `CUIT ${c.cliente_cuit}`,
-                        c.cliente_cuit && tipoFiscalLabel(c.cliente_tipo_fiscal),
-                        c.vehiculo,
-                        c.items.length + ' ítem(s)',
-                      ].filter(Boolean).join(' · ')}
-                    </p>
-                    {/* CAE si existe */}
-                    {(c as any).cae_emitido && (
-                      <p style={{fontSize:10,color:'#059669',marginTop:4,fontFamily:'monospace',fontWeight:600}}>
-                        ✅ CAE: {(c as any).cae_emitido}
-                      </p>
-                    )}
+            <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
+                      {c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X'}-{String(c.numero||0).padStart(8,'0')}
+                    </span>
+                    {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
+                    <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||'Consumidor Final'}</p>
+                    {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
+                    {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
                   </div>
-                  <p style={{fontFamily:'var(--font-saira,sans-serif)',fontWeight:800,fontSize:22,color:'#111827',flexShrink:0}}>
-                    {moneyARS(c.total)}
+                  <p className="text-xs text-p-ink2 mt-0.5">
+                    {[c.vehiculo, c.fecha.split('-').reverse().join('/'), c.items.length+' ítem(s)'].filter(Boolean).join(' · ')}
                   </p>
                 </div>
-
-                {/* Formas de pago resumen */}
-                {c.pagos?.length > 0 && (
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-                    {c.pagos.map((p:any,i:number)=>(
-                      <span key={i} style={{fontSize:10,background:'#f3f4f6',borderRadius:6,padding:'2px 8px',color:'#374151',fontWeight:600}}>
-                        {p.metodo}{p.cuotas&&p.cuotas>1?` ${p.cuotas}c`:''}: {moneyARS(parseFloat(p.monto)||0)}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(c.total)}</p>
               </div>
-
-              {/* Acciones */}
-              <div style={{padding:'8px 16px',borderTop:'1px solid #f3f4f6',display:'flex',gap:6,flexWrap:'wrap'}}>
-                <button onClick={()=>abrirAdjuntos(c)} style={{...btnSm,background:'#7c3aed'}}>📎 Adjuntos</button>
+              <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
+                <button onClick={()=>abrirAdjuntos(c)}
+                  style={{...btnSm,background:'#7c3aed'}}>
+                  📎 Adjuntos
+                </button>
                 {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
-                {!c.tipo?.startsWith('NC') && (
-                  <button onClick={()=>abrirNC(c)} style={{...btnRed,fontSize:11}}>📋 Nota de crédito</button>
-                )}
-                <button onClick={()=>del(c.id)} style={{...btnRed,background:'#9ca3af'}}>Borrar</button>
+                <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <Modal
-        open={open}
-        onClose={()=>setOpen(false)}
-        title=""
-        size="lg"
-        header={
-          <div style={{background:'#00A550',padding:'14px 20px'}}>
-            {/* Fila superior: nombre fantasía + número */}
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{width:42,height:42,background:'rgba(255,255,255,.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,position:'relative',overflow:'hidden'}}>
-                  <span style={{color:'#fff',fontWeight:900,fontSize:14,fontFamily:'var(--font-saira,sans-serif)',letterSpacing:-1}}>EP</span>
-                  <img src={LOGO_BASE64} alt=""
-                    style={{width:42,height:42,objectFit:'contain',position:'absolute',inset:0}}
-                    onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
-                </div>
-                <div>
-                  <p style={{color:'#fff',fontSize:16,fontWeight:800,fontFamily:'var(--font-saira,sans-serif)',lineHeight:1.1}}>
-                    Parabrisas El Piamonte
-                  </p>
-                  <p style={{color:'rgba(255,255,255,.7)',fontSize:10,marginTop:2}}>
-                    KNUTH VERONICA ALEJANDRA · CUIT 27-24265717-4
-                  </p>
-                </div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <p style={{color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:1}}>N° Comprobante</p>
-                <p style={{color:'#fff',fontSize:18,fontWeight:800,fontFamily:'monospace',lineHeight:1.2}}>
-                  {nextNum ? String(nextNum).padStart(8,'0') : '--------'}
-                </p>
-                <p style={{color:'rgba(255,255,255,.6)',fontSize:10}}>
-                  {new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}
-                </p>
-              </div>
-            </div>
-            {/* Fila inferior: tipo de factura + punto de venta */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid rgba(255,255,255,.2)',paddingTop:8}}>
-              <p style={{color:'#fff',fontSize:18,fontWeight:900,fontFamily:'var(--font-saira,sans-serif)',letterSpacing:1}}>
-                {fiscal.tipo_fiscal==='responsable_inscripto' ? 'FACTURA A' : 'FACTURA B'}
-              </p>
-              <p style={{color:'rgba(255,255,255,.8)',fontSize:11}}>
-                Punto de venta <strong style={{color:'#fff'}}>00006</strong> · Resp. Inscripto IVA
-              </p>
-            </div>
-          </div>
-        }
-        footer={
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1">
-              {diferencia !== 0 && items.length > 0 && (
-                <p className="text-sm font-bold text-amber-600">
-                  {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
-                </p>
-              )}
-              {hayError && <p className="text-sm font-bold text-red-500">
-                {faltaNombre ? 'Falta nombre del cliente' : faltaDni ? 'Falta DNI' : 'Falta CUIT'}
-              </p>}
-            </div>
-            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={emitiendo||!puedeEmitir}
-              style={{...btn,opacity:(emitiendo||!puedeEmitir)?.5:1,minWidth:160}}>
-              {emitiendo ? '⏳ Emitiendo…' : '✓ Emitir factura'}
-            </button>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-3">
+      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante">
+        <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
           {/* Búsqueda de cliente */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
-            {cliSel ? (
-              <div className="flex items-center gap-2 bg-p-light rounded-xl px-3 py-2.5 border border-p-green">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm text-p-ink">{cliSel.nombre}</p>
-                  <p className="text-[10px] text-p-ink2">{[cliSel.telefono, tipoFiscalLabel(fiscal.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
-                </div>
-                <button onClick={()=>{setCli(null);setCliQ('');setCliSugs([])}}
-                  className="text-p-ink2 hover:text-red-500 text-xs font-bold px-2 py-1 rounded-lg hover:bg-red-50">
-                  ✕ cambiar
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null)}}
-                  placeholder="Nombre o celular…"/>
-                {cliSugs.length>0&&(
-                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                    <button onClick={usarConsumidorFinal}
-                      className="w-full text-left px-3 py-2.5 text-sm font-semibold text-p-dark hover:bg-p-light border-b border-p-line2">
-                      👤 Consumidor Final
+            <div className="relative">
+              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null)}}
+                placeholder="Nombre o celular…"/>
+              {cliSugs.length>0&&(
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                  <button onClick={usarConsumidorFinal}
+                    className="w-full text-left px-3 py-2.5 text-sm font-semibold text-p-dark hover:bg-p-light border-b border-p-line2">
+                    👤 Consumidor Final
+                  </button>
+                  {cliSugs.map(c=>(
+                    <button key={c.id} onClick={()=>selectCliente(c)}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                      <p className="font-medium text-p-ink">{c.nombre}</p>
+                      <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
                     </button>
-                    {cliSugs.map(c=>(
-                      <button key={c.id} onClick={()=>selectCliente(c)}
-                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
-                        <p className="font-medium text-p-ink">{c.nombre}</p>
-                        <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Badge tipo fiscal y alertas */}
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Badge tipo fiscal */}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <button onClick={()=>setShowFiscal(!showFiscal)}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${showFiscal?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
                 {showFiscal ? '▲ ' : '▼ '}{tipoFiscalLabel(fiscal.tipo_fiscal)}
-                {fiscal.cuit&&` · ${fiscal.cuit}`}
-                {fiscal.dni&&` · DNI ${fiscal.dni}`}
+                {fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
               </button>
-              {faltaNombre && <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ Nombre obligatorio</span>}
-              {faltaCuit && !faltaNombre && <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ CUIT obligatorio</span>}
-              {faltaDni && !faltaNombre && <span style={{background:'#fef3c7',color:'#d97706',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700}}>⚠️ DNI obligatorio</span>}
+              {cliSel&&<span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>}
             </div>
           </div>
 
@@ -874,10 +511,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </Select>
                 </Field>
               </div>
-              {fiscal.tipo_fiscal==='consumidor_final' ? (
-                <Field label="DNI *"><Input value={fiscal.dni} onChange={e=>setFiscal(p=>({...p,dni:e.target.value}))} placeholder="12345678"/></Field>
-              ) : (
-                <Field label="CUIT *"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/></Field>
+              {fiscal.tipo_fiscal!=='consumidor_final'&&(
+                <Field label="CUIT"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/></Field>
               )}
               <button onClick={async()=>{
                 if(cliSel?.id){
@@ -994,286 +629,54 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {/* Formas de pago — botón que abre modal */}
+          {/* Formas de pago */}
           <div className="border-t border-p-line2 pt-3">
             <div className="flex items-center justify-between mb-2">
               <label className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Formas de pago</label>
-              <button onClick={()=>setPagosModal(true)} style={{...btnSm,padding:'6px 14px',fontSize:12}}>
-                {pagos.some(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0) ? '✏ Editar pagos' : '+ Agregar'}
-              </button>
-            </div>
-            {/* Resumen pagos */}
-            {pagos.filter(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0).length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {pagos.filter(p=>p.monto&&+p.monto.replace(/[^0-9.]/g,'')>0).map((p,i)=>(
-                  <div key={i} className="flex justify-between items-center bg-p-light rounded-lg px-3 py-2 text-sm">
-                    <span className="font-medium text-p-ink">{p.metodo}</span>
-                    <span className="font-mono font-bold text-p-dark">{moneyARS(+p.monto.replace(/[^0-9.]/g,'')||0)}</span>
-                  </div>
-                ))}
-                {diferencia !== 0 && (
-                  <p className="text-xs font-bold text-amber-600">
-                    {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
-                  </p>
-                )}
+              <div className="flex gap-2">
+                {total>0&&<button onClick={distribuirTotal} style={{...btnGray,padding:'4px 10px',fontSize:11}}>Distribuir total</button>}
+                <button onClick={addPago} style={{...btnSm,padding:'4px 10px',fontSize:11}}>+ Agregar</button>
               </div>
-            ) : (
-              <button onClick={()=>setPagosModal(true)}
-                className="w-full border-2 border-dashed border-p-line rounded-xl py-3 text-sm text-p-ink2 hover:border-p-green hover:text-p-green transition-colors">
-                Tap para agregar forma de pago
-              </button>
-            )}
-            {diferencia > 0 && pagos.some(p=>p.monto) && (
-              <p className="text-xs font-bold text-red-500 mt-1">Falta: {moneyARS(diferencia)}</p>
-            )}
+            </div>
+            <div className="flex flex-col gap-2">
+              {pagos.map((p,i)=>(
+                <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-5">
+                    <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
+                      {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
+                    </Select>
+                  </div>
+                  {p.metodo.startsWith('Crédito')&&(
+                    <div className="col-span-2">
+                      <Select value={p.cuotas||1} onChange={e=>updPago(i,'cuotas',+e.target.value)}>
+                        {CUOTAS.map(c=><option key={c} value={c}>{c}c</option>)}
+                      </Select>
+                    </div>
+                  )}
+                  <div className={p.metodo.startsWith('Crédito')?'col-span-4':'col-span-6'}>
+                    <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
+                  </div>
+                  {pagos.length>1&&<button onClick={()=>delPago(i)} className="text-red-400 text-xs col-span-1">✕</button>}
+                </div>
+              ))}
+              {total>0&&Math.abs(diferencia)>1&&(
+                <p className={`text-xs font-bold mt-1 ${diferencia>0?'text-amber-600':'text-red-500'}`}>
+                  {diferencia>0?`Falta: ${moneyARS(diferencia)}`:`Exceso: ${moneyARS(Math.abs(diferencia))}`}
+                </p>
+              )}
+            </div>
           </div>
 
           <Field label="Observaciones"><Input value={obs} onChange={e=>setObs(e.target.value)} placeholder="Opcional…"/></Field>
 
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
+            <button onClick={save} disabled={!items.length||!cliQ} style={{...btn,opacity:(!items.length||!cliQ)?.5:1}}>
+              ✓ Emitir comprobante
+            </button>
+          </div>
         </div>
       </Modal>
-      {/* Modal de pagos */}
-      {pagosModal && (
-        <Modal open={pagosModal} onClose={()=>setPagosModal(false)} title="Formas de pago">
-          <div className="flex flex-col gap-3">
-            <div className="bg-p-light rounded-xl px-4 py-3 flex justify-between items-center">
-              <span className="text-sm text-p-ink2">Total a pagar</span>
-              <span className="font-saira font-bold text-xl text-p-dark">{moneyARS(total)}</span>
-            </div>
-
-            {pagos.map((p,i)=>(
-              <div key={i} className="bg-white border border-p-line rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Select value={p.metodo.startsWith('Tarjeta')?'Tarjeta':p.metodo}
-                    onChange={e=>{
-                      if(e.target.value==='Tarjeta'){
-                        setTarjetaIdx(i); setTarjetaForm({tipo:'credito',nombre:'Visa',cuotas:1}); setTarjetaModal(true)
-                      } else {
-                        updPago(i,'metodo',e.target.value)
-                      }
-                    }}>
-                    {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
-                  </Select>
-                  {p.metodo.startsWith('Tarjeta') && (
-                    <button onClick={()=>{setTarjetaIdx(i);setTarjetaModal(true)}}
-                      style={{fontSize:11,background:'#dbeafe',color:'#1d4ed8',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',whiteSpace:'nowrap',fontWeight:700}}>
-                      {p.metodo} ✏
-                    </button>
-                  )}
-                  {pagos.length > 1 && (
-                    <button onClick={()=>setPagos(prev=>prev.filter((_,j)=>j!==i))}
-                      className="text-red-400 hover:text-red-600 text-xs ml-auto">✕</button>
-                  )}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
-                  {total > 0 && (
-                    <button onClick={()=>{
-                      const resto = total - pagos.reduce((a,x,j)=>j===i?a:a+(parseFloat(x.monto.replace(/[^0-9.]/g,''))||0),0)
-                      updPago(i,'monto',String(Math.round(resto)))
-                    }} style={{fontSize:11,background:'#f3f4f6',border:'none',borderRadius:6,padding:'4px 8px',cursor:'pointer',whiteSpace:'nowrap'}}>
-                      resto
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <button onClick={addPago} style={{...btnGray,width:'100%',textAlign:'center'}}>+ Agregar otro método</button>
-
-            {diferencia !== 0 && (
-              <div style={{background:diferencia>0?'#fee2e2':'#f0fdf4',border:`1px solid ${diferencia>0?'#fca5a5':'#86efac'}`,borderRadius:10,padding:'8px 12px',textAlign:'center'}}>
-                <p style={{fontSize:13,fontWeight:700,color:diferencia>0?'#dc2626':'#16a34a'}}>
-                  {diferencia > 0 ? `Falta: ${moneyARS(diferencia)}` : `Sobra: ${moneyARS(-diferencia)}`}
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={()=>setPagosModal(false)} style={{...btn}}>✓ Confirmar</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal tarjeta */}
-      {tarjetaModal && (
-        <Modal open={tarjetaModal} onClose={()=>setTarjetaModal(false)} title="Detalle de tarjeta">
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-2">
-              {(['credito','debito'] as const).map(t=>(
-                <button key={t} onClick={()=>setTarjetaForm(p=>({...p,tipo:t}))}
-                  style={{flex:1,padding:'8px',borderRadius:8,border:'none',fontWeight:700,fontSize:13,cursor:'pointer',
-                    background:tarjetaForm.tipo===t?'#1d4ed8':'#e5e7eb',
-                    color:tarjetaForm.tipo===t?'#fff':'#374151'}}>
-                  {t==='credito'?'💳 Crédito':'🏧 Débito'}
-                </button>
-              ))}
-            </div>
-            <Field label="Tarjeta">
-              <select value={tarjetaForm.nombre} onChange={e=>setTarjetaForm(p=>({...p,nombre:e.target.value}))}
-                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
-                {TARJETAS.map(t=><option key={t}>{t}</option>)}
-              </select>
-            </Field>
-            {tarjetaForm.tipo==='credito' && (
-              <Field label="Cuotas">
-                <div className="flex gap-2 flex-wrap">
-                  {CUOTAS.map(q=>(
-                    <button key={q} onClick={()=>setTarjetaForm(p=>({...p,cuotas:q}))}
-                      style={{padding:'6px 12px',borderRadius:8,border:'none',fontWeight:700,fontSize:13,cursor:'pointer',
-                        background:tarjetaForm.cuotas===q?'#00A550':'#e5e7eb',
-                        color:tarjetaForm.cuotas===q?'#fff':'#374151'}}>
-                      {q===1?'Contado':`${q}c`}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={()=>setTarjetaModal(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-              <button onClick={()=>{
-                const label = `Tarjeta ${tarjetaForm.tipo==='credito'?'Cred.':'Déb.'} ${tarjetaForm.nombre}${tarjetaForm.tipo==='credito'&&tarjetaForm.cuotas>1?` ${tarjetaForm.cuotas}c`:''}`
-                setPagos(prev=>prev.map((x,j)=>j===tarjetaIdx?{...x,metodo:label}:x))
-                setTarjetaModal(false)
-              }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Toast CAE */}
-      {caeResult && (
-        <div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',background:'#00A550',color:'#fff',padding:'12px 24px',borderRadius:14,fontWeight:700,fontSize:14,zIndex:200,boxShadow:'0 4px 20px rgba(0,0,0,.2)',textAlign:'center'}}>
-          ✅ Factura emitida · CAE: {caeResult.cae} · N°: {String(caeResult.nro).padStart(8,'0')}
-          <button onClick={()=>setCaeResult(null)} style={{marginLeft:16,background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'2px 10px',cursor:'pointer'}}>✕</button>
-        </div>
-      )}
-
-      {/* Modal Nota de Crédito */}
-      {ncModal && (
-        <Modal open={!!ncModal} onClose={()=>setNcModal(null)} title={`Nota de Crédito — Comp. N°${ncModal.numero}`}>
-          <div className="flex flex-col gap-4">
-            {/* Advertencia tarjeta */}
-            {ncDevolucion === 'tarjeta' && (
-              <div style={{background:'#fef3c7',border:'1px solid #d97706',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#92400e'}}>
-                ⚠️ El comprobante fue pagado con tarjeta. Verificá con el banco si el plazo permite devolución antes de proceder.
-              </div>
-            )}
-            {ncDevolucion === 'cuenta_corriente' && (
-              <div style={{background:'#eff6ff',border:'1px solid #3b82f6',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#1e40af'}}>
-                📒 La devolución se acreditará como crédito en la cuenta corriente del cliente.
-              </div>
-            )}
-
-            {/* Tipo de NC */}
-            <div>
-              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Tipo de nota de crédito</label>
-              <div className="flex gap-3">
-                <button onClick={()=>setNcTipo('total')}
-                  style={{...btnSm, background: ncTipo==='total'?'#00A550':'#e5e7eb', color: ncTipo==='total'?'#fff':'#374151'}}>
-                  Por el total
-                </button>
-                <button onClick={()=>setNcTipo('parcial')}
-                  style={{...btnSm, background: ncTipo==='parcial'?'#00A550':'#e5e7eb', color: ncTipo==='parcial'?'#fff':'#374151'}}>
-                  Por ítems específicos
-                </button>
-              </div>
-            </div>
-
-            {/* Ítems parciales */}
-            {ncTipo === 'parcial' && (
-              <div>
-                <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Seleccioná los ítems a acreditar</label>
-                {ncItems.map((it, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2 border-b border-p-line2 text-sm">
-                    <input type="checkbox" checked={it.c > 0}
-                      onChange={e => setNcItems(prev => prev.map((x,j) => j===i ? {...x, c: e.target.checked ? (ncModal.items[i]?.c||1) : 0} : x))}
-                      className="accent-p-green"/>
-                    <span className="flex-1">{it.d}</span>
-                    <input type="number" value={it.c} min={0} max={ncModal.items[i]?.c||1}
-                      onChange={e => setNcItems(prev => prev.map((x,j) => j===i ? {...x, c: +e.target.value} : x))}
-                      className="w-16 border border-p-line rounded px-2 py-1 text-xs text-center"/>
-                    <span className="font-mono text-xs w-20 text-right">{moneyARS(it.c * it.p)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between font-bold text-sm pt-2">
-                  <span>Total NC:</span>
-                  <span className="font-mono">{moneyARS(ncItems.filter(it=>it.c>0).reduce((a,it)=>a+it.c*it.p,0))}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Forma de devolución */}
-            <div>
-              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Forma de devolución</label>
-              <div className="flex gap-2 flex-wrap">
-                {(['efectivo','vale','tarjeta','cuenta_corriente'] as const).map(d => (
-                  <button key={d} onClick={()=>setNcDevolucion(d)}
-                    style={{...btnSm, background: ncDevolucion===d?'#1d4ed8':'#e5e7eb', color: ncDevolucion===d?'#fff':'#374151', textTransform:'capitalize'}}>
-                    {d === 'efectivo' ? '💵 Efectivo' : d === 'vale' ? '🎟️ Vale' : d === 'tarjeta' ? '💳 Tarjeta' : '📒 Cta. Corriente'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Field label="Observaciones (opcional)">
-              <Input value={ncObs} onChange={e=>setNcObs(e.target.value)} placeholder="Motivo de la devolución…"/>
-            </Field>
-
-            {/* Aviso si el comprobante está pago */}
-            {(() => {
-              const totalPagadoComp = (ncModal.pagos ?? []).reduce((a:number, p:any) => a + (parseFloat(p.monto) || 0), 0)
-              const estaPago = totalPagadoComp >= ncModal.total * 0.99
-              if (!estaPago) return null
-              return (
-                <div style={{background:'#fef3c7',border:'2px solid #d97706',borderRadius:10,padding:'12px 14px',fontSize:13}}>
-                  <p style={{fontWeight:700,color:'#92400e',marginBottom:8}}>⚠️ Este comprobante ya fue cobrado por {moneyARS(totalPagadoComp)}</p>
-                  <p style={{color:'#92400e',marginBottom:10,fontSize:12}}>¿Qué hacemos con el importe de la nota de crédito?</p>
-                  <div style={{display:'flex',gap:8}}>
-                    <button onClick={()=>setNcPago('devolver')}
-                      style={{...btnSm, background: ncPago==='devolver'?'#ef4444':'#e5e7eb', color: ncPago==='devolver'?'#fff':'#374151'}}>
-                      💵 Devolver dinero
-                    </button>
-                    <button onClick={()=>setNcPago('acreditar')}
-                      style={{...btnSm, background: ncPago==='acreditar'?'#2563eb':'#e5e7eb', color: ncPago==='acreditar'?'#fff':'#374151'}}>
-                      📒 Dejar a cuenta del cliente
-                    </button>
-                  </div>
-                  {ncPago === 'acreditar' && (
-                    <p style={{marginTop:8,fontSize:11,color:'#1e40af',fontStyle:'italic'}}>
-                      El crédito quedará registrado en la cuenta corriente del cliente para su próxima compra.
-                    </p>
-                  )}
-                </div>
-              )
-            })()}
-
-            {/* Resumen */}
-            <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:13}}>
-              <div className="flex justify-between"><span>Tipo:</span><span className="font-bold">{ncModal.tipo==='A'?'Nota de Crédito A':ncModal.tipo==='C'?'Nota de Crédito C':'Nota de Crédito B'}</span></div>
-              <div className="flex justify-between"><span>Devolución:</span><span className="font-bold">{ncDevolucion === 'efectivo' ? '💵 Efectivo' : ncDevolucion === 'vale' ? '🎟️ Vale' : ncDevolucion === 'tarjeta' ? '💳 Tarjeta' : '📒 Cta. Corriente'}</span></div>
-              <div className="flex justify-between font-bold text-base mt-1 pt-1 border-t border-p-line">
-                <span>Total a acreditar:</span>
-                <span className="text-red-600">{moneyARS(
-                  ncTipo === 'total'
-                    ? ncModal.total
-                    : ncItems.filter(it=>it.c>0).reduce((a,it)=>a+it.c*it.p,0) * (ncModal.iva > 0 ? 1 + IVA : 1)
-                )}</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={()=>setNcModal(null)} style={btnGray}>Cancelar</button>
-              <button onClick={emitirNC} disabled={ncSaving} style={{...btnRed, opacity: ncSaving ? .6 : 1}}>
-                {ncSaving ? 'Emitiendo…' : '✓ Emitir Nota de Crédito'}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

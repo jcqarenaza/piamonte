@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, todayStr } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
 
 const IVA = 0.21
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -82,6 +82,11 @@ export default function ComprasClient() {
   const [procesando, setProcesando] = useState(false)
   const [nuevoItem, setNuevoItem] = useState<Record<number,{desc:string;codigo:string;precio:string}|null>>({})
 
+  // Informe de comparación: lo que se pagó en la factura vs. el costo vigente en las listas de precios
+  const [compararModal, setCompararModal] = useState<Comprobante|null>(null)
+  const [comparacion, setComparacion] = useState<any[]>([])
+  const [comparando, setComparando] = useState(false)
+
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
     proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
@@ -91,13 +96,14 @@ export default function ComprasClient() {
   const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
+  const [editandoItemIdx, setEditandoItemIdx] = useState<number|null>(null)
 
   const supabase = createClient()
 
   // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
   const netoItems    = items.reduce((a,i)=>a+i.c*i.p, 0)
   const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
-  const descuentoMonto = Math.round(netoItems * descuentoPct) / 100
+  const descuentoMonto = Math.round(netoItems * descuentoPct * 100) / 10000
   const netoConDescuento = netoItems - descuentoMonto
   const iva   = ivaOn ? Math.round(netoConDescuento*IVA*100)/100 : 0
   const flete = parseFloat(form.flete.replace(',','.')) || 0
@@ -138,10 +144,15 @@ export default function ComprasClient() {
   }, [form.proveedor_id, proveedores, descuentoTocadoAMano])
 
   function addItem() {
-    const p = parseFloat(itemForm.p.replace(/[^0-9.]/g,''))
+    const p = parseFloat(itemForm.p.replace(/[^0-9.,]/g,'').replace(',','.'))
     const c = parseInt(itemForm.c)
     if (!itemForm.d || !p || !c) return
-    setItems(prev=>[...prev, {d:itemForm.d, c, p}])
+    if (editandoItemIdx !== null) {
+      setItems(prev => prev.map((it,i) => i===editandoItemIdx ? {d:itemForm.d, c, p} : it))
+      setEditandoItemIdx(null)
+    } else {
+      setItems(prev=>[...prev, {d:itemForm.d, c, p}])
+    }
     setItemForm({d:'',c:'1',p:''})
   }
 
@@ -295,6 +306,47 @@ export default function ComprasClient() {
     load()
   }
 
+  // Compara lo pagado en la factura contra el costo vigente en el catálogo (todas las listas de proveedores).
+  // Sirve para detectar si se compró más caro que lo que ofrece otra lista — para reclamar o pedir lista actualizada.
+  async function compararPrecios(c: Comprobante) {
+    setCompararModal(c)
+    setComparando(true)
+    setComparacion([])
+
+    const resultados: any[] = []
+    for (const it of c.items) {
+      // Buscar en catálogo por palabras de la descripción — igual criterio que PreciosClient
+      const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
+      if (palabras.length === 0) { resultados.push({ item: it, candidatos: [], sinMatch: true }); continue }
+
+      const { data } = await supabase.from('catalogo')
+        .select('proveedor,descripcion,costo_neto,lista_nombre,grupo_id,codigo')
+        .ilike('descripcion', `%${palabras[0]}%`)
+        .limit(50)
+
+      const candidatos = (data ?? []).filter((p:any) =>
+        palabras.every((w:string) => (p.descripcion||'').toUpperCase().includes(w))
+      )
+
+      // Deduplicar por proveedor, quedarse con el más barato de cada uno
+      const porProveedor = new Map<string, any>()
+      for (const cand of candidatos) {
+        const actual = porProveedor.get(cand.proveedor)
+        if (!actual || cand.costo_neto < actual.costo_neto) porProveedor.set(cand.proveedor, cand)
+      }
+      const lista = [...porProveedor.values()].sort((a,b)=>a.costo_neto - b.costo_neto)
+
+      const masBarato = lista[0]
+      const diferencia = masBarato ? it.p - masBarato.costo_neto : null
+      const diferenciaPct = masBarato && masBarato.costo_neto > 0 ? (diferencia! / masBarato.costo_neto) * 100 : null
+
+      resultados.push({ item: it, candidatos: lista, sinMatch: lista.length === 0, diferencia, diferenciaPct, masBarato })
+    }
+
+    setComparacion(resultados)
+    setComparando(false)
+  }
+
   // Remitos ya procesados (stock ya cargado) y aún no marcados como facturados — para vincular a una Factura
   const remitosDisponibles = comprobantes.filter(c =>
     c.tipo === 'remito' && c.estado === 'procesado' && c.notas !== 'Facturado'
@@ -412,6 +464,11 @@ export default function ComprasClient() {
                   <button onClick={()=>abrirVinculacion(c)}
                     style={{...btnSm,background:'#00A550'}}>
                     📦 Cargar a stock
+                  </button>
+                )}
+                {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
+                  <button onClick={()=>compararPrecios(c)} style={btnBlue}>
+                    📊 Comparar precios
                   </button>
                 )}
                 {c.estado==='pendiente' && (
@@ -538,6 +595,89 @@ export default function ComprasClient() {
                   {procesando?'Procesando…':'✓ Confirmar carga a stock'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal comparación de precios contra catálogo */}
+      {compararModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setCompararModal(null)}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-p-line">
+              <div>
+                <h2 className="font-saira font-bold text-xl text-p-ink">📊 Comparación de precios</h2>
+                <p className="text-sm text-p-ink2 mt-0.5">
+                  {compararModal.proveedor_nombre} · {numComp(compararModal)} — vs. costo vigente en listas de catálogo
+                </p>
+              </div>
+              <button onClick={()=>setCompararModal(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              {comparando ? (
+                <p className="text-sm text-p-ink2 text-center py-10">Comparando contra el catálogo…</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {comparacion.map((r, i) => (
+                    <div key={i} className={`rounded-xl p-3 border ${
+                      r.sinMatch ? 'bg-gray-50 border-gray-200' :
+                      r.diferencia > 0 ? 'bg-red-50 border-red-200' :
+                      r.diferencia < 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <p className="font-semibold text-sm text-p-ink">{r.item.d}</p>
+                        <span className="font-mono text-sm">
+                          Pagado: <strong>{moneyARS2(r.item.p)}</strong>
+                        </span>
+                      </div>
+
+                      {r.sinMatch ? (
+                        <p className="text-xs text-p-ink2 mt-1.5">Sin coincidencia en el catálogo — no se pudo comparar.</p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <p className="text-xs text-p-ink2">
+                              Más barato disponible: <strong>{r.masBarato.proveedor}</strong> ({r.masBarato.lista_nombre || 'lista actual'}) — {moneyARS2(r.masBarato.costo_neto)}
+                            </p>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                              r.diferencia > 0 ? 'bg-red-100 text-red-700' :
+                              r.diferencia < 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {r.diferencia > 0 ? `⚠ Pagaste ${moneyARS2(r.diferencia)} más (+${r.diferenciaPct.toFixed(1)}%)` :
+                               r.diferencia < 0 ? `✓ Pagaste ${moneyARS2(Math.abs(r.diferencia))} menos (${r.diferenciaPct.toFixed(1)}%)` :
+                               'Mismo precio'}
+                            </span>
+                          </div>
+                          {r.candidatos.length > 1 && (
+                            <div className="mt-2 pt-2 border-t border-p-line2 flex flex-wrap gap-1.5">
+                              {r.candidatos.map((c2:any, j:number) => (
+                                <span key={j} className="text-[11px] bg-white border border-p-line2 px-2 py-0.5 rounded-full">
+                                  {c2.proveedor}: {moneyARS2(c2.costo_neto)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Resumen */}
+                  {comparacion.some(r=>!r.sinMatch) && (
+                    <div className="bg-p-light rounded-xl p-3 mt-2">
+                      <p className="text-sm font-saira font-bold text-p-ink">
+                        Diferencia total: {moneyARS2(comparacion.filter(r=>!r.sinMatch).reduce((a,r)=>a+(r.diferencia||0),0))}
+                      </p>
+                      <p className="text-[11px] text-p-ink2 mt-0.5">
+                        Positivo = pagaste de más respecto a la lista más barata disponible. Útil para reclamar al proveedor o pedir lista actualizada.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-p-line flex justify-end">
+              <button onClick={()=>setCompararModal(null)} style={btnGray}>Cerrar</button>
             </div>
           </div>
         </div>
@@ -689,7 +829,9 @@ export default function ComprasClient() {
 
           {/* Ítems */}
           <div className="border-t border-p-line2 pt-3">
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">
+              Ítems {editandoItemIdx !== null && <span className="text-blue-600 font-normal">— editando ítem #{editandoItemIdx+1}</span>}
+            </label>
             <div className="grid grid-cols-12 gap-2 mb-2">
               <div className="col-span-6">
                 <Input value={itemForm.d} onChange={e=>setItemForm(p=>({...p,d:e.target.value}))} placeholder="Descripción / código"/>
@@ -698,16 +840,26 @@ export default function ComprasClient() {
                 <Input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant."/>
               </div>
               <div className="col-span-3">
-                <Input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio unit."/>
+                <Input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio unit. (con decimales)"/>
               </div>
-              <button onClick={addItem} style={{...btnSm,padding:'9px 8px',fontSize:12}} className="col-span-1">+</button>
+              <button onClick={addItem} style={{...btnSm,padding:'9px 8px',fontSize:12,background:editandoItemIdx!==null?'#1d4ed8':undefined}} className="col-span-1">
+                {editandoItemIdx!==null ? '✓' : '+'}
+              </button>
             </div>
+            {editandoItemIdx !== null && (
+              <button onClick={()=>{setEditandoItemIdx(null);setItemForm({d:'',c:'1',p:''})}}
+                className="text-[11px] text-p-ink2 underline mb-2">Cancelar edición</button>
+            )}
             {items.map((it,i)=>(
               <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                 <span className="flex-1 truncate">{it.d}</span>
                 <span className="text-p-ink2 shrink-0">×{it.c}</span>
                 <span className="font-mono font-bold shrink-0">{moneyARS(it.p)}</span>
                 <span className="font-mono text-p-green font-bold shrink-0">{moneyARS(it.c*it.p)}</span>
+                <button onClick={()=>{
+                  setEditandoItemIdx(i)
+                  setItemForm({ d: it.d, c: String(it.c), p: String(it.p) })
+                }} className="text-blue-500 text-xs shrink-0">✏</button>
                 <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
               </div>
             ))}

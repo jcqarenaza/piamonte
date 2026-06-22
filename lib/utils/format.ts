@@ -11,6 +11,12 @@ export function moneyARS(n: number | null | undefined): string {
   return '$' + Math.round(n).toLocaleString('es-AR')
 }
 
+// Igual que moneyARS pero con 2 decimales — usar en Compras para que coincida centavo a centavo con la factura impresa del proveedor.
+export function moneyARS2(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 export function cleanNum(s: string): number {
   return +s.replace(/[^0-9.]/g, '') || 0
 }
