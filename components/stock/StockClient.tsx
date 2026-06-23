@@ -56,17 +56,12 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     const sinCosto = arr.filter(s => !s.costo && s.cantidad > 0).reduce((a, s) => a + s.cantidad, 0)
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
-  const valTotal = resumen.reduce((a, r) => a + r.valCosto, 0)
-  // Universo distinto al de costo: la mayoría de las piezas cargadas a mano tienen precio de venta
-  // pero no costo (y viceversa). Mostramos cada número con su propio universo, sin forzar una
-  // comparación que hoy no existe en los datos — eso sería más confuso que útil.
-  const itemsConVenta = items.filter(s => s.precio_venta)
-  const valTotalVenta = itemsConVenta.reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
+  // Un solo total confiable: valorizado a precio de venta. Mostrar también "a costo" lado a lado
+  // sugiere que son comparables (margen real), y hoy casi ningún ítem tiene ambos datos cargados.
+  const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
   const itemsConAmbos = items.filter(s => s.costo && s.precio_venta)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
-  const sinVentaConCosto = items.filter(s => s.costo && !s.precio_venta).length
-  const valTotalUSD = dolarOficial ? valTotal / dolarOficial : null
   const valTotalVentaUSD = dolarOficial ? valTotalVenta / dolarOficial : null
 
   // Filtros
@@ -184,29 +179,19 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Valorizado del stock — costo y venta son universos distintos hoy: la mayoría de las piezas
-          cargadas a mano tienen uno u otro dato, no ambos. Se muestran por separado, sin forzar
-          una comparación de margen que con los datos actuales no es real. */}
+      {/* Un solo número de valorización — mostrar costo y venta lado a lado sugiere que son
+          comparables (margen), y hoy casi ningún ítem tiene ambos datos cargados a la vez.
+          Para no inducir a un error de lectura, se muestra un único total confiable. */}
       {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div style={{background:'#EEF1F0', border:'1px solid #D8DEDB'}} className="rounded-xl px-5 py-3.5">
-            <p style={{color:'#5B6B66'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a costo de venta</p>
-            <p style={{color:'#1F2B27'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotal)}</p>
-            {valTotalUSD != null && <p style={{color:'#5B6B66'}} className="font-mono text-sm mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
-            {sinCostoCount > 0 && <p style={{color:'#8A968F'}} className="font-mono text-xs mt-1">{sinCostoCount} u. sin costo cargado</p>}
-            {sinVentaConCosto > 0 && <p style={{color:'#8A968F'}} className="font-mono text-xs mt-0.5">{sinVentaConCosto} mod. con costo pero sin precio de venta</p>}
-          </div>
-          <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5">
-            <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a venta</p>
-            <p style={{color:'#0E5A2C'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
-            {valTotalVentaUSD != null && <p style={{color:'#1E8449'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
-          </div>
-        </div>
-      )}
-      {isAdmin && itemsConAmbos.length === 0 && (valTotal > 0 || valTotalVenta > 0) && (
-        <div style={{background:'#FEF3C7', border:'1px solid #FCD34D'}} className="rounded-xl px-4 py-2.5 mb-3 text-xs" >
-          <span style={{color:'#92400E', fontWeight:600}}>⚠ Ningún ítem tiene costo y precio de venta a la vez —</span>
-          <span style={{color:'#92400E'}}> los dos números de arriba son universos distintos, no se puede calcular margen real todavía. Completá el costo (o la venta) de cada pieza desde el listado para que coincidan.</span>
+        <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5 mb-3">
+          <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado del stock (precio de venta)</p>
+          <p style={{color:'#0E5A2C'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
+          {valTotalVentaUSD != null && <p style={{color:'#1E8449'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+          {sinCostoCount > 0 && (
+            <p style={{color:'#5B9C75'}} className="font-mono text-xs mt-2">
+              {itemsConAmbos.length} de {items.filter(s=>s.precio_venta||s.costo).length} piezas tienen también el costo cargado — todavía no alcanza para calcular el margen real del stock.
+            </p>
+          )}
         </div>
       )}
       {dolarOficial && isAdmin && (
