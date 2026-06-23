@@ -181,21 +181,21 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       {/* Valorizado del stock — costo y venta, en pesos y dólares */}
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div className="bg-p-ink text-white rounded-xl px-5 py-3.5">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-70">Valorizado a costo</p>
+          <div style={{background:'#0C1810', color:'#fff'}} className="rounded-xl px-5 py-3.5">
+            <p style={{opacity:0.7}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a costo</p>
             <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotal)}</p>
-            {valTotalUSD != null && <p className="font-mono text-sm opacity-70 mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
-            {sinCostoCount > 0 && <p className="font-mono text-xs opacity-60 mt-1">{sinCostoCount} u. todavía sin costo cargado</p>}
+            {valTotalUSD != null && <p style={{opacity:0.75}} className="font-mono text-sm mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+            {sinCostoCount > 0 && <p style={{opacity:0.6}} className="font-mono text-xs mt-1">{sinCostoCount} u. todavía sin costo cargado</p>}
           </div>
-          <div className="bg-p-green text-white rounded-xl px-5 py-3.5">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Valorizado a venta</p>
+          <div style={{background:'#00A550', color:'#fff'}} className="rounded-xl px-5 py-3.5">
+            <p style={{opacity:0.85}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a venta</p>
             <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
-            {valTotalVentaUSD != null && <p className="font-mono text-sm opacity-80 mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+            {valTotalVentaUSD != null && <p style={{opacity:0.85}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
           </div>
         </div>
       )}
       {dolarOficial && isAdmin && (
-        <p className="text-[11px] text-p-ink2 mb-3 -mt-2">Dólar oficial: {moneyARS(dolarOficial)}</p>
+        <p style={{color:'#6b7280'}} className="text-[11px] mb-3 -mt-2">Dólar oficial: {moneyARS(dolarOficial)}</p>
       )}
 
       {sinCostoCount > 0 && isAdmin && (
