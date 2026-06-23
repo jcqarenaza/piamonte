@@ -57,7 +57,9 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
   const valTotal = resumen.reduce((a, r) => a + r.valCosto, 0)
-  const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
+  // Mismo universo que valTotal: solo ítems con costo cargado, así la comparación costo vs venta es real
+  const itemsConCosto = items.filter(s => s.costo)
+  const valTotalVenta = itemsConCosto.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
   const valTotalUSD = dolarOficial ? valTotal / dolarOficial : null
@@ -181,16 +183,17 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       {/* Valorizado del stock — costo y venta, en pesos y dólares */}
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div style={{background:'#0C1810', color:'#fff'}} className="rounded-xl px-5 py-3.5">
-            <p style={{opacity:0.7}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a costo</p>
-            <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotal)}</p>
-            {valTotalUSD != null && <p style={{opacity:0.75}} className="font-mono text-sm mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
-            {sinCostoCount > 0 && <p style={{opacity:0.6}} className="font-mono text-xs mt-1">{sinCostoCount} u. todavía sin costo cargado</p>}
+          <div style={{background:'#EEF1F0', border:'1px solid #D8DEDB'}} className="rounded-xl px-5 py-3.5">
+            <p style={{color:'#5B6B66'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a costo</p>
+            <p style={{color:'#1F2B27'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotal)}</p>
+            {valTotalUSD != null && <p style={{color:'#5B6B66'}} className="font-mono text-sm mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+            {sinCostoCount > 0 && <p style={{color:'#8A968F'}} className="font-mono text-xs mt-1">{sinCostoCount} u. todavía sin costo cargado</p>}
           </div>
-          <div style={{background:'#00A550', color:'#fff'}} className="rounded-xl px-5 py-3.5">
-            <p style={{opacity:0.85}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a venta</p>
-            <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
-            {valTotalVentaUSD != null && <p style={{opacity:0.85}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+          <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5">
+            <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado a venta</p>
+            <p style={{color:'#0E5A2C'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
+            {valTotalVentaUSD != null && <p style={{color:'#1E8449'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+            <p style={{color:'#5B9C75'}} className="font-mono text-xs mt-1">sobre el mismo universo con costo cargado</p>
           </div>
         </div>
       )}
