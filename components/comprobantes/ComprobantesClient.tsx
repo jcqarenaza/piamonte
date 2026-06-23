@@ -21,7 +21,6 @@ const btnRed   = { ...btnSm,background:'#ef4444' } as const
 const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
 const btnWa    = { ...btnSm,background:'#25d366' } as const
 
-// Formas de pago
 const METODOS = ['Efectivo','Transferencia','Débito','Crédito Visa','Crédito Master','Crédito Naranja','Crédito AMEX','Cheque','Cuenta corriente']
 const CUOTAS  = [1,2,3,6,9,12,18,24]
 const TIPO_FISCAL = [
@@ -30,8 +29,12 @@ const TIPO_FISCAL = [
   { id:'responsable_inscripto', label:'Responsable Inscripto' },
 ]
 
+type Modo = 'cf' | 'cliente' | 'aseguradora'
+const PUEDE_CREAR_CLIENTE = (rol: string) => rol === 'admin' || rol === 'gerencial'
+
 interface TipoCliente { id:string; nombre:string; margen_pct:number }
-interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null; vehiculo_habitual?:string }
+interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null }
+interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null }
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 
@@ -41,6 +44,7 @@ interface Comprobante {
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:any[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
+  aseguradora_nombre?:string|null
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -51,13 +55,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const router   = useRouter()
   const searchParams = useSearchParams()
 
-  // Estado del formulario
+  const [modo, setModo] = useState<Modo>('cf')
+
   const [cliQ, setCliQ]         = useState('')
   const [cliSugs, setCliSugs]   = useState<ClienteMin[]>([])
   const [cliSel, setCli]        = useState<ClienteMin|null>(null)
+
+  const [nuevoCliOpen, setNuevoCliOpen] = useState(false)
+  const [nuevoCliForm, setNuevoCliForm] = useState({ nombre:'', telefono:'', cuit:'' })
+
+  const [asegQ, setAsegQ]       = useState('')
+  const [asegSugs, setAsegSugs] = useState<AseguradoraMin[]>([])
+  const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
+
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaOn, setIvaOn]       = useState(false)
-  const [ivaNegroP, setIvaNegroP] = useState(75) // % del total que se declara como base imponible
+  const [ivaNegroP, setIvaNegroP] = useState(75)
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
@@ -66,17 +79,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
   const [toast, setToast]       = useState('')
-  // Adjuntos
   const [adjModal, setAdjModal]   = useState<Comprobante|null>(null)
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
-  const [pagoTarjConfig, setPagoTarjConfig] = useState('')  // config_id seleccionado para tarjeta
+  const [pagoTarjConfig, setPagoTarjConfig] = useState('')
   const [obs, setObs]           = useState('')
 
-  // Búsqueda de stock
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);return}
     supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
@@ -84,11 +95,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       .then(({data})=>setStockSugs(data??[]))
   },[stockQ,supabase])
 
-  // Totales
   const esNegro = rol === 'caja'
   const neto  = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
-  // En negro: el IVA se calcula sobre el % declarado del total — redondeado a centavos, no a pesos enteros,
-  // para que neto + IVA coincida exacto con el total y no descuadre contra ARCA al pedir el CAE.
   const iva   = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
     : (ivaOn ? Math.round(neto*IVA*100) / 100 : 0)
@@ -102,59 +110,91 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
   },[supabase])
 
-  // Pre-cargar desde presupuesto o OS
   useEffect(() => {
     const cli  = searchParams.get('cli')
     const tel  = searchParams.get('tel')
     const veh  = searchParams.get('veh')
     const itm  = searchParams.get('items')
-    const tot  = searchParams.get('total')
     const iva_ = searchParams.get('iva')
-    const pid  = searchParams.get('pid')
-    const oid  = searchParams.get('oid')
-    const tipoN = searchParams.get('tipo_nombre')
     const tipoId = searchParams.get('tipo_id')
-    if (cli || tel) {
+    const asegNombre = searchParams.get('aseguradora')
+    if (asegNombre) {
+      setModo('aseguradora')
+      supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
+        .ilike('nombre', asegNombre).maybeSingle()
+        .then(({data}) => { if (data) { setAseg(data as AseguradoraMin); setAsegQ(data.nombre) } })
+      setFiscal(p=>({...p, vehiculo:veh||'' }))
+    } else if (cli || tel) {
+      setModo('cliente')
       setFiscal(p=>({...p, vehiculo:veh||'', tipo_cliente_id:tipoId||'' }))
-      // Pre-fill como consumidor final con el nombre
-      if(cli) {
-        setCli({ id:'', nombre:cli, telefono:tel, email:null, cuit:null, tipo_fiscal:'consumidor_final', tipo_cliente_id:tipoId||null })
+      if (tel) {
+        supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
+          .eq('telefono', tel).maybeSingle()
+          .then(({data}) => { if (data) { setCli(data as ClienteMin); setCliQ(data.nombre) } else if (cli) setCliQ(cli) })
+      } else if (cli) {
         setCliQ(cli)
       }
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }
     if(iva_&&+iva_>0) setIvaOn(true)
-    if(cli||tel) setOpen(true)
+    if(cli||tel||asegNombre) setOpen(true)
   },[searchParams])
 
-  // Búsqueda de clientes por nombre o celular
   useEffect(()=>{
     if(cliQ.trim().length < 2){ setCliSugs([]); return }
-    supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id,notas')
+    supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
       .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
   },[cliQ,supabase])
+
+  useEffect(()=>{
+    if(asegQ.trim().length < 2){ setAsegSugs([]); return }
+    supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
+      .ilike('nombre', `%${asegQ}%`).limit(8)
+      .then(({data})=>setAsegSugs((data??[]) as AseguradoraMin[]))
+  },[asegQ,supabase])
 
   async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
     setFiscal(p=>({...p, tipo_fiscal:c.tipo_fiscal||'consumidor_final', cuit:c.cuit||'', tipo_cliente_id:c.tipo_cliente_id||'' }))
     if(c.tipo_fiscal && c.tipo_fiscal !== 'consumidor_final') setShowFiscal(true)
-    // Cargar historial del cliente
-    const [pres, ords] = await Promise.all([
-      supabase.from('presupuestos').select('id,fecha,total,items,vehiculo,tipo_cliente_nombre')
-        .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
-        .eq('convertido_os',false).eq('convertido_comp',false).order('created_at',{ascending:false}).limit(4),
-      supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora')
-        .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
-        .order('created_at',{ascending:false}).limit(4),
-    ])
-    setHistorialCli({ presupuestos: pres.data??[], ordenes: ords.data??[] })
+    const { data: pres } = await supabase.from('presupuestos').select('id,fecha,total,items,vehiculo,tipo_cliente_nombre')
+      .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
+      .eq('convertido_os',false).eq('convertido_comp',false).order('created_at',{ascending:false}).limit(4)
+    setHistorialCli({ presupuestos: pres??[], ordenes: [] })
   }
 
-  function usarConsumidorFinal(){
-    setCli(null); setHistorialCli(null)
-    setFiscal(p=>({...p, tipo_fiscal:'consumidor_final', cuit:'' }))
-    setShowFiscal(false)
+  async function selectAseguradora(a:AseguradoraMin){
+    setAseg(a); setAsegQ(a.nombre); setAsegSugs([])
+    setFiscal(p=>({...p, tipo_fiscal:'responsable_inscripto', cuit:a.cuit||'' }))
+    const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora')
+      .eq('aseguradora', a.nombre).eq('convertido_comp', false)
+      .order('created_at',{ascending:false}).limit(8)
+    setHistorialCli({ presupuestos: [], ordenes: ords??[] })
+  }
+
+  function cambiarModo(m: Modo) {
+    setModo(m)
+    setCli(null); setCliQ(''); setCliSugs([])
+    setAseg(null); setAsegQ(''); setAsegSugs([])
+    setHistorialCli(null)
+    setNuevoCliOpen(false)
+    if (m === 'cf') {
+      setFiscal(p=>({...p, tipo_fiscal:'consumidor_final', cuit:'' }))
+      setShowFiscal(false)
+    }
+  }
+
+  async function guardarNuevoCliente() {
+    if (!nuevoCliForm.nombre.trim()) return
+    const { data, error } = await supabase.from('clientes').insert({
+      nombre: nuevoCliForm.nombre, telefono: nuevoCliForm.telefono||null, cuit: nuevoCliForm.cuit||null,
+      tipo_fiscal: 'consumidor_final',
+    }).select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id').single()
+    if (error || !data) { setToast('No se pudo crear el cliente.'); setTimeout(()=>setToast(''),2500); return }
+    await selectCliente(data as ClienteMin)
+    setNuevoCliOpen(false)
+    setNuevoCliForm({ nombre:'', telefono:'', cuit:'' })
   }
 
   function addPago(){ setPagos(p=>[...p,{metodo:'Efectivo',monto:''}]) }
@@ -169,8 +209,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return 'C'
   }
 
+  const puedeGuardar = items.length>0 && (
+    modo === 'cf' ||
+    (modo === 'cliente' && !!cliSel?.id) ||
+    (modo === 'aseguradora' && !!asegSel?.id)
+  )
+  const usaCC = pagos.some(p => p.metodo === 'Cuenta corriente')
+
   async function save(){
-    if(!items.length) return
+    if(!puedeGuardar) return
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
@@ -178,13 +225,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     const { data:comp } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
-      cliente_id: cliSel?.id||null,
-      cliente_nombre: cliSel?.nombre||cliQ||null,
-      cliente_telefono: cliSel?.telefono||null,
+      cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
+      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||null) : (modo==='cf' ? 'Consumidor Final' : null),
+      cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : null,
       cliente_cuit: fiscal.cuit||null,
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
+      aseguradora_id: modo==='aseguradora' ? (asegSel?.id||null) : null,
+      aseguradora_nombre: modo==='aseguradora' ? (asegSel?.nombre||null) : null,
       vehiculo: fiscal.vehiculo||null,
       presupuesto_id: pid||null,
       orden_id: oid||null,
@@ -196,20 +245,37 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       user_id: userId,
     }).select().single()
 
-    // Descontar stock para items vinculados
+    const montoCC = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    if (montoCC > 0 && comp) {
+      if (modo==='cliente' && cliSel?.id) {
+        await supabase.from('cuenta_corriente').insert({
+          cliente_id: cliSel.id, cliente_nombre: cliSel.nombre, fecha: todayStr(),
+          tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
+          debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
+        })
+      } else if (modo==='aseguradora' && asegSel?.id) {
+        await supabase.from('cuenta_corriente').insert({
+          aseguradora_id: asegSel.id, cliente_nombre: asegSel.nombre, fecha: todayStr(),
+          tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
+          debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
+        })
+      }
+    }
+
     for(const it of items){
       if(it.stock_id && it.c > 0){
         const {data:s} = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
         if(s) await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
       }
     }
-    const costoTotal = items.reduce((a,it)=>a+(it.costo||0)*it.c, 0)
-    const tieneTodoCosto = items.every(it=>it.costo!=null&&it.costo>0)
 
-    // Registrar venta automáticamente en Caja
+    if (pid) await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', pid)
+    if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', oid)
+
     if(comp) {
+      const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
       await supabase.from('ventas').insert({
-        fecha:todayStr(), descripcion:`Comprobante ${nextNum} - ${cliSel?.nombre||cliQ||'CF'}`,
+        fecha:todayStr(), descripcion:`Comprobante ${nextNum} - ${nombreVenta||'CF'}`,
         precio:total, costo:null, pendiente:true,
         comprobante_id:(comp as any).id,
         tipo_cliente_id:fiscal.tipo_cliente_id||null,
@@ -220,23 +286,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
-    setCli(null); setCliQ(''); setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
+    cambiarModo('cf')
+    setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
   }
 
-  // ── Adjuntos ──────────────────────────────────────────────────────────────
   async function abrirAdjuntos(c: Comprobante) {
     setAdjModal(c)
-    // Cargar adjuntos del comprobante + adjuntos de la OS vinculada
     const [adjComp, adjOS] = await Promise.all([
       supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', c.id).order('orden'),
       c.orden_id
         ? supabase.from('comprobante_adjuntos').select('*').eq('os_id', c.orden_id).order('orden')
         : Promise.resolve({ data: [] })
     ])
-    // Marcar los de la OS para distinguirlos visualmente
     const osAdj = (adjOS.data ?? []).map((a:any) => ({...a, _de_os: true}))
     setAdjuntos([...(adjComp.data ?? []), ...osAdj])
   }
@@ -272,18 +336,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setGenPDF(true)
     try {
       const { jsPDF } = await import('jspdf')
-      // Página 1: Comprobante
       const doc = new jsPDF({ format:'a4', unit:'mm' })
-      // Agregar texto básico del comprobante
       doc.setFontSize(16); doc.setFont('helvetica','bold')
       doc.text(`${adjModal.tipo?.toUpperCase() || 'COMPROBANTE'} N° ${adjModal.numero||''}`, 15, 20)
       doc.setFontSize(11); doc.setFont('helvetica','normal')
-      doc.text(`Cliente: ${adjModal.cliente_nombre || '—'}`, 15, 32)
+      doc.text(`Cliente: ${adjModal.cliente_nombre || adjModal.aseguradora_nombre || '—'}`, 15, 32)
       doc.text(`Fecha: ${adjModal.fecha}`, 15, 40)
       doc.text(`Vehículo: ${(adjModal as any).vehiculo || '—'}`, 15, 48)
       doc.text(`Total: ${moneyARS(adjModal.total)}`, 15, 56)
 
-      // Páginas adicionales: fotos y OS
       for (const adj of adjuntos) {
         doc.addPage()
         doc.setFontSize(12); doc.setFont('helvetica','bold')
@@ -313,7 +374,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const W=210, pad=16
     let y=20
 
-    // Header blanco
     doc.setFillColor(255,255,255); doc.rect(0,0,W,30,'F')
     doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
     try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
@@ -327,12 +387,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
     y=38
 
-    // Datos cliente
+    const nombreFactura = c.cliente_nombre || c.aseguradora_nombre || 'Consumidor Final'
     doc.setTextColor(30,30,30); doc.setFillColor(245,250,247)
     doc.rect(pad, y-4, W-pad*2, c.cliente_cuit?24:16, 'F')
     doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    doc.text('Cliente:', pad+2, y); doc.setFont('helvetica','normal')
-    doc.text(c.cliente_nombre||'Consumidor Final', pad+20, y)
+    doc.text(c.aseguradora_nombre ? 'Aseguradora:' : 'Cliente:', pad+2, y); doc.setFont('helvetica','normal')
+    doc.text(nombreFactura, pad+24, y)
     if(c.cliente_telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(c.cliente_telefono, pad+110, y) }
     y+=6
     if(c.cliente_cuit){
@@ -345,7 +405,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(c.vehiculo){ doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(c.vehiculo, pad+22, y); y+=6 }
     y+=6
 
-    // Tabla ítems
     const cols=[95,20,35,35]
     doc.setFillColor(0,165,80); doc.rect(pad,y,W-pad*2,7,'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
@@ -363,15 +422,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
     y+=4
 
-    // Búsqueda de stock
-  useEffect(()=>{
-    if(stockQ.trim().length<2){setStockSugs([]);return}
-    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${stockQ}%`).limit(8)
-      .then(({data})=>setStockSugs(data??[]))
-  },[stockQ,supabase])
-
-  // Totales
     const totX=W-pad-70
     if(c.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(c.neto),W-pad,y,{align:'right'}); y+=6 }
     if(c.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(c.iva),W-pad,y,{align:'right'}); y+=6 }
@@ -379,7 +429,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.text('TOTAL:',totX,y); doc.text(moneyARS(c.total),W-pad,y,{align:'right'})
     y+=10
 
-    // Formas de pago
     if(c.pagos?.length){ 
       doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('Forma de pago:',pad,y); y+=5
       doc.setFont('helvetica','normal')
@@ -387,7 +436,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y+=4
     }
 
-    // Footer
     doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     doc.text('📞 2302 595969', pad, 292)
@@ -420,6 +468,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   return (
     <div>
+      {toast && (
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:60,background:'#ef4444',color:'#fff',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,boxShadow:'0 4px 14px rgba(0,0,0,.2)'}}>
+          {toast}
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
         <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>
       </div>
@@ -435,7 +489,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       {c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X'}-{String(c.numero||0).padStart(8,'0')}
                     </span>
                     {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
-                    <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||'Consumidor Final'}</p>
+                    <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
+                    {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
                     {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
                     {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
                   </div>
@@ -462,41 +517,109 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
-          {/* Búsqueda de cliente */}
           <div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
-            <div className="relative">
-              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null)}}
-                placeholder="Nombre o celular…"/>
-              {cliSugs.length>0&&(
-                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                  <button onClick={usarConsumidorFinal}
-                    className="w-full text-left px-3 py-2.5 text-sm font-semibold text-p-dark hover:bg-p-light border-b border-p-line2">
-                    👤 Consumidor Final
-                  </button>
-                  {cliSugs.map(c=>(
-                    <button key={c.id} onClick={()=>selectCliente(c)}
-                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
-                      <p className="font-medium text-p-ink">{c.nombre}</p>
-                      <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* Badge tipo fiscal */}
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <button onClick={()=>setShowFiscal(!showFiscal)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${showFiscal?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
-                {showFiscal ? '▲ ' : '▼ '}{tipoFiscalLabel(fiscal.tipo_fiscal)}
-                {fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">¿A quién se factura?</label>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={()=>cambiarModo('cf')}
+                style={{background:modo==='cf'?'#0C1810':'#fff',color:modo==='cf'?'#fff':'#4A6655',border:`1.5px solid ${modo==='cf'?'#0C1810':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                👤 Consumidor Final
               </button>
-              {cliSel&&<span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>}
+              <button onClick={()=>cambiarModo('cliente')}
+                style={{background:modo==='cliente'?'#00A550':'#fff',color:modo==='cliente'?'#fff':'#4A6655',border:`1.5px solid ${modo==='cliente'?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                🧑‍💼 Cliente
+              </button>
+              <button onClick={()=>cambiarModo('aseguradora')}
+                style={{background:modo==='aseguradora'?'#1d4ed8':'#fff',color:modo==='aseguradora'?'#fff':'#4A6655',border:`1.5px solid ${modo==='aseguradora'?'#1d4ed8':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                🏢 Aseguradora
+              </button>
             </div>
           </div>
 
-          {/* Modal fiscal expandible */}
-          {showFiscal&&(
+          {modo === 'cliente' && (
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar cliente</label>
+              <div className="relative">
+                <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCli(null);setHistorialCli(null)}}
+                  placeholder="Nombre o celular…"/>
+                {cliSugs.length>0&&(
+                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {cliSugs.map(c=>(
+                      <button key={c.id} onClick={()=>selectCliente(c)}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                        <p className="font-medium text-p-ink">{c.nombre}</p>
+                        <p className="text-[10px] text-p-ink2">{[c.telefono,tipoFiscalLabel(c.tipo_fiscal)].filter(Boolean).join(' · ')}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {cliSel ? (
+                  <>
+                    <span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>
+                    <button onClick={()=>setShowFiscal(!showFiscal)}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${showFiscal?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
+                      {showFiscal ? '▲ ' : '▼ '}{tipoFiscalLabel(fiscal.tipo_fiscal)}{fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs text-amber-600 font-semibold">⚠ Elegí un cliente de la lista — no se puede facturar a un nombre sin cargar</span>
+                    {PUEDE_CREAR_CLIENTE(rol) && (
+                      <button onClick={()=>{setNuevoCliOpen(true); setNuevoCliForm(p=>({...p, nombre:cliQ}))}} style={{...btnBlue,padding:'5px 12px',fontSize:11}}>
+                        + Nuevo cliente
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {nuevoCliOpen && PUEDE_CREAR_CLIENTE(rol) && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col gap-2">
+              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Nuevo cliente</p>
+              <Input value={nuevoCliForm.nombre} onChange={e=>setNuevoCliForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido / Razón social *"/>
+              <div className="grid grid-cols-2 gap-2">
+                <Input value={nuevoCliForm.telefono} onChange={e=>setNuevoCliForm(p=>({...p,telefono:e.target.value}))} placeholder="Teléfono (opcional)"/>
+                <Input value={nuevoCliForm.cuit} onChange={e=>setNuevoCliForm(p=>({...p,cuit:e.target.value}))} placeholder="CUIT (opcional)"/>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={()=>setNuevoCliOpen(false)} style={{...btnGray,padding:'6px 14px',fontSize:12}}>Cancelar</button>
+                <button onClick={guardarNuevoCliente} disabled={!nuevoCliForm.nombre.trim()} style={{...btn,padding:'6px 14px',fontSize:12,opacity:!nuevoCliForm.nombre.trim()?.6:1}}>Crear y usar</button>
+              </div>
+            </div>
+          )}
+
+          {modo === 'aseguradora' && (
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar aseguradora</label>
+              <div className="relative">
+                <Input value={asegQ} onChange={e=>{setAsegQ(e.target.value);setAseg(null);setHistorialCli(null)}}
+                  placeholder="Allianz, Mapfre, Sancor…"/>
+                {asegSugs.length>0&&(
+                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {asegSugs.map(a=>(
+                      <button key={a.id} onClick={()=>selectAseguradora(a)}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                        <p className="font-medium text-p-ink">{a.nombre}</p>
+                        {a.cuit&&<p className="text-[10px] text-p-ink2">CUIT {a.cuit}</p>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                {asegSel ? (
+                  <span className="text-xs text-blue-600 font-semibold">✓ {asegSel.nombre}</span>
+                ) : (
+                  <span className="text-xs text-amber-600 font-semibold">⚠ Elegí una aseguradora de la lista — no se puede facturar a un nombre sin cargar</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showFiscal && modo==='cliente' && (
             <div className="bg-gray-50 rounded-xl p-3 border border-p-line flex flex-col gap-2.5">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Condición IVA">
@@ -523,10 +646,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {/* Historial del cliente */}
           {historialCli && (historialCli.presupuestos.length > 0 || historialCli.ordenes.length > 0) && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">📋 Documentos pendientes de este cliente</p>
+              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">
+                📋 {modo==='aseguradora' ? 'OS pendientes de facturar' : 'Presupuestos pendientes de este cliente'}
+              </p>
               <div className="flex flex-col gap-1.5">
                 {historialCli.presupuestos.map((p:any) => (
                   <button key={p.id} onClick={()=>{
@@ -547,7 +671,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     setHistorialCli(null)
                   }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-amber-50 border border-amber-100 transition-colors w-full">
                     <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">OS-{String(o.numero||0).padStart(4,'0')}</span>
-                    <span className="text-xs text-p-ink flex-1 truncate">{o.vehiculo||'Sin vehículo'}{o.aseguradora?' · '+o.aseguradora:''}</span>
+                    <span className="text-xs text-p-ink flex-1 truncate">{o.vehiculo||'Sin vehículo'}</span>
                     <span className="text-xs font-mono font-bold text-p-dark shrink-0">{moneyARS(o.total)}</span>
                     <span className="text-[10px] text-p-ink2 shrink-0">{o.fecha?.split('-').reverse().join('/')}</span>
                   </button>
@@ -556,10 +680,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {/* Vehículo */}
           <Field label="Vehículo"><Input value={fiscal.vehiculo} onChange={e=>setFiscal(p=>({...p,vehiculo:e.target.value}))} placeholder="VW Gol 2015"/></Field>
 
-          {/* Buscar en stock */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar en stock</label>
             <div className="relative">
@@ -583,7 +705,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           </div>
 
-          {/* Ítems */}
           {items.length>0&&(
             <div className="border-t border-p-line2 pt-2">
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
@@ -629,7 +750,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {/* Formas de pago */}
           <div className="border-t border-p-line2 pt-3">
             <div className="flex items-center justify-between mb-2">
               <label className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Formas de pago</label>
@@ -659,6 +779,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   {pagos.length>1&&<button onClick={()=>delPago(i)} className="text-red-400 text-xs col-span-1">✕</button>}
                 </div>
               ))}
+              {usaCC && modo==='cf' && (
+                <p className="text-xs font-bold text-red-500">⚠ Cuenta corriente no está disponible para Consumidor Final — elegí "Cliente" o "Aseguradora" arriba.</p>
+              )}
               {total>0&&Math.abs(diferencia)>1&&(
                 <p className={`text-xs font-bold mt-1 ${diferencia>0?'text-amber-600':'text-red-500'}`}>
                   {diferencia>0?`Falta: ${moneyARS(diferencia)}`:`Exceso: ${moneyARS(Math.abs(diferencia))}`}
@@ -671,7 +794,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={!items.length||!cliQ} style={{...btn,opacity:(!items.length||!cliQ)?.5:1}}>
+            <button onClick={save} disabled={!puedeGuardar || (usaCC && modo==='cf')} style={{...btn,opacity:(!puedeGuardar || (usaCC && modo==='cf'))?.5:1}}>
               ✓ Emitir comprobante
             </button>
           </div>
