@@ -28,6 +28,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [ajusteStockId, setAjusteStockId] = useState<string|null>(null)
   const [costoEdit, setCostoEdit] = useState<Record<string, string>>({})
   const [editId, setEditId] = useState<string|null>(null)
+  const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const supabase = createClient()
 
   const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
@@ -40,6 +41,11 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    supabase.from('cotizaciones').select('oficial').order('fecha', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => { if (data?.oficial) setDolarOficial(data.oficial) })
+  }, [supabase])
+
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
 
   // Resumen por familia
@@ -51,8 +57,11 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
   const valTotal = resumen.reduce((a, r) => a + r.valCosto, 0)
+  const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
+  const valTotalUSD = dolarOficial ? valTotal / dolarOficial : null
+  const valTotalVentaUSD = dolarOficial ? valTotalVenta / dolarOficial : null
 
   // Filtros
   let visible = items
@@ -169,14 +178,25 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Total */}
-      <div className="bg-p-ink text-white rounded-xl px-5 py-3.5 flex justify-between items-center mb-4 flex-wrap gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider opacity-70">Valor total del stock a costo</p>
-          {sinCostoCount > 0 && <p className="font-mono text-xs opacity-60 mt-0.5">{sinCostoCount} u. todavía sin costo cargado</p>}
+      {/* Valorizado del stock — costo y venta, en pesos y dólares */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div className="bg-p-ink text-white rounded-xl px-5 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-70">Valorizado a costo</p>
+            <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotal)}</p>
+            {valTotalUSD != null && <p className="font-mono text-sm opacity-70 mt-0.5">US$ {valTotalUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+            {sinCostoCount > 0 && <p className="font-mono text-xs opacity-60 mt-1">{sinCostoCount} u. todavía sin costo cargado</p>}
+          </div>
+          <div className="bg-p-green text-white rounded-xl px-5 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Valorizado a venta</p>
+            <p className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
+            {valTotalVentaUSD != null && <p className="font-mono text-sm opacity-80 mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
+          </div>
         </div>
-        <p className="font-saira font-bold text-2xl">{moneyARS(valTotal)}</p>
-      </div>
+      )}
+      {dolarOficial && isAdmin && (
+        <p className="text-[11px] text-p-ink2 mb-3 -mt-2">Dólar oficial: {moneyARS(dolarOficial)}</p>
+      )}
 
       {sinCostoCount > 0 && isAdmin && (
         <AlarmBar count={sinCostoCount} label="en stock sin costo — no suman al valor" onGo={() => setSoloSinCosto(true)} />
