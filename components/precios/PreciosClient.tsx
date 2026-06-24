@@ -8,10 +8,13 @@ import { OfflineBanner } from '@/lib/offline/OfflineBanner'
 import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
 
 interface TipoCliente { id: string; nombre: string; margen_pct: number }
-interface Pieza {
-  id: string; proveedor: string; codigo: string | null
-  descripcion: string; pos: string | null; costo_neto: number
-  lista_nombre: string | null; es_promo: boolean; grupo_id: number | null
+interface PrecioProveedor {
+  proveedor: string; codigo: string | null; costo_neto: number; lista_nombre: string | null; es_promo: boolean
+}
+interface Articulo {
+  id: string; sku_interno: string | null; codigo_referencia: string | null
+  descripcion: string; pos: string | null
+  precios: PrecioProveedor[]
 }
 
 const PROV_COLOR: Record<string, string> = {
@@ -21,7 +24,6 @@ const TIPO_ORDER = ['Particular', 'Compañías', 'Chapista']
 const TIPO_ICON: Record<string, string> = { Particular: '👤', Compañías: '🏢', Chapista: '🔧' }
 
 const IVA_RATE = 0.21
-// Tipos que ven precio con IVA discriminado
 const TIPOS_CON_IVA_DISCRIMINADO = ['Compañías', 'Chapista']
 
 function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
@@ -30,15 +32,29 @@ function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: 
   const efectivo    = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))
   return { tarjeta, transferencia, efectivo }
 }
-// Backward compat
-function precioVenta(costo: number, margen: number) {
-  return Math.round(costo * (1 + margen))
-}
 function precioSinIva(precio: number) {
   return Math.round(precio / (1 + IVA_RATE))
 }
 function ivaMonto(precio: number) {
   return precio - precioSinIva(precio)
+}
+
+// Agrupa las equivalencias "crudas" de un artículo en una fila por proveedor —
+// si el mismo proveedor tiene varios códigos de variante para la misma pieza,
+// nos quedamos con el costo más bajo de ese proveedor (no se muestran como filas separadas).
+function dedupPorProveedor(equivalencias: any[]): PrecioProveedor[] {
+  const porProveedor = new Map<string, PrecioProveedor>()
+  for (const e of equivalencias) {
+    if (e.costo_neto == null) continue
+    const actual = porProveedor.get(e.proveedor)
+    if (!actual || e.costo_neto < actual.costo_neto) {
+      porProveedor.set(e.proveedor, {
+        proveedor: e.proveedor, codigo: e.codigo_proveedor,
+        costo_neto: e.costo_neto, lista_nombre: e.lista_nombre, es_promo: !!e.lista_nombre,
+      })
+    }
+  }
+  return [...porProveedor.values()].sort((a, b) => a.costo_neto - b.costo_neto)
 }
 
 export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
@@ -49,7 +65,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     descuento_transferencia_pct: 15,
     descuento_efectivo_pct: 25,
   })
-  const [piezas, setPiezas] = useState<Pieza[]>([])
+  const [articulos, setArticulos] = useState<Articulo[]>([])
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoSel, setTipoSel] = useState<string>('todos')
@@ -65,46 +81,51 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   useEffect(() => {
     supabase.from('tipos_cliente').select('*').order('nombre')
       .then(({ data }) => {
-        // Ordenar según TIPO_ORDER
         const sorted = TIPO_ORDER
           .map(n => (data ?? []).find((t: TipoCliente) => t.nombre === n))
           .filter(Boolean) as TipoCliente[]
-        // Agregar los que no están en TIPO_ORDER al final
         const resto = (data ?? []).filter((t: TipoCliente) => !TIPO_ORDER.includes(t.nombre))
         setTipos([...sorted, ...resto])
       })
   }, [supabase])
 
-  // Precarga automática del catálogo completo para que la búsqueda offline funcione con cualquier
-  // término, sin depender de qué se buscó antes. Corre en segundo plano, no bloquea la pantalla.
-  // En vez de un timer fijo, chequea con una consulta liviana si algo relevante a precios cambió
-  // (catálogo, config de recargos/descuentos, o márgenes por tipo de cliente). Si nada cambió, no
-  // vuelve a descargar todo — si cambió algo, sí, sin importar cuánto tiempo pasó desde la última vez.
   useEffect(() => {
     if (!isOnline) return
     let cancelado = false
     async function chequearYPrecargar() {
-      // Consulta liviana: solo trae lo necesario para armar la "huella" de cambios, no el catálogo completo
-      const [catalogoInfo, configInfo, tiposInfo] = await Promise.all([
-        supabase.from('catalogo').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      const [artInfo, equivInfo, configInfo, tiposInfo] = await Promise.all([
+        supabase.from('articulos_maestro').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('articulo_equivalencias').select('created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('config_precios').select('updated_at').eq('id', 1).maybeSingle(),
         supabase.from('tipos_cliente').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
       ])
-      const { count } = await supabase.from('catalogo').select('id', { count: 'exact', head: true })
+      const { count } = await supabase.from('articulos_maestro').select('id', { count: 'exact', head: true })
 
       const fingerprint = [
         count ?? 0,
-        catalogoInfo.data?.updated_at ?? '',
+        artInfo.data?.updated_at ?? '',
+        equivInfo.data?.created_at ?? '',
         configInfo.data?.updated_at ?? '',
         tiposInfo.data?.updated_at ?? '',
       ].join('|')
 
       const meta = await getCatalogoMeta()
-      if (meta?.fingerprint === fingerprint) return // nada cambió, no hace falta volver a bajar todo
+      if (meta?.fingerprint === fingerprint) return
 
-      const { data } = await supabase.from('catalogo')
-        .select('id,proveedor,codigo,descripcion,marca,pos,costo_neto,lista_nombre,es_promo,grupo_id')
-      if (!cancelado && data) precargarCatalogoCompleto(data, fingerprint)
+      const { data } = await supabase.from('articulos_maestro')
+        .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+        .eq('activo', true)
+      if (!cancelado && data) {
+        const piezasPlanas = data.flatMap((a: any) =>
+          dedupPorProveedor(a.articulo_equivalencias ?? []).map((p: PrecioProveedor) => ({
+            id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
+            descripcion: a.descripcion, pos: a.pos,
+            proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
+            lista_nombre: p.lista_nombre, es_promo: p.es_promo,
+          }))
+        )
+        precargarCatalogoCompleto(piezasPlanas, fingerprint)
+      }
     }
     chequearYPrecargar()
     return () => { cancelado = true }
@@ -117,14 +138,30 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     'ALETA':'ALETA_D','AD':'ALETA_D','AT':'ALETA_T',
   }
 
+  function agruparPlanasEnArticulos(planas: any[]): Articulo[] {
+    const porArticulo = new Map<string, Articulo>()
+    for (const p of planas) {
+      if (!porArticulo.has(p.id)) {
+        porArticulo.set(p.id, {
+          id: p.id, sku_interno: p.sku_interno, codigo_referencia: p.codigo_referencia,
+          descripcion: p.descripcion, pos: p.pos, precios: [],
+        })
+      }
+      porArticulo.get(p.id)!.precios.push({
+        proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
+        lista_nombre: p.lista_nombre, es_promo: p.es_promo,
+      })
+    }
+    return [...porArticulo.values()]
+  }
+
   const buscar = useCallback(async () => {
-    if (q.trim().length < 2) { setPiezas([]); return }
+    if (q.trim().length < 2) { setArticulos([]); return }
     setLoading(true)
 
     if (!isOnline) {
-      // Sin conexión: buscar en el catálogo completo precargado al abrir la app
-      const resultados = await buscarEnCatalogoCompleto(q.trim())
-      setPiezas(resultados as Pieza[])
+      const planas = await buscarEnCatalogoCompleto(q.trim())
+      setArticulos(agruparPlanasEnArticulos(planas))
       setLoading(false)
       return
     }
@@ -136,32 +173,32 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     const first   = nonPos[0] || words[0]
     const rest    = nonPos.slice(1)
 
-    let query = supabase.from('catalogo')
-      .select('id,proveedor,codigo,descripcion,pos,costo_neto,lista_nombre,es_promo,grupo_id')
-      .or(`descripcion.ilike.%${first}%,codigo.ilike.%${first}%,marca.ilike.%${first}%`)
-      .order('proveedor').limit(300)
+    let query = supabase.from('articulos_maestro')
+      .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+      .eq('activo', true)
+      .or(`descripcion.ilike.%${first}%,codigo_referencia.ilike.%${first}%,sku_interno.ilike.%${first}%`)
+      .order('descripcion').limit(150)
     if (pos) query = query.eq('pos', pos)
 
     const { data, error } = await query
     if (error) {
-      // Si falla la red a mitad de camino, caemos al catálogo precargado como respaldo
-      const resultados = await buscarEnCatalogoCompleto(q.trim())
-      setPiezas(resultados as Pieza[])
+      const planas = await buscarEnCatalogoCompleto(q.trim())
+      setArticulos(agruparPlanasEnArticulos(planas))
       setLoading(false)
       return
     }
-    const filtered = (data ?? []).filter((p: any) =>
-      rest.every((w: string) =>
-        (p.descripcion || '').toUpperCase().includes(w) || (p.marca || '').toUpperCase().includes(w)
-      )
-    ) as Pieza[]
-    // Deduplicar por descripcion+pos — un precio por proveedor (el más barato)
-    const map = new Map<string, Pieza>()
-    for (const p of filtered) {
-      const k = `${p.proveedor}|${p.descripcion}`
-      if (!map.has(k) || p.costo_neto < map.get(k)!.costo_neto) map.set(k, p)
-    }
-    setPiezas([...map.values()])
+
+    const filtrados = (data ?? []).filter((a: any) =>
+      rest.every((w: string) => (a.descripcion || '').toUpperCase().includes(w))
+    )
+
+    const resultado: Articulo[] = filtrados.map((a: any) => ({
+      id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
+      descripcion: a.descripcion, pos: a.pos,
+      precios: dedupPorProveedor(a.articulo_equivalencias ?? []),
+    })).filter((a: Articulo) => a.precios.length > 0)
+
+    setArticulos(resultado)
     setLoading(false)
   }, [q, supabase, isOnline])
 
@@ -170,20 +207,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     return () => clearTimeout(t)
   }, [buscar])
 
-  // Agrupar piezas por descripción para mostrar comparativa entre proveedores
-  const grupos = new Map<string, Pieza[]>()
-  for (const p of piezas) {
-    const k = p.descripcion
-    if (!grupos.has(k)) grupos.set(k, [])
-    grupos.get(k)!.push(p)
-  }
-  const gruposArr = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length)
+  const articulosOrdenados = [...articulos].sort((a, b) => b.precios.length - a.precios.length)
 
-  function irAPresupuesto(pieza: Pieza, tipo: TipoCliente) {
-    const precios = calcPrecios(pieza.costo_neto, tipo.margen_pct, configPrecios)
+  function irAPresupuesto(articulo: Articulo, precio: PrecioProveedor, tipo: TipoCliente) {
+    const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, configPrecios)
     const params = new URLSearchParams({
-      pieza_id: pieza.id,
-      pieza_desc: pieza.descripcion,
+      pieza_id: articulo.id,
+      pieza_desc: articulo.descripcion,
       pieza_precio: String(precios.tarjeta),
       pieza_precio_transf: String(precios.transferencia),
       pieza_precio_efect: String(precios.efectivo),
@@ -196,7 +226,6 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   return (
     <div>
       {!isOnline && <OfflineBanner />}
-      {/* Chips tipo cliente */}
       <div className="flex gap-2 flex-wrap mb-5">
         <button onClick={() => setTipoSel('todos')}
           style={{ background: tipoSel === 'todos' ? '#0C1810' : '#fff', color: tipoSel === 'todos' ? '#fff' : '#4A6655', border: '1.5px solid #C2DDD0', borderRadius: 20, padding: '6px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
@@ -210,51 +239,51 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         ))}
       </div>
 
-      {/* Búsqueda */}
       <input value={q} onChange={e => setQ(e.target.value)}
         placeholder="Buscá una pieza: ford focus parabrisas, vw gol luneta…"
         className="w-full border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-sm mb-5 bg-white outline-none shadow-sm"/>
 
       {loading && <p className="text-sm text-p-gray text-center py-8">Buscando…</p>}
 
-      {!loading && piezas.length > 0 && (
+      {!loading && articulosOrdenados.length > 0 && (
         <div className="flex flex-col gap-4">
-          {gruposArr.map(([desc, items]) => {
-            const bestCosto = Math.min(...items.map(p => p.costo_neto))
+          {articulosOrdenados.map((articulo) => {
+            const bestCosto = Math.min(...articulo.precios.map(p => p.costo_neto))
 
             return (
-              <div key={desc} className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
-                {/* Header pieza */}
+              <div key={articulo.id} className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
                 <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
-                  <p className="font-saira font-bold text-p-ink">{desc}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-saira font-bold text-p-ink">{articulo.descripcion}</p>
+                    {esGerencial && articulo.sku_interno && (
+                      <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{articulo.sku_interno}</span>
+                    )}
+                  </div>
                   <p className="text-xs text-p-ink2 mt-0.5">
-                    {items[0].pos} · {items.length} {items.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
+                    {articulo.pos} · {articulo.precios.length} {articulo.precios.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
                     {esGerencial && <span className="text-p-green font-semibold">mejor costo {moneyARS(bestCosto)}</span>}
                   </p>
                 </div>
 
-                {/* Precios por proveedor */}
                 <div className="divide-y divide-p-line2">
-                  {items.map(pieza => (
-                    <div key={pieza.id}>
-                      {/* Fila proveedor */}
+                  {articulo.precios.map((precio, i) => (
+                    <div key={`${precio.proveedor}-${i}`}>
                       <div className="flex items-center gap-3 px-4 py-2 bg-gray-50/60">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white shrink-0"
-                          style={{ background: PROV_COLOR[pieza.proveedor] || '#6b7280' }}>
-                          {pieza.proveedor}{pieza.es_promo ? ' · OFERTA' : ''}
+                          style={{ background: PROV_COLOR[precio.proveedor] || '#6b7280' }}>
+                          {precio.proveedor}{precio.es_promo ? ' · OFERTA' : ''}
                         </span>
-                        {pieza.codigo && <span className="font-mono text-[10px] text-p-ink2">{pieza.codigo}</span>}
-                        {pieza.lista_nombre && <span className="text-[10px] text-p-ink2">{pieza.lista_nombre}</span>}
-                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(pieza.costo_neto)}</span></span>}
+                        {precio.codigo && <span className="font-mono text-[10px] text-p-ink2">{precio.codigo}</span>}
+                        {precio.lista_nombre && <span className="text-[10px] text-p-ink2">{precio.lista_nombre}</span>}
+                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(precio.costo_neto)}</span></span>}
                       </div>
 
-                      {/* Precios por tipo de cliente */}
                       <div className={`grid gap-0 ${tipoSel === 'todos' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
                         {tipos
                           .filter(t => tipoSel === 'todos' || t.id === tipoSel)
                           .map((tipo, idx) => {
-                            const precios = calcPrecios(pieza.costo_neto, tipo.margen_pct, configPrecios)
-                            const isBest = pieza.costo_neto === bestCosto
+                            const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, configPrecios)
+                            const isBest = precio.costo_neto === bestCosto
                             return (
                               <div key={tipo.id}
                                 className={`flex items-center justify-between px-4 py-3 border-t border-p-line2 ${idx > 0 ? 'md:border-l' : ''} ${isBest ? 'bg-green-50/50' : ''}`}>
@@ -283,7 +312,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                                     )}
                                   </div>
                                 </div>
-                                <button onClick={() => irAPresupuesto(pieza, tipo)} disabled={!isOnline}
+                                <button onClick={() => irAPresupuesto(articulo, precio, tipo)} disabled={!isOnline}
                                   style={{ background: isOnline ? '#00A550' : '#9ca3af', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: isOnline ? 'pointer' : 'not-allowed' }}>
                                   {isOnline ? '→ Presupuesto' : 'Sin conexión'}
                                 </button>
@@ -300,7 +329,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         </div>
       )}
 
-      {q.length >= 2 && !loading && piezas.length === 0 && (
+      {q.length >= 2 && !loading && articulosOrdenados.length === 0 && (
         <p className="text-center text-sm text-p-gray py-10">Sin resultados para "{q}".</p>
       )}
 
