@@ -12,7 +12,7 @@ const GRUPOS = [
       { id:'clientes',          href:'/clientes',          label:'Clientes',     icon:'👥' },
       { id:'proveedores-compra',href:'/proveedores-compra',label:'Proveedores',  icon:'🏢' },
       { id:'articulos',         href:'/articulos',         label:'Artículos',    icon:'🏷️' },
-      { id:'equivalencias',     href:'/equivalencias',     label:'Equivalencias',icon:'🔗' },
+      { id:'aseguradoras',     href:'/aseguradoras',     label:'Aseguradoras', icon:'🛡️' },
       { id:'depositos',        href:'/depositos',        label:'Depósitos',    icon:'🏭' },
     ]
   },
@@ -93,7 +93,7 @@ const C = {
   content:    '#F9FAFB',
 }
 
-const MODULOS_FASE2 = ['proveedores-compra','compras','articulos','depositos',
+const MODULOS_FASE2 = ['proveedores-compra','compras','articulos','aseguradoras','depositos',
   'remitos-internos','tarjetas','rentabilidades-avanzadas',
   'cuenta-corriente','busqueda-comprobantes']
 const MODULOS_FASE3 = ['contabilidad']
@@ -150,8 +150,8 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
       // Rol caja: solo ve Proveedores y Caja
       if (rol === 'caja' && !['proveedores-compra','caja','comprobantes','arqueo'].includes(m.id)) return false
       // Rol ventas: ocultar algunos módulos
-      if (rol === 'ventas' && ['proveedores','informes','equivalencias'].includes(m.id)) return false
-      if (rol === 'ventas' && ['proveedores-compra','compras','articulos','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
+      if (rol === 'ventas' && ['proveedores','informes'].includes(m.id)) return false
+      if (rol === 'ventas' && ['proveedores-compra','compras','articulos','aseguradoras','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
       // Configuración solo gerencial/admin
       if (!['gerencial','admin'].includes(rol ?? '') && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
       // Arqueo solo gerencial/admin
