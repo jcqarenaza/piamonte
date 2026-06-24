@@ -199,6 +199,18 @@ export default function ArticulosClient() {
   }
 
   const faltantesDe = (a: Articulo) => PROVEEDORES.filter(p => !a.equivalencias?.some(e => e.proveedor === p))
+
+  // Costo de reposición = el más caro entre los proveedores disponibles — es lo que realmente
+  // cuesta hoy reponer la pieza en el peor caso. Si hay uno más barato, lo marcamos como ahorro posible.
+  function costosDe(a: Articulo) {
+    const validos = (a.equivalencias ?? []).filter(e => e.costo_neto != null && e.costo_neto > 0)
+    if (validos.length === 0) return null
+    const ordenados = [...validos].sort((x,y) => (y.costo_neto ?? 0) - (x.costo_neto ?? 0))
+    const masCaro = ordenados[0]
+    const masBarato = ordenados[ordenados.length - 1]
+    const ahorro = (masCaro.costo_neto ?? 0) - (masBarato.costo_neto ?? 0)
+    return { masCaro, masBarato, ahorro, hayDiferencia: ahorro > 0 }
+  }
   const totalArticulos = articulos.length
   const totalConTodos = articulos.filter(a => faltantesDe(a).length === 0).length
 
@@ -334,6 +346,27 @@ export default function ArticulosClient() {
                       </span>
                     ))}
                   </div>
+                  {/* Costo de reposición — siempre el más caro entre proveedores disponibles */}
+                  {(() => {
+                    const c = costosDe(a)
+                    if (!c) return null
+                    return (
+                      <div className="mt-2.5 flex items-center gap-3 flex-wrap">
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                          <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1.5">Costo de reposición</span>
+                          <span className="font-mono font-bold text-sm text-gray-800">{moneyARS(c.masCaro.costo_neto||0)}</span>
+                          <span className="text-[10px] text-gray-400 ml-1">({c.masCaro.proveedor})</span>
+                        </div>
+                        {c.hayDiferencia && (
+                          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
+                            <span className="text-[10px] text-green-700">💡 Lo conseguís en </span>
+                            <span className="font-mono font-bold text-sm text-green-700">{moneyARS(c.masBarato.costo_neto||0)}</span>
+                            <span className="text-[10px] text-green-600"> con {c.masBarato.proveedor} — ahorrás {moneyARS(c.ahorro)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button onClick={()=>abrirAsociar(a)} style={btnBlue}>+ Asociar proveedor</button>
