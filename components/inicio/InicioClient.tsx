@@ -4,7 +4,18 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { moneyARS } from '@/lib/utils/format'
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+// IMPORTANTE: toISOString() siempre devuelve la fecha en UTC, no en hora de Argentina.
+// Después de las 21:00 hs (00:00 UTC), eso hace que "hoy" salte al día siguiente mientras
+// en Argentina sigue siendo el día anterior — desalineando el gráfico de ventas contra las
+// fechas reales guardadas en la base (que se guardan en hora local). Por eso acá se construye
+// la fecha a partir de las partes locales del Date, igual que en el resto del sistema.
+function fechaLocalStr(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+const todayStr = () => fechaLocalStr()
 
 interface KPI { label: string; value: string; sub?: string; color?: string; href?: string }
 
@@ -22,7 +33,11 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
 
   useEffect(() => {
     const hoy = todayStr()
-    const hace7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+    // Construido a partir de fechaLocalStr restando días en el objeto Date local — nunca con
+    // aritmética sobre milisegundos UTC, que es justo lo que generaba el corrimiento de días.
+    const hace7Date = new Date()
+    hace7Date.setDate(hace7Date.getDate() - 7)
+    const hace7 = fechaLocalStr(hace7Date)
     const mes = hoy.slice(0, 7)
 
     // Calcular saludo y fecha solo en el cliente para evitar hydration mismatch
@@ -67,13 +82,18 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       setActividad(actData.data ?? [])
       if (dolarData.data) setDolar(dolarData.data)
 
-      // Chart últimos 7 días
+      // Chart últimos 7 días — generado con fechas locales (no UTC) para que coincidan
+      // exactamente con cómo se guardan las fechas de venta, y los días sin venta queden
+      // como huecos en su posición correcta en vez de desordenar el orden cronológico.
       const byDay: Record<string, number> = {}
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
-        byDay[d] = 0
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        byDay[fechaLocalStr(d)] = 0
       }
-      for (const v of chartData.data ?? []) byDay[v.fecha] = (byDay[v.fecha] || 0) + v.precio
+      for (const v of chartData.data ?? []) {
+        if (v.fecha in byDay) byDay[v.fecha] = (byDay[v.fecha] || 0) + v.precio
+      }
       setChart(Object.entries(byDay).map(([d, v]) => ({ d, v })))
 
       setLoading(false)
