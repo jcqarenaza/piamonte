@@ -18,8 +18,8 @@ const PROVEEDORES = ['GAMMA', 'MALATESTA', 'SEKURIT']
 type Tab = 'todos' | 'pendientes' | 'referencias'
 
 interface Articulo {
-  id:string; descripcion:string; codigo_referencia:string|null; marca:string|null
-  pos:string|null; anio:string|null; activo:boolean; created_at:string
+  id:string; descripcion:string; codigo_referencia:string|null; sku_interno:string|null
+  marca:string|null; pos:string|null; anio:string|null; activo:boolean; created_at:string
   equivalencias?: Equivalencia[]
 }
 interface Equivalencia {
@@ -120,7 +120,7 @@ export default function ArticulosClient() {
   const load = useCallback(async () => {
     setLoading(true)
     let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 500 : 100)
-    if (q.trim()) query = query.ilike('descripcion', `%${q}%`)
+    if (q.trim()) query = query.or(`descripcion.ilike.%${q}%,sku_interno.ilike.%${q}%,codigo_referencia.ilike.%${q}%`)
     const { data } = await query
     let arr = (data ?? []).map((a:any) => ({ ...a, equivalencias: a.articulo_equivalencias }))
 
@@ -285,7 +285,7 @@ export default function ArticulosClient() {
 
       <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
         <div className="flex gap-2 items-center flex-wrap">
-          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar artículo por descripción…" />
+          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por descripción, SKU o código Pilkington…" />
           {tab === 'todos' && (
             <select value={filtroFaltante} onChange={e=>setFiltroFaltante(e.target.value)}
               className="border border-p-line rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-p-green">
@@ -308,7 +308,10 @@ export default function ArticulosClient() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-saira font-bold text-p-ink text-base">{a.descripcion}</p>
-                    {a.codigo_referencia && <span className="text-[10px] font-mono bg-p-light text-p-dark px-2 py-0.5 rounded-full">Ref: {a.codigo_referencia}</span>}
+                    <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a.sku_interno}</span>
+                    {a.codigo_referencia
+                      ? <span className="text-[10px] font-mono bg-green-50 text-green-700 px-2 py-0.5 rounded-full">✓ Pilkington: {a.codigo_referencia}</span>
+                      : <span className="text-[10px] text-amber-600 px-2 py-0.5 rounded-full border border-dashed border-amber-300">Sin código de fábrica</span>}
                     {a.pos && <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{a.pos}</span>}
                     {tab === 'pendientes' && (
                       <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
