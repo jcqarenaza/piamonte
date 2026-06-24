@@ -14,7 +14,10 @@ const FAM_MAP: Record<string, string> = {
 const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Custodias']
 const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', Custodias: '🔻' }
 
+type Tab = 'inventario' | 'vincular'
+
 export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
+  const [tab, setTab] = useState<Tab>('inventario')
   const [items, setItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -36,6 +39,14 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [buscandoArticulo, setBuscandoArticulo] = useState(false)
 
+  // ── Vincular pendientes ──
+  const [pendientes, setPendientes] = useState<StockItem[]>([])
+  const [loadingPend, setLoadingPend] = useState(false)
+  const [vincQ, setVincQ] = useState<Record<string,string>>({})
+  const [vincSugs, setVincSugs] = useState<Record<string,any[]>>({})
+  const [vincCosto, setVincCosto] = useState<Record<string,string>>({})
+  const [vincSel, setVincSel] = useState<Record<string,any>>({})
+
   const load = useCallback(async () => {
     const { data } = await supabase.from('stock').select('*').eq('activo', true).order('descripcion')
     setItems(data ?? [])
@@ -44,6 +55,15 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => { load() }, [load])
 
+  const loadPendientes = useCallback(async () => {
+    setLoadingPend(true)
+    const { data } = await supabase.from('stock').select('*').eq('activo', true).is('articulo_id', null).order('descripcion').limit(200)
+    setPendientes(data ?? [])
+    setLoadingPend(false)
+  }, [supabase])
+
+  useEffect(() => { if (tab === 'vincular') loadPendientes() }, [tab, loadPendientes])
+
   useEffect(() => {
     supabase.from('cotizaciones').select('oficial').order('fecha', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => { if (data?.oficial) setDolarOficial(data.oficial) })
@@ -51,7 +71,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
 
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
 
-  // Resumen por familia
   const resumen = FAMS.map(fam => {
     const arr = items.filter(s => FAM_MAP[s.pos ?? ''] === fam)
     const totalU = arr.reduce((a, s) => a + s.cantidad, 0)
@@ -59,15 +78,16 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     const sinCosto = arr.filter(s => !s.costo && s.cantidad > 0).reduce((a, s) => a + s.cantidad, 0)
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
-  // Un solo total confiable: valorizado a precio de venta. Mostrar también "a costo" lado a lado
-  // sugiere que son comparables (margen real), y hoy casi ningún ítem tiene ambos datos cargados.
   const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
   const itemsConAmbos = items.filter(s => s.costo && s.precio_venta)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
   const valTotalVentaUSD = dolarOficial ? valTotalVenta / dolarOficial : null
 
-  // Filtros
+  // Cuántas filas de stock todavía no están vinculadas a un artículo maestro —
+  // esto es lo que habilita comparar costos consistentemente entre Stock, Compras y Ventas.
+  const sinVincularCount = items.filter(s => !(s as any).articulo_id).length
+
   let visible = items
   if (depFilter) visible = visible.filter(s => (s.deposito || 'Principal') === depFilter)
   if (q) visible = visible.filter(s => (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase().includes(q.toUpperCase()))
@@ -94,7 +114,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     setItems(prev => prev.filter(x => x.id !== id))
   }
 
-  // Búsqueda para ajuste
   useEffect(() => {
     if (ajusteSearch.length < 2) { setAjusteSugs([]); return }
     const q = ajusteSearch.toUpperCase()
@@ -105,20 +124,17 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     if (!ajusteForm.desc || !ajusteForm.cant) return
     const cant = +ajusteForm.cant || 0
     const costo = ajusteForm.costo ? +ajusteForm.costo.replace(/[^0-9.]/g,'') : null
-    // Si hay un stock_id, incrementar cantidad
     if (ajusteStockId) {
       const s = items.find(x => x.id === ajusteStockId)
       if (s) {
         await supabase.from('stock').update({ cantidad: s.cantidad + cant, ...(costo ? {costo} : {}), updated_at: new Date().toISOString() }).eq('id', ajusteStockId)
       }
     } else {
-      // Crear nueva entrada de stock
       await supabase.from('stock').insert({
         descripcion: ajusteForm.desc, cantidad: cant, costo,
         deposito: 'Principal', activo: true
       })
     }
-    // Registrar ajuste
     await supabase.from('ajustes_stock').insert({
       tipo: 'entrada', stock_id: ajusteStockId || null,
       descripcion: ajusteForm.desc, cantidad: cant,
@@ -148,7 +164,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       dep: s.deposito || 'Principal',
     })
     setEditId(s.id)
-    // Si ya tiene articulo_id vinculado, lo mostramos como ya asociado
     if ((s as any).articulo_id) {
       supabase.from('articulos_maestro').select('id,descripcion,codigo_referencia').eq('id', (s as any).articulo_id).maybeSingle()
         .then(({data}) => setArticuloSel(data ?? null))
@@ -159,8 +174,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     setOpen(true)
   }
 
-  // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción —
-  // evita crear artículos duplicados con nombres distintos para la misma pieza.
   async function buscarArticulo(texto: string) {
     setForm(p => ({ ...p, desc: texto }))
     setArticuloSel(null)
@@ -182,8 +195,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   async function save() {
     if (!form.desc) { alert('Cargá la descripción.'); return }
 
-    // Si no se eligió un artículo existente, lo creamos al vuelo con la descripción tipeada.
-    // El código de referencia (Pilkington/fábrica) se puede completar después desde el panel de Artículos.
     let articuloId = articuloSel?.id || null
     if (!articuloId) {
       const { data: nuevo } = await supabase.from('articulos_maestro')
@@ -212,8 +223,115 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     load()
   }
 
+  // ── Vincular pendientes: buscar artículo maestro para una fila puntual de stock ──
+  async function buscarParaVincular(stockId: string, texto: string) {
+    setVincQ(p => ({ ...p, [stockId]: texto }))
+    setVincSel(p => { const n = { ...p }; delete n[stockId]; return n })
+    if (texto.trim().length < 2) { setVincSugs(p => ({ ...p, [stockId]: [] })); return }
+    const { data } = await supabase.from('articulos_maestro')
+      .select('id,descripcion,codigo_referencia,sku_interno').eq('activo', true)
+      .ilike('descripcion', `%${texto}%`).limit(6)
+    setVincSugs(p => ({ ...p, [stockId]: data ?? [] }))
+  }
+
+  function elegirParaVincular(stockId: string, art: any) {
+    setVincSel(p => ({ ...p, [stockId]: art }))
+    setVincQ(p => ({ ...p, [stockId]: art.descripcion }))
+    setVincSugs(p => ({ ...p, [stockId]: [] }))
+  }
+
+  // Confirma el vínculo entre la fila de stock y el artículo elegido, y de paso permite
+  // cargar el costo en el mismo paso — es el punto en el que más sentido tiene hacerlo,
+  // porque ya estás mirando la pieza y decidiendo a qué artículo del catálogo corresponde.
+  async function confirmarVinculo(s: StockItem) {
+    const art = vincSel[s.id]
+    if (!art) return
+    const costoVal = vincCosto[s.id] ? +vincCosto[s.id].replace(/[^0-9.]/g, '') : null
+    const payload: any = { articulo_id: art.id, updated_at: new Date().toISOString() }
+    if (costoVal) payload.costo = costoVal
+    await supabase.from('stock').update(payload).eq('id', s.id)
+    setPendientes(prev => prev.filter(x => x.id !== s.id))
+    setItems(prev => prev.map(x => x.id === s.id ? { ...x, ...payload } : x))
+  }
+
+  // Si la pieza no existe todavía en el catálogo maestro, se crea al vuelo con la
+  // descripción que ya tiene en stock — mismo criterio que en el alta nueva.
+  async function crearArticuloYVincular(s: StockItem) {
+    const { data: nuevo } = await supabase.from('articulos_maestro')
+      .insert({ descripcion: s.descripcion, marca: s.marca || null, pos: s.pos || null, anio: s.anio || null })
+      .select('id,descripcion,codigo_referencia,sku_interno').single()
+    if (nuevo) elegirParaVincular(s.id, nuevo)
+  }
+
   return (
     <div>
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4 border-b border-p-line2">
+        <button onClick={() => setTab('inventario')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='inventario' ? 'border-p-green text-p-green' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
+          📦 Inventario
+        </button>
+        {isAdmin && (
+          <button onClick={() => setTab('vincular')}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${tab==='vincular' ? 'border-amber-500 text-amber-600' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
+            🔗 Vincular a artículo
+            {sinVincularCount > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{sinVincularCount}</span>}
+          </button>
+        )}
+      </div>
+
+      {tab === 'vincular' ? (
+        <div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+            <p className="text-sm text-amber-800">
+              Vinculá cada pieza con su artículo del catálogo maestro — así Compras, Ventas y Stock comparten el mismo costo y el mismo identificador (SKU). Podés cargar el costo en el mismo paso.
+            </p>
+          </div>
+          {loadingPend ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
+           pendientes.length === 0 ? <Empty msg="¡Sin pendientes! Todo el stock está vinculado a su artículo." /> : (
+            <div className="flex flex-col gap-2">
+              {pendientes.map(s => (
+                <div key={s.id} className="bg-white border border-p-line rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                  <div className="min-w-[180px]">
+                    <p className="font-medium text-sm text-p-ink">{s.descripcion}</p>
+                    <p className="text-xs text-p-ink2">{[s.marca, s.codigo ? 'cód '+s.codigo : null, s.cantidad+' u.'].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <div className="relative flex-1 min-w-[220px]">
+                    <input value={vincQ[s.id] ?? ''} onChange={e => buscarParaVincular(s.id, e.target.value)}
+                      placeholder="Buscar artículo del catálogo…"
+                      className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                    {(vincSugs[s.id]?.length ?? 0) > 0 && (
+                      <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                        {vincSugs[s.id].map((a:any) => (
+                          <button key={a.id} onClick={() => elegirParaVincular(s.id, a)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                            <p className="font-medium text-p-ink">{a.descripcion}</p>
+                            <p className="text-[10px] font-mono text-p-ink2">{a.sku_interno}{a.codigo_referencia ? ' · '+a.codigo_referencia : ''}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {vincQ[s.id]?.trim().length >= 2 && !vincSel[s.id] && (vincSugs[s.id]?.length ?? 0) === 0 && (
+                      <button onClick={() => crearArticuloYVincular(s)} className="text-[11px] text-blue-600 underline mt-1">
+                        + Crear artículo nuevo con esta descripción
+                      </button>
+                    )}
+                  </div>
+                  <input value={vincCosto[s.id] ?? (s.costo ? String(Math.round(s.costo)) : '')}
+                    onChange={e => setVincCosto(p => ({ ...p, [s.id]: e.target.value }))}
+                    placeholder="costo" title="Costo de venta: costo consumidor final + recargo tarjeta + IVA"
+                    className="w-24 border border-p-line rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:border-p-green"/>
+                  <button onClick={() => confirmarVinculo(s)} disabled={!vincSel[s.id]}
+                    style={{background: vincSel[s.id] ? '#00A550' : '#d1d5db', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:700, fontSize:12, cursor: vincSel[s.id] ? 'pointer' : 'not-allowed'}}>
+                    ✓ Vincular
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Resumen por familia */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {resumen.map(r => (
@@ -225,9 +343,6 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
-      {/* Un solo número de valorización — mostrar costo y venta lado a lado sugiere que son
-          comparables (margen), y hoy casi ningún ítem tiene ambos datos cargados a la vez.
-          Para no inducir a un error de lectura, se muestra un único total confiable. */}
       {isAdmin && (
         <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5 mb-3">
           <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado del stock (precio de venta)</p>
@@ -244,6 +359,12 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         <p style={{color:'#6b7280'}} className="text-[11px] mb-3">Dólar oficial: {moneyARS(dolarOficial)}</p>
       )}
 
+      {sinVincularCount > 0 && isAdmin && (
+        <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
+          <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> piezas todavía no están vinculadas a un artículo del catálogo</p>
+          <span className="text-xs font-bold text-amber-700">Vincular →</span>
+        </div>
+      )}
 
       {sinCostoCount > 0 && isAdmin && (
         <AlarmBar count={sinCostoCount} label="en stock sin costo — no suman al valor" onGo={() => setSoloSinCosto(true)} />
@@ -279,7 +400,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
                 <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
-                  <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal')].filter(Boolean).join(' · ')}</p>
+                  <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
                 </div>
                 <div className="text-right min-w-[80px]">
                   {s.precio_venta && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(s.precio_venta)}</p>}
@@ -304,6 +425,8 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
             ))}
           </div>
         )}
+      </>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editId ? 'Editar artículo' : 'Agregar a stock'}>
         <div className="flex flex-col gap-3">
