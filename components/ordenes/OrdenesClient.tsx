@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, ASEGURADORAS, todayStr } from '@/lib/utils/format'
+import { moneyARS, todayStr } from '@/lib/utils/format'
 
 const IVA_RATE = 0.21
 const btn      = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -46,6 +46,9 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [stockSel, setStockSel] = useState<any|null>(null)
   const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'>('todas')
+  // Aseguradoras — cargadas desde la base, no hardcodeadas, para que se puedan agregar nuevas
+  // (Allianz, Mapfre, etc.) sin tocar código, y siempre desde un registro real, no texto libre.
+  const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])
   // Factura manual (Sancor)
   const [factManualModal, setFactManualModal] = useState<any|null>(null)
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
@@ -75,6 +78,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('ordenes_servicio').select('*').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
     supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
+    supabase.from('aseguradoras').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setAseguradoras(data??[]))
   }, [supabase])
 
   useEffect(() => { load() }, [load])
@@ -550,12 +554,12 @@ export default function OrdenesClient({ userId }: { userId: string }) {
 
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
         <div className="flex flex-col gap-3">
-          {/* Aseguradora arriba — siempre obligatoria */}
+          {/* Aseguradora arriba — siempre obligatoria, cargada desde la tabla aseguradoras */}
           <div className="grid grid-cols-3 gap-3">
             <Field label="Aseguradora *">
               <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
                 <option value="">— Seleccioná *</option>
-                {ASEGURADORAS.map(a=><option key={a} value={a}>{a}</option>)}
+                {aseguradoras.map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}
               </Select>
             </Field>
             <Field label="N° Siniestro"><Input value={form.sin} onChange={e=>setForm(p=>({...p,sin:e.target.value}))} placeholder="000000"/></Field>
