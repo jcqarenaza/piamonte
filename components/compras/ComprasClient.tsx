@@ -47,7 +47,7 @@ function formatCuit(v: string) {
 }
 
 interface Proveedor { id:string; nombre:string; razon_social:string|null; cuit?:string|null; descuento_pct?:number|null }
-interface Item { d:string; c:number; p:number }
+interface Item { d:string; c:number; p:number; articulo_id?:string|null }
 interface Comprobante {
   id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null
   fecha:string; proveedor_id:string|null; proveedor_nombre:string|null
@@ -97,6 +97,9 @@ export default function ComprasClient() {
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
   const [editandoItemIdx, setEditandoItemIdx] = useState<number|null>(null)
+  // Artículo del catálogo maestro elegido para el ítem que se está cargando — igual patrón que Stock
+  const [itemArticuloSel, setItemArticuloSel] = useState<{id:string;descripcion:string}|null>(null)
+  const [itemArticuloSugs, setItemArticuloSugs] = useState<any[]>([])
 
   const supabase = createClient()
 
@@ -143,17 +146,38 @@ export default function ComprasClient() {
     setForm(p => ({ ...p, descuento_pct: prov?.descuento_pct ? String(prov.descuento_pct) : '' }))
   }, [form.proveedor_id, proveedores, descuentoTocadoAMano])
 
+  // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción del ítem —
+  // mismo criterio que ya usa Stock, para que Compras también quede vinculado al SKU.
+  async function buscarItemArticulo(texto: string) {
+    setItemForm(p => ({ ...p, d: texto }))
+    setItemArticuloSel(null)
+    if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
+    const { data } = await supabase.from('articulos_maestro')
+      .select('id,descripcion,sku_interno').eq('activo', true)
+      .ilike('descripcion', `%${texto}%`).limit(6)
+    setItemArticuloSugs(data ?? [])
+  }
+
+  function elegirItemArticulo(a: any) {
+    setItemArticuloSel(a)
+    setItemForm(p => ({ ...p, d: a.descripcion }))
+    setItemArticuloSugs([])
+  }
+
   function addItem() {
     const p = parseFloat(itemForm.p.replace(/[^0-9.,]/g,'').replace(',','.'))
     const c = parseInt(itemForm.c)
     if (!itemForm.d || !p || !c) return
+    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null }
     if (editandoItemIdx !== null) {
-      setItems(prev => prev.map((it,i) => i===editandoItemIdx ? {d:itemForm.d, c, p} : it))
+      setItems(prev => prev.map((it,i) => i===editandoItemIdx ? nuevoItemData : it))
       setEditandoItemIdx(null)
     } else {
-      setItems(prev=>[...prev, {d:itemForm.d, c, p}])
+      setItems(prev=>[...prev, nuevoItemData])
     }
     setItemForm({d:'',c:'1',p:''})
+    setItemArticuloSel(null)
+    setItemArticuloSugs([])
   }
 
   async function guardarProveedor() {
@@ -243,7 +267,10 @@ export default function ComprasClient() {
     setStockSugs(prev=>({...prev,[idx]:[]}))
   }
 
-  async function crearYVincular(idx:number, it:{d:string;c:number;p:number}) {
+  // Crea la fila de stock y, si el ítem ya venía vinculado a un artículo del catálogo maestro
+  // (porque se eligió al cargar la factura), la deja enlazada a ese mismo artículo —
+  // así no hace falta volver a vincularla a mano desde Stock.
+  async function crearYVincular(idx:number, it:Item) {
     const n = nuevoItem[idx]
     if (!n?.desc) return
     const { data } = await supabase.from('stock').insert({
@@ -253,7 +280,8 @@ export default function ComprasClient() {
       costo: it.p||null,
       cantidad: 0,
       activo: true,
-      pos: 'STOCK'
+      pos: 'STOCK',
+      articulo_id: it.articulo_id || null,
     }).select('id,descripcion,codigo,cantidad').single()
     if (data) {
       setStockItems(prev=>[...prev, data])
@@ -286,9 +314,14 @@ export default function ComprasClient() {
         nota: `${etiqueta} — recepción automática`,
       })
 
-      const { data: st } = await supabase.from('stock').select('cantidad').eq('id', map.stock_id).maybeSingle()
+      // Si el ítem de la factura ya tenía un artículo del catálogo asociado y la fila de stock
+      // destino todavía no estaba vinculada a ninguno, la vinculamos ahora — así Compras
+      // termina de cerrar el círculo del SKU sin que haga falta un paso manual extra en Stock.
+      const { data: st } = await supabase.from('stock').select('cantidad,articulo_id').eq('id', map.stock_id).maybeSingle()
       if (st) {
-        await supabase.from('stock').update({ cantidad: (st.cantidad||0) + map.qty }).eq('id', map.stock_id)
+        const updatePayload: any = { cantidad: (st.cantidad||0) + map.qty }
+        if (!st.articulo_id && item.articulo_id) updatePayload.articulo_id = item.articulo_id
+        await supabase.from('stock').update(updatePayload).eq('id', map.stock_id)
       }
     }
 
@@ -306,8 +339,9 @@ export default function ComprasClient() {
     load()
   }
 
-  // Compara lo pagado en la factura contra el costo vigente en el catálogo (todas las listas de proveedores).
-  // Sirve para detectar si se compró más caro que lo que ofrece otra lista — para reclamar o pedir lista actualizada.
+  // Compara lo pagado en la factura contra el costo vigente en el catálogo maestro (todas las
+  // equivalencias por proveedor). Si el ítem ya tiene articulo_id, comparamos directo contra
+  // sus equivalencias — más preciso que buscar por palabras sueltas en la descripción.
   async function compararPrecios(c: Comprobante) {
     setCompararModal(c)
     setComparando(true)
@@ -315,20 +349,29 @@ export default function ComprasClient() {
 
     const resultados: any[] = []
     for (const it of c.items) {
-      // Buscar en catálogo por palabras de la descripción — igual criterio que PreciosClient
-      const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
-      if (palabras.length === 0) { resultados.push({ item: it, candidatos: [], sinMatch: true }); continue }
+      let candidatos: any[] = []
 
-      const { data } = await supabase.from('catalogo')
-        .select('proveedor,descripcion,costo_neto,lista_nombre,grupo_id,codigo')
-        .ilike('descripcion', `%${palabras[0]}%`)
-        .limit(50)
+      if (it.articulo_id) {
+        const { data } = await supabase.from('articulo_equivalencias')
+          .select('proveedor,costo_neto,lista_nombre,codigo_proveedor')
+          .eq('articulo_id', it.articulo_id)
+        candidatos = data ?? []
+      } else {
+        // Sin artículo vinculado todavía — fallback a la búsqueda por palabras de antes
+        const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
+        if (palabras.length > 0) {
+          const { data } = await supabase.from('articulos_maestro')
+            .select('id,descripcion,articulo_equivalencias(proveedor,costo_neto,lista_nombre,codigo_proveedor)')
+            .ilike('descripcion', `%${palabras[0]}%`).limit(20)
+          const match = (data ?? []).find((a:any) =>
+            palabras.every((w:string) => (a.descripcion||'').toUpperCase().includes(w))
+          )
+          candidatos = match?.articulo_equivalencias ?? []
+        }
+      }
 
-      const candidatos = (data ?? []).filter((p:any) =>
-        palabras.every((w:string) => (p.descripcion||'').toUpperCase().includes(w))
-      )
+      if (candidatos.length === 0) { resultados.push({ item: it, candidatos: [], sinMatch: true }); continue }
 
-      // Deduplicar por proveedor, quedarse con el más barato de cada uno
       const porProveedor = new Map<string, any>()
       for (const cand of candidatos) {
         const actual = porProveedor.get(cand.proveedor)
@@ -451,7 +494,7 @@ export default function ComprasClient() {
                   <div className="flex flex-wrap gap-1">
                     {c.items.slice(0,3).map((it,i)=>(
                       <span key={i} className="text-[11px] bg-p-light text-p-dark px-2 py-0.5 rounded-full">
-                        {it.d} ×{it.c}
+                        {it.articulo_id && '🔗 '}{it.d} ×{it.c}
                       </span>
                     ))}
                     {c.items.length>3&&<span className="text-[11px] text-p-ink2">+{c.items.length-3} más</span>}
@@ -501,7 +544,7 @@ export default function ComprasClient() {
                 {remitoModal.items.map((it,i) => (
                   <div key={i} className="bg-p-light rounded-xl p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold text-sm text-p-ink">{it.d}</p>
+                      <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{it.d}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-p-ink2">Cant:</span>
                         <input type="number" value={mappings[i]?.qty ?? it.c}
@@ -608,7 +651,7 @@ export default function ComprasClient() {
               <div>
                 <h2 className="font-saira font-bold text-xl text-p-ink">📊 Comparación de precios</h2>
                 <p className="text-sm text-p-ink2 mt-0.5">
-                  {compararModal.proveedor_nombre} · {numComp(compararModal)} — vs. costo vigente en listas de catálogo
+                  {compararModal.proveedor_nombre} · {numComp(compararModal)} — vs. costo vigente en el catálogo
                 </p>
               </div>
               <button onClick={()=>setCompararModal(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
@@ -625,7 +668,7 @@ export default function ComprasClient() {
                       r.diferencia < 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
                     }`}>
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <p className="font-semibold text-sm text-p-ink">{r.item.d}</p>
+                        <p className="font-semibold text-sm text-p-ink">{r.item.articulo_id && '🔗 '}{r.item.d}</p>
                         <span className="font-mono text-sm">
                           Pagado: <strong>{moneyARS2(r.item.p)}</strong>
                         </span>
@@ -833,8 +876,19 @@ export default function ComprasClient() {
               Ítems {editandoItemIdx !== null && <span className="text-blue-600 font-normal">— editando ítem #{editandoItemIdx+1}</span>}
             </label>
             <div className="grid grid-cols-12 gap-2 mb-2">
-              <div className="col-span-6">
-                <Input value={itemForm.d} onChange={e=>setItemForm(p=>({...p,d:e.target.value}))} placeholder="Descripción / código"/>
+              <div className="col-span-6 relative">
+                <Input value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Descripción / código"/>
+                {itemArticuloSugs.length > 0 && (
+                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                    {itemArticuloSugs.map((a:any) => (
+                      <button key={a.id} type="button" onClick={()=>elegirItemArticulo(a)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                        <p className="font-medium text-p-ink">{a.descripcion}</p>
+                        <p className="text-[10px] font-mono text-p-ink2">{a.sku_interno}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="col-span-2">
                 <Input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant."/>
@@ -846,12 +900,18 @@ export default function ComprasClient() {
                 {editandoItemIdx!==null ? '✓' : '+'}
               </button>
             </div>
+            {itemArticuloSel ? (
+              <p className="text-[11px] text-p-green font-semibold mb-2">✓ Vinculado al artículo del catálogo maestro ({itemArticuloSel.descripcion})</p>
+            ) : itemForm.d.trim().length >= 2 ? (
+              <p className="text-[11px] text-amber-600 mb-2">⚠ Sin coincidencia con el catálogo — el ítem se va a guardar solo con esta descripción</p>
+            ) : null}
             {editandoItemIdx !== null && (
-              <button onClick={()=>{setEditandoItemIdx(null);setItemForm({d:'',c:'1',p:''})}}
+              <button onClick={()=>{setEditandoItemIdx(null);setItemForm({d:'',c:'1',p:''});setItemArticuloSel(null)}}
                 className="text-[11px] text-p-ink2 underline mb-2">Cancelar edición</button>
             )}
             {items.map((it,i)=>(
               <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
+                {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
                 <span className="flex-1 truncate">{it.d}</span>
                 <span className="text-p-ink2 shrink-0">×{it.c}</span>
                 <span className="font-mono font-bold shrink-0">{moneyARS(it.p)}</span>
@@ -859,6 +919,7 @@ export default function ComprasClient() {
                 <button onClick={()=>{
                   setEditandoItemIdx(i)
                   setItemForm({ d: it.d, c: String(it.c), p: String(it.p) })
+                  setItemArticuloSel(it.articulo_id ? { id: it.articulo_id, descripcion: it.d } : null)
                 }} className="text-blue-500 text-xs shrink-0">✏</button>
                 <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
               </div>
