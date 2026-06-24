@@ -15,7 +15,7 @@ const PROV_COLOR: Record<string, string> = {
 }
 const PROVEEDORES = ['GAMMA', 'MALATESTA', 'SEKURIT']
 
-type Tab = 'todos' | 'pendientes'
+type Tab = 'todos' | 'pendientes' | 'referencias'
 
 interface Articulo {
   id:string; descripcion:string; codigo_referencia:string|null; marca:string|null
@@ -28,6 +28,9 @@ interface Equivalencia {
 }
 interface CatalogoSuelto {
   id:string; proveedor:string; codigo:string|null; descripcion:string; costo_neto:number
+}
+interface Abreviatura {
+  id:string; abreviatura:string; expansion:string; activo:boolean
 }
 
 export default function ArticulosClient() {
@@ -47,6 +50,72 @@ export default function ArticulosClient() {
   const [asociarQ, setAsociarQ] = useState('')
   const [asociarSugs, setAsociarSugs] = useState<CatalogoSuelto[]>([])
   const [buscandoAsociar, setBuscandoAsociar] = useState(false)
+
+  // Referencias / abreviaturas
+  const [abreviaturas, setAbreviaturas] = useState<Abreviatura[]>([])
+  const [nuevaAbrev, setNuevaAbrev] = useState({ abreviatura:'', expansion:'' })
+  const [editAbrevId, setEditAbrevId] = useState<string|null>(null)
+  const [aplicando, setAplicando] = useState(false)
+  const [resultadoAplicar, setResultadoAplicar] = useState<string>('')
+
+  async function loadAbreviaturas() {
+    const { data } = await supabase.from('abreviaturas_descripcion').select('*').order('abreviatura')
+    setAbreviaturas(data ?? [])
+  }
+
+  async function guardarAbreviatura() {
+    if (!nuevaAbrev.abreviatura.trim() || !nuevaAbrev.expansion.trim()) return
+    if (editAbrevId) {
+      await supabase.from('abreviaturas_descripcion').update({
+        abreviatura: nuevaAbrev.abreviatura, expansion: nuevaAbrev.expansion, updated_at: new Date().toISOString()
+      }).eq('id', editAbrevId)
+    } else {
+      await supabase.from('abreviaturas_descripcion').insert({ abreviatura: nuevaAbrev.abreviatura, expansion: nuevaAbrev.expansion })
+    }
+    setNuevaAbrev({ abreviatura:'', expansion:'' })
+    setEditAbrevId(null)
+    loadAbreviaturas()
+  }
+
+  function editarAbreviatura(a: Abreviatura) {
+    setNuevaAbrev({ abreviatura: a.abreviatura, expansion: a.expansion })
+    setEditAbrevId(a.id)
+  }
+
+  async function borrarAbreviatura(id: string) {
+    if (!confirm('¿Borrar esta abreviatura? Esto no afecta los artículos ya expandidos.')) return
+    await supabase.from('abreviaturas_descripcion').delete().eq('id', id)
+    loadAbreviaturas()
+  }
+
+  // Re-aplica todas las abreviaturas activas sobre las descripciones actuales de los artículos.
+  // Útil después de agregar una abreviatura nueva, para que también se expanda en lo ya cargado.
+  async function aplicarAbreviaturas() {
+    setAplicando(true)
+    setResultadoAplicar('')
+    const { data: abrevs } = await supabase.from('abreviaturas_descripcion').select('abreviatura,expansion').eq('activo', true)
+    if (!abrevs || abrevs.length === 0) { setAplicando(false); return }
+
+    // Ordenar por longitud descendente para que las abreviaturas más largas se reemplacen primero
+    const ordenadas = [...abrevs].sort((a,b) => b.abreviatura.length - a.abreviatura.length)
+
+    const { data: arts } = await supabase.from('articulos_maestro').select('id,descripcion').eq('activo', true)
+    let modificados = 0
+    for (const art of (arts ?? [])) {
+      let nueva = art.descripcion
+      for (const ab of ordenadas) {
+        const regex = new RegExp(ab.abreviatura.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+        if (regex.test(nueva)) nueva = nueva.replace(regex, ab.expansion)
+      }
+      if (nueva !== art.descripcion) {
+        await supabase.from('articulos_maestro').update({ descripcion: nueva, updated_at: new Date().toISOString() }).eq('id', art.id)
+        modificados++
+      }
+    }
+    setResultadoAplicar(`✓ ${modificados} artículos actualizados`)
+    setAplicando(false)
+    if (tab !== 'referencias') load()
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -72,6 +141,7 @@ export default function ArticulosClient() {
   }, [q, filtroFaltante, tab, supabase])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (tab === 'referencias') loadAbreviaturas() }, [tab])
 
   function openEditar(a: Articulo) {
     setEditForm({
@@ -144,8 +214,66 @@ export default function ArticulosClient() {
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='pendientes' ? 'border-amber-500 text-amber-600' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
           🔗 Equivalencias pendientes
         </button>
+        <button onClick={()=>setTab('referencias')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='referencias' ? 'border-blue-500 text-blue-600' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
+          📖 Referencias
+        </button>
       </div>
 
+      {tab === 'referencias' ? (
+        <div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+            <p className="text-sm text-blue-800">
+              Estas abreviaturas se expanden automáticamente en la descripción de los artículos. Ej: <strong>P.D.D.</strong> → <strong>Puerta Delantera Derecha</strong>.
+            </p>
+          </div>
+
+          <div className="bg-white border border-p-line rounded-xl p-4 mb-4">
+            <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">
+              {editAbrevId ? 'Editar abreviatura' : 'Nueva abreviatura'}
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              <Input value={nuevaAbrev.abreviatura} onChange={e=>setNuevaAbrev(p=>({...p,abreviatura:e.target.value}))} placeholder="Ej: P.D.D."/>
+              <Input value={nuevaAbrev.expansion} onChange={e=>setNuevaAbrev(p=>({...p,expansion:e.target.value}))} placeholder="Ej: Puerta Delantera Derecha"/>
+            </div>
+            <div className="flex justify-end gap-2">
+              {editAbrevId && (
+                <button onClick={()=>{setEditAbrevId(null); setNuevaAbrev({abreviatura:'',expansion:''})}} style={btnGray}>Cancelar</button>
+              )}
+              <button onClick={guardarAbreviatura} disabled={!nuevaAbrev.abreviatura.trim()||!nuevaAbrev.expansion.trim()} style={btn}>
+                {editAbrevId ? 'Guardar cambios' : '+ Agregar'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 mb-4">
+            {abreviaturas.map(a => (
+              <div key={a.id} className="bg-white border border-p-line rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono font-bold text-sm text-p-dark bg-p-light px-2 py-1 rounded-lg">{a.abreviatura}</span>
+                  <span className="text-p-ink2">→</span>
+                  <span className="text-sm text-p-ink">{a.expansion}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={()=>editarAbreviatura(a)} style={{...btnGray, padding:'5px 12px', fontSize:11}}>✏</button>
+                  <button onClick={()=>borrarAbreviatura(a.id)} style={{...btnRed, padding:'5px 12px', fontSize:11}}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-p-light rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-p-ink2">Aplicá estos reemplazos sobre las descripciones ya cargadas (por si agregaste una abreviatura nueva).</p>
+            <div className="flex items-center gap-2">
+              {resultadoAplicar && <span className="text-xs font-semibold text-p-green">{resultadoAplicar}</span>}
+              <button onClick={aplicarAbreviaturas} disabled={aplicando} style={{...btnBlue, opacity:aplicando?.6:1}}>
+                {aplicando ? 'Aplicando…' : '⟳ Aplicar a existentes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <>
       {tab === 'pendientes' && !loading && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm text-amber-800">
@@ -213,6 +341,8 @@ export default function ArticulosClient() {
             )
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Modal editar artículo */}

@@ -32,6 +32,9 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const supabase = createClient()
 
   const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+  const [articuloSel, setArticuloSel] = useState<{id:string;descripcion:string;codigo_referencia:string|null}|null>(null)
+  const [articuloSugs, setArticuloSugs] = useState<any[]>([])
+  const [buscandoArticulo, setBuscandoArticulo] = useState(false)
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('stock').select('*').eq('activo', true).order('descripcion')
@@ -131,6 +134,8 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   function openNuevo() {
     setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
     setEditId(null)
+    setArticuloSel(null)
+    setArticuloSugs([])
     setOpen(true)
   }
 
@@ -143,17 +148,57 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       dep: s.deposito || 'Principal',
     })
     setEditId(s.id)
+    // Si ya tiene articulo_id vinculado, lo mostramos como ya asociado
+    if ((s as any).articulo_id) {
+      supabase.from('articulos_maestro').select('id,descripcion,codigo_referencia').eq('id', (s as any).articulo_id).maybeSingle()
+        .then(({data}) => setArticuloSel(data ?? null))
+    } else {
+      setArticuloSel(null)
+    }
+    setArticuloSugs([])
     setOpen(true)
+  }
+
+  // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción —
+  // evita crear artículos duplicados con nombres distintos para la misma pieza.
+  async function buscarArticulo(texto: string) {
+    setForm(p => ({ ...p, desc: texto }))
+    setArticuloSel(null)
+    if (texto.trim().length < 2) { setArticuloSugs([]); return }
+    setBuscandoArticulo(true)
+    const { data } = await supabase.from('articulos_maestro')
+      .select('id,descripcion,codigo_referencia,marca,pos').eq('activo', true)
+      .ilike('descripcion', `%${texto}%`).limit(6)
+    setArticuloSugs(data ?? [])
+    setBuscandoArticulo(false)
+  }
+
+  function elegirArticulo(a: any) {
+    setArticuloSel(a)
+    setForm(p => ({ ...p, desc: a.descripcion, marca: a.marca || p.marca, pos: a.pos || p.pos }))
+    setArticuloSugs([])
   }
 
   async function save() {
     if (!form.desc) { alert('Cargá la descripción.'); return }
+
+    // Si no se eligió un artículo existente, lo creamos al vuelo con la descripción tipeada.
+    // El código de referencia (Pilkington/fábrica) se puede completar después desde el panel de Artículos.
+    let articuloId = articuloSel?.id || null
+    if (!articuloId) {
+      const { data: nuevo } = await supabase.from('articulos_maestro')
+        .insert({ descripcion: form.desc, marca: form.marca || null, pos: form.pos || null, anio: form.anio || null })
+        .select('id').single()
+      articuloId = nuevo?.id || null
+    }
+
     const payload = {
       descripcion: form.desc, codigo: form.cod || null, marca: form.marca || null,
       pos: form.pos || null, anio: form.anio || null, cantidad: +form.cant || 0,
       precio_venta: form.precio ? +form.precio.replace(/[^0-9.]/g, '') : null,
       costo: form.costo ? +form.costo.replace(/[^0-9.]/g, '') : null,
       deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
+      articulo_id: articuloId,
     }
     if (editId) {
       await supabase.from('stock').update(payload).eq('id', editId)
@@ -163,6 +208,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     setOpen(false)
     setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
     setEditId(null)
+    setArticuloSel(null)
     load()
   }
 
@@ -261,7 +307,27 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editId ? 'Editar artículo' : 'Agregar a stock'}>
         <div className="flex flex-col gap-3">
-          <Field label="Descripción *"><Input value={form.desc} onChange={e => setForm(p => ({ ...p, desc: e.target.value }))} placeholder="Ej: Parabrisas VW Gol" /></Field>
+          <Field label="Descripción *">
+            <div className="relative">
+              <Input value={form.desc} onChange={e => buscarArticulo(e.target.value)} placeholder="Ej: Parabrisas VW Gol" />
+              {articuloSugs.length > 0 && (
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                  {articuloSugs.map((a:any) => (
+                    <button key={a.id} type="button" onClick={()=>elegirArticulo(a)}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                      <p className="font-medium text-p-ink">{a.descripcion}</p>
+                      {a.codigo_referencia && <p className="text-[10px] font-mono text-p-ink2">Ref: {a.codigo_referencia}</p>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {articuloSel ? (
+              <p className="text-[11px] text-p-green font-semibold mt-1">✓ Vinculado al artículo del catálogo maestro</p>
+            ) : form.desc.trim().length >= 2 ? (
+              <p className="text-[11px] text-amber-600 mt-1">⚠ Sin coincidencia — se va a crear un artículo nuevo con esta descripción</p>
+            ) : null}
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Código proveedor"><Input value={form.cod} onChange={e => setForm(p => ({ ...p, cod: e.target.value }))} /></Field>
             <Field label="Marca / modelo"><Input value={form.marca} onChange={e => setForm(p => ({ ...p, marca: e.target.value }))} placeholder="VW Gol" /></Field>
