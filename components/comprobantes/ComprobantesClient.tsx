@@ -37,12 +37,13 @@ interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:st
 interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null }
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
+interface ItemVenta { d:string; c:number; p:number; costo?:number; stock_id?:string; articulo_id?:string|null }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
   cliente_nombre:string|null; cliente_telefono:string|null; cliente_cuit:string|null
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
-  items:any[]; neto:number; iva:number; total:number; pagos:Pago[]
+  items:ItemVenta[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
   aseguradora_nombre?:string|null
 }
@@ -74,9 +75,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
-  const [items, setItems]       = useState<{d:string;c:number;p:number;costo?:number;stock_id?:string}[]>([])
+  const [items, setItems]       = useState<ItemVenta[]>([])
+  // Buscador unificado: primero busca en el catálogo maestro de artículos (con su costo de
+  // reposición y SKU); si la pieza ya está en stock con cantidad disponible, también se ofrece
+  // para descontar directamente. Mismo criterio que ya usan Stock y Compras.
   const [stockQ, setStockQ]     = useState('')
   const [stockSugs, setStockSugs] = useState<any[]>([])
+  const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
   const [toast, setToast]       = useState('')
   const [adjModal, setAdjModal]   = useState<Comprobante|null>(null)
@@ -88,11 +93,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')
   const [obs, setObs]           = useState('')
 
+  // Buscar en stock (piezas con unidades disponibles) y en el catálogo de artículos en paralelo —
+  // se muestran agrupados, dejando claro cuál ya tiene unidades físicas y cuál es solo catálogo.
   useEffect(()=>{
-    if(stockQ.trim().length<2){setStockSugs([]);return}
-    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo').eq('activo',true).gt('cantidad',0)
+    if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
+    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0)
       .ilike('descripcion',`%${stockQ}%`).limit(8)
       .then(({data})=>setStockSugs(data??[]))
+    supabase.from('articulos_maestro').select('id,descripcion,sku_interno,codigo_referencia').eq('activo',true)
+      .ilike('descripcion',`%${stockQ}%`).limit(6)
+      .then(({data})=>setArticuloSugs(data??[]))
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'
@@ -118,6 +128,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const iva_ = searchParams.get('iva')
     const tipoId = searchParams.get('tipo_id')
     const asegNombre = searchParams.get('aseguradora')
+    // Llega desde Precios — viene con el id del artículo del catálogo maestro elegido
+    const piezaId = searchParams.get('pieza_id')
+    const piezaDesc = searchParams.get('pieza_desc')
+    const piezaPrecio = searchParams.get('pieza_precio')
     if (asegNombre) {
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
@@ -134,6 +148,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       } else if (cli) {
         setCliQ(cli)
       }
+    }
+    if (piezaId && piezaDesc && piezaPrecio) {
+      setItems(prev => [...prev, { d: piezaDesc, c: 1, p: +piezaPrecio, articulo_id: piezaId }])
+      setOpen(true)
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }
     if(iva_&&+iva_>0) setIvaOn(true)
@@ -683,23 +701,42 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <Field label="Vehículo"><Input value={fiscal.vehiculo} onChange={e=>setFiscal(p=>({...p,vehiculo:e.target.value}))} placeholder="VW Gol 2015"/></Field>
 
           <div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar en stock</label>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
             <div className="relative">
-              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder="Buscar pieza del stock…"/>
-              {stockSugs.length>0&&(
-                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                  {stockSugs.map((s:any)=>(
-                    <button key={s.id} onClick={()=>{
-                      setItems(prev=>[...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,costo:s.costo||0,stock_id:s.id}])
-                      setStockQ(''); setStockSugs([])
-                    }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-p-ink truncate">{s.descripcion}</p>
-                        <p className="text-[10px] text-p-ink2">Stock: {s.cantidad} u. · Costo: {s.costo?moneyARS(s.costo):'-'}</p>
-                      </div>
-                      <span className="font-mono font-bold text-sm text-p-dark shrink-0">{s.precio_venta?moneyARS(s.precio_venta):'-'}</span>
-                    </button>
-                  ))}
+              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder="Buscar por descripción…"/>
+              {(stockSugs.length>0 || articuloSugs.length>0) &&(
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
+                  {stockSugs.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1">En stock</p>
+                      {stockSugs.map((s:any)=>(
+                        <button key={s.id} onClick={()=>{
+                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,costo:s.costo||0,stock_id:s.id,articulo_id:s.articulo_id||null}])
+                          setStockQ(''); setStockSugs([]); setArticuloSugs([])
+                        }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-p-ink truncate">{s.articulo_id && '🔗 '}{s.descripcion}</p>
+                            <p className="text-[10px] text-p-ink2">Stock: {s.cantidad} u. · Costo: {s.costo?moneyARS(s.costo):'-'}</p>
+                          </div>
+                          <span className="font-mono font-bold text-sm text-p-dark shrink-0">{s.precio_venta?moneyARS(s.precio_venta):'-'}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {articuloSugs.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">Solo catálogo — sin unidades en stock</p>
+                      {articuloSugs.map((a:any)=>(
+                        <button key={a.id} onClick={()=>{
+                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:0,articulo_id:a.id}])
+                          setStockQ(''); setStockSugs([]); setArticuloSugs([])
+                        }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
+                          <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
+                          <p className="text-[10px] text-p-ink2">{a.sku_interno} · sin stock cargado — completá el precio a mano</p>
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -710,6 +747,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
               {items.map((it,i)=>(
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
+                  {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
                   <span className="flex-1 text-p-ink min-w-0 truncate">{it.d}{it.c>1?` ×${it.c}`:''}</span>
                   {it.stock_id&&<span className="text-[10px] text-p-green font-bold shrink-0">📦</span>}
                   <div className="shrink-0">
