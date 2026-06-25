@@ -181,7 +181,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     setBuscandoArticulo(true)
     const { data } = await supabase.from('articulos_maestro')
       .select('id,descripcion,codigo_referencia,marca,pos').eq('activo', true)
-      .ilike('descripcion', `%${texto}%`).limit(6)
+      .or(`descripcion.ilike.%${texto}%,sku_interno.ilike.%${texto}%`).limit(6)
     setArticuloSugs(data ?? [])
     setBuscandoArticulo(false)
   }

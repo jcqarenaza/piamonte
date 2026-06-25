@@ -154,7 +154,7 @@ export default function ComprasClient() {
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
     const { data } = await supabase.from('articulos_maestro')
       .select('id,descripcion,sku_interno').eq('activo', true)
-      .ilike('descripcion', `%${texto}%`).limit(6)
+      .or(`descripcion.ilike.%${texto}%,sku_interno.ilike.%${texto}%`).limit(6)
     setItemArticuloSugs(data ?? [])
   }
 

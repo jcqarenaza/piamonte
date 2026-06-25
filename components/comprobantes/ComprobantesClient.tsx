@@ -101,7 +101,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       .ilike('descripcion',`%${stockQ}%`).limit(8)
       .then(({data})=>setStockSugs(data??[]))
     supabase.from('articulos_maestro').select('id,descripcion,sku_interno,codigo_referencia').eq('activo',true)
-      .ilike('descripcion',`%${stockQ}%`).limit(6)
+      .or(`descripcion.ilike.%${stockQ}%,sku_interno.ilike.%${stockQ}%`).limit(6)
       .then(({data})=>setArticuloSugs(data??[]))
   },[stockQ,supabase])
 
