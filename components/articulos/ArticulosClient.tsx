@@ -331,15 +331,22 @@ export default function ArticulosClient() {
                       </span>
                     )}
                   </div>
-                  {/* Equivalencias por proveedor */}
+                  {/* Equivalencias por proveedor — si el código del proveedor coincide con el Pilkington
+                      de referencia, se marca con ✓ en vez de mostrarse como una equivalencia suelta.
+                      Pilkington es la marca/fábrica del vidrio; los proveedores (Gamma, Malatesta, Sekurit)
+                      son quienes lo distribuyen, y pueden vender exactamente ese mismo código. */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {a.equivalencias?.map(e => (
-                      <span key={e.id} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full text-white"
-                        style={{background: PROV_COLOR[e.proveedor] || '#6b7280'}}>
-                        {e.proveedor} {e.codigo_proveedor} · {moneyARS(e.costo_neto||0)}
-                        <button onClick={()=>quitarEquivalencia(e.id)} className="text-white/70 hover:text-white">✕</button>
-                      </span>
-                    ))}
+                    {a.equivalencias?.map(e => {
+                      const coincideConPilkington = !!a.codigo_referencia && e.codigo_proveedor === a.codigo_referencia
+                      return (
+                        <span key={e.id} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full text-white"
+                          style={{background: PROV_COLOR[e.proveedor] || '#6b7280'}}>
+                          {coincideConPilkington && <span title="Mismo código que el Pilkington de referencia">✓</span>}
+                          {e.proveedor} {e.codigo_proveedor} · {moneyARS(e.costo_neto||0)}
+                          <button onClick={()=>quitarEquivalencia(e.id)} className="text-white/70 hover:text-white">✕</button>
+                        </span>
+                      )
+                    })}
                     {faltan.map(p => (
                       <span key={p} className="text-[11px] px-2 py-1 rounded-full border border-dashed border-amber-300 text-amber-600 bg-amber-50">
                         Sin {p}
