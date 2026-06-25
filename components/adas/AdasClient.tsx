@@ -18,18 +18,46 @@ const PROCEDIMIENTOS_DEFAULT = [
   'Diagnóstico posterior.','Verificación de correcto funcionamiento.',
 ]
 
+// Mismo criterio que ya usa OrdenesClient para decidir si una OS lleva certificado ADAS —
+// se reusa acá para decidir, a partir de lo efectivamente facturado, qué certificado corresponde.
+function facturaTieneADAS(items: any[]): boolean {
+  return (items ?? []).some((it:any) => (it.d||'').toLowerCase().includes('adas') || (it.d||'').toLowerCase().includes('calibración') || (it.d||'').toLowerCase().includes('calibracion'))
+}
+
 interface Cert {
   id:string;numero:string;fecha:string;cliente:string|null;razon_social:string|null
   marca:string|null;modelo:string|null;anio:string|null;dominio:string|null
   vin:string|null;kilometraje:string|null;sistemas:string[];otros_sistemas:string|null
   procedimientos:string[];equipo:string;software:string;protocolos:string
-  observaciones:string|null;created_at:string
+  observaciones:string|null;created_at:string;comprobante_id?:string|null
 }
+interface CertInstalacion {
+  id:string;numero:string;fecha:string;cliente:string|null;razon_social:string|null
+  marca:string|null;modelo:string|null;anio:string|null;dominio:string|null
+  vin:string|null;kilometraje:string|null;piezas_instaladas:any[]|null
+  observaciones:string|null;created_at:string;comprobante_id?:string|null
+}
+interface ComprobanteMin {
+  id:string;numero:number|null;fecha:string;cliente_nombre:string|null;cliente_cuit:string|null
+  vehiculo:string|null;items:any[];total:number
+}
+
+type OrigenCert = 'manual' | 'comprobante'
 
 export default function AdasClient({ userId }: { userId: string }) {
   const [certs, setCerts] = useState<Cert[]>([])
+  const [certsInstalacion, setCertsInstalacion] = useState<CertInstalacion[]>([])
   const [open, setOpen] = useState(false)
   const supabase = createClient()
+
+  // Origen del certificado — manual (como siempre) o derivado de una factura
+  const [origen, setOrigen] = useState<OrigenCert>('manual')
+  const [compQ, setCompQ] = useState('')
+  const [compSugs, setCompSugs] = useState<ComprobanteMin[]>([])
+  const [compSel, setCompSel] = useState<ComprobanteMin|null>(null)
+  // Tipo que se va a emitir — se decide solo al elegir el comprobante, pero queda editable
+  // por si el operador necesita corregirlo a mano en un caso particular.
+  const [tipoAEmitir, setTipoAEmitir] = useState<'adas'|'instalacion'>('adas')
 
   const [form, setForm] = useState({
     fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
@@ -43,7 +71,40 @@ export default function AdasClient({ userId }: { userId: string }) {
   useEffect(() => {
     supabase.from('certificados_adas').select('*').order('created_at', { ascending: false })
       .then(({ data }) => setCerts((data ?? []) as Cert[]))
+    supabase.from('certificados_instalacion').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => setCertsInstalacion((data ?? []) as CertInstalacion[]))
   }, [supabase])
+
+  // Buscar comprobantes (facturas) por número o nombre de cliente
+  useEffect(() => {
+    if (compQ.trim().length < 2) { setCompSugs([]); return }
+    const esNumero = /^\d+$/.test(compQ.trim())
+    const query = supabase.from('comprobantes').select('id,numero,fecha,cliente_nombre,cliente_cuit,vehiculo,items,total')
+      .order('created_at', { ascending: false }).limit(8)
+    if (esNumero) query.eq('numero', parseInt(compQ.trim()))
+    else query.ilike('cliente_nombre', `%${compQ}%`)
+    query.then(({ data }) => setCompSugs((data ?? []) as ComprobanteMin[]))
+  }, [compQ, supabase])
+
+  // Al elegir el comprobante, se decide automáticamente el tipo de certificado según el concepto
+  // facturado, y se precargan los datos del cliente/vehículo para no tipearlos de nuevo.
+  function elegirComprobante(c: ComprobanteMin) {
+    setCompSel(c)
+    setCompSugs([])
+    const conADAS = facturaTieneADAS(c.items)
+    setTipoAEmitir(conADAS ? 'adas' : 'instalacion')
+    setForm(p => ({
+      ...p,
+      cliente: c.cliente_nombre || '',
+      marca: '', modelo: c.vehiculo || '',
+    }))
+  }
+
+  function cambiarOrigen(o: OrigenCert) {
+    setOrigen(o)
+    setCompSel(null); setCompQ(''); setCompSugs([])
+    if (o === 'manual') setTipoAEmitir('adas')
+  }
 
   function toggleSistema(s: string) {
     setSistemas(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
@@ -54,30 +115,62 @@ export default function AdasClient({ userId }: { userId: string }) {
 
   async function save() {
     if (!form.cliente && !form.razon_social) { alert('Ingresá el nombre del cliente.'); return }
-    const { data: num } = await supabase.rpc('next_adas_numero')
+    if (origen === 'comprobante' && !compSel) { alert('Buscá y elegí la factura de origen.'); return }
+
+    // Certificado ADAS — mismo flujo que ya existía
+    if (tipoAEmitir === 'adas') {
+      const { data: num } = await supabase.rpc('next_adas_numero')
+      const payload = {
+        numero: num, fecha: form.fecha, cliente: form.cliente || null,
+        razon_social: form.razon_social || null, marca: form.marca || null,
+        modelo: form.modelo || null, anio: form.anio || null,
+        dominio: form.dominio?.toUpperCase() || null, vin: form.vin || null,
+        kilometraje: form.kilometraje || null, sistemas,
+        otros_sistemas: form.otros_sistemas || null, procedimientos: procs,
+        equipo: form.equipo, software: form.software, protocolos: form.protocolos,
+        observaciones: form.observaciones || null, user_id: userId,
+        comprobante_id: compSel?.id || null,
+      }
+      await supabase.from('certificados_adas').insert(payload)
+      setOpen(false)
+      resetForm()
+      const { data } = await supabase.from('certificados_adas').select('*').order('created_at', { ascending: false })
+      setCerts((data ?? []) as Cert[])
+      if (payload.numero) printCertAdas({ ...payload, id: '', created_at: new Date().toISOString() } as Cert)
+      return
+    }
+
+    // Certificado de Instalación — numeración propia, sin sistemas/procedimientos ADAS,
+    // con las piezas instaladas tomadas directo de la factura de origen.
+    const { data: num } = await supabase.rpc('next_instalacion_numero')
+    const piezas = compSel?.items?.map((it:any) => ({ d: it.d, c: it.c })) ?? []
     const payload = {
       numero: num, fecha: form.fecha, cliente: form.cliente || null,
       razon_social: form.razon_social || null, marca: form.marca || null,
       modelo: form.modelo || null, anio: form.anio || null,
       dominio: form.dominio?.toUpperCase() || null, vin: form.vin || null,
-      kilometraje: form.kilometraje || null, sistemas,
-      otros_sistemas: form.otros_sistemas || null, procedimientos: procs,
-      equipo: form.equipo, software: form.software, protocolos: form.protocolos,
-      observaciones: form.observaciones || null, user_id: userId
+      kilometraje: form.kilometraje || null,
+      piezas_instaladas: piezas.length ? piezas : null,
+      observaciones: form.observaciones || null, user_id: userId,
+      comprobante_id: compSel?.id || null,
     }
-    await supabase.from('certificados_adas').insert(payload)
+    await supabase.from('certificados_instalacion').insert(payload)
     setOpen(false)
+    resetForm()
+    const { data } = await supabase.from('certificados_instalacion').select('*').order('created_at', { ascending: false })
+    setCertsInstalacion((data ?? []) as CertInstalacion[])
+    if (payload.numero) printCertInstalacion({ ...payload, id: '', created_at: new Date().toISOString() } as CertInstalacion)
+  }
+
+  function resetForm() {
     setForm({ fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
       anio: '', dominio: '', vin: '', kilometraje: '', otros_sistemas: '',
       equipo: 'MAHLE ADAS', software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '' })
     setSistemas([...SISTEMAS_DEFAULT]); setProcs([...PROCEDIMIENTOS_DEFAULT])
-    const { data } = await supabase.from('certificados_adas').select('*').order('created_at', { ascending: false })
-    setCerts((data ?? []) as Cert[])
-    // Imprimir automáticamente el recién creado
-    if (payload.numero) printCert({ ...payload, id: '', created_at: new Date().toISOString() } as Cert)
+    setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setTipoAEmitir('adas')
   }
 
-  function printCert(c: Cert) {
+  function printCertAdas(c: Cert) {
     const checked = (v: boolean) => v
       ? `<span style="color:#00A550;font-weight:bold;font-size:16px">✔</span>`
       : `<span style="color:#ccc;font-size:16px">☐</span>`
@@ -135,7 +228,6 @@ export default function AdasClient({ userId }: { userId: string }) {
   @media print{body{width:auto;margin:0;font-size:10px}@page{margin:4mm 7mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
 </style></head><body>
 
-<!-- HEADER -->
 <div class="header">
   <div class="logo-area">
     <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;"/>
@@ -149,16 +241,13 @@ export default function AdasClient({ userId }: { userId: string }) {
   </div>
 </div>
 
-<!-- TÍTULO -->
 <div class="title-bar">
   <div class="cert-title">CERTIFICADO DE<br><span class="accent">CALIBRACIÓN ADAS</span></div>
   <div class="cert-num">N° ${c.numero}</div>
   <div class="cert-fecha">Fecha: ${fechaFmt}</div>
 </div>
 
-<!-- CUERPO 3 COLUMNAS -->
 <div class="body">
-  <!-- Col 1: Cliente + Vehículo -->
   <div>
     <div class="section" style="margin-bottom:10px">
       <div class="sec-title"><span>👤</span> DATOS DEL CLIENTE</div>
@@ -172,7 +261,6 @@ export default function AdasClient({ userId }: { userId: string }) {
     </div>
   </div>
 
-  <!-- Col 2: Sistemas calibrados -->
   <div class="section">
     <div class="sec-title"><span>🎯</span> SISTEMAS CALIBRADOS</div>
     ${allSist}
@@ -183,7 +271,6 @@ export default function AdasClient({ userId }: { userId: string }) {
     </div>
   </div>
 
-  <!-- Col 3: Procedimiento + Resultado -->
   <div>
     <div class="section" style="margin-bottom:10px">
       <div class="sec-title"><span>🔧</span> PROCEDIMIENTO REALIZADO</div>
@@ -201,7 +288,6 @@ export default function AdasClient({ userId }: { userId: string }) {
   </div>
 </div>
 
-<!-- EQUIPO UTILIZADO -->
 <div class="equip-row">
   <div class="equip-box">
     <div class="sec-title"><span>⚙</span> EQUIPO UTILIZADO</div>
@@ -218,7 +304,6 @@ export default function AdasClient({ userId }: { userId: string }) {
   </div>
 </div>
 
-<!-- FIRMA + SELLO + QR -->
 <div class="footer-sig">
   <div class="sig-box">
     <div class="sec-title">✍ RESPONSABLE TÉCNICO</div>
@@ -246,7 +331,6 @@ export default function AdasClient({ userId }: { userId: string }) {
   </div>
 </div>
 
-<!-- FOOTER -->
 <div class="footer-bar">
   <div>
     <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;"/>
@@ -267,13 +351,117 @@ export default function AdasClient({ userId }: { userId: string }) {
     w.document.close()
   }
 
+  // Certificado de Instalación — diseño más simple, sin sistemas ADAS ni procedimientos de
+  // calibración, centrado en "qué piezas se instalaron" (tomadas de la factura de origen).
+  function printCertInstalacion(c: CertInstalacion) {
+    const fechaFmt = c.fecha.split('-').reverse().join('/')
+    const piezasHtml = (c.piezas_instaladas ?? []).map((p:any) =>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px">
+        <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('') || '<p style="font-size:11px;color:#888">Sin detalle de piezas</p>'
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Certificado de Instalación N° ${c.numero}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:11px}
+  .header{background:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1d4ed8}
+  .title-bar{background:#fff;padding:10px 16px 6px;border-bottom:4px solid #1d4ed8}
+  .cert-title{font-size:26px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
+  .cert-title .accent{color:#1d4ed8}
+  .cert-num{font-size:13px;font-weight:bold;color:#1d4ed8;margin-top:4px}
+  .cert-fecha{font-size:12px;color:#555;margin-top:2px}
+  .body{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 16px}
+  .section{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
+  .sec-title{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;color:#1a1a1a}
+  .sec-title span{color:#1d4ed8}
+  .field-line{border:none;border-bottom:1px solid #888;width:100%;margin:4px 0 8px;display:block;font-size:11.5px;color:#1a1a1a}
+  .field-label{font-size:10px;color:#555;margin-top:4px}
+  .footer-sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px 16px}
+  .sig-box{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
+  .footer-bar{background:#f5f5f5;padding:8px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:2px solid #1d4ed8}
+  .footer-contact{display:flex;gap:20px;font-size:11px}
+  .footer-slogan{font-size:9px;color:#555;text-align:center;padding:3px 20px;background:#f0f0f0}
+  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:4mm 7mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+<div class="header">
+  <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;"/>
+</div>
+
+<div class="title-bar">
+  <div class="cert-title">CERTIFICADO DE<br><span class="accent">INSTALACIÓN</span></div>
+  <div class="cert-num">N° ${c.numero}</div>
+  <div class="cert-fecha">Fecha: ${fechaFmt}</div>
+</div>
+
+<div class="body">
+  <div>
+    <div class="section" style="margin-bottom:10px">
+      <div class="sec-title"><span>👤</span> DATOS DEL CLIENTE</div>
+      <div class="field-label">Nombre y Apellido / Razón Social:</div>
+      <div class="field-line">${c.cliente || c.razon_social || ''}</div>
+    </div>
+    <div class="section">
+      <div class="sec-title"><span>🚗</span> DATOS DEL VEHÍCULO</div>
+      ${[['Marca', c.marca],['Modelo', c.modelo],['Año', c.anio],['Dominio', c.dominio],['VIN (N° de chasis)', c.vin],['Kilometraje', c.kilometraje]].map(([l,v]) =>
+        `<div class="field-label">${l}:</div><div class="field-line">${v || ''}</div>`).join('')}
+    </div>
+  </div>
+  <div class="section">
+    <div class="sec-title"><span>🔧</span> PIEZAS INSTALADAS</div>
+    ${piezasHtml}
+    ${c.observaciones ? `<div style="font-size:10.5px;margin-top:10px"><b>Observaciones:</b><br>${c.observaciones}</div>` : ''}
+  </div>
+</div>
+
+<div class="footer-sig">
+  <div class="sig-box">
+    <div class="sec-title">✍ RESPONSABLE TÉCNICO</div>
+    <div style="margin:4px 0"><img src="${FIRMA_SAPPA}" alt="firma" style="height:44px;object-fit:contain;max-width:120px"/></div>
+    <div style="font-size:12px;font-weight:bold;margin-top:4px">Mario Sappa</div>
+    <div style="font-size:10px;color:#555">Técnico Especialista en Cristales Automotrices</div>
+  </div>
+  <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <div style="border:3px solid #1d4ed8;border-radius:50%;width:88px;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px">
+      <div style="font-size:7px;font-weight:900;color:#1d4ed8;letter-spacing:.5px;line-height:1.2">PARABRISAS<br>EL PIAMONTE</div>
+      <div style="font-size:6.5px;font-weight:700;color:#555;letter-spacing:.3px">GARANTÍA Y CALIDAD</div>
+    </div>
+  </div>
+  <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+    <div style="font-size:10px;font-weight:bold;text-align:center">CONSULTAS Y GARANTÍA</div>
+    <div style="background:#1d4ed8;color:#fff;border-radius:6px;padding:6px 14px;font-size:10px;text-align:center;font-weight:bold">📱 2302 595969</div>
+    <div style="font-size:9px;color:#1d4ed8;font-weight:bold">Cert. N° ${c.numero}</div>
+  </div>
+</div>
+
+<div class="footer-bar">
+  <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;"/>
+  <div class="footer-contact">
+    <div style="color:#1d4ed8;font-weight:bold;font-size:13px">📞 2302 595969</div>
+    <div style="color:#1d4ed8;font-weight:bold;font-size:13px">📍 General Pico, La Pampa</div>
+  </div>
+</div>
+<div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
+
+<script>window.print()<\/script>
+</body></html>`
+    const w = window.open('', '_blank')!
+    w.document.write(html)
+    w.document.close()
+  }
+
+  const todosCerts = [
+    ...certs.map(c => ({ ...c, _tipo: 'adas' as const })),
+    ...certsInstalacion.map(c => ({ ...c, _tipo: 'instalacion' as const })),
+  ].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
   return (
     <div>
       <div className="flex justify-end mb-5">
-        <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nuevo certificado ADAS</button>
+        <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nuevo certificado</button>
       </div>
 
-      {certs.length === 0 ? (
+      {todosCerts.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-4xl mb-3">🛡</p>
           <p className="font-saira font-bold text-p-ink text-lg">Sin certificados todavía</p>
@@ -281,10 +469,11 @@ export default function AdasClient({ userId }: { userId: string }) {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {certs.map(c => (
-            <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
-              <div className="bg-p-green text-white font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0">
-                N° ${c.numero.toString().padStart(7,'0')}
+          {todosCerts.map((c:any) => (
+            <div key={`${c._tipo}-${c.id}`} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
+              <div className="font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0 text-white"
+                style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8'}}>
+                {c._tipo === 'adas' ? '🛡 ADAS' : '🔧 INST'} N° {c.numero}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-saira font-bold text-p-ink">{c.cliente || c.razon_social || '—'}</p>
@@ -292,18 +481,75 @@ export default function AdasClient({ userId }: { userId: string }) {
                   {[c.marca, c.modelo, c.anio, c.dominio].filter(Boolean).join(' · ')}
                   {' · '}{c.fecha.split('-').reverse().join('/')}
                 </p>
-                <p className="text-xs text-p-green mt-0.5 font-semibold">
-                  {c.sistemas.length} sistema(s) calibrado(s)
-                </p>
+                {c._tipo === 'adas'
+                  ? <p className="text-xs text-p-green mt-0.5 font-semibold">{c.sistemas?.length ?? 0} sistema(s) calibrado(s)</p>
+                  : <p className="text-xs text-blue-700 mt-0.5 font-semibold">{c.piezas_instaladas?.length ?? 0} pieza(s) instalada(s)</p>}
               </div>
-              <button onClick={() => printCert(c)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨 Imprimir</button>
+              <button onClick={() => c._tipo === 'adas' ? printCertAdas(c) : printCertInstalacion(c)}
+                style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                🖨 Imprimir
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Nuevo certificado de calibración ADAS">
+      <Modal open={open} onClose={() => setOpen(false)} title="Nuevo certificado">
         <div className="flex flex-col gap-4">
+
+          {/* Origen del certificado */}
+          <div>
+            <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">¿De dónde sale este certificado?</p>
+            <div className="flex gap-2">
+              <button onClick={()=>cambiarOrigen('manual')}
+                style={{background:origen==='manual'?'#0C1810':'#fff',color:origen==='manual'?'#fff':'#4A6655',border:`1.5px solid ${origen==='manual'?'#0C1810':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                ✍ Cargar a mano
+              </button>
+              <button onClick={()=>cambiarOrigen('comprobante')}
+                style={{background:origen==='comprobante'?'#1d4ed8':'#fff',color:origen==='comprobante'?'#fff':'#4A6655',border:`1.5px solid ${origen==='comprobante'?'#1d4ed8':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                🧾 Buscar factura
+              </button>
+            </div>
+          </div>
+
+          {origen === 'comprobante' && (
+            <div>
+              <Field label="Buscar factura por número o cliente">
+                <div className="relative">
+                  <Input value={compQ} onChange={e=>{setCompQ(e.target.value); setCompSel(null)}} placeholder="N° de factura o nombre del cliente…" />
+                  {compSugs.length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-56 overflow-y-auto mt-1">
+                      {compSugs.map(c => (
+                        <button key={c.id} onClick={()=>elegirComprobante(c)}
+                          className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                          <p className="font-medium text-p-ink">FA-{String(c.numero||0).padStart(8,'0')} · {c.cliente_nombre || 'Consumidor Final'}</p>
+                          <p className="text-[10px] text-p-ink2">{c.vehiculo || 'Sin vehículo'} · {c.fecha?.split('-').reverse().join('/')} · {facturaTieneADAS(c.items) ? '🛡 incluye ADAS' : '🔧 sin ADAS'}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
+              {compSel && (
+                <div className={`mt-2 rounded-xl p-3 border ${tipoAEmitir === 'adas' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+                  <p className="text-sm font-semibold" style={{color: tipoAEmitir === 'adas' ? '#166534' : '#1d4ed8'}}>
+                    ✓ FA-{String(compSel.numero||0).padStart(8,'0')} — {compSel.cliente_nombre || 'Consumidor Final'}
+                  </p>
+                  <p className="text-xs mt-1" style={{color: tipoAEmitir === 'adas' ? '#15803d' : '#1e40af'}}>
+                    {tipoAEmitir === 'adas'
+                      ? '🛡 Esta factura incluye Calibración ADAS — se va a emitir el Certificado ADAS.'
+                      : '🔧 Esta factura no incluye Calibración ADAS — se va a emitir el Certificado de Instalación.'}
+                  </p>
+                  <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer" style={{color: tipoAEmitir === 'adas' ? '#166534' : '#1d4ed8'}}>
+                    <input type="checkbox" checked={tipoAEmitir === 'adas'}
+                      onChange={e => setTipoAEmitir(e.target.checked ? 'adas' : 'instalacion')}
+                      className="accent-p-green" />
+                    Forzar Certificado ADAS (corregir manualmente si hace falta)
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Fecha */}
           <Field label="Fecha del certificado">
@@ -334,55 +580,72 @@ export default function AdasClient({ userId }: { userId: string }) {
             </div>
           </div>
 
-          {/* Sistemas */}
-          <div>
-            <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🎯 Sistemas calibrados</p>
-            <div className="grid grid-cols-1 gap-1.5">
-              {SISTEMAS_DEFAULT.map(s => (
-                <label key={s} className="flex items-center gap-2.5 cursor-pointer text-sm py-1">
-                  <input type="checkbox" checked={sistemas.includes(s)} onChange={() => toggleSistema(s)}
-                    className="w-4 h-4 accent-p-green rounded" />
-                  {s}
-                </label>
-              ))}
-              <div className="mt-1">
-                <Field label="Otro (especificar)">
-                  <Input value={form.otros_sistemas} onChange={e => setForm(p => ({ ...p, otros_sistemas: e.target.value }))} placeholder="Sistema adicional" />
-                </Field>
+          {/* Sistemas y procedimientos — solo aplican si se va a emitir Certificado ADAS */}
+          {tipoAEmitir === 'adas' && (
+            <>
+              <div>
+                <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🎯 Sistemas calibrados</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {SISTEMAS_DEFAULT.map(s => (
+                    <label key={s} className="flex items-center gap-2.5 cursor-pointer text-sm py-1">
+                      <input type="checkbox" checked={sistemas.includes(s)} onChange={() => toggleSistema(s)}
+                        className="w-4 h-4 accent-p-green rounded" />
+                      {s}
+                    </label>
+                  ))}
+                  <div className="mt-1">
+                    <Field label="Otro (especificar)">
+                      <Input value={form.otros_sistemas} onChange={e => setForm(p => ({ ...p, otros_sistemas: e.target.value }))} placeholder="Sistema adicional" />
+                    </Field>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🔧 Procedimiento realizado</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {PROCEDIMIENTOS_DEFAULT.map(p => (
+                    <label key={p} className="flex items-center gap-2.5 cursor-pointer text-sm py-1">
+                      <input type="checkbox" checked={procs.includes(p)} onChange={() => toggleProc(p)}
+                        className="w-4 h-4 accent-p-green rounded" />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">⚙ Equipo utilizado</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Equipo"><Input value={form.equipo} onChange={e => setForm(p => ({ ...p, equipo: e.target.value }))} /></Field>
+                  <Field label="Software"><Input value={form.software} onChange={e => setForm(p => ({ ...p, software: e.target.value }))} /></Field>
+                  <Field label="Protocolos"><Input value={form.protocolos} onChange={e => setForm(p => ({ ...p, protocolos: e.target.value }))} /></Field>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Piezas instaladas — solo si se va a emitir Certificado de Instalación y viene de una factura */}
+          {tipoAEmitir === 'instalacion' && origen === 'comprobante' && compSel && (
+            <div>
+              <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🔧 Piezas a certificar (de la factura)</p>
+              <div className="bg-p-light rounded-xl p-3">
+                {(compSel.items ?? []).map((it:any, i:number) => (
+                  <div key={i} className="flex justify-between text-sm py-1">
+                    <span>{it.d}</span><span className="font-mono font-bold">×{it.c}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Procedimientos */}
-          <div>
-            <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🔧 Procedimiento realizado</p>
-            <div className="grid grid-cols-1 gap-1.5">
-              {PROCEDIMIENTOS_DEFAULT.map(p => (
-                <label key={p} className="flex items-center gap-2.5 cursor-pointer text-sm py-1">
-                  <input type="checkbox" checked={procs.includes(p)} onChange={() => toggleProc(p)}
-                    className="w-4 h-4 accent-p-green rounded" />
-                  {p}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Equipo */}
-          <div>
-            <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">⚙ Equipo utilizado</p>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Equipo"><Input value={form.equipo} onChange={e => setForm(p => ({ ...p, equipo: e.target.value }))} /></Field>
-              <Field label="Software"><Input value={form.software} onChange={e => setForm(p => ({ ...p, software: e.target.value }))} /></Field>
-              <Field label="Protocolos"><Input value={form.protocolos} onChange={e => setForm(p => ({ ...p, protocolos: e.target.value }))} /></Field>
-            </div>
-          </div>
-
-          {/* Observaciones */}
           <Field label="Observaciones"><Input value={form.observaciones} onChange={e => setForm(p => ({ ...p, observaciones: e.target.value }))} placeholder="Observaciones opcionales" /></Field>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-p-line">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Guardar e imprimir</button>
+            <button onClick={save} style={{background: tipoAEmitir === 'adas' ? '#00A550' : '#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+              Guardar e imprimir {tipoAEmitir === 'adas' ? 'Certificado ADAS' : 'Certificado de Instalación'}
+            </button>
           </div>
         </div>
       </Modal>
