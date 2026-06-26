@@ -11,7 +11,7 @@ export default async function AdasPage() {
     <div>
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🛡</span>
-        <h1 className="font-saira font-bold text-2xl text-p-ink">Certificados ADAS</h1>
+        <h1 className="font-saira font-bold text-2xl text-p-ink">Certificados</h1>
       </div>
       <p className="text-p-ink2 text-sm mb-5">
         Generá el certificado de calibración ADAS con numeración correlativa. 

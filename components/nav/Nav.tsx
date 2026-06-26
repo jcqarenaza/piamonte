@@ -25,7 +25,7 @@ const GRUPOS = [
       { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
       { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
       { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
-      { id:'adas',            href:'/adas',            label:'Cert. ADAS',      icon:'🛡️' },
+      { id:'adas',            href:'/adas',            label:'Certificados',      icon:'🛡️' },
       { id:'cuenta-corriente',       href:'/cuenta-corriente',       label:'Cta. Corriente',  icon:'📒' },
       { id:'busqueda-comprobantes',   href:'/busqueda-comprobantes',   label:'Búsqueda',        icon:'🔎' },
     ]
