@@ -19,7 +19,9 @@ const PROCEDIMIENTOS_DEFAULT = [
 ]
 
 // Mismo criterio que ya usa OrdenesClient para decidir si una OS lleva certificado ADAS —
-// se reusa acá para decidir, a partir de lo efectivamente facturado, qué certificado corresponde.
+// se reusa acá para decidir, a partir de lo efectivamente facturado, qué versión del
+// certificado corresponde emitir. Para el usuario esto es un solo "Certificado": el sistema
+// decide internamente si incluye la parte de calibración ADAS o no.
 function facturaTieneADAS(items: any[]): boolean {
   return (items ?? []).some((it:any) => (it.d||'').toLowerCase().includes('adas') || (it.d||'').toLowerCase().includes('calibración') || (it.d||'').toLowerCase().includes('calibracion'))
 }
@@ -55,9 +57,9 @@ export default function AdasClient({ userId }: { userId: string }) {
   const [compQ, setCompQ] = useState('')
   const [compSugs, setCompSugs] = useState<ComprobanteMin[]>([])
   const [compSel, setCompSel] = useState<ComprobanteMin|null>(null)
-  // Tipo que se va a emitir — se decide solo al elegir el comprobante, pero queda editable
-  // por si el operador necesita corregirlo a mano en un caso particular.
-  const [tipoAEmitir, setTipoAEmitir] = useState<'adas'|'instalacion'>('adas')
+  // Si el certificado incluye o no la calibración ADAS — se decide solo al elegir la factura,
+  // pero en carga manual el operador lo marca con un simple toggle, no como una categoría aparte.
+  const [incluyeAdas, setIncluyeAdas] = useState(false)
 
   const [form, setForm] = useState({
     fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
@@ -86,13 +88,12 @@ export default function AdasClient({ userId }: { userId: string }) {
     query.then(({ data }) => setCompSugs((data ?? []) as ComprobanteMin[]))
   }, [compQ, supabase])
 
-  // Al elegir el comprobante, se decide automáticamente el tipo de certificado según el concepto
-  // facturado, y se precargan los datos del cliente/vehículo para no tipearlos de nuevo.
+  // Al elegir el comprobante, se decide automáticamente si el certificado incluye la calibración
+  // ADAS según el concepto facturado, y se precargan los datos del cliente/vehículo.
   function elegirComprobante(c: ComprobanteMin) {
     setCompSel(c)
     setCompSugs([])
-    const conADAS = facturaTieneADAS(c.items)
-    setTipoAEmitir(conADAS ? 'adas' : 'instalacion')
+    setIncluyeAdas(facturaTieneADAS(c.items))
     setForm(p => ({
       ...p,
       cliente: c.cliente_nombre || '',
@@ -103,7 +104,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   function cambiarOrigen(o: OrigenCert) {
     setOrigen(o)
     setCompSel(null); setCompQ(''); setCompSugs([])
-    if (o === 'manual') setTipoAEmitir('adas')
+    if (o === 'manual') setIncluyeAdas(false)
   }
 
   function toggleSistema(s: string) {
@@ -117,8 +118,8 @@ export default function AdasClient({ userId }: { userId: string }) {
     if (!form.cliente && !form.razon_social) { alert('Ingresá el nombre del cliente.'); return }
     if (origen === 'comprobante' && !compSel) { alert('Buscá y elegí la factura de origen.'); return }
 
-    // Certificado ADAS — mismo flujo que ya existía
-    if (tipoAEmitir === 'adas') {
+    // Certificado con calibración ADAS — mismo flujo que ya existía
+    if (incluyeAdas) {
       const { data: num } = await supabase.rpc('next_adas_numero')
       const payload = {
         numero: num, fecha: form.fecha, cliente: form.cliente || null,
@@ -140,8 +141,8 @@ export default function AdasClient({ userId }: { userId: string }) {
       return
     }
 
-    // Certificado de Instalación — numeración propia, sin sistemas/procedimientos ADAS,
-    // con las piezas instaladas tomadas directo de la factura de origen.
+    // Certificado sin calibración ADAS (de instalación) — numeración propia, con las piezas
+    // tomadas directo de la factura de origen cuando corresponde.
     const { data: num } = await supabase.rpc('next_instalacion_numero')
     const piezas = compSel?.items?.map((it:any) => ({ d: it.d, c: it.c })) ?? []
     const payload = {
@@ -167,7 +168,7 @@ export default function AdasClient({ userId }: { userId: string }) {
       anio: '', dominio: '', vin: '', kilometraje: '', otros_sistemas: '',
       equipo: 'MAHLE ADAS', software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '' })
     setSistemas([...SISTEMAS_DEFAULT]); setProcs([...PROCEDIMIENTOS_DEFAULT])
-    setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setTipoAEmitir('adas')
+    setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setIncluyeAdas(false)
   }
 
   function printCertAdas(c: Cert) {
@@ -188,7 +189,7 @@ export default function AdasClient({ userId }: { userId: string }) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Certificado ADAS N° ${c.numero}</title>
+<title>Certificado N° ${c.numero}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:11px}
@@ -351,8 +352,8 @@ export default function AdasClient({ userId }: { userId: string }) {
     w.document.close()
   }
 
-  // Certificado de Instalación — diseño más simple, sin sistemas ADAS ni procedimientos de
-  // calibración, centrado en "qué piezas se instalaron" (tomadas de la factura de origen).
+  // Versión sin calibración ADAS — mismo "Certificado" desde la perspectiva del usuario,
+  // pero con un diseño centrado en las piezas instaladas en vez de sistemas/procedimientos.
   function printCertInstalacion(c: CertInstalacion) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
     const piezasHtml = (c.piezas_instaladas ?? []).map((p:any) =>
@@ -360,7 +361,7 @@ export default function AdasClient({ userId }: { userId: string }) {
         <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('') || '<p style="font-size:11px;color:#888">Sin detalle de piezas</p>'
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Certificado de Instalación N° ${c.numero}</title>
+<title>Certificado N° ${c.numero}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:11px}
@@ -450,6 +451,8 @@ export default function AdasClient({ userId }: { userId: string }) {
     w.document.close()
   }
 
+  // Un solo listado de "Certificados" — el tipo (con o sin ADAS) es solo una etiqueta,
+  // no una categoría que el usuario tenga que elegir de antemano.
   const todosCerts = [
     ...certs.map(c => ({ ...c, _tipo: 'adas' as const })),
     ...certsInstalacion.map(c => ({ ...c, _tipo: 'instalacion' as const })),
@@ -457,7 +460,11 @@ export default function AdasClient({ userId }: { userId: string }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+        <div>
+          <h1 className="font-saira font-bold text-xl text-p-ink">Certificados</h1>
+          <p className="text-xs text-p-ink2 mt-0.5">Se generan a partir de una factura o se cargan a mano. Incluyen la calibración ADAS automáticamente cuando corresponde.</p>
+        </div>
         <button onClick={() => setOpen(true)} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Nuevo certificado</button>
       </div>
 
@@ -473,7 +480,7 @@ export default function AdasClient({ userId }: { userId: string }) {
             <div key={`${c._tipo}-${c.id}`} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
               <div className="font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0 text-white"
                 style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8'}}>
-                {c._tipo === 'adas' ? '🛡 ADAS' : '🔧 INST'} N° {c.numero}
+                N° {c.numero}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-saira font-bold text-p-ink">{c.cliente || c.razon_social || '—'}</p>
@@ -481,9 +488,9 @@ export default function AdasClient({ userId }: { userId: string }) {
                   {[c.marca, c.modelo, c.anio, c.dominio].filter(Boolean).join(' · ')}
                   {' · '}{c.fecha.split('-').reverse().join('/')}
                 </p>
-                {c._tipo === 'adas'
-                  ? <p className="text-xs text-p-green mt-0.5 font-semibold">{c.sistemas?.length ?? 0} sistema(s) calibrado(s)</p>
-                  : <p className="text-xs text-blue-700 mt-0.5 font-semibold">{c.piezas_instaladas?.length ?? 0} pieza(s) instalada(s)</p>}
+                <p className="text-xs mt-0.5 font-semibold" style={{color: c._tipo === 'adas' ? '#00A550' : '#1d4ed8'}}>
+                  {c._tipo === 'adas' ? 'Incluye calibración ADAS' : 'Instalación'}
+                </p>
               </div>
               <button onClick={() => c._tipo === 'adas' ? printCertAdas(c) : printCertInstalacion(c)}
                 style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
@@ -531,24 +538,31 @@ export default function AdasClient({ userId }: { userId: string }) {
                 </div>
               </Field>
               {compSel && (
-                <div className={`mt-2 rounded-xl p-3 border ${tipoAEmitir === 'adas' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
-                  <p className="text-sm font-semibold" style={{color: tipoAEmitir === 'adas' ? '#166534' : '#1d4ed8'}}>
+                <div className={`mt-2 rounded-xl p-3 border ${incluyeAdas ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+                  <p className="text-sm font-semibold" style={{color: incluyeAdas ? '#166534' : '#1d4ed8'}}>
                     ✓ FA-{String(compSel.numero||0).padStart(8,'0')} — {compSel.cliente_nombre || 'Consumidor Final'}
                   </p>
-                  <p className="text-xs mt-1" style={{color: tipoAEmitir === 'adas' ? '#15803d' : '#1e40af'}}>
-                    {tipoAEmitir === 'adas'
-                      ? '🛡 Esta factura incluye Calibración ADAS — se va a emitir el Certificado ADAS.'
-                      : '🔧 Esta factura no incluye Calibración ADAS — se va a emitir el Certificado de Instalación.'}
+                  <p className="text-xs mt-1" style={{color: incluyeAdas ? '#15803d' : '#1e40af'}}>
+                    {incluyeAdas
+                      ? '🛡 Esta factura incluye Calibración ADAS — el certificado la va a incluir.'
+                      : '🔧 Esta factura no incluye Calibración ADAS.'}
                   </p>
-                  <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer" style={{color: tipoAEmitir === 'adas' ? '#166534' : '#1d4ed8'}}>
-                    <input type="checkbox" checked={tipoAEmitir === 'adas'}
-                      onChange={e => setTipoAEmitir(e.target.checked ? 'adas' : 'instalacion')}
+                  <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer" style={{color: incluyeAdas ? '#166534' : '#1d4ed8'}}>
+                    <input type="checkbox" checked={incluyeAdas}
+                      onChange={e => setIncluyeAdas(e.target.checked)}
                       className="accent-p-green" />
-                    Forzar Certificado ADAS (corregir manualmente si hace falta)
+                    Incluye calibración ADAS (corregir manualmente si hace falta)
                   </label>
                 </div>
               )}
             </div>
+          )}
+
+          {origen === 'manual' && (
+            <label className="flex items-center gap-2.5 cursor-pointer bg-p-light rounded-xl p-3">
+              <input type="checkbox" checked={incluyeAdas} onChange={e => setIncluyeAdas(e.target.checked)} className="w-4 h-4 accent-p-green rounded" />
+              <span className="text-sm font-medium text-p-ink">Este certificado incluye calibración ADAS</span>
+            </label>
           )}
 
           {/* Fecha */}
@@ -580,8 +594,8 @@ export default function AdasClient({ userId }: { userId: string }) {
             </div>
           </div>
 
-          {/* Sistemas y procedimientos — solo aplican si se va a emitir Certificado ADAS */}
-          {tipoAEmitir === 'adas' && (
+          {/* Sistemas y procedimientos — solo aplican si el certificado incluye calibración ADAS */}
+          {incluyeAdas && (
             <>
               <div>
                 <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🎯 Sistemas calibrados</p>
@@ -625,8 +639,8 @@ export default function AdasClient({ userId }: { userId: string }) {
             </>
           )}
 
-          {/* Piezas instaladas — solo si se va a emitir Certificado de Instalación y viene de una factura */}
-          {tipoAEmitir === 'instalacion' && origen === 'comprobante' && compSel && (
+          {/* Piezas instaladas — solo si NO incluye ADAS y viene de una factura */}
+          {!incluyeAdas && origen === 'comprobante' && compSel && (
             <div>
               <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🔧 Piezas a certificar (de la factura)</p>
               <div className="bg-p-light rounded-xl p-3">
@@ -643,8 +657,8 @@ export default function AdasClient({ userId }: { userId: string }) {
 
           <div className="flex justify-end gap-2 pt-2 border-t border-p-line">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={save} style={{background: tipoAEmitir === 'adas' ? '#00A550' : '#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-              Guardar e imprimir {tipoAEmitir === 'adas' ? 'Certificado ADAS' : 'Certificado de Instalación'}
+            <button onClick={save} style={{background: incluyeAdas ? '#00A550' : '#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+              Guardar e imprimir
             </button>
           </div>
         </div>
