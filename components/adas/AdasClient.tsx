@@ -26,12 +26,29 @@ function facturaTieneADAS(items: any[]): boolean {
   return (items ?? []).some((it:any) => (it.d||'').toLowerCase().includes('adas') || (it.d||'').toLowerCase().includes('calibración') || (it.d||'').toLowerCase().includes('calibracion'))
 }
 
+// Conceptos que son insumos o servicios facturados, no la pieza física de vidrio — nunca
+// van listados en el certificado. El certificado documenta qué vidrio se instaló (si hay
+// alguno en la factura), no cómo se cobró el trabajo.
+const CONCEPTOS_NO_PIEZA = ['mano de obra', 'pegamento', 'activador', 'primer', 'gel', 'sensor', 'calibración adas', 'calibracion adas']
+
+function esPiezaFisica(descripcion: string): boolean {
+  const d = (descripcion || '').toLowerCase()
+  return !CONCEPTOS_NO_PIEZA.some(c => d.includes(c))
+}
+
+// De toda la factura, devuelve solo las piezas de vidrio reales — puede ser ninguna
+// (ej: el cliente solo pagó la calibración ADAS sin cambiar el vidrio).
+function piezasFisicasDe(items: any[]): {d:string; c:number}[] {
+  return (items ?? []).filter((it:any) => esPiezaFisica(it.d)).map((it:any) => ({ d: it.d, c: it.c }))
+}
+
 interface Cert {
   id:string;numero:string;fecha:string;cliente:string|null;razon_social:string|null
   marca:string|null;modelo:string|null;anio:string|null;dominio:string|null
   vin:string|null;kilometraje:string|null;sistemas:string[];otros_sistemas:string|null
   procedimientos:string[];equipo:string;software:string;protocolos:string
   observaciones:string|null;created_at:string;comprobante_id?:string|null
+  piezas_instaladas?: {d:string;c:number}[] | null
 }
 interface CertInstalacion {
   id:string;numero:string;fecha:string;cliente:string|null;razon_social:string|null
@@ -118,7 +135,12 @@ export default function AdasClient({ userId }: { userId: string }) {
     if (!form.cliente && !form.razon_social) { alert('Ingresá el nombre del cliente.'); return }
     if (origen === 'comprobante' && !compSel) { alert('Buscá y elegí la factura de origen.'); return }
 
-    // Certificado con calibración ADAS — mismo flujo que ya existía
+    // Pieza(s) de vidrio reales de la factura — puede no haber ninguna si el cliente solo
+    // pagó la calibración ADAS sin cambiar el vidrio.
+    const piezas = compSel ? piezasFisicasDe(compSel.items) : []
+
+    // Certificado con calibración ADAS — mismo flujo que ya existía, ahora con la pieza
+    // de vidrio (si la hay) guardada junto al certificado.
     if (incluyeAdas) {
       const { data: num } = await supabase.rpc('next_adas_numero')
       const payload = {
@@ -131,6 +153,7 @@ export default function AdasClient({ userId }: { userId: string }) {
         equipo: form.equipo, software: form.software, protocolos: form.protocolos,
         observaciones: form.observaciones || null, user_id: userId,
         comprobante_id: compSel?.id || null,
+        piezas_instaladas: piezas.length ? piezas : null,
       }
       await supabase.from('certificados_adas').insert(payload)
       setOpen(false)
@@ -141,10 +164,9 @@ export default function AdasClient({ userId }: { userId: string }) {
       return
     }
 
-    // Certificado sin calibración ADAS (de instalación) — numeración propia, con las piezas
-    // tomadas directo de la factura de origen cuando corresponde.
+    // Certificado sin calibración ADAS (de instalación) — numeración propia, con la pieza
+    // tomada directo de la factura de origen.
     const { data: num } = await supabase.rpc('next_instalacion_numero')
-    const piezas = compSel?.items?.map((it:any) => ({ d: it.d, c: it.c })) ?? []
     const payload = {
       numero: num, fecha: form.fecha, cliente: form.cliente || null,
       razon_social: form.razon_social || null, marca: form.marca || null,
@@ -187,6 +209,16 @@ export default function AdasClient({ userId }: { userId: string }) {
       ? `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px">${checked(true)} <span>${c.otros_sistemas}</span></div>` : ''
     const allProc = PROCEDIMIENTOS_DEFAULT.map(p => procRow(p, c.procedimientos.includes(p))).join('')
     const fechaFmt = c.fecha.split('-').reverse().join('/')
+
+    // Si la factura incluía una pieza de vidrio real, se muestra cuál es. Si el cliente
+    // solo pagó la calibración ADAS sin cambiar el vidrio, esta sección no se imprime.
+    const piezas = c.piezas_instaladas ?? []
+    const piezaHtml = piezas.length
+      ? `<div class="section" style="margin-top:10px">
+          <div class="sec-title"><span>🪟</span> VIDRIO INSTALADO</div>
+          ${piezas.map(p => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;font-size:11px"><span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('')}
+        </div>`
+      : ''
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Certificado N° ${c.numero}</title>
@@ -260,6 +292,7 @@ export default function AdasClient({ userId }: { userId: string }) {
       ${[['Marca', c.marca],['Modelo', c.modelo],['Año', c.anio],['Dominio', c.dominio],['VIN (N° de chasis)', c.vin],['Kilometraje', c.kilometraje]].map(([l,v]) =>
         `<div class="field-label">${l}:</div><div class="field-line">${v || ''}</div>`).join('')}
     </div>
+    ${piezaHtml}
   </div>
 
   <div class="section">
@@ -352,41 +385,58 @@ export default function AdasClient({ userId }: { userId: string }) {
     w.document.close()
   }
 
-  // Versión sin calibración ADAS — mismo "Certificado" desde la perspectiva del usuario,
-  // pero con un diseño centrado en las piezas instaladas en vez de sistemas/procedimientos.
+  // Certificado sin calibración ADAS — mismos colores, escudo y logo que el de ADAS, para
+  // mantener una sola identidad visual. Muestra la pieza de vidrio instalada y la garantía
+  // de 6 meses sobre la colocación.
   function printCertInstalacion(c: CertInstalacion) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
-    const piezasHtml = (c.piezas_instaladas ?? []).map((p:any) =>
-      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px">
-        <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('') || '<p style="font-size:11px;color:#888">Sin detalle de piezas</p>'
+    const piezas = (c.piezas_instaladas ?? [])
+    const piezasHtml = piezas.length
+      ? piezas.map((p:any) =>
+          `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px">
+            <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('')
+      : '<p style="font-size:11px;color:#888">Sin detalle de pieza</p>'
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Certificado N° ${c.numero}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:11px}
-  .header{background:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1d4ed8}
-  .title-bar{background:#fff;padding:10px 16px 6px;border-bottom:4px solid #1d4ed8}
+  .header{background:#fff;color:#1a1a1a;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A550}
+  .logo-area{display:flex;flex-direction:column}
+  .logo-sub{font-size:10px;letter-spacing:3px;color:#555;margin-top:2px}
+  .shield{background:#00A550;color:#fff;border-radius:12px;padding:10px 14px;text-align:center;border:2px solid #fff}
+  .shield .sv{font-size:10px;font-weight:bold;letter-spacing:1px}
+  .shield .sa{font-size:16px;font-weight:900;line-height:1}
+  .title-bar{background:#fff;padding:10px 16px 6px;border-bottom:4px solid #00A550}
   .cert-title{font-size:26px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
-  .cert-title .accent{color:#1d4ed8}
-  .cert-num{font-size:13px;font-weight:bold;color:#1d4ed8;margin-top:4px}
+  .cert-title .accent{color:#00A550}
+  .cert-num{font-size:13px;font-weight:bold;color:#00A550;margin-top:4px}
   .cert-fecha{font-size:12px;color:#555;margin-top:2px}
   .body{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 16px}
   .section{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
-  .sec-title{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;color:#1a1a1a}
-  .sec-title span{color:#1d4ed8}
+  .sec-title{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;color:#00A550}
   .field-line{border:none;border-bottom:1px solid #888;width:100%;margin:4px 0 8px;display:block;font-size:11.5px;color:#1a1a1a}
   .field-label{font-size:10px;color:#555;margin-top:4px}
-  .footer-sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px 16px}
+  .garantia-box{background:#00A550;color:#fff;border-radius:8px;padding:10px 12px}
+  .footer-sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:6px 16px}
   .sig-box{border:1.5px solid #1a1a1a;border-radius:8px;padding:10px 12px}
-  .footer-bar{background:#f5f5f5;padding:8px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:2px solid #1d4ed8}
+  .footer-bar{background:#f5f5f5;color:#1a1a1a;padding:8px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:2px solid #00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
   .footer-slogan{font-size:9px;color:#555;text-align:center;padding:3px 20px;background:#f0f0f0}
   @media print{body{width:auto;margin:0;font-size:10px}@page{margin:4mm 7mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <div class="header">
-  <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;"/>
+  <div class="logo-area">
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:40px;object-fit:contain;"/>
+    <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
+  </div>
+  <div class="shield">
+    <div class="sv">PIEZA</div>
+    <div class="sv">INSTALADA</div>
+    <div class="sa">✔</div>
+  </div>
 </div>
 
 <div class="title-bar">
@@ -408,38 +458,51 @@ export default function AdasClient({ userId }: { userId: string }) {
         `<div class="field-label">${l}:</div><div class="field-line">${v || ''}</div>`).join('')}
     </div>
   </div>
-  <div class="section">
-    <div class="sec-title"><span>🔧</span> PIEZAS INSTALADAS</div>
-    ${piezasHtml}
-    ${c.observaciones ? `<div style="font-size:10.5px;margin-top:10px"><b>Observaciones:</b><br>${c.observaciones}</div>` : ''}
+  <div>
+    <div class="section" style="margin-bottom:10px">
+      <div class="sec-title"><span>🪟</span> VIDRIO INSTALADO</div>
+      ${piezasHtml}
+      ${c.observaciones ? `<div style="font-size:10.5px;margin-top:10px"><b>Observaciones:</b><br>${c.observaciones}</div>` : ''}
+    </div>
+    <div class="garantia-box">
+      <div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Garantía</div>
+      <div style="font-size:15px;font-weight:900">6 meses</div>
+      <div style="font-size:9px;margin-top:4px;line-height:1.4;opacity:.95">Sobre la instalación realizada, contra filtraciones o defectos de colocación. No cubre roturas por impacto.</div>
+    </div>
   </div>
 </div>
 
 <div class="footer-sig">
   <div class="sig-box">
-    <div class="sec-title">✍ RESPONSABLE TÉCNICO</div>
+    <div class="sec-title" style="color:#1a1a1a">✍ RESPONSABLE TÉCNICO</div>
     <div style="margin:4px 0"><img src="${FIRMA_SAPPA}" alt="firma" style="height:44px;object-fit:contain;max-width:120px"/></div>
     <div style="font-size:12px;font-weight:bold;margin-top:4px">Mario Sappa</div>
     <div style="font-size:10px;color:#555">Técnico Especialista en Cristales Automotrices</div>
   </div>
   <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
-    <div style="border:3px solid #1d4ed8;border-radius:50%;width:88px;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px">
-      <div style="font-size:7px;font-weight:900;color:#1d4ed8;letter-spacing:.5px;line-height:1.2">PARABRISAS<br>EL PIAMONTE</div>
+    <div style="border:3px solid #00A550;border-radius:50%;width:88px;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px">
+      <div style="font-size:7px;font-weight:900;color:#00A550;letter-spacing:.5px;line-height:1.2">PARABRISAS<br>EL PIAMONTE</div>
+      <div style="color:#00A550;font-size:16px">🛡</div>
       <div style="font-size:6.5px;font-weight:700;color:#555;letter-spacing:.3px">GARANTÍA Y CALIDAD</div>
     </div>
   </div>
   <div class="sig-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
-    <div style="font-size:10px;font-weight:bold;text-align:center">CONSULTAS Y GARANTÍA</div>
-    <div style="background:#1d4ed8;color:#fff;border-radius:6px;padding:6px 14px;font-size:10px;text-align:center;font-weight:bold">📱 2302 595969</div>
-    <div style="font-size:9px;color:#1d4ed8;font-weight:bold">Cert. N° ${c.numero}</div>
+    <div style="font-size:10px;font-weight:bold;text-align:center;color:#1a1a1a">CONSULTAS Y GARANTÍA</div>
+    <div style="font-size:9px;color:#555;text-align:center">Parabrisas El Piamonte</div>
+    <div style="background:#00A550;color:#fff;border-radius:6px;padding:6px 14px;font-size:10px;text-align:center;font-weight:bold">📱 2302 595969</div>
+    <div style="font-size:9px;color:#555;text-align:center">General Pico, La Pampa</div>
+    <div style="font-size:9px;color:#00A550;font-weight:bold">Cert. N° ${c.numero}</div>
   </div>
 </div>
 
 <div class="footer-bar">
-  <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;"/>
+  <div>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:30px;object-fit:contain;"/>
+    <div style="font-size:9px;color:#aaa">Especialistas en cristales automotrices.</div>
+  </div>
   <div class="footer-contact">
-    <div style="color:#1d4ed8;font-weight:bold;font-size:13px">📞 2302 595969</div>
-    <div style="color:#1d4ed8;font-weight:bold;font-size:13px">📍 General Pico, La Pampa</div>
+    <div><div style="color:#00A550;font-weight:bold;font-size:13px">📞 2302 595969</div><div style="color:#aaa;font-size:9px">WhatsApp</div></div>
+    <div><div style="color:#00A550;font-weight:bold;font-size:13px">📍 General Pico, La Pampa</div><div style="color:#aaa;font-size:9px">Calle 17 N° 1224</div></div>
   </div>
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
@@ -478,8 +541,7 @@ export default function AdasClient({ userId }: { userId: string }) {
         <div className="flex flex-col gap-3">
           {todosCerts.map((c:any) => (
             <div key={`${c._tipo}-${c.id}`} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
-              <div className="font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0 text-white"
-                style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8'}}>
+              <div className="font-mono font-bold text-sm px-3 py-1.5 rounded-lg shrink-0 text-white" style={{background:'#00A550'}}>
                 N° {c.numero}
               </div>
               <div className="flex-1 min-w-0">
@@ -488,12 +550,13 @@ export default function AdasClient({ userId }: { userId: string }) {
                   {[c.marca, c.modelo, c.anio, c.dominio].filter(Boolean).join(' · ')}
                   {' · '}{c.fecha.split('-').reverse().join('/')}
                 </p>
-                <p className="text-xs mt-0.5 font-semibold" style={{color: c._tipo === 'adas' ? '#00A550' : '#1d4ed8'}}>
+                <p className="text-xs mt-0.5 font-semibold" style={{color:'#00A550'}}>
                   {c._tipo === 'adas' ? 'Incluye calibración ADAS' : 'Instalación'}
+                  {c.piezas_instaladas?.length ? ` · ${c.piezas_instaladas[0].d}` : ''}
                 </p>
               </div>
               <button onClick={() => c._tipo === 'adas' ? printCertAdas(c) : printCertInstalacion(c)}
-                style={{background: c._tipo === 'adas' ? '#00A550' : '#1d4ed8',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                style={{background:'#00A550',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                 🖨 Imprimir
               </button>
             </div>
@@ -513,7 +576,7 @@ export default function AdasClient({ userId }: { userId: string }) {
                 ✍ Cargar a mano
               </button>
               <button onClick={()=>cambiarOrigen('comprobante')}
-                style={{background:origen==='comprobante'?'#1d4ed8':'#fff',color:origen==='comprobante'?'#fff':'#4A6655',border:`1.5px solid ${origen==='comprobante'?'#1d4ed8':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                style={{background:origen==='comprobante'?'#00A550':'#fff',color:origen==='comprobante'?'#fff':'#4A6655',border:`1.5px solid ${origen==='comprobante'?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 🧾 Buscar factura
               </button>
             </div>
@@ -538,16 +601,23 @@ export default function AdasClient({ userId }: { userId: string }) {
                 </div>
               </Field>
               {compSel && (
-                <div className={`mt-2 rounded-xl p-3 border ${incluyeAdas ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
-                  <p className="text-sm font-semibold" style={{color: incluyeAdas ? '#166534' : '#1d4ed8'}}>
+                <div className="mt-2 rounded-xl p-3 border bg-green-50 border-green-200">
+                  <p className="text-sm font-semibold text-green-800">
                     ✓ FA-{String(compSel.numero||0).padStart(8,'0')} — {compSel.cliente_nombre || 'Consumidor Final'}
                   </p>
-                  <p className="text-xs mt-1" style={{color: incluyeAdas ? '#15803d' : '#1e40af'}}>
+                  <p className="text-xs mt-1 text-green-700">
                     {incluyeAdas
                       ? '🛡 Esta factura incluye Calibración ADAS — el certificado la va a incluir.'
                       : '🔧 Esta factura no incluye Calibración ADAS.'}
                   </p>
-                  <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer" style={{color: incluyeAdas ? '#166534' : '#1d4ed8'}}>
+                  {piezasFisicasDe(compSel.items).length > 0 ? (
+                    <p className="text-xs mt-1 text-green-700">
+                      🪟 Vidrio detectado: {piezasFisicasDe(compSel.items).map(p=>p.d).join(', ')}
+                    </p>
+                  ) : (
+                    <p className="text-xs mt-1 text-green-700">⚠ Sin vidrio en esta factura — solo servicio.</p>
+                  )}
+                  <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer text-green-800">
                     <input type="checkbox" checked={incluyeAdas}
                       onChange={e => setIncluyeAdas(e.target.checked)}
                       className="accent-p-green" />
@@ -639,12 +709,13 @@ export default function AdasClient({ userId }: { userId: string }) {
             </>
           )}
 
-          {/* Piezas instaladas — solo si NO incluye ADAS y viene de una factura */}
-          {!incluyeAdas && origen === 'comprobante' && compSel && (
+          {/* Vidrio a certificar — se muestra siempre que venga de factura, sea o no ADAS;
+              si no hay ninguna pieza física en la factura, simplemente no aparece nada acá. */}
+          {origen === 'comprobante' && compSel && piezasFisicasDe(compSel.items).length > 0 && (
             <div>
-              <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🔧 Piezas a certificar (de la factura)</p>
+              <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">🪟 Vidrio a certificar (de la factura)</p>
               <div className="bg-p-light rounded-xl p-3">
-                {(compSel.items ?? []).map((it:any, i:number) => (
+                {piezasFisicasDe(compSel.items).map((it, i) => (
                   <div key={i} className="flex justify-between text-sm py-1">
                     <span>{it.d}</span><span className="font-mono font-bold">×{it.c}</span>
                   </div>
@@ -657,7 +728,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 
           <div className="flex justify-end gap-2 pt-2 border-t border-p-line">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-            <button onClick={save} style={{background: incluyeAdas ? '#00A550' : '#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+            <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
               Guardar e imprimir
             </button>
           </div>
