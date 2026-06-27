@@ -45,7 +45,8 @@ interface Comprobante {
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:ItemVenta[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
-  aseguradora_nombre?:string|null
+  aseguradora_nombre?:string|null; es_negro?:boolean
+  cae_emitido?:string|null; cae_vencimiento?:string|null
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -234,6 +235,41 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   )
   const usaCC = pagos.some(p => p.metodo === 'Cuenta corriente')
 
+  const TIPO_CBTE_AFIP: Record<string, number> = { A: 1, B: 6, C: 11 }
+  const [caeLoading, setCaeLoading] = useState<string|null>(null)
+
+  async function solicitarCAE(c: Comprobante) {
+    setCaeLoading(c.id)
+    try {
+      const tipoCbte = TIPO_CBTE_AFIP[c.tipo]
+      if (!tipoCbte) { setCaeLoading(null); return }
+      const cuitLimpio = (c.cliente_cuit||'').replace(/[^0-9]/g,'')
+      const docTipo = cuitLimpio.length === 11 ? 80 : 99
+      const docNro  = cuitLimpio.length === 11 ? cuitLimpio : '0'
+      const { data, error } = await supabase.functions.invoke('arca-facturar', {
+        body: {
+          comprobante_id: c.id, tipoCbte,
+          impTotal: c.total, impNeto: c.neto, impIva: c.iva,
+          docTipo, docNro, ivaAlicuota: c.iva > 0 ? 5 : undefined,
+        }
+      })
+      if (!error && data?.ok) {
+        await supabase.from('comprobantes').update({
+          cae_emitido: data.cae, cae_vencimiento: data.cae_vencimiento || null,
+        }).eq('id', c.id)
+        setToast(`✓ CAE obtenido: ${data.cae}`)
+      } else {
+        setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${data?.error || error?.message || 'error desconocido'}`)
+      }
+    } catch (e: any) {
+      setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${e?.message || 'error de conexión'}`)
+    }
+    setTimeout(()=>setToast(''), 5000)
+    setCaeLoading(null)
+    const {data:comps2}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
+    setComps(comps2??[])
+  }
+
   async function save(){
     if(!puedeGuardar) return
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
@@ -300,6 +336,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         tipo_cliente_nombre:tipoC?.nombre||null,
         user_id:userId,
       })
+    }
+
+    // Facturación electrónica AFIP/ARCA — solo para A/B/C reales (nunca para ventas "negro",
+    // que son intencionalmente extra-contables). Si falla, la venta ya quedó guardada igual;
+    // se puede reintentar después desde el listado ("⚠ Sin CAE" → Reintentar).
+    if (comp && !esNegro && ['A','B','C'].includes(tipoDoc())) {
+      await solicitarCAE(comp as any)
     }
 
     setOpen(false)
@@ -454,6 +497,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y+=4
     }
 
+    if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30)
+      doc.text(`CAE: ${c.cae_emitido}`, pad, y); y+=5
+      if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, pad, y)
+      y+=8
+    }
+
     doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     doc.text('📞 2302 595969', pad, 292)
@@ -511,6 +561,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
                     {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
                     {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
+                    {!c.es_negro && ['A','B','C'].includes(c.tipo) && (
+                      c.cae_emitido
+                        ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✓ CAE {c.cae_emitido}</span>
+                        : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">⚠ Sin CAE</span>
+                    )}
                   </div>
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {[c.vehiculo, c.fecha.split('-').reverse().join('/'), c.items.length+' ítem(s)'].filter(Boolean).join(' · ')}
@@ -524,6 +579,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   📎 Adjuntos
                 </button>
                 {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
+                {!c.es_negro && ['A','B','C'].includes(c.tipo) && !c.cae_emitido && (
+                  <button onClick={()=>solicitarCAE(c)} disabled={caeLoading===c.id}
+                    style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>
+                    {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
+                  </button>
+                )}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                 <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
               </div>
