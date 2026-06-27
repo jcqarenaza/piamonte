@@ -47,6 +47,7 @@ interface Comprobante {
   presupuesto_id:string|null; orden_id:string|null; created_at:string
   aseguradora_nombre?:string|null; es_negro?:boolean
   cae_emitido?:string|null; cae_vencimiento?:string|null
+  categoria?:string; comprobante_original_id?:string|null; motivo_nc?:string|null
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -256,12 +257,80 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const usaCC = pagos.some(p => p.metodo === 'Cuenta corriente')
 
   const TIPO_CBTE_AFIP: Record<string, number> = { A: 1, B: 6, C: 11 }
+  const TIPO_CBTE_NC_AFIP: Record<string, number> = { A: 3, B: 8, C: 13 }
   const [caeLoading, setCaeLoading] = useState<string|null>(null)
 
-  async function solicitarCAE(c: Comprobante) {
+  // Nota de Crédito: devuelve stock, resta de Caja del día y emite con CAE propio en AFIP.
+  const [ncComp, setNcComp]       = useState<Comprobante|null>(null)
+  const [ncSel, setNcSel]         = useState<Record<number, {on:boolean; cant:number}>>({})
+  const [ncMotivo, setNcMotivo]   = useState('')
+  const [ncLoading, setNcLoading] = useState(false)
+
+  function abrirNC(c: Comprobante) {
+    setNcComp(c)
+    const sel: Record<number, {on:boolean; cant:number}> = {}
+    c.items.forEach((it, i) => { sel[i] = { on: true, cant: it.c } })
+    setNcSel(sel)
+    setNcMotivo('')
+  }
+
+  const ncItemsSel = ncComp ? ncComp.items
+    .map((it, i) => ({ it, i, cant: ncSel[i]?.cant ?? it.c }))
+    .filter((x) => ncSel[x.i]?.on && x.cant > 0) : []
+  const ncNeto = ncItemsSel.reduce((a, x) => a + x.it.p * x.cant, 0)
+  const ncIvaRate = ncComp && ncComp.neto > 0 ? ncComp.iva / ncComp.neto : 0
+  const ncIva = Math.round(ncNeto * ncIvaRate * 100) / 100
+  const ncTotal = Math.round((ncNeto + ncIva) * 100) / 100
+
+  async function confirmarNC() {
+    if (!ncComp || ncItemsSel.length === 0) return
+    setNcLoading(true)
+    const { data: last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
+
+    const itemsNc: ItemVenta[] = ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
+    const { data: nc } = await supabase.from('comprobantes').insert({
+      numero: nextNum, fecha: todayStr(), tipo: ncComp.tipo, categoria: 'nc',
+      cliente_id: (ncComp as any).cliente_id ?? null, cliente_nombre: ncComp.cliente_nombre,
+      cliente_telefono: ncComp.cliente_telefono, cliente_cuit: ncComp.cliente_cuit,
+      cliente_tipo_fiscal: ncComp.cliente_tipo_fiscal, vehiculo: ncComp.vehiculo,
+      items: itemsNc, neto: ncNeto, iva: ncIva, total: ncTotal, pagos: [],
+      comprobante_original_id: ncComp.id, motivo_nc: ncMotivo || null,
+      es_negro: ncComp.es_negro || false,
+    }).select('*').single()
+
+    if (!nc) { setNcLoading(false); return }
+
+    // Devolver stock de los ítems que sí tenían unidad física vinculada
+    for (const x of ncItemsSel) {
+      if (x.it.stock_id && x.cant > 0) {
+        const { data: s } = await supabase.from('stock').select('cantidad').eq('id', x.it.stock_id).single()
+        if (s) await supabase.from('stock').update({ cantidad: (s as any).cantidad + x.cant }).eq('id', x.it.stock_id)
+      }
+    }
+
+    // Restar de Caja del día (entrada negativa, neta contra el "Facturado" del día de la NC)
+    await supabase.from('ventas').insert({
+      fecha: todayStr(), descripcion: `NC ${nextNum} — devolución Comprobante ${ncComp.numero}`,
+      precio: -ncTotal, costo: null, pendiente: false,
+      comprobante_id: (nc as any).id, user_id: userId,
+    })
+
+    // Emitir con CAE propio en AFIP si el original era fiscal
+    if (!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo)) {
+      await solicitarCAE(nc as any, TIPO_CBTE_NC_AFIP[ncComp.tipo])
+    }
+
+    setNcComp(null)
+    setNcLoading(false)
+    const {data:comps2}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
+    setComps(comps2??[])
+  }
+
+  async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number) {
     setCaeLoading(c.id)
     try {
-      const tipoCbte = TIPO_CBTE_AFIP[c.tipo]
+      const tipoCbte = tipoCbteOverride ?? TIPO_CBTE_AFIP[c.tipo]
       if (!tipoCbte) { setCaeLoading(null); return }
       const cuitLimpio = (c.cliente_cuit||'').replace(/[^0-9]/g,'')
       const docTipo = cuitLimpio.length === 11 ? 80 : 99
@@ -462,11 +531,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 12)
     doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
     doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 20)
-    const tipoLabel = c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE'
+    const tipoLabel = c.categoria==='nc'
+      ? (c.tipo==='A'?'NOTA DE CRÉDITO A':c.tipo==='B'?'NOTA DE CRÉDITO B':c.tipo==='C'?'NOTA DE CRÉDITO C':'NOTA DE CRÉDITO')
+      : (c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE')
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
     doc.setFontSize(10); doc.text(`N° ${String(c.numero||0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
     doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
     y=38
+    if (c.categoria==='nc') {
+      const original = comps.find(x=>x.id===c.comprobante_original_id)
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,100,0)
+      doc.text(`Corresponde a Comprobante N° ${original?String(original.numero||0).padStart(8,'0'):'—'}${c.motivo_nc?` — ${c.motivo_nc}`:''}`, pad, y)
+      doc.setTextColor(30,30,30)
+      y+=6
+    }
 
     const nombreFactura = c.cliente_nombre || c.aseguradora_nombre || 'Consumidor Final'
     doc.setTextColor(30,30,30); doc.setFillColor(245,250,247)
@@ -574,8 +652,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
-                      {c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X'}-{String(c.numero||0).padStart(8,'0')}
+                      {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.numero||0).padStart(8,'0')}
                     </span>
+                    {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🧾 Nota de Crédito</span>}
                     {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
                     <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
                     {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
@@ -604,6 +683,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>
                     {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
                   </button>
+                )}
+                {c.categoria!=='nc' && (
+                  <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
                 )}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                 <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
@@ -918,6 +1000,51 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal Nota de Crédito */}
+      <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — Comprobante ${ncComp?.numero}`}>
+        {ncComp && (
+          <div className="flex flex-col gap-3">
+            <p className="text-[11px] text-p-ink2">
+              Destildá lo que no se devuelve o ajustá la cantidad. Al confirmar: se devuelve el stock de lo seleccionado,
+              se resta de Caja del día de hoy{!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo) ? ', y se emite con su propio CAE en AFIP.' : '.'}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {ncComp.items.map((it, i) => (
+                <label key={i} className={`flex items-center gap-3 border rounded-lg px-3 py-2 ${ncSel[i]?.on ? 'border-amber-400 bg-amber-50' : 'border-p-line'}`}>
+                  <input type="checkbox" checked={!!ncSel[i]?.on}
+                    onChange={()=>setNcSel(p=>({...p, [i]:{ on: !p[i]?.on, cant: p[i]?.cant ?? it.c }}))}
+                    className="accent-amber-500"/>
+                  <span className="flex-1 text-sm truncate">{it.d}</span>
+                  <input type="number" min={0} max={it.c} value={ncSel[i]?.cant ?? it.c}
+                    onChange={e=>setNcSel(p=>({...p, [i]:{ on: p[i]?.on ?? true, cant: Math.min(it.c, Math.max(0, +e.target.value)) }}))}
+                    disabled={!ncSel[i]?.on}
+                    className="w-16 border border-p-line rounded-lg px-2 py-1 text-sm text-center"/>
+                  <span className="text-xs text-p-ink2">/ {it.c}</span>
+                  <span className="font-mono font-bold text-sm w-24 text-right">{moneyARS(it.p * (ncSel[i]?.cant ?? it.c))}</span>
+                </label>
+              ))}
+            </div>
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1.5">
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">Neto</span><span className="font-mono">{moneyARS(ncNeto)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">IVA</span><span className="font-mono">{moneyARS(ncIva)}</span></div>
+              <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
+                <span>TOTAL NC</span><span>{moneyARS(ncTotal)}</span>
+              </div>
+            </div>
+            <Field label="Motivo">
+              <Input value={ncMotivo} onChange={e=>setNcMotivo(e.target.value)} placeholder="Devolución, error de carga, etc."/>
+            </Field>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setNcComp(null)} style={btnGray}>Cancelar</button>
+              <button onClick={confirmarNC} disabled={ncLoading || ncItemsSel.length===0}
+                style={{...btn,background:'#d97706',opacity:(ncLoading || ncItemsSel.length===0)?.5:1}}>
+                {ncLoading ? 'Generando…' : '🧾 Confirmar Nota de Crédito'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
