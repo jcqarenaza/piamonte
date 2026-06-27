@@ -55,7 +55,7 @@ interface Comprobante {
   cae:string|null; cae_vencimiento:string|null; remito_id:string|null
   descuento_pct:number|null; descuento_monto:number|null; flete:number|null
   ret_iva:number|null; ret_ganancias:number|null; ret_iibb:number|null; ajuste_redondeo:number|null
-  estado:string; afecta_stock:boolean; notas:string|null; created_at:string; es_contado?:boolean
+  estado:string; afecta_stock:boolean; notas:string|null; created_at:string; es_contado?:boolean; saldado?:boolean
 }
 
 export default function ComprasClient() {
@@ -510,6 +510,9 @@ export default function ComprasClient() {
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.es_contado?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}`}>
                       {c.es_contado ? '💵 Contado' : '📒 Cta. Cte.'}
                     </span>
+                  )}
+                  {(c.tipo==='factura'||c.tipo==='nc') && !c.es_contado && c.saldado && (
+                    <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">✓ Saldada (Orden de Pago)</span>
                   )}
                   {c.remito_id && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">📦 Stock ya cargado (remito)</span>}
                 </div>

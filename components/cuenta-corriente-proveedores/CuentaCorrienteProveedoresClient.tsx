@@ -3,13 +3,16 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
+import { LOGO_BASE64 } from '@/lib/logo'
 
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
+const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
 
 interface Saldo { proveedor_nombre:string; proveedor_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number }
 interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|null; debe:number; haber:number; saldo:number; notas:string|null; created_at:string }
+interface Pendiente { id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null; fecha:string; total:number }
 
 export default function CuentaCorrienteProveedoresClient() {
   const [saldos, setSaldos]     = useState<Saldo[]>([])
@@ -19,6 +22,12 @@ export default function CuentaCorrienteProveedoresClient() {
   const [openPago, setOpenPago] = useState(false)
   const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'' })
   const [loading, setLoading]   = useState(true)
+  // Orden de Pago: facturas y NC pendientes del proveedor seleccionado, y cuáles se eligieron pagar.
+  const [opOpen, setOpOpen]         = useState(false)
+  const [pendientes, setPendientes] = useState<Pendiente[]>([])
+  const [seleccion, setSeleccion]   = useState<Record<string, boolean>>({})
+  const [opForm, setOpForm]         = useState({ forma_pago:'Transferencia', fecha:'', notas:'' })
+  const [guardandoOp, setGuardandoOp] = useState(false)
   const supabase = createClient()
 
   async function load() {
@@ -59,6 +68,184 @@ export default function CuentaCorrienteProveedoresClient() {
     setFormPago({ monto:'', fecha:'', notas:'' })
     load()
     loadMovs(sel.proveedor_nombre)
+  }
+
+  // Facturas y NC pendientes (no contado, no anuladas, no incluidas todavía en otra Orden de Pago)
+  async function abrirOrdenPago() {
+    if (!sel) return
+    const { data } = await supabase.from('comprobantes_compra')
+      .select('id,tipo,letra,punto_venta,numero,fecha,total')
+      .eq('proveedor_id', sel.proveedor_id)
+      .in('tipo', ['factura','nc'])
+      .eq('saldado', false)
+      .neq('estado', 'anulado')
+      .or('tipo.eq.nc,es_contado.eq.false')
+      .order('fecha')
+    setPendientes(data ?? [])
+    setSeleccion({})
+    setOpForm({ forma_pago:'Transferencia', fecha: new Date().toISOString().slice(0,10), notas:'' })
+    setOpOpen(true)
+  }
+
+  function toggleSeleccion(id: string) {
+    setSeleccion(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const facturasSel = pendientes.filter(p => p.tipo === 'factura' && seleccion[p.id])
+  const ncSel        = pendientes.filter(p => p.tipo === 'nc' && seleccion[p.id])
+  const totalFacturasSel = facturasSel.reduce((a,f)=>a+f.total, 0)
+  const totalNcSel       = ncSel.reduce((a,n)=>a+n.total, 0)
+  const totalAPagar      = totalFacturasSel - totalNcSel
+
+  async function confirmarOrdenPago() {
+    if (!sel || (facturasSel.length === 0 && ncSel.length === 0)) return
+    setGuardandoOp(true)
+    const fechaOp = opForm.fecha || new Date().toISOString().slice(0,10)
+
+    const { data: numeroData } = await supabase.rpc('next_orden_pago_numero')
+    const numero = numeroData as string
+
+    // Un solo movimiento de "pago" en la cuenta corriente, por el neto real que se transfiere
+    // (las NC ya restaron su parte al cargarse — esto es solo lo que efectivamente se paga).
+    const { data: mov } = await supabase.from('cuenta_corriente_proveedores').insert({
+      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
+      fecha: fechaOp, tipo: 'pago', descripcion: `Orden de Pago Nº ${numero}`,
+      debe: 0, haber: totalAPagar,
+      notas: opForm.notas || null,
+    }).select('id').single()
+
+    const { data: opIns } = await supabase.from('ordenes_pago').insert({
+      numero, fecha: fechaOp,
+      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
+      total_facturas: totalFacturasSel, total_nc: totalNcSel, total_pagado: totalAPagar,
+      forma_pago: opForm.forma_pago, notas: opForm.notas || null,
+      cuenta_corriente_id: mov?.id || null,
+    }).select('id').single()
+
+    if (opIns) {
+      const items = [...facturasSel, ...ncSel].map(p => ({
+        orden_pago_id: opIns.id, comprobante_compra_id: p.id, tipo: p.tipo,
+        numero: `${p.letra||''}${p.punto_venta||''}-${p.numero||''}`, monto: p.total,
+      }))
+      await supabase.from('orden_pago_items').insert(items)
+    }
+
+    // Marcar como saldadas las facturas/NC incluidas, para que no se ofrezcan de nuevo.
+    const idsIncluidos = [...facturasSel, ...ncSel].map(p => p.id)
+    if (idsIncluidos.length) {
+      await supabase.from('comprobantes_compra').update({ saldado: true }).in('id', idsIncluidos)
+    }
+
+    setGuardandoOp(false)
+    setOpOpen(false)
+    imprimirOrdenPago({
+      numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
+      facturas: facturasSel, nc: ncSel,
+      totalFacturas: totalFacturasSel, totalNc: totalNcSel, totalPagado: totalAPagar,
+      forma_pago: opForm.forma_pago, notas: opForm.notas,
+    })
+    load()
+    loadMovs(sel.proveedor_nombre)
+  }
+
+  function imprimirOrdenPago(op: {
+    numero:string; fecha:string; proveedor_nombre:string; facturas:Pendiente[]; nc:Pendiente[]
+    totalFacturas:number; totalNc:number; totalPagado:number; forma_pago:string; notas:string
+  }) {
+    const fechaFmt = op.fecha.split('-').reverse().join('/')
+    const filaItem = (p: Pendiente, signo: '+'|'-') => `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee">${p.tipo==='nc'?'NC':'Factura'} ${p.letra||''}${p.punto_venta||''}-${p.numero||''}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee">${p.fecha.split('-').reverse().join('/')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-family:monospace">${signo} ${moneyARS(p.total)}</td>
+      </tr>`
+    const filasHtml = op.facturas.map(f=>filaItem(f,'+')).join('') + op.nc.map(n=>filaItem(n,'-')).join('')
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Orden de Pago N° ${op.numero}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:12px}
+  .header{background:#fff;color:#1a1a1a;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A550}
+  .logo-sub{font-size:10px;letter-spacing:3px;color:#555;margin-top:2px}
+  .shield{background:#00A550;color:#fff;border-radius:12px;padding:10px 16px;text-align:center;border:2px solid #fff}
+  .shield .sv{font-size:10px;font-weight:bold;letter-spacing:1px}
+  .shield .sa{font-size:18px;font-weight:900;line-height:1}
+  .title-bar{background:#fff;padding:14px 24px 8px;border-bottom:4px solid #00A550}
+  .op-title{font-size:28px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
+  .op-title .accent{color:#00A550}
+  .op-num{font-size:14px;font-weight:bold;color:#00A550;margin-top:4px}
+  .op-fecha{font-size:12px;color:#555;margin-top:2px}
+  .body{padding:24px}
+  .section{border:1.5px solid #1a1a1a;border-radius:10px;padding:16px 20px;margin-bottom:14px}
+  .sec-title{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;color:#00A550}
+  .field-label{font-size:10.5px;color:#555;margin-top:6px}
+  .field-line{border:none;border-bottom:1px solid #888;width:100%;margin:4px 0 6px;display:block;font-size:13px;color:#1a1a1a}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;padding:6px 8px;background:#f5f5f5;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:#555}
+  .totales{margin-top:10px}
+  .totales div{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
+  .monto-box{background:#00A550;color:#fff;border-radius:10px;padding:18px 20px;text-align:center;margin-top:10px}
+  .monto-box .lbl{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;opacity:.9}
+  .monto-box .val{font-size:30px;font-weight:900;margin-top:4px}
+  .footer-bar{background:#f5f5f5;color:#1a1a1a;padding:10px 24px;text-align:center;margin-top:10px;border-top:2px solid #00A550;font-size:10px;color:#555}
+  @media print{body{width:auto;margin:0}@page{margin:8mm 14mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+<div class="header">
+  <div>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:42px;object-fit:contain;"/>
+    <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
+  </div>
+  <div class="shield">
+    <div class="sv">ORDEN DE</div>
+    <div class="sv">PAGO</div>
+    <div class="sa">✔</div>
+  </div>
+</div>
+
+<div class="title-bar">
+  <div class="op-title">ORDEN DE <span class="accent">PAGO</span></div>
+  <div class="op-num">N° ${op.numero}</div>
+  <div class="op-fecha">Fecha: ${fechaFmt}</div>
+</div>
+
+<div class="body">
+  <div class="section">
+    <div class="sec-title">🏢 PROVEEDOR</div>
+    <div class="field-line" style="font-size:16px;font-weight:700">${op.proveedor_nombre}</div>
+  </div>
+
+  <div class="section">
+    <div class="sec-title">🧾 COMPROBANTES INCLUIDOS</div>
+    <table>
+      <thead><tr><th>Comprobante</th><th>Fecha</th><th style="text-align:right">Importe</th></tr></thead>
+      <tbody>${filasHtml}</tbody>
+    </table>
+    <div class="totales">
+      <div><span>Total facturas</span><span style="font-family:monospace">${moneyARS(op.totalFacturas)}</span></div>
+      ${op.totalNc > 0 ? `<div><span>Notas de crédito aplicadas</span><span style="font-family:monospace">− ${moneyARS(op.totalNc)}</span></div>` : ''}
+    </div>
+  </div>
+
+  <div class="monto-box">
+    <div class="lbl">Total a pagar</div>
+    <div class="val">${moneyARS(op.totalPagado)}</div>
+  </div>
+
+  <div class="section" style="margin-top:14px">
+    <div class="sec-title">💳 DETALLE DEL PAGO</div>
+    <div class="field-label">Forma de pago:</div>
+    <div class="field-line">${op.forma_pago}</div>
+    ${op.notas ? `<div class="field-label">Notas:</div><div class="field-line">${op.notas}</div>` : ''}
+  </div>
+</div>
+
+<div class="footer-bar">Parabrisas El Piamonte — Orden de Pago a proveedor. No reemplaza factura ni recibo del proveedor.</div>
+
+</body></html>`
+    const w = window.open('', '_blank')!
+    w.document.write(html)
+    w.document.close()
   }
 
   const totalDeuda = saldos.reduce((a,s)=>a+Math.max(0,s.saldo_actual),0)
@@ -133,9 +320,14 @@ export default function CuentaCorrienteProveedoresClient() {
               <button onClick={()=>setSel(null)} className="text-p-gray text-xl">✕</button>
             </div>
             {sel.saldo_actual > 0 && (
-              <button onClick={()=>setOpenPago(true)} style={{...btn,marginTop:10,width:'100%',textAlign:'center'}}>
-                💵 Registrar pago
-              </button>
+              <div className="flex flex-col gap-2 mt-2.5">
+                <button onClick={()=>setOpenPago(true)} style={{...btn,width:'100%',textAlign:'center'}}>
+                  💵 Registrar pago simple
+                </button>
+                <button onClick={abrirOrdenPago} style={{...btnBlue,width:'100%',textAlign:'center',padding:'10px 20px',fontSize:14}}>
+                  🧾 Nueva Orden de Pago (varias facturas + NC)
+                </button>
+              </div>
             )}
           </div>
 
@@ -201,6 +393,69 @@ export default function CuentaCorrienteProveedoresClient() {
             <button onClick={()=>setOpenPago(false)} style={btnGray}>Cancelar</button>
             <button onClick={registrarPago} disabled={!formPago.monto} style={{...btn,opacity:!formPago.monto?.5:1}}>✓ Registrar pago</button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal Orden de Pago: elegir varias facturas + NC para un solo pago */}
+      <Modal open={opOpen} onClose={()=>setOpOpen(false)} title={`Nueva Orden de Pago — ${sel?.proveedor_nombre}`}>
+        <div className="flex flex-col gap-3">
+          {pendientes.length === 0 ? (
+            <Empty msg="Este proveedor no tiene facturas ni NC pendientes de aplicar." />
+          ) : (
+            <>
+              <p className="text-[11px] text-p-ink2">Tildá las facturas que vas a pagar y las NC que querés aplicar a este pago.</p>
+              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+                {pendientes.map(p => (
+                  <label key={p.id}
+                    className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer ${seleccion[p.id] ? (p.tipo==='nc'?'border-amber-400 bg-amber-50':'border-p-green bg-green-50') : 'border-p-line'}`}>
+                    <input type="checkbox" checked={!!seleccion[p.id]} onChange={()=>toggleSeleccion(p.id)} className="accent-p-green"/>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo==='nc'?'bg-amber-100 text-amber-700':'bg-blue-50 text-blue-700'}`}>
+                      {p.tipo==='nc'?'NC':'Factura'}
+                    </span>
+                    <span className="flex-1 text-sm font-mono">{p.letra||''}{p.punto_venta||''}-{p.numero||''}</span>
+                    <span className="text-xs text-p-ink2">{p.fecha.split('-').reverse().join('/')}</span>
+                    <span className={`font-mono font-bold text-sm ${p.tipo==='nc'?'text-amber-600':'text-p-ink'}`}>
+                      {p.tipo==='nc'?'− ':''}{moneyARS(p.total)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1.5">
+                <div className="flex justify-between text-sm"><span className="text-p-ink2">Total facturas seleccionadas</span><span className="font-mono">{moneyARS(totalFacturasSel)}</span></div>
+                {totalNcSel > 0 && (
+                  <div className="flex justify-between text-sm text-amber-600"><span>NC aplicadas</span><span className="font-mono">− {moneyARS(totalNcSel)}</span></div>
+                )}
+                <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
+                  <span>TOTAL A PAGAR</span><span>{moneyARS(totalAPagar)}</span>
+                </div>
+              </div>
+
+              <Field label="Forma de pago">
+                <select value={opForm.forma_pago} onChange={e=>setOpForm(p=>({...p,forma_pago:e.target.value}))}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Tarjeta">Tarjeta</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
+              </Field>
+              <Field label="Fecha">
+                <Input type="date" value={opForm.fecha} onChange={e=>setOpForm(p=>({...p,fecha:e.target.value}))}/>
+              </Field>
+              <Field label="Notas">
+                <Input value={opForm.notas} onChange={e=>setOpForm(p=>({...p,notas:e.target.value}))} placeholder="Referencia, número de operación…"/>
+              </Field>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={()=>setOpOpen(false)} style={btnGray}>Cancelar</button>
+                <button onClick={confirmarOrdenPago} disabled={guardandoOp || (facturasSel.length===0 && ncSel.length===0)}
+                  style={{...btn,opacity:(guardandoOp || (facturasSel.length===0 && ncSel.length===0))?.5:1}}>
+                  {guardandoOp ? 'Generando…' : '🧾 Confirmar y emitir Orden de Pago'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </div>
