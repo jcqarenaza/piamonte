@@ -31,8 +31,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
     tipo_id: '', tipo_nombre: ''
   })
   const [tipos, setTipos] = useState<{id:string;nombre:string}[]>([])
-  const [tab, setTab] = useState<'ventas'|'gastos'>('ventas')
+  const [tab, setTab] = useState<'ventas'|'gastos'|'ctacte'>('ventas')
   const [gastos, setGastos] = useState<any[]>([])
+  const [recibos, setRecibos] = useState<any[]>([])
+  const [pagosProveedores, setPagosProveedores] = useState<any[]>([])
   const [gastoOpen, setGastoOpen] = useState(false)
   const [gastoForm, setGastoForm] = useState({ categoria:'', descripcion:'', monto:'', forma_pago:'Efectivo', comprobante:'' })
 
@@ -52,12 +54,16 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     }
     // Gerencial ve todo (sin filtro)
 
-    const [ventasRes, gastosRes] = await Promise.all([
+    const [ventasRes, gastosRes, recibosRes, pagosProvRes] = await Promise.all([
       q,
       supabase.from('gastos').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
+      supabase.from('recibos_cobro').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
+      supabase.from('cuenta_corriente_proveedores').select('*').eq('fecha', fecha).eq('tipo','pago').order('created_at', { ascending: false }),
     ])
     setVentas(ventasRes.data ?? [])
     setGastos(gastosRes.data ?? [])
+    setRecibos(recibosRes.data ?? [])
+    setPagosProveedores(pagosProvRes.data ?? [])
     setLoading(false)
   }, [fecha, supabase, perfil.rol])
 
@@ -267,6 +273,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   const costo = ventas.filter(v => !v.pendiente).reduce((a, v) => a + (v.costo ?? 0), 0)
   const gan2 = fact - costo
   const pend = ventas.filter(v => v.pendiente).length
+  const totalRecibos = recibos.reduce((a,r)=>a+r.monto, 0)
+  const totalPagosProv = pagosProveedores.reduce((a,p)=>a+p.haber, 0)
 
   return (
     <div>
@@ -289,6 +297,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
         {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={blueRate ? 'USD ' + Math.round(gan2/blueRate).toLocaleString('es-AR') : undefined} />}
         <KpiCard label="Operaciones" value={`${ventas.length}`} sub={pend ? `${pend} s/costo` : undefined} />
         {isAdmin && <KpiCard label="Gastos del día" value={moneyARS(gastos.reduce((a,g)=>a+g.monto,0))} />}
+        {isAdmin && <KpiCard label="Cobros Cta. Cte. (clientes)" value={moneyARS(totalRecibos)} />}
+        {isAdmin && <KpiCard label="Pagos a proveedores" value={moneyARS(totalPagosProv)} />}
       </div>
 
       {pend > 0 && <AlarmBar count={pend} label="venta(s) sin costo — ganancia incompleta" />}
@@ -304,6 +314,10 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             style={{background:tab==='gastos'?'#ef4444':'#e5e7eb',color:tab==='gastos'?'#fff':'#374151',border:'none',borderRadius:8,padding:'6px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
             💸 Gastos ({gastos.length})
           </button>
+          <button onClick={()=>setTab('ctacte')}
+            style={{background:tab==='ctacte'?'#1d4ed8':'#e5e7eb',color:tab==='ctacte'?'#fff':'#374151',border:'none',borderRadius:8,padding:'6px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+            📒 Cta. Cte. ({recibos.length + pagosProveedores.length})
+          </button>
         </div>
         {tab==='gastos' && (
           <button onClick={()=>setGastoOpen(true)}
@@ -315,10 +329,43 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
 
       {/* Lista */}
       <div className="tsec font-saira font-bold text-sm text-p-ink uppercase tracking-wider mb-3">
-        Ventas del día <span className="font-mono text-xs bg-p-light text-p-dark px-2 py-0.5 rounded-full ml-2">{ventas.length}</span>
+        {tab==='gastos' ? 'Gastos del día' : tab==='ctacte' ? 'Movimientos de Cuenta Corriente del día' : 'Ventas del día'}
+        <span className="font-mono text-xs bg-p-light text-p-dark px-2 py-0.5 rounded-full ml-2">
+          {tab==='gastos' ? gastos.length : tab==='ctacte' ? recibos.length + pagosProveedores.length : ventas.length}
+        </span>
       </div>
 
-      {tab === 'gastos' ? (
+      {tab === 'ctacte' ? (
+        loading ? <p className="text-sm text-p-gray py-8 text-center">Cargando…</p> :
+        (recibos.length === 0 && pagosProveedores.length === 0) ? <Empty msg="Sin cobros ni pagos de cuenta corriente en este día." /> : (
+          <div className="flex flex-col gap-3">
+            {recibos.map(r => (
+              <div key={r.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span style={{background:'#dcfce7',color:'#16a34a',borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>COBRO CLIENTE</span>
+                    <p className="font-saira font-bold text-p-ink">{r.cliente_nombre}</p>
+                  </div>
+                  <p className="text-xs text-p-ink2 mt-0.5">Recibo N° {r.numero} · {r.forma_pago}</p>
+                </div>
+                <p className="font-mono font-bold text-green-600">+ {moneyARS(r.monto)}</p>
+              </div>
+            ))}
+            {pagosProveedores.map(p => (
+              <div key={p.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>PAGO PROVEEDOR</span>
+                    <p className="font-saira font-bold text-p-ink">{p.proveedor_nombre}</p>
+                  </div>
+                  <p className="text-xs text-p-ink2 mt-0.5">{p.notas || p.descripcion || 'Pago a cuenta'}</p>
+                </div>
+                <p className="font-mono font-bold text-red-500">- {moneyARS(p.haber)}</p>
+              </div>
+            ))}
+          </div>
+        )
+      ) : tab === 'gastos' ? (
         loading ? <p className="text-sm text-p-gray py-8 text-center">Cargando…</p> :
         gastos.length === 0 ? <Empty msg="Sin gastos en este día." /> : (
           <div className="flex flex-col gap-3">

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
+import { LOGO_BASE64 } from '@/lib/logo'
 
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
@@ -17,7 +18,7 @@ export default function CuentaCorrienteClient() {
   const [movs, setMovs]         = useState<Movimiento[]>([])
   const [q, setQ]               = useState('')
   const [openPago, setOpenPago] = useState(false)
-  const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'' })
+  const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
   const [loading, setLoading]   = useState(true)
   const supabase = createClient()
 
@@ -46,19 +47,108 @@ export default function CuentaCorrienteClient() {
   async function registrarPago() {
     if(!sel || !formPago.monto) return
     const monto = +formPago.monto
-    await supabase.from('cuenta_corriente').insert({
+    const fechaPago = formPago.fecha || new Date().toISOString().slice(0,10)
+    const { data: mov } = await supabase.from('cuenta_corriente').insert({
       cliente_id: sel.cliente_id,
       cliente_nombre: sel.cliente_nombre,
-      fecha: formPago.fecha || new Date().toISOString().slice(0,10),
+      fecha: fechaPago,
       tipo: 'pago',
       descripcion: 'Pago a cuenta',
       debe: 0, haber: monto,
       notas: formPago.notas||null
+    }).select('id').single()
+
+    // Recibo numerado — mismo criterio que los Certificados (contador propio en `contadores`)
+    const { data: numeroData } = await supabase.rpc('next_recibo_numero')
+    const numero = numeroData as string
+    await supabase.from('recibos_cobro').insert({
+      numero, fecha: fechaPago,
+      cliente_id: sel.cliente_id, cliente_nombre: sel.cliente_nombre,
+      monto, forma_pago: formPago.forma_pago,
+      notas: formPago.notas||null,
+      cuenta_corriente_id: mov?.id || null,
     })
+
     setOpenPago(false)
-    setFormPago({ monto:'', fecha:'', notas:'' })
+    imprimirRecibo({ numero, fecha: fechaPago, cliente_nombre: sel.cliente_nombre, monto, forma_pago: formPago.forma_pago, notas: formPago.notas })
+    setFormPago({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
     load()
     loadMovs(sel.cliente_nombre)
+  }
+
+  function imprimirRecibo(r: { numero:string; fecha:string; cliente_nombre:string; monto:number; forma_pago:string; notas:string }) {
+    const fechaFmt = r.fecha.split('-').reverse().join('/')
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Recibo N° ${r.numero}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1a1a1a;width:210mm;margin:0 auto;font-size:12px}
+  .header{background:#fff;color:#1a1a1a;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A550}
+  .logo-sub{font-size:10px;letter-spacing:3px;color:#555;margin-top:2px}
+  .shield{background:#00A550;color:#fff;border-radius:12px;padding:10px 16px;text-align:center;border:2px solid #fff}
+  .shield .sv{font-size:10px;font-weight:bold;letter-spacing:1px}
+  .shield .sa{font-size:18px;font-weight:900;line-height:1}
+  .title-bar{background:#fff;padding:14px 24px 8px;border-bottom:4px solid #00A550}
+  .rec-title{font-size:30px;font-weight:900;text-transform:uppercase;line-height:1.1;color:#1a1a1a}
+  .rec-title .accent{color:#00A550}
+  .rec-num{font-size:14px;font-weight:bold;color:#00A550;margin-top:4px}
+  .rec-fecha{font-size:12px;color:#555;margin-top:2px}
+  .body{padding:24px}
+  .section{border:1.5px solid #1a1a1a;border-radius:10px;padding:16px 20px;margin-bottom:14px}
+  .sec-title{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;color:#00A550}
+  .field-label{font-size:10.5px;color:#555;margin-top:6px}
+  .field-line{border:none;border-bottom:1px solid #888;width:100%;margin:4px 0 6px;display:block;font-size:13px;color:#1a1a1a}
+  .monto-box{background:#00A550;color:#fff;border-radius:10px;padding:18px 20px;text-align:center;margin-top:4px}
+  .monto-box .lbl{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;opacity:.9}
+  .monto-box .val{font-size:30px;font-weight:900;margin-top:4px}
+  .footer-bar{background:#f5f5f5;color:#1a1a1a;padding:10px 24px;text-align:center;margin-top:10px;border-top:2px solid #00A550;font-size:10px;color:#555}
+  @media print{body{width:auto;margin:0}@page{margin:8mm 14mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+<div class="header">
+  <div>
+    <img src="${LOGO_BASE64}" alt="El Piamonte" style="height:42px;object-fit:contain;"/>
+    <div class="logo-sub">SEGURIDAD • TECNOLOGÍA • CONFIANZA</div>
+  </div>
+  <div class="shield">
+    <div class="sv">RECIBO DE</div>
+    <div class="sv">PAGO</div>
+    <div class="sa">✔</div>
+  </div>
+</div>
+
+<div class="title-bar">
+  <div class="rec-title">RECIBO DE <span class="accent">PAGO</span></div>
+  <div class="rec-num">N° ${r.numero}</div>
+  <div class="rec-fecha">Fecha: ${fechaFmt}</div>
+</div>
+
+<div class="body">
+  <div class="section">
+    <div class="sec-title">👤 RECIBIMOS DE</div>
+    <div class="field-label">Cliente:</div>
+    <div class="field-line" style="font-size:16px;font-weight:700">${r.cliente_nombre}</div>
+  </div>
+  <div class="monto-box">
+    <div class="lbl">Monto recibido</div>
+    <div class="val">${moneyARS(r.monto)}</div>
+  </div>
+  <div class="section" style="margin-top:14px">
+    <div class="sec-title">💳 DETALLE</div>
+    <div class="field-label">Forma de pago:</div>
+    <div class="field-line">${r.forma_pago}</div>
+    ${r.notas ? `<div class="field-label">Notas:</div><div class="field-line">${r.notas}</div>` : ''}
+    <div class="field-label">En concepto de:</div>
+    <div class="field-line">Pago a cuenta — cuenta corriente</div>
+  </div>
+</div>
+
+<div class="footer-bar">Parabrisas El Piamonte — Recibo válido como comprobante de pago a cuenta. No reemplaza factura.</div>
+
+</body></html>`
+    const w = window.open('', '_blank')!
+    w.document.write(html)
+    w.document.close()
   }
 
   const totalDeuda = saldos.reduce((a,s)=>a+Math.max(0,s.saldo_actual),0)
@@ -205,12 +295,20 @@ export default function CuentaCorrienteClient() {
           <Field label="Fecha">
             <Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/>
           </Field>
+          <Field label="Forma de pago">
+            <select value={formPago.forma_pago} onChange={e=>setFormPago(p=>({...p,forma_pago:e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta">Tarjeta</option>
+            </select>
+          </Field>
           <Field label="Notas">
             <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Forma de pago, referencia…"/>
           </Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpenPago(false)} style={btnGray}>Cancelar</button>
-            <button onClick={registrarPago} disabled={!formPago.monto} style={{...btn,opacity:!formPago.monto?.5:1}}>✓ Registrar pago</button>
+            <button onClick={registrarPago} disabled={!formPago.monto} style={{...btn,opacity:!formPago.monto?.5:1}}>🧾 Registrar pago y emitir recibo</button>
           </div>
         </div>
       </Modal>
