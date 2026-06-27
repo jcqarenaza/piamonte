@@ -55,7 +55,7 @@ interface Comprobante {
   cae:string|null; cae_vencimiento:string|null; remito_id:string|null
   descuento_pct:number|null; descuento_monto:number|null; flete:number|null
   ret_iva:number|null; ret_ganancias:number|null; ret_iibb:number|null; ajuste_redondeo:number|null
-  estado:string; afecta_stock:boolean; notas:string|null; created_at:string
+  estado:string; afecta_stock:boolean; notas:string|null; created_at:string; es_contado?:boolean
 }
 
 export default function ComprasClient() {
@@ -91,8 +91,11 @@ export default function ComprasClient() {
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
     proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
     cae:'', cae_vencimiento:'', remito_vinculado_id:'',
-    descuento_pct:'', flete:'', ret_iva:'', ret_ganancias:'', ret_iibb:''
+    descuento_pct:'', flete:'', ret_iva:'', ret_ganancias:'', ret_iibb:'',
+    forma_pago:'cuenta_corriente' as 'cuenta_corriente'|'contado',
   })
+  const [formaPagoModal, setFormaPagoModal] = useState(false)
+  const [formPagoContado, setFormPagoContado] = useState({ forma_pago:'Efectivo', monto:'', fecha:todayStr() })
   const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
@@ -198,13 +201,15 @@ export default function ComprasClient() {
     setProvForm({ nombre:'', razon_social:'', cuit:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'' })
   }
 
-  async function save() {
+  // esContado=true → la factura no entra a la cuenta corriente del proveedor (lo maneja el trigger
+  // en Supabase mirando comprobantes_compra.es_contado) y además se registra el egreso en Caja/Gastos.
+  async function save(esContado: boolean = false, pagoContado?: {forma_pago:string; monto:string; fecha:string}) {
     if (!items.length && total === 0) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
     // Si la factura está vinculada a un remito ya recibido, ese remito ya sumó el stock —
     // la factura no debe volver a tocarlo, solo queda de respaldo fiscal.
     const tieneRemitoVinculado = form.tipo==='factura' && !!form.remito_vinculado_id
-    await supabase.from('comprobantes_compra').insert({
+    const { data: comp } = await supabase.from('comprobantes_compra').insert({
       tipo: form.tipo, letra: form.letra||null,
       punto_venta: form.punto_venta||null, numero: form.numero||null,
       fecha: form.fecha, proveedor_id: form.proveedor_id||null,
@@ -218,19 +223,45 @@ export default function ComprasClient() {
       remito_id: tieneRemitoVinculado ? form.remito_vinculado_id : null,
       estado: 'pendiente', afecta_stock: tieneRemitoVinculado ? false : form.afecta_stock,
       notas: form.notas||null,
-    })
+      es_contado: esContado,
+    }).select('id,numero,letra,punto_venta').single()
     // Si vinculamos un remito, lo marcamos como facturado para que no aparezca disponible para vincular de nuevo
     if (tieneRemitoVinculado) {
       await supabase.from('comprobantes_compra').update({ notas: 'Facturado' }).eq('id', form.remito_vinculado_id)
     }
+    // Pago al contado → se registra como gasto del día en Caja, no genera deuda con el proveedor
+    if (esContado && pagoContado && comp) {
+      const numeroFmt = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
+      await supabase.from('gastos').insert({
+        fecha: pagoContado.fecha || todayStr(),
+        categoria: 'Pago a proveedor',
+        descripcion: `Factura ${numeroFmt} — ${prov?.nombre || form.proveedor_nombre || ''}`,
+        monto: parseFloat(pagoContado.monto.replace(',','.')) || total,
+        forma_pago: pagoContado.forma_pago,
+        comprobante: numeroFmt,
+      })
+    }
     setOpen(false)
+    setFormaPagoModal(false)
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
       proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
-      descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:''})
+      descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'', forma_pago:'cuenta_corriente'})
+    setFormPagoContado({ forma_pago:'Efectivo', monto:'', fecha:todayStr() })
     setDescuentoTocadoAMano(false)
     setAjusteManual('')
     setItems([]); setIvaOn(true)
     load()
+  }
+
+  // Click en "Guardar": si es factura al contado, primero pide los datos del pago.
+  function abrirGuardado() {
+    if (!items.length && total === 0) return
+    if (form.tipo === 'factura' && form.forma_pago === 'contado') {
+      setFormPagoContado({ forma_pago:'Efectivo', monto:String(total), fecha: form.fecha || todayStr() })
+      setFormaPagoModal(true)
+    } else {
+      save(false)
+    }
   }
 
   // Abre el modal de vinculación a stock — funciona para remitos Y para facturas con afecta_stock
@@ -475,6 +506,11 @@ export default function ComprasClient() {
                   <span className="text-sm font-semibold text-p-ink">{c.proveedor_nombre||'Sin proveedor'}</span>
                   <span className="text-xs text-p-ink2">{c.fecha.split('-').reverse().join('/')}</span>
                   {c.cae && <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">CAE {c.cae}</span>}
+                  {c.tipo==='factura' && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.es_contado?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}`}>
+                      {c.es_contado ? '💵 Contado' : '📒 Cta. Cte.'}
+                    </span>
+                  )}
                   {c.remito_id && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">📦 Stock ya cargado (remito)</span>}
                 </div>
                 <div className="text-right">
@@ -870,6 +906,15 @@ export default function ComprasClient() {
             </Field>
           </div>
 
+          {form.tipo === 'factura' && (
+            <Field label="Forma de pago">
+              <Select value={form.forma_pago} onChange={e=>setForm(p=>({...p,forma_pago:e.target.value as 'cuenta_corriente'|'contado'}))}>
+                <option value="cuenta_corriente">📒 Cuenta corriente — queda pendiente de pago</option>
+                <option value="contado">💵 Contado — se paga en el momento</option>
+              </Select>
+            </Field>
+          )}
+
           {/* Ítems */}
           <div className="border-t border-p-line2 pt-3">
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">
@@ -998,7 +1043,38 @@ export default function ComprasClient() {
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} style={btn}>✓ Guardar</button>
+            <button onClick={abrirGuardado} style={btn}>✓ Guardar</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: confirmar pago al contado */}
+      <Modal open={formaPagoModal} onClose={()=>setFormaPagoModal(false)} title="Registrar pago al contado">
+        <div className="flex flex-col gap-3">
+          <div className="bg-p-light rounded-xl p-3 text-center">
+            <p className="text-sm text-p-ink2">Total de la factura</p>
+            <p className="font-saira font-bold text-2xl text-p-ink">{moneyARS(total)}</p>
+          </div>
+          <Field label="Forma de pago">
+            <Select value={formPagoContado.forma_pago} onChange={e=>setFormPagoContado(p=>({...p,forma_pago:e.target.value}))}>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta">Tarjeta</option>
+            </Select>
+          </Field>
+          <Field label="Monto pagado">
+            <Input value={formPagoContado.monto} onChange={e=>setFormPagoContado(p=>({...p,monto:e.target.value}))}/>
+          </Field>
+          <Field label="Fecha">
+            <Input type="date" value={formPagoContado.fecha} onChange={e=>setFormPagoContado(p=>({...p,fecha:e.target.value}))}/>
+          </Field>
+          <p className="text-[11px] text-p-ink2">
+            Esto registra un gasto en Caja del día y la factura no entra a la cuenta corriente del proveedor.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setFormaPagoModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={()=>save(true, formPagoContado)} disabled={!formPagoContado.monto}
+              style={{...btn,opacity:!formPagoContado.monto?.5:1}}>✓ Confirmar pago y guardar</button>
           </div>
         </div>
       </Modal>

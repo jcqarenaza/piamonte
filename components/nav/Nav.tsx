@@ -29,6 +29,7 @@ const GRUPOS = [
       { id:'proveedores-compra',href:'/proveedores-compra',label:'Proveedores',  icon:'🏢' },
       { id:'proveedores',       href:'/proveedores',       label:'Listas',       icon:'📋' },
       { id:'compras',           href:'/compras',           label:'Compras',      icon:'🛒' },
+      { id:'cuenta-corriente-proveedores', href:'/cuenta-corriente-proveedores', label:'Cta. Cte. Prov.', icon:'📒' },
     ]
   },
   {
@@ -99,7 +100,7 @@ const C = {
 
 const MODULOS_FASE2 = ['proveedores-compra','compras','articulos','aseguradoras','depositos',
   'remitos-internos','tarjetas','rentabilidades-avanzadas',
-  'cuenta-corriente','busqueda-comprobantes']
+  'cuenta-corriente','busqueda-comprobantes','cuenta-corriente-proveedores']
 const MODULOS_FASE3 = ['contabilidad']
 
 type Module = typeof ALL_MODULES[0]
@@ -155,7 +156,7 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
       if (rol === 'caja' && !['proveedores-compra','caja','comprobantes','arqueo'].includes(m.id)) return false
       // Rol ventas: ocultar algunos módulos
       if (rol === 'ventas' && ['proveedores','informes'].includes(m.id)) return false
-      if (rol === 'ventas' && ['proveedores-compra','compras','articulos','aseguradoras','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes'].includes(m.id)) return false
+      if (rol === 'ventas' && ['proveedores-compra','compras','articulos','aseguradoras','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes','cuenta-corriente-proveedores'].includes(m.id)) return false
       // Configuración solo gerencial/admin
       if (!['gerencial','admin'].includes(rol ?? '') && ['configuracion','usuarios','auditoria'].includes(m.id)) return false
       // Arqueo solo gerencial/admin
