@@ -7,51 +7,56 @@ import { createClient } from '@/lib/supabase/client'
 // ── Grupos de módulos ─────────────────────────────────────────────────────────
 const GRUPOS = [
   {
-    label: 'ARCHIVOS',
+    label: 'CLIENTES Y VEHÍCULOS',
     items: [
-      { id:'clientes',          href:'/clientes',          label:'Clientes',     icon:'👥' },
+      { id:'clientes',     href:'/clientes',     label:'Clientes',     icon:'👥' },
+      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',     icon:'🚗' },
+      { id:'aseguradoras', href:'/aseguradoras', label:'Aseguradoras', icon:'🛡️' },
+    ]
+  },
+  {
+    label: 'CATÁLOGO / ARTÍCULOS',
+    items: [
+      { id:'articulos', href:'/articulos', label:'Artículos', icon:'🏷️' },
+      { id:'buscar',    href:'/buscar',    label:'Buscar',    icon:'🔍' },
+      { id:'comparar',  href:'/comparar',  label:'Comparar',  icon:'⚖️' },
+      { id:'ofertas',   href:'/ofertas',   label:'Ofertas',   icon:'⭐' },
+    ]
+  },
+  {
+    label: 'PROVEEDORES Y COMPRAS',
+    items: [
       { id:'proveedores-compra',href:'/proveedores-compra',label:'Proveedores',  icon:'🏢' },
-      { id:'articulos',         href:'/articulos',         label:'Artículos',    icon:'🏷️' },
-      { id:'aseguradoras',     href:'/aseguradoras',     label:'Aseguradoras', icon:'🛡️' },
-      { id:'depositos',        href:'/depositos',        label:'Depósitos',    icon:'🏭' },
+      { id:'proveedores',       href:'/proveedores',       label:'Listas',       icon:'📋' },
+      { id:'compras',           href:'/compras',           label:'Compras',      icon:'🛒' },
     ]
   },
   {
     label: 'VENTAS',
     items: [
-      { id:'inicio',       href:'/inicio',       label:'Inicio',        icon:'🏠' },
-      { id:'turnos',       href:'/turnos',       label:'Turnos',        icon:'📅' },
-      { id:'precios',      href:'/precios',      label:'Precios',       icon:'💰' },
-      { id:'presupuestos', href:'/presupuestos', label:'Presupuestos',  icon:'📋' },
-      { id:'ordenes',      href:'/ordenes',      label:'Órdenes OS',    icon:'🔧' },
-      { id:'comprobantes', href:'/comprobantes', label:'Comprobantes',  icon:'🧾' },
-      { id:'adas',            href:'/adas',            label:'Certificados',      icon:'🛡️' },
-      { id:'cuenta-corriente',       href:'/cuenta-corriente',       label:'Cta. Corriente',  icon:'📒' },
-      { id:'busqueda-comprobantes',   href:'/busqueda-comprobantes',   label:'Búsqueda',        icon:'🔎' },
-    ]
-  },
-  {
-    label: 'COMPRAS',
-    items: [
-      { id:'compras',      href:'/compras',      label:'Compras',       icon:'🛒' },
-      { id:'proveedores',  href:'/proveedores',  label:'Listas',        icon:'📋' },
-      { id:'buscar',       href:'/buscar',       label:'Buscar',        icon:'🔍' },
-      { id:'comparar',     href:'/comparar',     label:'Comparar',      icon:'⚖️' },
-      { id:'ofertas',      href:'/ofertas',      label:'Ofertas',       icon:'⭐' },
+      { id:'turnos',           href:'/turnos',           label:'Turnos',          icon:'📅' },
+      { id:'precios',          href:'/precios',          label:'Precios',        icon:'💰' },
+      { id:'presupuestos',     href:'/presupuestos',     label:'Presupuestos',   icon:'📋' },
+      { id:'ordenes',          href:'/ordenes',          label:'Órdenes OS',     icon:'🔧' },
+      { id:'comprobantes',     href:'/comprobantes',     label:'Comprobantes',   icon:'🧾' },
+      { id:'adas',             href:'/adas',             label:'Certificados',   icon:'🛡️' },
+      { id:'cuenta-corriente', href:'/cuenta-corriente', label:'Cta. Corriente', icon:'📒' },
     ]
   },
   {
     label: 'STOCK',
     items: [
       { id:'stock',           href:'/stock',           label:'Stock',           icon:'📦' },
+      { id:'depositos',       href:'/depositos',       label:'Depósitos',       icon:'🏭' },
       { id:'remitos-internos', href:'/remitos-internos', label:'Remitos Internos', icon:'🔄' },
     ]
   },
   {
     label: 'INFORMES',
     items: [
-      { id:'informes',               href:'/informes',               label:'Informes',       icon:'📊' },
-      { id:'rentabilidades-avanzadas',href:'/rentabilidades-avanzadas',label:'Rentabilidades',icon:'💹' },
+      { id:'informes',               href:'/informes',               label:'Informes',          icon:'📊' },
+      { id:'rentabilidades-avanzadas',href:'/rentabilidades-avanzadas',label:'Rentabilidades',   icon:'💹' },
+      { id:'busqueda-comprobantes',   href:'/busqueda-comprobantes',   label:'Buscar Comprobantes', icon:'🔎' },
     ]
   },
   {
@@ -66,7 +71,6 @@ const GRUPOS = [
   {
     label: 'CONFIGURACIÓN',
     items: [
-      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',      icon:'🚗' },
       { id:'usuarios',     href:'/usuarios',     label:'Usuarios',      icon:'👤' },
       { id:'auditoria',    href:'/auditoria',    label:'Auditoría',     icon:'🛡️' },
       { id:'configuracion',href:'/configuracion',label:'Configuración', icon:'⚙️' },
@@ -75,7 +79,7 @@ const GRUPOS = [
 ]
 
 const ALL_MODULES = GRUPOS.flatMap(g => g.items)
-const DEFAULT_FAVS = ['inicio','turnos','caja','buscar']
+const DEFAULT_FAVS = ['turnos','caja','buscar','presupuestos']
 const SIDEBAR_W = 210
 
 // Colores — estilo MobixERP / QP C&IA
@@ -169,7 +173,7 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
   const SidebarContent = () => (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
       {/* Logo */}
-      <div style={{padding:'20px 16px 16px',borderBottom:`1px solid ${C.border}`}}>
+      <Link href="/inicio" style={{padding:'20px 16px 16px',borderBottom:`1px solid ${C.border}`,textDecoration:'none',display:'block'}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:36,height:36,background:C.logo,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>
             <img src="/logo.png" alt="Logo" style={{width:'100%',height:'100%',objectFit:'cover'}}
@@ -180,7 +184,7 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
             <div style={{fontSize:10,color:C.sectionTxt,marginTop:1,fontFamily:'Arial'}}>Gestión de comercio</div>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* Grupos de links */}
       <nav style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
@@ -241,13 +245,13 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
       {/* ── HEADER MOBILE ── */}
       {!isDesktop && (
         <header style={{position:'fixed',top:0,left:0,right:0,height:52,background:'#fff',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px',zIndex:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <Link href="/inicio" style={{display:'flex',alignItems:'center',gap:8,textDecoration:'none'}}>
             <div style={{width:30,height:30,background:C.logo,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
               <img src="/logo.png" alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}
                 onError={e=>{const t=e.target as HTMLImageElement;t.style.display='none';t.parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:13px;font-family:Arial">P</span>'}}/>
             </div>
             <span style={{fontWeight:800,fontSize:15,color:'#111827',fontFamily:'Arial'}}>El Piamonte</span>
-          </div>
+          </Link>
           <button onClick={()=>setSideOpen(true)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6B7280',padding:4}}>☰</button>
         </header>
       )}
