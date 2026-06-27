@@ -383,7 +383,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
             <div className="relative">
-              <Input value={cliQ} onChange={e=>{setCliQ(e.target.value);setCliSel(null)}} placeholder="Buscar cliente existente…"/>
+              <Input value={cliQ} onChange={e=>{
+                const v = e.target.value
+                setCliQ(v); setCliSel(null)
+                setForm(p=>({...p, cli:v}))
+              }} placeholder="Buscar cliente existente…"/>
               {cliSugs.length>0&&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                   <button onClick={selectConsumidorFinal} className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 font-semibold text-p-dark">

@@ -145,9 +145,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if (tel) {
         supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
           .eq('telefono', tel).maybeSingle()
-          .then(({data}) => { if (data) { setCli(data as ClienteMin); setCliQ(data.nombre) } else if (cli) setCliQ(cli) })
+          .then(({data}) => {
+            if (data) { setCli(data as ClienteMin); setCliQ(data.nombre) }
+            else if (cli) buscarOPedirAltaCliente(cli, tel)
+          })
       } else if (cli) {
-        setCliQ(cli)
+        buscarOPedirAltaCliente(cli, tel)
       }
     }
     if (piezaId && piezaDesc && piezaPrecio) {
@@ -172,6 +175,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       .ilike('nombre', `%${asegQ}%`).limit(8)
       .then(({data})=>setAsegSugs((data??[]) as AseguradoraMin[]))
   },[asegQ,supabase])
+
+  // Al convertir un Presupuesto/OS, el nombre del cliente puede no estar cargado todavía como
+  // cliente real (en Presupuestos es texto libre). Buscamos por nombre exacto/parecido; si no
+  // hay match, abrimos directo "+ Nuevo cliente" con los datos ya completos para no trabar el flujo.
+  async function buscarOPedirAltaCliente(nombre: string, telefono?: string|null) {
+    setCliQ(nombre)
+    const { data } = await supabase.from('clientes')
+      .select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
+      .ilike('nombre', nombre).limit(1)
+    const match = (data ?? [])[0]
+    if (match) {
+      setCli(match as ClienteMin); setCliQ(match.nombre)
+    } else {
+      setNuevoCliOpen(true)
+      setNuevoCliForm(p => ({ ...p, nombre, telefono: telefono || p.telefono }))
+    }
+  }
 
   async function selectCliente(c:ClienteMin){
     setCli(c); setCliQ(c.nombre); setCliSugs([])
