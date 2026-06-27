@@ -118,43 +118,39 @@ export default function ClientesClient({ userId }: { userId:string }) {
         <div className="flex flex-col gap-2">
           {clientes.map(c => (
             <div key={c.id}>
-              <div className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap cursor-pointer transition-colors ${selected?.id===c.id ? 'border-p-green bg-p-light/30' : 'border-p-line hover:bg-p-light/20'}`}
-                onClick={() => loadHistorial(c)}>
-                <div className="w-9 h-9 rounded-full bg-p-green flex items-center justify-center text-white font-saira font-bold shrink-0">
+              <div className={`bg-white border rounded-xl px-3.5 py-2.5 shadow-sm flex items-center gap-3 flex-wrap cursor-pointer transition-colors ${selected?.id===c.id ? 'border-p-green bg-p-light/30' : 'border-p-line hover:border-p-green'}`}
+                onClick={() => loadHistorial(c)}
+                onDoubleClick={() => { setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
+                title="Click para historial · doble click para editar">
+                <div className="w-7 h-7 rounded-full bg-p-green flex items-center justify-center text-white font-saira font-bold text-xs shrink-0">
                   {c.nombre.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-saira font-bold text-p-ink">{c.nombre}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <p className="text-xs text-p-ink2">{[c.telefono, c.email].filter(Boolean).join(' · ') || 'Sin contacto'}</p>
-                    {c.tipo_cliente_id && tipos.find(t=>t.id===c.tipo_cliente_id) && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">
-                        {tipos.find(t=>t.id===c.tipo_cliente_id)?.nombre}
-                      </span>
-                    )}
-                    {c.tiene_cuenta_corriente && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                        📒 CC {c.plazo_cc_dias}d
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {c.telefono && (
-                    <a href={`https://wa.me/${c.telefono.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer"
-                      onClick={e=>e.stopPropagation()}
-                      className="bg-[#25d366] text-white text-xs font-bold px-2.5 py-1 rounded-lg">WA</a>
-                  )}
-                  <button onClick={e=>{ e.stopPropagation(); setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
-                    className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink2 hover:bg-p-light">✏</button>
-                  <button onClick={e=>{ e.stopPropagation(); del(c.id) }}
-                    className="text-xs border border-red-200 rounded-lg px-2 py-1 text-red-400 hover:text-red-600">✕</button>
-                </div>
+                <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>{c.nombre}</p>
+                {c.tipo_cliente_id && tipos.find(t=>t.id===c.tipo_cliente_id) && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark shrink-0">
+                    {tipos.find(t=>t.id===c.tipo_cliente_id)?.nombre}
+                  </span>
+                )}
+                {c.tiene_cuenta_corriente && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">📒 CC</span>
+                )}
+                <p className="text-xs text-p-ink2 shrink-0">{[c.telefono, c.email].filter(Boolean).join(' · ')}</p>
+                <div className="flex-1 min-w-[8px]"/>
               </div>
 
-              {/* Historial expandido */}
+              {/* Expandido: acciones + historial */}
               {selected?.id === c.id && (
                 <div className="border border-t-0 border-p-green rounded-b-xl bg-white px-4 py-4 -mt-1">
+                  <div className="flex items-center gap-2 mb-3 pb-3 border-b border-p-line2">
+                    {c.telefono && (
+                      <a href={`https://wa.me/${c.telefono.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer"
+                        className="bg-[#25d366] text-white text-xs font-bold px-3 py-1.5 rounded-lg">📱 WhatsApp</a>
+                    )}
+                    <button onClick={()=>{ setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}
+                      className="text-xs border border-p-line rounded-lg px-3 py-1.5 text-p-ink2 hover:bg-p-light font-semibold">✏ Editar</button>
+                    <button onClick={()=>del(c.id)}
+                      className="text-xs border border-red-200 rounded-lg px-3 py-1.5 text-red-500 hover:bg-red-50 font-semibold">✕ Borrar</button>
+                  </div>
                   {loadingHist ? (
                     <p className="text-sm text-p-gray text-center py-4">Cargando historial…</p>
                   ) : historial ? (
