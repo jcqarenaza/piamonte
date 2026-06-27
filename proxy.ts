@@ -20,8 +20,24 @@ export async function proxy(request: NextRequest) {
     },
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
   const pathname = request.nextUrl.pathname
+  let user = null
+
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch (err) {
+    // El refresh token quedó inválido o vencido (ej: "Invalid Refresh Token: Refresh
+    // Token Not Found"). Se trata como sesión cerrada: se limpian las cookies de auth
+    // y se redirige a /login, en vez de dejar que el error rompa el middleware.
+    const response = pathname.startsWith('/login')
+      ? supabaseResponse
+      : NextResponse.redirect(new URL('/login', request.url))
+    request.cookies.getAll().forEach(({ name }) => {
+      if (name.startsWith('sb-')) response.cookies.delete(name)
+    })
+    return response
+  }
 
   if (pathname.startsWith('/login')) {
     if (user) return NextResponse.redirect(new URL('/inicio', request.url))
