@@ -48,6 +48,7 @@ interface Comprobante {
   aseguradora_nombre?:string|null; es_negro?:boolean
   cae_emitido?:string|null; cae_vencimiento?:string|null
   categoria?:string; comprobante_original_id?:string|null; motivo_nc?:string|null
+  nro_cbte_afip?:number|null
 }
 
 export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:string; rol?:string }) {
@@ -316,9 +317,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       comprobante_id: (nc as any).id, user_id: userId,
     })
 
-    // Emitir con CAE propio en AFIP si el original era fiscal
+    // Emitir con CAE propio en AFIP si el original era fiscal — necesita el comprobante asociado
+    // (tipo/PtoVta/Nro de la factura original, exigido por AFIP para toda NC).
     if (!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo)) {
-      await solicitarCAE(nc as any, TIPO_CBTE_NC_AFIP[ncComp.tipo])
+      const { data: feOriginal } = await supabase.from('facturacion_electronica')
+        .select('nro_cbte,tipo_cbte,punto_venta')
+        .eq('comprobante_id', ncComp.id).eq('estado','emitida')
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const cbteAsoc = feOriginal?.nro_cbte ? {
+        tipo: (feOriginal as any).tipo_cbte, ptoVta: (feOriginal as any).punto_venta, nro: (feOriginal as any).nro_cbte
+      } : undefined
+      await solicitarCAE(nc as any, TIPO_CBTE_NC_AFIP[ncComp.tipo], cbteAsoc)
     }
 
     setNcComp(null)
@@ -327,7 +336,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setComps(comps2??[])
   }
 
-  async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number) {
+  async function reintentarCAE(c: Comprobante) {
+    if (c.categoria === 'nc' && c.comprobante_original_id) {
+      const { data: feOriginal } = await supabase.from('facturacion_electronica')
+        .select('nro_cbte,tipo_cbte,punto_venta')
+        .eq('comprobante_id', c.comprobante_original_id).eq('estado','emitida')
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const cbteAsoc = feOriginal?.nro_cbte ? {
+        tipo: (feOriginal as any).tipo_cbte, ptoVta: (feOriginal as any).punto_venta, nro: (feOriginal as any).nro_cbte
+      } : undefined
+      await solicitarCAE(c, TIPO_CBTE_NC_AFIP[c.tipo], cbteAsoc)
+    } else {
+      await solicitarCAE(c)
+    }
+  }
+
+  async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}) {
     setCaeLoading(c.id)
     try {
       const tipoCbte = tipoCbteOverride ?? TIPO_CBTE_AFIP[c.tipo]
@@ -340,13 +364,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           comprobante_id: c.id, tipoCbte,
           impTotal: c.total, impNeto: c.neto, impIva: c.iva,
           docTipo, docNro, ivaAlicuota: c.iva > 0 ? 5 : undefined,
+          cbteAsoc,
         }
       })
       if (!error && data?.ok) {
         await supabase.from('comprobantes').update({
           cae_emitido: data.cae, cae_vencimiento: data.cae_vencimiento || null,
+          nro_cbte_afip: data.nro_cbte || null,
         }).eq('id', c.id)
-        setToast(`✓ CAE obtenido: ${data.cae}`)
+        setToast(`✓ CAE obtenido: ${data.cae} (N° AFIP ${String(data.nro_cbte).padStart(8,'0')})`)
       } else {
         setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${data?.error || error?.message || 'error desconocido'}`)
       }
@@ -535,13 +561,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ? (c.tipo==='A'?'NOTA DE CRÉDITO A':c.tipo==='B'?'NOTA DE CRÉDITO B':c.tipo==='C'?'NOTA DE CRÉDITO C':'NOTA DE CRÉDITO')
       : (c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE')
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
-    doc.setFontSize(10); doc.text(`N° ${String(c.numero||0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
+    doc.setFontSize(10); doc.text(`N° ${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
     doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
     y=38
     if (c.categoria==='nc') {
       const original = comps.find(x=>x.id===c.comprobante_original_id)
       doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,100,0)
-      doc.text(`Corresponde a Comprobante N° ${original?String(original.numero||0).padStart(8,'0'):'—'}${c.motivo_nc?` — ${c.motivo_nc}`:''}`, pad, y)
+      doc.text(`Corresponde a Comprobante N° ${original?String(original.nro_cbte_afip ?? original.numero ?? 0).padStart(8,'0'):'—'}${c.motivo_nc?` — ${c.motivo_nc}`:''}`, pad, y)
       doc.setTextColor(30,30,30)
       y+=6
     }
@@ -652,7 +678,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
-                      {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.numero||0).padStart(8,'0')}
+                      {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
+                      {!c.nro_cbte_afip && !c.es_negro && ['A','B','C'].includes(c.tipo) && <span className="text-amber-600"> (provisorio)</span>}
                     </span>
                     {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🧾 Nota de Crédito</span>}
                     {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
@@ -679,7 +706,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 </button>
                 {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
                 {!c.es_negro && ['A','B','C'].includes(c.tipo) && !c.cae_emitido && (
-                  <button onClick={()=>solicitarCAE(c)} disabled={caeLoading===c.id}
+                  <button onClick={()=>reintentarCAE(c)} disabled={caeLoading===c.id}
                     style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>
                     {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
                   </button>
