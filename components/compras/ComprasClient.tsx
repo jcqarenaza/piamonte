@@ -65,6 +65,8 @@ export default function ComprasClient() {
   const [loading, setLoading] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [expandido, setExpandido] = useState<string|null>(null)
+  const [verComp, setVerComp] = useState<Comprobante|null>(null)
   const [ivaOn, setIvaOn] = useState(true)
 
   // Alta rápida de proveedor
@@ -495,68 +497,65 @@ export default function ComprasClient() {
        filtrados.length === 0 ? <Empty msg="Sin comprobantes de compra." /> : (
         <div className="flex flex-col gap-2">
           {filtrados.map(c=>(
-            <div key={c.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${c.estado==='anulado'?'opacity-50':''}`}>
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white shrink-0"
-                    style={{background:TIPO_COLOR[c.tipo]||'#6b7280'}}>
-                    {tipoIcon(c.tipo)} {tipoLabel(c.tipo)}
+            <div key={c.id}
+              onClick={()=>setExpandido(p=>p===c.id?null:c.id)}
+              onDoubleClick={()=>setVerComp(c)} title="Click para opciones · doble click para ver el detalle"
+              className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${c.estado==='anulado'?'opacity-50':''}`}>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white shrink-0"
+                  style={{background:TIPO_COLOR[c.tipo]||'#6b7280'}}>
+                  {tipoIcon(c.tipo)} {tipoLabel(c.tipo)}
+                </span>
+                <span className="font-mono font-bold text-sm text-p-dark shrink-0">{numComp(c)}</span>
+                <span className="text-sm font-semibold text-p-ink truncate" style={{maxWidth:180}}>{c.proveedor_nombre||'Sin proveedor'}</span>
+                <span className="text-xs text-p-ink2 shrink-0">{c.fecha.split('-').reverse().join('/')}</span>
+                {c.cae && <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full shrink-0">CAE</span>}
+                {c.tipo==='factura' && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${c.es_contado?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}`}>
+                    {c.es_contado ? '💵 Contado' : '📒 Cta. Cte.'}
                   </span>
-                  <span className="font-mono font-bold text-sm text-p-dark">{numComp(c)}</span>
-                  <span className="text-sm font-semibold text-p-ink">{c.proveedor_nombre||'Sin proveedor'}</span>
-                  <span className="text-xs text-p-ink2">{c.fecha.split('-').reverse().join('/')}</span>
-                  {c.cae && <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">CAE {c.cae}</span>}
-                  {c.tipo==='factura' && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.es_contado?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}`}>
-                      {c.es_contado ? '💵 Contado' : '📒 Cta. Cte.'}
-                    </span>
-                  )}
-                  {(c.tipo==='factura'||c.tipo==='nc') && !c.es_contado && c.saldado && (
-                    <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">✓ Saldada (Orden de Pago)</span>
-                  )}
-                  {c.remito_id && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">📦 Stock ya cargado (remito)</span>}
-                </div>
-                <div className="text-right">
-                  <p className="font-saira font-bold text-lg text-p-ink">{moneyARS(c.total)}</p>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    c.estado==='procesado'?'bg-green-100 text-green-700':
-                    c.estado==='anulado'?'bg-gray-100 text-gray-500':'bg-amber-100 text-amber-700'
-                  }`}>{c.estado}</span>
-                </div>
+                )}
+                {(c.tipo==='factura'||c.tipo==='nc') && !c.es_contado && c.saldado && (
+                  <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full shrink-0">✓ Saldada</span>
+                )}
+                {c.remito_id && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full shrink-0">📦 Stock OK</span>}
+                <div className="flex-1 min-w-[8px]"/>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                  c.estado==='procesado'?'bg-green-100 text-green-700':
+                  c.estado==='anulado'?'bg-gray-100 text-gray-500':'bg-amber-100 text-amber-700'
+                }`}>{c.estado}</span>
+                <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(c.total)}</p>
               </div>
-              {c.cae_vencimiento && (
-                <p className="text-[11px] text-p-ink2 mt-1">Vto. CAE: {c.cae_vencimiento.split('-').reverse().join('/')}</p>
-              )}
-              {/* Items */}
-              {c.items?.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-p-line2">
-                  <div className="flex flex-wrap gap-1">
-                    {c.items.slice(0,3).map((it,i)=>(
-                      <span key={i} className="text-[11px] bg-p-light text-p-dark px-2 py-0.5 rounded-full">
-                        {it.articulo_id && '🔗 '}{it.d} ×{it.c}
-                      </span>
-                    ))}
-                    {c.items.length>3&&<span className="text-[11px] text-p-ink2">+{c.items.length-3} más</span>}
+
+              {expandido===c.id && (
+                <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                  {c.cae_vencimiento && (
+                    <p className="text-[11px] text-p-ink2 mb-1.5">Vto. CAE: {c.cae_vencimiento.split('-').reverse().join('/')}</p>
+                  )}
+                  {c.items?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2.5">
+                      {c.items.slice(0,5).map((it,i)=>(
+                        <span key={i} className="text-[11px] bg-white border border-p-line text-p-dark px-2 py-0.5 rounded-full">
+                          {it.articulo_id && '🔗 '}{it.d} ×{it.c}
+                        </span>
+                      ))}
+                      {c.items.length>5&&<span className="text-[11px] text-p-ink2">+{c.items.length-5} más</span>}
+                    </div>
+                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    {puedeVincular(c) && (
+                      <button onClick={()=>abrirVinculacion(c)} style={{...btnSm,background:'#00A550'}}>📦 Cargar a stock</button>
+                    )}
+                    {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
+                      <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
+                    )}
+                    {c.estado==='pendiente' && (
+                      <button onClick={()=>anular(c.id)} style={btnRed}>✕ Anular</button>
+                    )}
+                    <button onClick={()=>setVerComp(c)} style={btnSm}>👁 Ver detalle</button>
                   </div>
                 </div>
               )}
-              {/* Acciones */}
-              <div className="flex gap-2 mt-3 pt-2 border-t border-p-line2 flex-wrap">
-                {puedeVincular(c) && (
-                  <button onClick={()=>abrirVinculacion(c)}
-                    style={{...btnSm,background:'#00A550'}}>
-                    📦 Cargar a stock
-                  </button>
-                )}
-                {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
-                  <button onClick={()=>compararPrecios(c)} style={btnBlue}>
-                    📊 Comparar precios
-                  </button>
-                )}
-                {c.estado==='pendiente' && (
-                  <button onClick={()=>anular(c.id)} style={btnRed}>✕ Anular</button>
-                )}
-              </div>
             </div>
           ))}
         </div>
@@ -1080,6 +1079,63 @@ export default function ComprasClient() {
               style={{...btn,opacity:!formPagoContado.monto?.5:1}}>✓ Confirmar pago y guardar</button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal Ver detalle (solo lectura) */}
+      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante">
+        {verComp && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white"
+                style={{background:TIPO_COLOR[verComp.tipo]||'#6b7280'}}>
+                {tipoIcon(verComp.tipo)} {tipoLabel(verComp.tipo)}
+              </span>
+              <span className="font-mono font-bold text-sm">{numComp(verComp)}</span>
+              <span className="text-sm text-p-ink2">{verComp.fecha.split('-').reverse().join('/')}</span>
+            </div>
+            <div className="bg-p-light rounded-xl p-3 text-sm">
+              <span className="text-p-ink2">Proveedor: </span><span className="font-semibold">{verComp.proveedor_nombre||'Sin proveedor'}</span>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Ítems</p>
+              <div className="flex flex-col gap-1">
+                {verComp.items.map((it,i)=>(
+                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5">
+                    <span className="flex-1">{it.articulo_id && '🔗 '}{it.d}</span>
+                    <span className="text-p-ink2 w-16 text-center">x{it.c}</span>
+                    <span className="font-mono w-24 text-right">{moneyARS(it.p*it.c)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1 text-sm">
+              <div className="flex justify-between"><span className="text-p-ink2">Neto</span><span className="font-mono">{moneyARS(verComp.neto)}</span></div>
+              {!!verComp.descuento_pct && <div className="flex justify-between"><span className="text-p-ink2">Descuento ({verComp.descuento_pct}%)</span><span className="font-mono">− {moneyARS(verComp.descuento_monto||0)}</span></div>}
+              <div className="flex justify-between"><span className="text-p-ink2">IVA</span><span className="font-mono">{moneyARS(verComp.iva)}</span></div>
+              {!!verComp.flete && <div className="flex justify-between"><span className="text-p-ink2">Flete</span><span className="font-mono">{moneyARS(verComp.flete)}</span></div>}
+              {!!verComp.ret_iva && <div className="flex justify-between"><span className="text-p-ink2">Ret. IVA</span><span className="font-mono">− {moneyARS(verComp.ret_iva)}</span></div>}
+              {!!verComp.ret_ganancias && <div className="flex justify-between"><span className="text-p-ink2">Ret. Ganancias</span><span className="font-mono">− {moneyARS(verComp.ret_ganancias)}</span></div>}
+              {!!verComp.ret_iibb && <div className="flex justify-between"><span className="text-p-ink2">Ret. IIBB</span><span className="font-mono">− {moneyARS(verComp.ret_iibb)}</span></div>}
+              {!!verComp.ajuste_redondeo && <div className="flex justify-between"><span className="text-p-ink2">Ajuste</span><span className="font-mono">{moneyARS(verComp.ajuste_redondeo)}</span></div>}
+              <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
+                <span>TOTAL</span><span>{moneyARS(verComp.total)}</span>
+              </div>
+            </div>
+
+            {verComp.cae && (
+              <div className="rounded-lg p-3 text-sm bg-green-50 text-green-700">
+                ✓ CAE {verComp.cae}{verComp.cae_vencimiento?` · Vto. ${verComp.cae_vencimiento.split('-').reverse().join('/')}`:''}
+              </div>
+            )}
+            {verComp.notas && <p className="text-xs text-p-ink2 italic">"{verComp.notas}"</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setVerComp(null)} style={btnGray}>Cerrar</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
