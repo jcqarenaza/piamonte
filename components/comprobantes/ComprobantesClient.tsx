@@ -659,6 +659,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'negro'>('todos')
+  const [verComp, setVerComp] = useState<Comprobante|null>(null)
   const compsFiltrados = comps.filter(c => {
     if (filtroTipo === 'todos') return true
     if (filtroTipo === 'nc') return c.categoria === 'nc'
@@ -677,7 +678,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {([
-            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],['negro','⚫ Negro'],
+            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],
+            ...(rol==='gerencial'||rol==='admin' ? [['negro','⚫ Negro'] as const] : []),
           ] as const).map(([val,label])=>(
             <button key={val} onClick={()=>setFiltroTipo(val)}
               style={{background:filtroTipo===val?'#00A550':'#fff',color:filtroTipo===val?'#fff':'#4A6655',border:`1.5px solid ${filtroTipo===val?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -696,7 +698,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               : 0
             const saldadaPorNC = c.categoria!=='nc' && totalAcreditado >= c.total - 0.5
             return (
-            <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+            <div key={c.id} onDoubleClick={()=>setVerComp(c)} title="Doble click para ver el detalle"
+              className="bg-white border border-p-line rounded-xl p-4 shadow-sm cursor-pointer hover:border-p-green transition-colors">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -706,7 +709,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     </span>
                     {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🧾 Nota de Crédito</span>}
                     {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">↩ Saldada por NC</span>}
-                    {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
+                    {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
                     <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
                     {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
                     {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
@@ -1093,6 +1096,87 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 style={{...btn,background:'#d97706',opacity:(ncLoading || ncItemsSel.length===0)?.5:1}}>
                 {ncLoading ? 'Generando…' : '🧾 Confirmar Nota de Crédito'}
               </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Ver detalle (solo lectura) */}
+      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante">
+        {verComp && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="font-mono text-sm font-bold text-p-dark bg-p-light px-3 py-1 rounded-full">
+                {verComp.categoria==='nc'?'NC':(verComp.tipo==='A'?'FA':verComp.tipo==='B'?'FB':verComp.tipo==='C'?'FC':'X')}-{String(verComp.nro_cbte_afip ?? verComp.numero ?? 0).padStart(8,'0')}
+              </span>
+              <span className="text-sm text-p-ink2">{verComp.fecha.split('-').reverse().join('/')}</span>
+            </div>
+            {verComp.categoria==='nc' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">
+                🧾 Nota de Crédito{verComp.motivo_nc?` — ${verComp.motivo_nc}`:''}
+                {(() => {
+                  const original = comps.find(x=>x.id===verComp.comprobante_original_id)
+                  return original ? <> · corresponde a {original.tipo==='A'?'FA':original.tipo==='B'?'FB':'FC'}-{String(original.nro_cbte_afip ?? original.numero ?? 0).padStart(8,'0')}</> : null
+                })()}
+              </div>
+            )}
+
+            <div className="bg-p-light rounded-xl p-3 grid grid-cols-2 gap-2 text-sm">
+              <div><span className="text-p-ink2">Cliente: </span><span className="font-semibold">{verComp.cliente_nombre || 'Consumidor Final'}</span></div>
+              {verComp.cliente_telefono && <div><span className="text-p-ink2">Tel: </span>{verComp.cliente_telefono}</div>}
+              {verComp.cliente_cuit && <div><span className="text-p-ink2">CUIT: </span>{verComp.cliente_cuit}</div>}
+              {verComp.cliente_tipo_fiscal && <div><span className="text-p-ink2">Cond. IVA: </span>{tipoFiscalLabel(verComp.cliente_tipo_fiscal)}</div>}
+              {verComp.vehiculo && <div className="col-span-2"><span className="text-p-ink2">Vehículo: </span>{verComp.vehiculo}</div>}
+              {verComp.aseguradora_nombre && <div className="col-span-2"><span className="text-p-ink2">Aseguradora: </span>{verComp.aseguradora_nombre}</div>}
+            </div>
+
+            <div>
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Ítems</p>
+              <div className="flex flex-col gap-1">
+                {verComp.items.map((it,i)=>(
+                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5">
+                    <span className="flex-1">{it.d}</span>
+                    <span className="text-p-ink2 w-16 text-center">x{it.c}</span>
+                    <span className="font-mono w-24 text-right">{moneyARS(it.p*it.c)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1">
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">Neto</span><span className="font-mono">{moneyARS(verComp.neto)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">IVA</span><span className="font-mono">{moneyARS(verComp.iva)}</span></div>
+              <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
+                <span>TOTAL</span><span>{moneyARS(verComp.total)}</span>
+              </div>
+            </div>
+
+            {verComp.pagos?.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Forma de pago</p>
+                {verComp.pagos.map((p,i)=>(
+                  <div key={i} className="flex justify-between text-sm py-0.5">
+                    <span>{p.metodo}{p.cuotas?` (${p.cuotas} cuotas)`:''}</span>
+                    <span className="font-mono">{moneyARS(+p.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!verComp.es_negro && ['A','B','C'].includes(verComp.tipo) && (
+              <div className={`rounded-lg p-3 text-sm ${verComp.cae_emitido?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}`}>
+                {verComp.cae_emitido
+                  ? <>✓ CAE {verComp.cae_emitido}{verComp.cae_vencimiento?` · Vto. ${verComp.cae_vencimiento.split('-').reverse().join('/')}`:''}</>
+                  : '⚠ Sin CAE'}
+              </div>
+            )}
+            {(rol==='gerencial'||rol==='admin') && verComp.es_negro && (
+              <div className="rounded-lg p-3 text-sm bg-gray-800 text-white">⚫ Comprobante extra-contable (negro)</div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setVerComp(null)} style={btnGray}>Cerrar</button>
+              <button onClick={()=>descargar(verComp)} style={btnSm}>⬇ PDF</button>
             </div>
           </div>
         )}
