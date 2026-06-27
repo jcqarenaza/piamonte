@@ -6,10 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import { Btn, Modal, Field, Input, Empty } from '@/components/ui'
 import { todayStr } from '@/lib/utils/format'
 
-// Datos fijos del equipo de calibración — no editables desde el formulario, así
-// el certificado siempre refleja el equipo real instalado en el taller.
-const EQUIPO_MODELO = 'MAHLE ST-9400'
-const EQUIPO_SERIE = '201111000229'
 const SISTEMAS_DEFAULT = [
   'Cámara frontal','Radar frontal','Asistente de mantenimiento de carril',
   'Frenado autónomo de emergencia','Control crucero adaptativo',
@@ -21,6 +17,11 @@ const PROCEDIMIENTOS_DEFAULT = [
   'Calibración estática/dinámica según especificación del fabricante.',
   'Diagnóstico posterior.','Verificación de correcto funcionamiento.',
 ]
+
+// Datos fijos del equipo de calibración — no editables desde el formulario, así el
+// certificado siempre refleja el equipo real instalado en el taller (MAHLE ST-9400).
+const EQUIPO_MODELO = 'MAHLE ST-9400'
+const EQUIPO_SERIE = '201111000229'
 
 // Mismo criterio que ya usa OrdenesClient para decidir si una OS lleva certificado ADAS —
 // se reusa acá para decidir, a partir de lo efectivamente facturado, qué versión del
@@ -192,7 +193,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   function resetForm() {
     setForm({ fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
       anio: '', dominio: '', vin: '', kilometraje: '', otros_sistemas: '',
-      equipo: 'MAHLE ADAS', software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '' })
+      equipo: EQUIPO_MODELO, software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '' })
     setSistemas([...SISTEMAS_DEFAULT]); setProcs([...PROCEDIMIENTOS_DEFAULT])
     setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setIncluyeAdas(false)
   }
@@ -328,13 +329,13 @@ export default function AdasClient({ userId }: { userId: string }) {
 
 <div class="equip-row">
   <div class="equip-box">
-  <div class="sec-title"><span>⚙</span> EQUIPO UTILIZADO</div>
-  <div style="font-size:11px;color:#555">Equipo de calibración:</div>
-  <div style="font-size:15px;font-weight:900;color:#1a1a1a;margin:4px 0">${c.equipo}</div>
-  <div style="font-size:11px;color:#555">N° de serie: <b>${EQUIPO_SERIE}</b></div>
-  <div style="font-size:11px;color:#555">Software: <b>${c.software}</b></div>
-  <div style="font-size:11px;color:#555">Protocolos: <b>${c.protocolos}</b></div>
-</div>
+    <div class="sec-title"><span>⚙</span> EQUIPO UTILIZADO</div>
+    <div style="font-size:11px;color:#555">Equipo de calibración:</div>
+    <div style="font-size:15px;font-weight:900;color:#1a1a1a;margin:4px 0">${c.equipo}</div>
+    <div style="font-size:11px;color:#555">N° de serie: <b>${EQUIPO_SERIE}</b></div>
+    <div style="font-size:11px;color:#555">Software: <b>${c.software}</b></div>
+    <div style="font-size:11px;color:#555">Protocolos: <b>${c.protocolos}</b></div>
+  </div>
   <div style="border:1.5px solid #1a1a1a;border-radius:8px;display:flex;align-items:center;justify-content:center">
     <div style="text-align:center;padding:20px">
       <div style="font-size:40px">🚗</div>
@@ -704,17 +705,17 @@ export default function AdasClient({ userId }: { userId: string }) {
               </div>
 
               <div>
-  		<p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">⚙ Equipo utilizado</p>
-		  <div className="bg-p-light rounded-xl p-3 mb-3">
-		    <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Equipo de calibración (fijo)</p>
-		    <p className="text-sm font-bold text-p-ink mt-0.5">{EQUIPO_MODELO}</p>
-		    <p className="text-[11px] text-p-ink2 mt-1">N° de serie: <span className="font-mono font-semibold">{EQUIPO_SERIE}</span></p>
-		  </div>
-		  <div className="grid grid-cols-2 gap-3">
-		    <Field label="Software"><Input value={form.software} onChange={e => setForm(p => ({ ...p, software: e.target.value }))} /></Field>
-		    <Field label="Protocolos"><Input value={form.protocolos} onChange={e => setForm(p => ({ ...p, protocolos: e.target.value }))} /></Field>
-		  </div>
-		</div>
+                <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">⚙ Equipo utilizado</p>
+                <div className="bg-p-light rounded-xl p-3 mb-3">
+                  <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Equipo de calibración (fijo)</p>
+                  <p className="text-sm font-bold text-p-ink mt-0.5">{EQUIPO_MODELO}</p>
+                  <p className="text-[11px] text-p-ink2 mt-1">N° de serie: <span className="font-mono font-semibold">{EQUIPO_SERIE}</span></p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Software"><Input value={form.software} onChange={e => setForm(p => ({ ...p, software: e.target.value }))} /></Field>
+                  <Field label="Protocolos"><Input value={form.protocolos} onChange={e => setForm(p => ({ ...p, protocolos: e.target.value }))} /></Field>
+                </div>
+              </div>
             </>
           )}
 
