@@ -393,7 +393,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 
   // Certificado sin calibración ADAS — mismos colores, escudo y logo que el de ADAS, para
   // mantener una sola identidad visual. Muestra la pieza de vidrio instalada y la garantía
-  // de 6 meses sobre la colocación.
+  // de 12 meses sobre la colocación.
   function printCertInstalacion(c: CertInstalacion) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
     const piezas = (c.piezas_instaladas ?? [])
@@ -472,7 +472,7 @@ export default function AdasClient({ userId }: { userId: string }) {
     </div>
     <div class="garantia-box">
       <div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Garantía</div>
-      <div style="font-size:15px;font-weight:900">6 meses</div>
+      <div style="font-size:15px;font-weight:900">12 meses</div>
       <div style="font-size:9px;margin-top:4px;line-height:1.4;opacity:.95">Sobre la instalación realizada, contra filtraciones o defectos de colocación. No cubre roturas por impacto.</div>
     </div>
   </div>
