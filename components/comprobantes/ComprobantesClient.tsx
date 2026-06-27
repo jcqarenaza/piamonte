@@ -660,6 +660,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'negro'>('todos')
   const [verComp, setVerComp] = useState<Comprobante|null>(null)
+  const [expandido, setExpandido] = useState<string|null>(null)
   const compsFiltrados = comps.filter(c => {
     if (filtroTipo === 'todos') return true
     if (filtroTipo === 'nc') return c.categoria === 'nc'
@@ -698,52 +699,53 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               : 0
             const saldadaPorNC = c.categoria!=='nc' && totalAcreditado >= c.total - 0.5
             return (
-            <div key={c.id} onDoubleClick={()=>setVerComp(c)} title="Doble click para ver el detalle"
-              className="bg-white border border-p-line rounded-xl p-4 shadow-sm cursor-pointer hover:border-p-green transition-colors">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full">
-                      {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
-                      {!c.nro_cbte_afip && !c.es_negro && ['A','B','C'].includes(c.tipo) && <span className="text-amber-600"> (provisorio)</span>}
-                    </span>
-                    {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🧾 Nota de Crédito</span>}
-                    {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">↩ Saldada por NC</span>}
-                    {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
-                    <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
-                    {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
-                    {c.tipo_cliente_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{c.tipo_cliente_nombre}</span>}
-                    {c.cliente_cuit&&<span className="text-[10px] text-p-gray">{tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT {c.cliente_cuit}</span>}
-                    {!c.es_negro && ['A','B','C'].includes(c.tipo) && (
-                      c.cae_emitido
-                        ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✓ CAE {c.cae_emitido}</span>
-                        : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">⚠ Sin CAE</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-p-ink2 mt-0.5">
-                    {[c.vehiculo, c.fecha.split('-').reverse().join('/'), c.items.length+' ítem(s)'].filter(Boolean).join(' · ')}
+            <div key={c.id}
+              onClick={()=>setExpandido(p=>p===c.id?null:c.id)}
+              onDoubleClick={()=>setVerComp(c)} title="Click para opciones · doble click para ver el detalle"
+              className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                <span className="font-mono text-[11px] font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full shrink-0">
+                  {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
+                </span>
+                <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:220}}>
+                  {c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}
+                </p>
+                {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🧾 NC</span>}
+                {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 shrink-0">↩ Saldada</span>}
+                {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white shrink-0">⚫</span>}
+                {!c.es_negro && ['A','B','C'].includes(c.tipo) && (
+                  c.cae_emitido
+                    ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">✓ CAE</span>
+                    : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">⚠ Sin CAE</span>
+                )}
+                <span className="text-xs text-p-ink2 shrink-0">{c.fecha.split('-').reverse().join('/')}</span>
+                <div className="flex-1 min-w-[8px]"/>
+                <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(c.total)}</p>
+              </div>
+
+              {expandido===c.id && (
+                <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                  <p className="text-xs text-p-ink2 mb-2">
+                    {[c.vehiculo, c.cliente_cuit?`${tipoFiscalLabel(c.cliente_tipo_fiscal)} · CUIT ${c.cliente_cuit}`:null, c.items.length+' ítem(s)'].filter(Boolean).join(' · ')}
                   </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={()=>abrirAdjuntos(c)} style={{...btnSm,background:'#7c3aed'}}>📎 Adjuntos</button>
+                    {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
+                    {!c.es_negro && ['A','B','C'].includes(c.tipo) && !c.cae_emitido && (
+                      <button onClick={()=>reintentarCAE(c)} disabled={caeLoading===c.id}
+                        style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>
+                        {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
+                      </button>
+                    )}
+                    {c.categoria!=='nc' && !saldadaPorNC && (
+                      <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
+                    )}
+                    <button onClick={()=>setVerComp(c)} style={btnSm}>👁 Ver detalle</button>
+                    <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
+                    <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
+                  </div>
                 </div>
-                <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(c.total)}</p>
-              </div>
-              <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                <button onClick={()=>abrirAdjuntos(c)}
-                  style={{...btnSm,background:'#7c3aed'}}>
-                  📎 Adjuntos
-                </button>
-                {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
-                {!c.es_negro && ['A','B','C'].includes(c.tipo) && !c.cae_emitido && (
-                  <button onClick={()=>reintentarCAE(c)} disabled={caeLoading===c.id}
-                    style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>
-                    {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
-                  </button>
-                )}
-                {c.categoria!=='nc' && !saldadaPorNC && (
-                  <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
-                )}
-                <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
-                <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
-              </div>
+              )}
             </div>
           )})}
         </div>
