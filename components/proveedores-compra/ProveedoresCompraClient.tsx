@@ -48,10 +48,10 @@ export default function ProveedoresCompraClient() {
   const [open, setOpen]         = useState(false)
   const [selected, setSelected] = useState<Proveedor|null>(null)
   const [compras, setCompras]   = useState<Compra[]>([])
-  const [selectedHist, setSelectedHist] = useState<Proveedor|null>(null)
   const [loadingCompras, setLoadingCompras] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [mostrarInactivos, setMostrarInactivos] = useState(false)
+  const [expandido, setExpandido] = useState<string|null>(null)
   const supabase = createClient()
 
   const [form, setForm] = useState({
@@ -106,9 +106,9 @@ export default function ProveedoresCompraClient() {
     load()
   }
 
-  async function loadCompras(p: Proveedor) {
-    if (selectedHist?.id === p.id) { setSelectedHist(null); setCompras([]); return }
-    setSelectedHist(p); setLoadingCompras(true); setCompras([])
+  async function toggleExpand(p: Proveedor) {
+    if (expandido === p.id) { setExpandido(null); return }
+    setExpandido(p.id); setLoadingCompras(true); setCompras([])
     const { data } = await supabase.from('comprobantes_compra')
       .select('id,tipo,letra,punto_venta,numero,fecha,total,estado')
       .eq('proveedor_id', p.id).order('fecha', {ascending:false}).limit(20)
@@ -144,33 +144,38 @@ export default function ProveedoresCompraClient() {
       {proveedores.length === 0 ? <Empty msg="Sin proveedores." /> : (
         <div className="flex flex-col gap-2">
           {proveedores.map(p => (
-            <div key={p.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${!p.activo ? 'opacity-50' : ''}`}>
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div onClick={()=>loadCompras(p)} className="cursor-pointer flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-saira font-bold text-p-ink text-base">{p.nombre}</p>
-                    {!p.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactivo</span>}
-                    {p.condicion_iva && <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{p.condicion_iva}</span>}
-                    {!!p.descuento_pct && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full">↓ {p.descuento_pct}% dto.</span>}
-                  </div>
-                  {p.razon_social && <p className="text-sm text-p-ink2 mt-0.5">{p.razon_social}</p>}
-                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-p-ink2">
-                    {p.cuit && <span className="font-mono">CUIT {p.cuit}</span>}
-                    {p.telefono && <span>📞 {p.telefono}</span>}
-                    {p.email && <span>✉ {p.email}</span>}
-                    {p.localidad && <span>📍 {p.localidad}</span>}
-                  </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={()=>openEditar(p)} style={btnGray}>✏ Editar</button>
-                  {p.activo
-                    ? <button onClick={()=>desactivar(p)} style={btnRed}>Desactivar</button>
-                    : <button onClick={()=>reactivar(p)} style={{...btnSm,background:'#00A550'}}>Reactivar</button>}
-                </div>
+            <div key={p.id}
+              onClick={()=>toggleExpand(p)}
+              onDoubleClick={()=>openEditar(p)} title="Click para más info · doble click para editar"
+              className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${!p.activo ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:220}}>{p.nombre}</p>
+                {!p.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full shrink-0">Inactivo</span>}
+                {p.condicion_iva && <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full shrink-0">{p.condicion_iva}</span>}
+                {!!p.descuento_pct && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full shrink-0">↓ {p.descuento_pct}%</span>}
+                {p.cuit && <span className="text-xs text-p-ink2 font-mono shrink-0">CUIT {p.cuit}</span>}
+                {p.telefono && <span className="text-xs text-p-ink2 shrink-0">📞 {p.telefono}</span>}
+                <div className="flex-1 min-w-[8px]"/>
               </div>
 
-              {selectedHist?.id === p.id && (
-                <div className="mt-3 pt-3 border-t border-p-line2">
+              {expandido===p.id && (
+                <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                  <div className="flex flex-wrap gap-3 text-xs text-p-ink2 mb-2">
+                    {p.razon_social && <span>{p.razon_social}</span>}
+                    {p.email && <span>✉ {p.email}</span>}
+                    {p.direccion && <span>📍 {p.direccion}</span>}
+                    {p.localidad && <span>{p.localidad}</span>}
+                    {p.contacto && <span>👤 {p.contacto}</span>}
+                  </div>
+                  {p.notas && <p className="text-xs text-p-ink2 italic mb-2">"{p.notas}"</p>}
+
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    <button onClick={()=>openEditar(p)} style={btnGray}>✏ Editar</button>
+                    {p.activo
+                      ? <button onClick={()=>desactivar(p)} style={btnRed}>Desactivar</button>
+                      : <button onClick={()=>reactivar(p)} style={{...btnSm,background:'#00A550'}}>Reactivar</button>}
+                  </div>
+
                   {loadingCompras ? (
                     <p className="text-xs text-p-ink2 text-center py-3">Cargando historial…</p>
                   ) : compras.length === 0 ? (
