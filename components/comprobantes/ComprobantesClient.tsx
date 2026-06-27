@@ -658,6 +658,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setComps(prev=>prev.filter(c=>c.id!==id))
   }
 
+  const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'negro'>('todos')
+  const compsFiltrados = comps.filter(c => {
+    if (filtroTipo === 'todos') return true
+    if (filtroTipo === 'nc') return c.categoria === 'nc'
+    if (filtroTipo === 'negro') return !!c.es_negro
+    return c.categoria !== 'nc' && c.tipo === filtroTipo
+  })
+
   return (
     <div>
       {toast && (
@@ -666,13 +674,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         </div>
       )}
 
-      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {([
+            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],['negro','⚫ Negro'],
+          ] as const).map(([val,label])=>(
+            <button key={val} onClick={()=>setFiltroTipo(val)}
+              style={{background:filtroTipo===val?'#00A550':'#fff',color:filtroTipo===val?'#fff':'#4A6655',border:`1.5px solid ${filtroTipo===val?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>
       </div>
 
-      {comps.length===0 ? <Empty msg="Sin comprobantes todavía." /> : (
+      {compsFiltrados.length===0 ? <Empty msg="Sin comprobantes para este filtro." /> : (
         <div className="flex flex-col gap-3">
-          {comps.map(c=>(
+          {compsFiltrados.map(c=>{
+            const totalAcreditado = c.categoria!=='nc'
+              ? comps.filter(x=>x.categoria==='nc' && x.comprobante_original_id===c.id).reduce((a,x)=>a+x.total,0)
+              : 0
+            const saldadaPorNC = c.categoria!=='nc' && totalAcreditado >= c.total - 0.5
+            return (
             <div key={c.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
@@ -682,6 +705,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       {!c.nro_cbte_afip && !c.es_negro && ['A','B','C'].includes(c.tipo) && <span className="text-amber-600"> (provisorio)</span>}
                     </span>
                     {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🧾 Nota de Crédito</span>}
+                    {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">↩ Saldada por NC</span>}
                     {(c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white">⚫ NEGRO</span>}
                     <p className="font-saira font-bold text-p-ink">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
                     {c.aseguradora_nombre&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🏢 Aseguradora</span>}
@@ -711,14 +735,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
                   </button>
                 )}
-                {c.categoria!=='nc' && (
+                {c.categoria!=='nc' && !saldadaPorNC && (
                   <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
                 )}
                 <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                 <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
