@@ -73,7 +73,7 @@ export default function DepositosClient() {
         {depositos.length===0 ? <Empty msg="Sin depósitos." /> : (
           <div className="flex flex-col gap-3">
             {depositos.map(d=>(
-              <div key={d.id} onClick={()=>setSel(sel?.id===d.id?null:d)}
+              <div key={d.id} onClick={()=>setSel(sel?.id===d.id?null:d)} onDoubleClick={()=>openEditar(d)} title="Click para ver stock · doble click para editar"
                 className={`bg-white border rounded-xl p-4 cursor-pointer shadow-sm transition-all ${sel?.id===d.id?'border-p-green ring-1 ring-p-green':'border-p-line hover:border-p-green/50'}`}>
                 <div className="flex items-start justify-between">
                   <div>

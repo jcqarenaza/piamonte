@@ -153,7 +153,7 @@ export default function UsuariosClient() {
       {usuarios.length===0 ? <Empty msg="Sin usuarios." /> : (
         <div className="flex flex-col gap-3">
           {usuarios.map(u=>(
-            <div key={u.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
+            <div key={u.id} onDoubleClick={()=>openEditar(u)} title="Doble click para editar" className="bg-white border border-p-line rounded-xl p-4 shadow-sm flex items-center gap-4 flex-wrap">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-white text-sm"
                 style={{background:ROL_COLOR[u.rol]||'#6b7280'}}>
                 {u.nombre.charAt(0).toUpperCase()}

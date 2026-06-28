@@ -315,7 +315,7 @@ export default function ArticulosClient() {
           {articulos.map(a => {
             const faltan = faltantesDe(a)
             return (
-            <div key={a.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+            <div key={a.id} onDoubleClick={()=>openEditar(a)} title="Doble click para editar" className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

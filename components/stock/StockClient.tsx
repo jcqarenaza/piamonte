@@ -396,7 +396,8 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         visible.length === 0 ? <Empty msg="Sin ítems con ese filtro." /> : (
           <div className="flex flex-col gap-2">
             {visible.slice(0, 300).map(s => (
-              <div key={s.id} className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${!s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'}`}>
+              <div key={s.id} onDoubleClick={() => openEditar(s)} title="Doble click para editar"
+                className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${!s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'}`}>
                 <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>

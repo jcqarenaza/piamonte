@@ -155,32 +155,32 @@ export default function AseguradorasClient() {
       {aseguradoras.length === 0 ? <Empty msg="Sin aseguradoras cargadas." /> : (
         <div className="flex flex-col gap-2">
           {aseguradoras.map(a => (
-            <div key={a.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${!a.activo ? 'opacity-50' : ''}`}>
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div onClick={()=>loadPendientes(a)} className="cursor-pointer flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-saira font-bold text-p-ink text-base">{a.nombre}</p>
-                    {!a.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactiva</span>}
-                    <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">⏱ {a.plazo_pago_dias} días de pago</span>
-                    {a.condicion_iva && <span className="text-[10px] font-bold bg-p-light text-p-dark px-2 py-0.5 rounded-full">{a.condicion_iva}</span>}
-                  </div>
-                  {a.razon_social && <p className="text-sm text-p-ink2 mt-0.5">{a.razon_social}</p>}
-                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-p-ink2">
-                    {a.cuit && <span className="font-mono">CUIT {a.cuit}</span>}
-                    {a.contacto && <span>👤 {a.contacto}</span>}
-                    {a.telefono && <span>📞 {a.telefono}</span>}
-                  </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={()=>openEditar(a)} style={btnGray}>✏ Editar</button>
-                  {a.activo
-                    ? <button onClick={()=>desactivar(a)} style={btnRed}>Desactivar</button>
-                    : <button onClick={()=>reactivar(a)} style={{...btnSm,background:'#00A550'}}>Reactivar</button>}
-                </div>
+            <div key={a.id}
+              onClick={()=>loadPendientes(a)}
+              onDoubleClick={()=>openEditar(a)} title="Click para más info · doble click para editar"
+              className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${!a.activo ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>{a.nombre}</p>
+                {!a.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full shrink-0">Inactiva</span>}
+                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full shrink-0">⏱ {a.plazo_pago_dias}d</span>
+                {a.condicion_iva && <span className="text-[10px] font-bold bg-p-light text-p-dark px-2 py-0.5 rounded-full shrink-0">{a.condicion_iva}</span>}
+                {a.cuit && <span className="text-xs text-p-ink2 font-mono shrink-0">CUIT {a.cuit}</span>}
+                <div className="flex-1 min-w-[8px]"/>
               </div>
 
               {selectedHist?.id === a.id && (
-                <div className="mt-3 pt-3 border-t border-p-line2">
+                <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                  <div className="flex flex-wrap gap-3 text-xs text-p-ink2 mb-2">
+                    {a.razon_social && <span>{a.razon_social}</span>}
+                    {a.contacto && <span>👤 {a.contacto}</span>}
+                    {a.telefono && <span>📞 {a.telefono}</span>}
+                  </div>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    <button onClick={()=>openEditar(a)} style={btnGray}>✏ Editar</button>
+                    {a.activo
+                      ? <button onClick={()=>desactivar(a)} style={btnRed}>Desactivar</button>
+                      : <button onClick={()=>reactivar(a)} style={{...btnSm,background:'#00A550'}}>Reactivar</button>}
+                  </div>
                   {loadingPend ? (
                     <p className="text-xs text-p-ink2 text-center py-3">Cargando facturas…</p>
                   ) : pendientes.length === 0 ? (

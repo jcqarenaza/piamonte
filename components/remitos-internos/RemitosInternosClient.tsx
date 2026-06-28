@@ -20,6 +20,7 @@ export default function RemitosInternosClient() {
   const [open, setOpen]             = useState(false)
   const [loading, setLoading]       = useState(true)
   const [confirmando, setConfirmando] = useState<string|null>(null)
+  const [expandido, setExpandido] = useState<string|null>(null)
   const [form, setForm] = useState({ origen:'', destino:'', fecha:'', notas:'' })
   const [items, setItems] = useState<{stock_id:string;descripcion:string;cantidad:number}[]>([])
   const [itemForm, setItemForm] = useState({ stock_id:'', cantidad:'1' })
@@ -107,40 +108,42 @@ export default function RemitosInternosClient() {
        remitos.length===0 ? <Empty msg="Sin remitos internos." /> : (
         <div className="flex flex-col gap-2">
           {remitos.map(r=>(
-            <div key={r.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${r.estado==='anulado'?'opacity-50':''}`}>
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-p-dark">{r.numero||'S/N'}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      r.estado==='confirmado'?'bg-green-100 text-green-700':
-                      r.estado==='anulado'?'bg-gray-100 text-gray-500':'bg-amber-100 text-amber-700'
-                    }`}>{r.estado}</span>
-                    <span className="text-xs text-p-ink2">{r.fecha?.split('-').reverse().join('/')}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 text-sm">
-                    <span className="font-semibold text-p-ink">{getDepoNombre(r.deposito_origen_id)}</span>
-                    <span className="text-p-ink2">→</span>
-                    <span className="font-semibold text-p-ink">{getDepoNombre(r.deposito_destino_id)}</span>
-                  </div>
-                  <div className="flex gap-1 flex-wrap mt-1">
+            <div key={r.id} onClick={()=>setExpandido(e=>e===r.id?null:r.id)} title="Click para ver ítems y acciones"
+              className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${r.estado==='anulado'?'opacity-50':''}`}>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                <span className="font-mono font-bold text-p-dark shrink-0">{r.numero||'S/N'}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                  r.estado==='confirmado'?'bg-green-100 text-green-700':
+                  r.estado==='anulado'?'bg-gray-100 text-gray-500':'bg-amber-100 text-amber-700'
+                }`}>{r.estado}</span>
+                <span className="text-xs text-p-ink2 shrink-0">{r.fecha?.split('-').reverse().join('/')}</span>
+                <span className="text-sm font-semibold text-p-ink shrink-0">{getDepoNombre(r.deposito_origen_id)}</span>
+                <span className="text-p-ink2 shrink-0">→</span>
+                <span className="text-sm font-semibold text-p-ink shrink-0">{getDepoNombre(r.deposito_destino_id)}</span>
+                <span className="text-xs text-p-ink2 shrink-0">{(r.items||[]).length} ítem(s)</span>
+                <div className="flex-1 min-w-[8px]"/>
+              </div>
+
+              {expandido===r.id && (
+                <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                  <div className="flex gap-1 flex-wrap mb-2.5">
                     {(r.items||[]).map((it:any,i:number)=>(
-                      <span key={i} className="text-[11px] bg-p-light text-p-dark px-2 py-0.5 rounded-full">
+                      <span key={i} className="text-[11px] bg-white border border-p-line text-p-dark px-2 py-0.5 rounded-full">
                         {it.descripcion} ×{it.cantidad}
                       </span>
                     ))}
                   </div>
+                  {r.estado==='pendiente' && (
+                    <div className="flex gap-2">
+                      <button onClick={()=>confirmar(r.id)} disabled={confirmando===r.id}
+                        style={{...btnSm,background:'#00A550',opacity:confirmando===r.id?.7:1}}>
+                        {confirmando===r.id?'Procesando…':'✓ Confirmar'}
+                      </button>
+                      <button onClick={()=>anular(r.id)} style={{...btnSm,background:'#ef4444'}}>✕ Anular</button>
+                    </div>
+                  )}
                 </div>
-                {r.estado==='pendiente' && (
-                  <div className="flex gap-2 shrink-0">
-                    <button onClick={()=>confirmar(r.id)} disabled={confirmando===r.id}
-                      style={{...btnSm,background:'#00A550',opacity:confirmando===r.id?.7:1}}>
-                      {confirmando===r.id?'Procesando…':'✓ Confirmar'}
-                    </button>
-                    <button onClick={()=>anular(r.id)} style={{...btnSm,background:'#ef4444'}}>✕</button>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           ))}
         </div>

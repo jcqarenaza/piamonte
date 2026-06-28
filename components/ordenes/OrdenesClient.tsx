@@ -54,6 +54,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
   // Turno desde OS
   const [turnoModal, setTurnoModal] = useState<any|null>(null)
+  const [expandido, setExpandido] = useState<string|null>(null)
   const [turnoForm, setTurnoForm] = useState({ fecha:'', hora:'', trabajo:'' })
 
   // Pre-cargar desde presupuesto
@@ -415,61 +416,62 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             const numADAS = (o as any).numero_adas
             const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
             return (
-              <div key={o.id} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-saira font-bold text-p-ink">{o.cliente||'(sin nombre)'}</p>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${conADAS?'bg-blue-100 text-blue-700':'bg-p-light text-p-dark'}`}>
-                        {conADAS ? `ADAS N° ${String(numADAS||0).padStart(7,'0')}` : numOS}
-                      </span>
-                    </div>
-                    <p className="text-xs text-p-ink2 mt-0.5">
-                      {[o.vehiculo,(o as any).patente,o.aseguradora,o.fecha.split('-').reverse().join('/')].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                  <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(o.total)}</p>
-                </div>
-                <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                  {/* Estado badge */}
+              <div key={o.id}
+                onClick={()=>setExpandido(e=>e===o.id?null:o.id)}
+                onDoubleClick={()=>openEdit(o)} title="Click para opciones · doble click para editar"
+                className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${conADAS?'bg-blue-100 text-blue-700':'bg-p-light text-p-dark'}`}>
+                    {conADAS ? `ADAS N° ${String(numADAS||0).padStart(7,'0')}` : numOS}
+                  </span>
+                  <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:180}}>{o.cliente||'(sin nombre)'}</p>
                   {(o as any).estado && (o as any).estado !== 'pendiente' && (
-                    <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:6,background:(o as any).estado==='realizado'?'#dcfce7':'#dbeafe',color:(o as any).estado==='realizado'?'#16a34a':'#1d4ed8'}}>
+                    <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,background:(o as any).estado==='realizado'?'#dcfce7':'#dbeafe',color:(o as any).estado==='realizado'?'#16a34a':'#1d4ed8'}}>
                       {(o as any).estado==='realizado'?'✅ Realizado':'🧾 Facturada'}
                     </span>
                   )}
-                  <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp</button>
-                  <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
-                    📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
-                  </button>
-                  <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
-                  <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
-                  {/* Generar turno */}
-                  <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
-                    style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
-                  {/* Marcar realizado */}
-                  {(o as any).estado==='pendiente' && (
-                    <button onClick={async()=>{
-                      await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
-                    }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
-                  )}
-                  {/* Factura: normal o manual para Sancor */}
-                  {!(o as any).convertido_comp && (
-                    o.aseguradora==='Sancor Seguros' ? (
-                      <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
-                        style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
-                    ) : (
-                      <button onClick={async()=>{
-                        await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
-                        const params = new URLSearchParams({
-                          cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
-                          items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
-                        })
-                        router.push(`/comprobantes?${params.toString()}`)
-                      }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
-                    )
-                  )}
-                  <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                  <span className="text-xs text-p-ink2 shrink-0">{[o.vehiculo,(o as any).patente].filter(Boolean).join(' · ')}</span>
+                  <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
+                  <div className="flex-1 min-w-[8px]"/>
+                  <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(o.total)}</p>
                 </div>
+
+                {expandido===o.id && (
+                  <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                    {o.aseguradora && <p className="text-xs text-p-ink2 mb-2">🏢 {o.aseguradora}</p>}
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp</button>
+                      <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
+                        📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
+                      </button>
+                      <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
+                      <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
+                        style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
+                      {(o as any).estado==='pendiente' && (
+                        <button onClick={async()=>{
+                          await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
+                        }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
+                      )}
+                      {!(o as any).convertido_comp && (
+                        o.aseguradora==='Sancor Seguros' ? (
+                          <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
+                            style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
+                        ) : (
+                          <button onClick={async()=>{
+                            await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
+                            const params = new URLSearchParams({
+                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
+                              items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                            })
+                            router.push(`/comprobantes?${params.toString()}`)
+                          }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                        )
+                      )}
+                      <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

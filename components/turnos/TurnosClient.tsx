@@ -261,7 +261,8 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
           {turnos.map(t => {
             const esTentativo = String(t.id).startsWith('offline_')
             return (
-            <div key={t.id} className={`bg-white border rounded-xl p-4 shadow-sm flex gap-3 flex-wrap ${esTentativo ? 'border-amber-300 border-dashed' : 'border-p-line'}`}>
+            <div key={t.id} onDoubleClick={()=>!esTentativo && openEdit(t)} title={esTentativo?undefined:"Doble click para editar"}
+              className={`bg-white border rounded-xl p-4 shadow-sm flex gap-3 flex-wrap ${esTentativo ? 'border-amber-300 border-dashed' : 'border-p-line'}`}>
               <div className="text-center min-w-[44px]">
                 <p className="font-mono font-bold text-p-ink text-base">{t.hora?.slice(0,5) ?? '—'}</p>
               </div>
