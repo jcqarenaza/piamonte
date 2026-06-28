@@ -287,7 +287,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (!ncComp || ncItemsSel.length === 0) return
     setNcLoading(true)
     const { data: last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
-    const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
+    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     const itemsNc: ItemVenta[] = ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
     const { data: nc } = await supabase.from('comprobantes').insert({
@@ -388,7 +388,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function save(){
     if(!puedeGuardar) return
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
-    const nextNum = ((last?.[0] as any)?.numero ?? 0) + 1
+    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 

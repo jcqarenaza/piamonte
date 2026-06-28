@@ -164,7 +164,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     }
 
     const { data: nuevas } = await supabase.from('ordenes_servicio').select('numero').order('numero',{ascending:false}).limit(1)
-    const nextNum = ((nuevas?.[0] as any)?.numero ?? 0) + 1
+    const nextNum = (parseInt(String((nuevas?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     if(editId) {
       await supabase.from('ordenes_servicio').update({
