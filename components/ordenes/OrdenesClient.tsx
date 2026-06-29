@@ -461,8 +461,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                           <button onClick={async()=>{
                             await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
                             const params = new URLSearchParams({
-                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'',
+                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
                               items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                              ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
+                              ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
                             })
                             router.push(`/comprobantes?${params.toString()}`)
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>

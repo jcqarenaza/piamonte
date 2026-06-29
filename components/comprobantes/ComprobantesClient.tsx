@@ -46,6 +46,7 @@ interface Comprobante {
   items:ItemVenta[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
   aseguradora_nombre?:string|null; es_negro?:boolean
+  patente?:string|null; siniestro?:string|null
   cae_emitido?:string|null; cae_vencimiento?:string|null
   categoria?:string; comprobante_original_id?:string|null; motivo_nc?:string|null
   nro_cbte_afip?:number|null
@@ -76,8 +77,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [ivaOn, setIvaOn]       = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75)
 
-  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'' }
+  const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', patente:'' }
   const [fiscal, setFiscal]     = useState(emptyFiscal)
+  const [clienteAseg, setClienteAseg] = useState('')
+  const [siniestro, setSiniestro] = useState('')
   const [items, setItems]       = useState<ItemVenta[]>([])
   // Buscador unificado: primero busca en el catálogo maestro de artículos (con su costo de
   // reposición y SKU); si la pieza ya está en stock con cantidad disponible, también se ofrece
@@ -127,23 +130,29 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const cli  = searchParams.get('cli')
     const tel  = searchParams.get('tel')
     const veh  = searchParams.get('veh')
+    const pat  = searchParams.get('pat')
     const itm  = searchParams.get('items')
     const iva_ = searchParams.get('iva')
     const tipoId = searchParams.get('tipo_id')
     const asegNombre = searchParams.get('aseguradora')
+    const sinNro = searchParams.get('siniestro')
     // Llega desde Precios — viene con el id del artículo del catálogo maestro elegido
     const piezaId = searchParams.get('pieza_id')
     const piezaDesc = searchParams.get('pieza_desc')
     const piezaPrecio = searchParams.get('pieza_precio')
     if (asegNombre) {
+      // Factura a la aseguradora, pero el desglose necesita igual los datos del cliente real
+      // (auto, patente) — antes se perdían porque este branch ignoraba cli/veh/pat.
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
         .ilike('nombre', asegNombre).maybeSingle()
         .then(({data}) => { if (data) { setAseg(data as AseguradoraMin); setAsegQ(data.nombre) } })
-      setFiscal(p=>({...p, vehiculo:veh||'' }))
+      setFiscal(p=>({...p, vehiculo:veh||'', patente:pat||'' }))
+      setClienteAseg(cli||'')
+      setSiniestro(sinNro||'')
     } else if (cli || tel) {
       setModo('cliente')
-      setFiscal(p=>({...p, vehiculo:veh||'', tipo_cliente_id:tipoId||'' }))
+      setFiscal(p=>({...p, vehiculo:veh||'', patente:pat||'', tipo_cliente_id:tipoId||'' }))
       if (tel) {
         supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
           .eq('telefono', tel).maybeSingle()
@@ -208,7 +217,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function selectAseguradora(a:AseguradoraMin){
     setAseg(a); setAsegQ(a.nombre); setAsegSugs([])
     setFiscal(p=>({...p, tipo_fiscal:'responsable_inscripto', cuit:a.cuit||'' }))
-    const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora')
+    const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora,patente,cliente,siniestro')
       .eq('aseguradora', a.nombre).eq('convertido_comp', false)
       .order('created_at',{ascending:false}).limit(8)
     setHistorialCli({ presupuestos: [], ordenes: ords??[] })
@@ -218,6 +227,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
     setAseg(null); setAsegQ(''); setAsegSugs([])
+    setClienteAseg(''); setSiniestro('')
     setHistorialCli(null)
     setNuevoCliOpen(false)
     if (m === 'cf') {
@@ -395,7 +405,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const { data:comp } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
-      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||null) : (modo==='cf' ? 'Consumidor Final' : null),
+      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? 'Consumidor Final' : null)),
       cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : null,
       cliente_cuit: fiscal.cuit||null,
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
@@ -404,6 +414,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       aseguradora_id: modo==='aseguradora' ? (asegSel?.id||null) : null,
       aseguradora_nombre: modo==='aseguradora' ? (asegSel?.nombre||null) : null,
       vehiculo: fiscal.vehiculo||null,
+      patente: fiscal.patente||null,
+      siniestro: modo==='aseguradora' ? (siniestro||null) : null,
       presupuesto_id: pid||null,
       orden_id: oid||null,
       items, neto, iva_pct:IVA, iva, total,
@@ -464,6 +476,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
     cambiarModo('cf')
     setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
+    setClienteAseg(''); setSiniestro('')
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
@@ -554,9 +567,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
     try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
     doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
-    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 12)
+    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 11)
     doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
-    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 20)
+    doc.setFontSize(7.5); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 17)
+    doc.text('CUIT: 27-24265717-4 · IVA Responsable Inscripto · Pto. Vta. 0006', pad+50, 22.5)
     const tipoLabel = c.categoria==='nc'
       ? (c.tipo==='A'?'NOTA DE CRÉDITO A':c.tipo==='B'?'NOTA DE CRÉDITO B':c.tipo==='C'?'NOTA DE CRÉDITO C':'NOTA DE CRÉDITO')
       : (c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE')
@@ -572,22 +586,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y+=6
     }
 
-    const nombreFactura = c.cliente_nombre || c.aseguradora_nombre || 'Consumidor Final'
-    doc.setTextColor(30,30,30); doc.setFillColor(245,250,247)
-    doc.rect(pad, y-4, W-pad*2, c.cliente_cuit?24:16, 'F')
-    doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    doc.text(c.aseguradora_nombre ? 'Aseguradora:' : 'Cliente:', pad+2, y); doc.setFont('helvetica','normal')
-    doc.text(nombreFactura, pad+24, y)
-    if(c.cliente_telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(c.cliente_telefono, pad+110, y) }
-    y+=6
-    if(c.cliente_cuit){
-      doc.setFont('helvetica','bold'); doc.text('CUIT:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(c.cliente_cuit, pad+20, y)
-      doc.setFont('helvetica','bold'); doc.text('Cond. IVA:', pad+80, y); doc.setFont('helvetica','normal')
-      doc.text(tipoFiscalLabel(c.cliente_tipo_fiscal), pad+104, y)
-      y+=6
+    const esAseg = !!c.aseguradora_nombre
+    const filas: [string,string][] = []
+    if (esAseg) {
+      filas.push(['Aseguradora:', c.aseguradora_nombre || ''])
+      if (c.cliente_nombre) filas.push(['Asegurado:', c.cliente_nombre])
+      if ((c as any).siniestro) filas.push(['N° Siniestro:', (c as any).siniestro])
+    } else {
+      filas.push(['Cliente:', c.cliente_nombre || 'Consumidor Final'])
     }
-    if(c.vehiculo){ doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(c.vehiculo, pad+22, y); y+=6 }
+    if (c.cliente_telefono) filas.push(['Tel:', c.cliente_telefono])
+    if (c.cliente_cuit) { filas.push(['CUIT:', c.cliente_cuit]); filas.push(['Cond. IVA:', tipoFiscalLabel(c.cliente_tipo_fiscal)]) }
+    if (c.vehiculo) filas.push(['Vehículo:', c.vehiculo])
+    if ((c as any).patente) filas.push(['Patente:', (c as any).patente])
+
+    doc.setTextColor(30,30,30); doc.setFillColor(245,250,247)
+    doc.rect(pad, y-4, W-pad*2, filas.length*6+2, 'F')
+    doc.setFontSize(9)
+    filas.forEach(([label,valor])=>{
+      doc.setFont('helvetica','bold'); doc.text(label, pad+2, y)
+      doc.setFont('helvetica','normal'); doc.text(String(valor), pad+30, y)
+      y+=6
+    })
     y+=6
 
     const cols=[95,20,35,35]
@@ -853,6 +873,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   <span className="text-xs text-amber-600 font-semibold">⚠ Elegí una aseguradora de la lista — no se puede facturar a un nombre sin cargar</span>
                 )}
               </div>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <Field label="Cliente (asegurado)">
+                  <Input value={clienteAseg} onChange={e=>setClienteAseg(e.target.value)} placeholder="Nombre del titular del vehículo"/>
+                </Field>
+                <Field label="N° Siniestro">
+                  <Input value={siniestro} onChange={e=>setSiniestro(e.target.value)} placeholder="Opcional"/>
+                </Field>
+              </div>
             </div>
           )}
 
@@ -902,9 +930,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </button>
                 ))}
                 {historialCli.ordenes.map((o:any) => (
-                  <button key={o.id} onClick={()=>{
+                  <button key={o.id} onClick={async()=>{
                     setItems(o.items||[])
-                    setFiscal(prev=>({...prev, vehiculo:o.vehiculo||prev.vehiculo}))
+                    setFiscal(prev=>({...prev, vehiculo:o.vehiculo||prev.vehiculo, patente:o.patente||prev.patente}))
+                    if (o.cliente) setClienteAseg(o.cliente)
+                    if (o.siniestro) setSiniestro(o.siniestro)
+                    await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
                     setHistorialCli(null)
                   }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-amber-50 border border-amber-100 transition-colors w-full">
                     <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">OS-{String(o.numero||0).padStart(4,'0')}</span>
@@ -917,7 +948,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          <Field label="Vehículo"><Input value={fiscal.vehiculo} onChange={e=>setFiscal(p=>({...p,vehiculo:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Vehículo"><Input value={fiscal.vehiculo} onChange={e=>setFiscal(p=>({...p,vehiculo:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            <Field label="Patente"><Input value={fiscal.patente} onChange={e=>setFiscal(p=>({...p,patente:e.target.value.toUpperCase()}))} placeholder="AB123CD"/></Field>
+          </div>
 
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
@@ -1124,12 +1158,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             )}
 
             <div className="bg-p-light rounded-xl p-3 grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-p-ink2">Cliente: </span><span className="font-semibold">{verComp.cliente_nombre || 'Consumidor Final'}</span></div>
+              {verComp.aseguradora_nombre && <div className="col-span-2"><span className="text-p-ink2">Aseguradora: </span><span className="font-semibold">{verComp.aseguradora_nombre}</span></div>}
+              <div><span className="text-p-ink2">{verComp.aseguradora_nombre?'Asegurado: ':'Cliente: '}</span><span className="font-semibold">{verComp.cliente_nombre || 'Consumidor Final'}</span></div>
+              {(verComp as any).siniestro && <div><span className="text-p-ink2">N° Siniestro: </span>{(verComp as any).siniestro}</div>}
               {verComp.cliente_telefono && <div><span className="text-p-ink2">Tel: </span>{verComp.cliente_telefono}</div>}
               {verComp.cliente_cuit && <div><span className="text-p-ink2">CUIT: </span>{verComp.cliente_cuit}</div>}
               {verComp.cliente_tipo_fiscal && <div><span className="text-p-ink2">Cond. IVA: </span>{tipoFiscalLabel(verComp.cliente_tipo_fiscal)}</div>}
-              {verComp.vehiculo && <div className="col-span-2"><span className="text-p-ink2">Vehículo: </span>{verComp.vehiculo}</div>}
-              {verComp.aseguradora_nombre && <div className="col-span-2"><span className="text-p-ink2">Aseguradora: </span>{verComp.aseguradora_nombre}</div>}
+              {verComp.vehiculo && <div><span className="text-p-ink2">Vehículo: </span>{verComp.vehiculo}</div>}
+              {(verComp as any).patente && <div><span className="text-p-ink2">Patente: </span>{(verComp as any).patente}</div>}
             </div>
 
             <div>
