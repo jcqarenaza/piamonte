@@ -57,7 +57,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       // Stock bajo (cantidad < 2)
       supabase.from('stock').select('descripcion,cantidad,codigo,pos').eq('activo', true).lt('cantidad', 2).order('cantidad').limit(6),
       // Actividad reciente
-      supabase.from('comprobantes').select('numero,cliente_nombre,total,fecha,tipo').order('created_at', { ascending: false }).limit(5),
+      supabase.from('comprobantes').select('id,numero,cliente_nombre,aseguradora_nombre,total,fecha,tipo,categoria,nro_cbte_afip').order('created_at', { ascending: false }).limit(5),
       // Ventas últimos 7 días para chart
       supabase.from('ventas').select('fecha,precio').gte('fecha', hace7).order('fecha'),
       // Cotización dólar
@@ -197,11 +197,11 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
           ) : (
             <div className="divide-y divide-p-line2">
               {actividad.map((c: any) => (
-                <div key={c.numero} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="font-mono text-[10px] font-bold text-p-dark bg-p-light px-1.5 py-0.5 rounded shrink-0">
-                    {c.tipo||'X'}-{String(c.numero||0).padStart(4,'0')}
+                <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${c.categoria==='nc'?'bg-amber-100 text-amber-700':'bg-p-light text-p-dark'}`}>
+                    {c.categoria==='nc' ? 'NC' : (c.tipo||'X')}-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(4,'0')}
                   </span>
-                  <p className="text-sm text-p-ink flex-1 truncate">{c.cliente_nombre||'Consumidor Final'}</p>
+                  <p className="text-sm text-p-ink flex-1 truncate">{c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}</p>
                   <p className="font-mono text-sm font-bold text-p-ink shrink-0">{moneyARS(c.total)}</p>
                 </div>
               ))}
