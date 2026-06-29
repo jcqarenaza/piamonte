@@ -119,20 +119,15 @@ export default function ArticulosClient() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 500 : 100)
+    let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 2000 : 100)
     if (q.trim()) query = query.or(`descripcion.ilike.%${q}%,sku_interno.ilike.%${q}%,codigo_referencia.ilike.%${q}%`)
     const { data } = await query
     let arr = (data ?? []).map((a:any) => ({ ...a, equivalencias: a.articulo_equivalencias }))
 
     if (tab === 'pendientes') {
-      // Solo artículos con al menos un proveedor faltante, ordenados por cuántos faltan (más incompletos primero)
-      arr = arr
-        .filter((a:Articulo) => PROVEEDORES.some(p => !a.equivalencias?.some(e => e.proveedor === p)))
-        .sort((a:Articulo, b:Articulo) => {
-          const faltanA = PROVEEDORES.filter(p => !a.equivalencias?.some(e => e.proveedor === p)).length
-          const faltanB = PROVEEDORES.filter(p => !b.equivalencias?.some(e => e.proveedor === p)).length
-          return faltanB - faltanA
-        })
+      // "Pendiente" = sin NINGÚN proveedor asociado todavía. Si ya tiene al menos uno, está
+      // bien — los demás se van completando solos a medida que se cargan más listas.
+      arr = arr.filter((a:Articulo) => !a.equivalencias || a.equivalencias.length === 0)
     } else if (filtroFaltante) {
       arr = arr.filter((a:Articulo) => !a.equivalencias?.some(e => e.proveedor === filtroFaltante))
     }
@@ -289,9 +284,9 @@ export default function ArticulosClient() {
       {tab === 'pendientes' && !loading && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm text-amber-800">
-            <strong>{totalArticulos}</strong> artículos con al menos un proveedor sin asociar.
+            <strong>{totalArticulos}</strong> artículos sin ningún proveedor asociado todavía.
           </p>
-          <p className="text-xs text-amber-700">Ordenados por los que más proveedores les faltan.</p>
+          <p className="text-xs text-amber-700">Si ya tiene al menos uno, no aparece acá — el resto se completa con el tiempo.</p>
         </div>
       )}
 
@@ -310,7 +305,7 @@ export default function ArticulosClient() {
       </div>
 
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-       articulos.length === 0 ? <Empty msg={tab==='pendientes' ? '¡Sin pendientes! Todos los artículos tienen sus 3 proveedores asociados.' : 'Sin artículos.'} /> : (
+       articulos.length === 0 ? <Empty msg={tab==='pendientes' ? '¡Sin pendientes! Todos los artículos activos tienen al menos un proveedor asociado.' : 'Sin artículos.'} /> : (
         <div className="flex flex-col gap-2">
           {articulos.map(a => {
             const faltan = faltantesDe(a)
