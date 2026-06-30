@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { moneyARS } from '@/lib/utils/format'
+import { useDolar } from '@/components/dolar/DolarBar'
 
 interface VentaMes {
   mes: string; operaciones: number; facturado: number
@@ -26,25 +27,31 @@ export default function RentabilidadesAvanzadasClient() {
   const [loading, setLoading]   = useState(true)
   const [periodo, setPeriodo]   = useState(6) // meses a mostrar
   const supabase = createClient()
+  const { usdStr } = useDolar()
+  // Estimación en USD Banco Nación (cotización oficial) — pedido explícito del cliente para
+  // todas las pantallas de reportes/rentabilidad/finanzas, no blue ni MEP.
+  const usdBNA = (n: number) => usdStr(n, 'oficial')
 
   useEffect(()=>{
     async function load() {
       setLoading(true)
       const [r1, r2, r3] = await Promise.all([
         supabase.from('vista_rentabilidad_mensual').select('*').limit(100),
-        supabase.from('ventas').select('descripcion,precio_venta,costo').not('descripcion','is',null).limit(500),
+        supabase.from('ventas').select('descripcion,precio,costo').not('descripcion','is',null).limit(500),
         supabase.from('comprobantes_compra').select('fecha,total,proveedor_nombre,tipo').eq('tipo','factura').eq('estado','pendiente').order('fecha',{ascending:false}).limit(50),
       ])
       setDatos(r1.data??[])
 
-      // Agrupar top piezas
+      // Agrupar top piezas — se excluyen las filas de devolución por NC (precio negativo,
+      // descripción "NC ... — devolución ..."), que no son piezas vendidas.
       const map: Record<string,{veces:number;total:number;ganancia:number}> = {}
       for(const v of r2.data??[]) {
+        if (!v.descripcion || v.descripcion.startsWith('NC ')) continue
         const k = v.descripcion
         if(!map[k]) map[k]={veces:0,total:0,ganancia:0}
         map[k].veces++
-        map[k].total += v.precio_venta||0
-        map[k].ganancia += (v.precio_venta||0)-(v.costo||0)
+        map[k].total += v.precio||0
+        map[k].ganancia += (v.precio||0)-(v.costo||0)
       }
       const top = Object.entries(map)
         .map(([d,v])=>({descripcion:d,...v}))
@@ -101,15 +108,17 @@ export default function RentabilidadesAvanzadasClient() {
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Facturado</p>
           <p className="font-saira font-bold text-xl text-p-ink mt-1">{moneyARS(totalFact)}</p>
-          <p className="text-[10px] text-p-ink2">{totalOps} operaciones</p>
+          <p className="text-[10px] text-p-ink2">{usdBNA(totalFact)} · {totalOps} operaciones</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Ticket promedio</p>
           <p className="font-saira font-bold text-xl text-p-ink mt-1">{moneyARS(ticketProm)}</p>
+          <p className="text-[10px] text-p-ink2">{usdBNA(ticketProm)}</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Compras (facturas)</p>
           <p className="font-saira font-bold text-xl text-p-ink mt-1">{moneyARS(totalCompras)}</p>
+          <p className="text-[10px] text-p-ink2">{usdBNA(totalCompras)}</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Margen estimado</p>
@@ -128,6 +137,7 @@ export default function RentabilidadesAvanzadasClient() {
                   <th className="text-left py-2 font-bold text-p-ink2 text-xs uppercase">Mes</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Operaciones</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Facturado</th>
+                  <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">USD BNA</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Ticket prom.</th>
                 </tr>
               </thead>
@@ -147,6 +157,7 @@ export default function RentabilidadesAvanzadasClient() {
                           <span className="font-mono font-bold text-p-dark">{moneyARS(m.facturado)}</span>
                         </div>
                       </td>
+                      <td className="py-2.5 text-right font-mono text-p-ink2">{usdBNA(m.facturado)}</td>
                       <td className="py-2.5 text-right font-mono text-p-ink2">{moneyARS(m.operaciones>0?Math.round(m.facturado/m.operaciones):0)}</td>
                     </tr>
                   )
@@ -172,7 +183,9 @@ export default function RentabilidadesAvanzadasClient() {
                     <div className="flex-1 h-3 bg-p-light rounded-full overflow-hidden">
                       <div className="h-full bg-p-green rounded-full" style={{width:`${pct}%`}}/>
                     </div>
-                    <span className="font-mono font-bold text-xs text-p-dark w-24 text-right shrink-0">{moneyARS(t.facturado)}</span>
+                    <span className="font-mono font-bold text-xs text-p-dark w-24 text-right shrink-0">
+                      {moneyARS(t.facturado)}<br/><span className="font-normal text-[9px] text-p-ink2">{usdBNA(t.facturado)}</span>
+                    </span>
                     <span className="text-[10px] text-p-ink2 w-8 text-right shrink-0">{t.operaciones}op</span>
                   </div>
                 )
@@ -191,7 +204,9 @@ export default function RentabilidadesAvanzadasClient() {
                   <span className="text-[10px] font-black text-p-ink2 w-5 shrink-0">#{i+1}</span>
                   <p className="text-xs text-p-ink flex-1 truncate">{p.descripcion}</p>
                   <span className="text-[10px] text-p-ink2 shrink-0">{p.veces}×</span>
-                  <span className="font-mono font-bold text-xs text-p-dark shrink-0">{moneyARS(p.total)}</span>
+                  <span className="font-mono font-bold text-xs text-p-dark shrink-0 text-right">
+                    {moneyARS(p.total)}<br/><span className="font-normal text-[9px] text-p-ink2">{usdBNA(p.total)}</span>
+                  </span>
                 </div>
               ))}
             </div>
