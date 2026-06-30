@@ -34,7 +34,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const supabase = createClient()
 
-  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
   const [articuloSel, setArticuloSel] = useState<{id:string;descripcion:string;codigo_referencia:string|null}|null>(null)
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [buscandoArticulo, setBuscandoArticulo] = useState(false)
@@ -148,7 +148,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   }
 
   function openNuevo() {
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
     setEditId(null)
     setArticuloSel(null)
     setArticuloSugs([])
@@ -162,6 +162,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       precio: s.precio_venta ? String(s.precio_venta) : '',
       costo: s.costo ? String(s.costo) : '',
       dep: s.deposito || 'Principal',
+      minimo: String(s.stock_minimo ?? 0),
     })
     setEditId(s.id)
     if ((s as any).articulo_id) {
@@ -210,6 +211,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       costo: form.costo ? +form.costo.replace(/[^0-9.]/g, '') : null,
       deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
       articulo_id: articuloId,
+      stock_minimo: +form.minimo || 0,
     }
     if (editId) {
       await supabase.from('stock').update(payload).eq('id', editId)
@@ -217,7 +219,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       await supabase.from('stock').insert(payload)
     }
     setOpen(false)
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
     setEditId(null)
     setArticuloSel(null)
     load()
@@ -343,6 +345,30 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
 
+      {/* Alerta de stock bajo mínimo */}
+      {(() => {
+        const bajoMinimo = items.filter(s => s.activo && s.stock_minimo > 0 && s.cantidad < s.stock_minimo)
+        if (!bajoMinimo.length) return null
+        return (
+          <div className="rounded-xl border border-red-300 bg-red-50 px-5 py-3.5 mb-3">
+            <p className="text-[11px] font-bold text-red-700 uppercase tracking-wider mb-2">
+              ⚠ {bajoMinimo.length} artículo(s) por debajo del stock mínimo
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {bajoMinimo.slice(0,8).map(s=>(
+                <div key={s.id} className="flex items-center justify-between text-xs">
+                  <span className="text-red-800 font-semibold truncate flex-1">{s.descripcion}</span>
+                  <span className="font-mono text-red-600 ml-3 shrink-0">
+                    {s.cantidad} u. / mín. {s.stock_minimo}
+                  </span>
+                </div>
+              ))}
+              {bajoMinimo.length > 8 && <p className="text-[10px] text-red-500">+{bajoMinimo.length-8} más…</p>}
+            </div>
+          </div>
+        )
+      })()}
+
       {isAdmin && (
         <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5 mb-3">
           <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado del stock (precio de venta)</p>
@@ -397,7 +423,10 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           <div className="flex flex-col gap-2">
             {visible.slice(0, 300).map(s => (
               <div key={s.id} onDoubleClick={() => openEditar(s)} title="Doble click para editar"
-                className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${!s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'}`}>
+                className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${
+                  s.stock_minimo > 0 && s.cantidad < s.stock_minimo ? 'border-l-4 border-l-red-400 border-p-line' :
+                  !s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'
+                }`}>
                 <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
@@ -465,6 +494,12 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
             <Field label="Precio venta"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
             <Field label="Costo de venta"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
           </div>
+          <Field label="Mínimo en stock">
+            <div className="flex items-center gap-3">
+              <Input type="number" value={form.minimo} onChange={e => setForm(p => ({ ...p, minimo: e.target.value }))} min="0" placeholder="0"/>
+              <p className="text-[11px] text-p-ink2">Si la cantidad baja de este número, aparece una alerta en el módulo. Dejá en 0 para no alertar.</p>
+            </div>
+          </Field>
           <p className="text-[11px] text-p-ink2 -mt-2">
             Costo de venta = costo consumidor final + recargo tarjeta + IVA. Es el valor con el que se valoriza el stock — no el costo neto de lista.
           </p>

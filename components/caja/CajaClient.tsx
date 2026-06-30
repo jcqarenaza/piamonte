@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Venta, StockItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, KpiCard, Empty, AlarmBar } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
+import { useDolar } from '@/components/dolar/DolarBar'
 
 const PAGOS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Cuenta corriente']
 
@@ -21,7 +22,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [editStockQ, setEditStockQ]   = useState('')
   const [editStockSug, setEditStockSug] = useState<StockItem[]>([])
   const supabase = createClient()
-  const [blueRate, setBlueRate] = useState<number|null>(null)
+  const { usdStr } = useDolar()
+  const usdBNA = (n: number) => usdStr(n, 'oficial')
   const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
 
   const [form, setForm] = useState({
@@ -70,8 +72,6 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   useEffect(() => { loadVentas() }, [loadVentas])
 
   useEffect(() => {
-    supabase.from('cotizaciones').select('blue').order('fecha',{ascending:false}).limit(1).maybeSingle()
-      .then(({data})=>setBlueRate(data?.blue??null))
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
   }, [supabase])
 
@@ -112,7 +112,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     setStockQ(''); setStockSug([])
   }
 
-  const toUsd = (n: number) => blueRate ? ' · USD ' + Math.round(n/blueRate).toLocaleString('es-AR') : ''
+  const toUsd = (n: number) => usdBNA(n) !== '—' ? ' · ' + usdBNA(n) : ''
 
   // Rentabilidad real (sin IVA, con flete 1.5%)
   function calcRentabilidad(precio: number, costo: number | null) {
@@ -275,6 +275,11 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   const pend = ventas.filter(v => v.pendiente).length
   const totalRecibos = recibos.reduce((a,r)=>a+r.monto, 0)
   const totalPagosProv = pagosProveedores.reduce((a,p)=>a+p.haber, 0)
+  const totalGastos = gastos.reduce((a,g)=>a+g.monto, 0)
+  // Saldo neto del día = lo que entró (ventas + cobros de clientes) - lo que salió (gastos + pagos a proveedores)
+  const totalEntradas = fact + totalRecibos
+  const totalSalidas  = totalGastos + totalPagosProv
+  const saldoNeto     = totalEntradas - totalSalidas
 
   return (
     <div>
@@ -290,13 +295,49 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
         <button onClick={() => setOpen(true)} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Registrar venta</button>
       </div>
 
+      {/* Resumen financiero del día — visible solo para gerencial/admin */}
+      {isAdmin && (
+        <div className="bg-white border border-p-line rounded-2xl p-4 mb-5 shadow-sm">
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3">Resumen del día</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <div className="text-sm">
+              <p className="text-p-ink2 text-xs mb-0.5">Ventas facturadas</p>
+              <p className="font-saira font-bold text-p-ink">{moneyARS(fact)}</p>
+              <p className="text-[10px] text-p-ink2">{usdBNA(fact)}</p>
+            </div>
+            <div className="text-sm">
+              <p className="text-p-ink2 text-xs mb-0.5">+ Cobros Cta. Cte.</p>
+              <p className="font-saira font-bold text-green-600">{moneyARS(totalRecibos)}</p>
+              <p className="text-[10px] text-p-ink2">{usdBNA(totalRecibos)}</p>
+            </div>
+            <div className="text-sm">
+              <p className="text-p-ink2 text-xs mb-0.5">− Gastos</p>
+              <p className="font-saira font-bold text-red-500">{moneyARS(totalGastos)}</p>
+              <p className="text-[10px] text-p-ink2">{usdBNA(totalGastos)}</p>
+            </div>
+            <div className="text-sm">
+              <p className="text-p-ink2 text-xs mb-0.5">− Pagos a proveedores</p>
+              <p className="font-saira font-bold text-red-500">{moneyARS(totalPagosProv)}</p>
+              <p className="text-[10px] text-p-ink2">{usdBNA(totalPagosProv)}</p>
+            </div>
+          </div>
+          <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${saldoNeto >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            <p className="text-sm font-bold text-p-ink">Saldo neto del día</p>
+            <div className="text-right">
+              <p className={`font-saira font-bold text-2xl ${saldoNeto >= 0 ? 'text-green-600' : 'text-red-500'}`}>{moneyARS(saldoNeto)}</p>
+              <p className="text-[10px] text-p-ink2">{usdBNA(Math.abs(saldoNeto))} {saldoNeto < 0 ? '(negativo)' : ''}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <KpiCard label="Facturado" value={moneyARS(fact)} sub={blueRate ? 'USD ' + Math.round(fact/blueRate).toLocaleString('es-AR') : undefined} />
-        {isAdmin && <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={blueRate ? 'USD ' + Math.round(costo/blueRate).toLocaleString('es-AR') : undefined} />}
-        {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={blueRate ? 'USD ' + Math.round(gan2/blueRate).toLocaleString('es-AR') : undefined} />}
+        <KpiCard label="Facturado" value={moneyARS(fact)} sub={usdBNA(fact)} />
+        {isAdmin && <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={usdBNA(costo)} />}
+        {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={usdBNA(gan2)} />}
         <KpiCard label="Operaciones" value={`${ventas.length}`} sub={pend ? `${pend} s/costo` : undefined} />
-        {isAdmin && <KpiCard label="Gastos del día" value={moneyARS(gastos.reduce((a,g)=>a+g.monto,0))} />}
+        {isAdmin && <KpiCard label="Gastos del día" value={moneyARS(totalGastos)} />}
         {isAdmin && <KpiCard label="Cobros Cta. Cte. (clientes)" value={moneyARS(totalRecibos)} />}
         {isAdmin && <KpiCard label="Pagos a proveedores" value={moneyARS(totalPagosProv)} />}
       </div>

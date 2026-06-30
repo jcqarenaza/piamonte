@@ -53,6 +53,7 @@ export interface StockItem {
   costo: number | null
   deposito: string
   activo: boolean
+  stock_minimo: number
   created_at: string
   updated_at: string
 }
