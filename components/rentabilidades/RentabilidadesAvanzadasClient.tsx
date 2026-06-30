@@ -24,6 +24,7 @@ export default function RentabilidadesAvanzadasClient() {
   const [datos, setDatos]       = useState<VentaMes[]>([])
   const [topPiezas, setTopPiezas] = useState<TopPieza[]>([])
   const [compras, setCompras]   = useState<any[]>([])
+  const [ventasCajaPorMes, setVentasCajaPorMes] = useState<Record<string,{operaciones:number;total:number}>>({})
   const [loading, setLoading]   = useState(true)
   const [periodo, setPeriodo]   = useState(6) // meses a mostrar
   const supabase = createClient()
@@ -35,10 +36,14 @@ export default function RentabilidadesAvanzadasClient() {
   useEffect(()=>{
     async function load() {
       setLoading(true)
-      const [r1, r2, r3] = await Promise.all([
+      const [r1, r2, r3, r4] = await Promise.all([
         supabase.from('vista_rentabilidad_mensual').select('*').limit(100),
         supabase.from('ventas').select('descripcion,precio,costo').not('descripcion','is',null).limit(500),
         supabase.from('comprobantes_compra').select('fecha,total,proveedor_nombre,tipo').eq('tipo','factura').eq('estado','pendiente').order('fecha',{ascending:false}).limit(50),
+        // Ventas registradas directo en Caja, sin pasar por un comprobante (no llevan factura).
+        // Se excluyen las que sí tienen comprobante_id porque esas ya están contadas en
+        // vista_rentabilidad_mensual — sumarlas de nuevo acá duplicaría el total facturado.
+        supabase.from('ventas').select('fecha,precio').is('comprobante_id', null).not('fecha','is',null).limit(2000),
       ])
       setDatos(r1.data??[])
 
@@ -58,26 +63,45 @@ export default function RentabilidadesAvanzadasClient() {
         .sort((a,b)=>b.total-a.total).slice(0,10)
       setTopPiezas(top)
       setCompras(r3.data??[])
+
+      // Ventas de Caja agrupadas por mes (YYYY-MM), para sumarlas al Facturado de cada mes
+      const cajaMap: Record<string,{operaciones:number;total:number}> = {}
+      for(const v of r4.data??[]) {
+        const mes = String(v.fecha).slice(0,7)
+        if(!cajaMap[mes]) cajaMap[mes] = {operaciones:0,total:0}
+        cajaMap[mes].operaciones++
+        cajaMap[mes].total += v.precio||0
+      }
+      setVentasCajaPorMes(cajaMap)
       setLoading(false)
     }
     load()
   },[supabase])
 
-  // Agrupar por mes
-  const meses = [...new Set(datos.map(d=>d.mes))].sort().reverse().slice(0,periodo)
+  // Agrupar por mes — se combinan los comprobantes (vista_rentabilidad_mensual) con las
+  // ventas registradas directo en Caja sin factura, para que "Facturado" refleje todo lo vendido.
+  const meses = [...new Set([...datos.map(d=>d.mes), ...Object.keys(ventasCajaPorMes)])].sort().reverse().slice(0,periodo)
   const porMes = meses.map(m=>{
     const rows = datos.filter(d=>d.mes===m)
+    const caja = ventasCajaPorMes[m] ?? {operaciones:0,total:0}
     return {
       mes: m,
-      operaciones: rows.reduce((a,r)=>a+r.operaciones,0),
-      facturado: rows.reduce((a,r)=>a+r.facturado,0),
+      operaciones: rows.reduce((a,r)=>a+r.operaciones,0) + caja.operaciones,
+      facturado: rows.reduce((a,r)=>a+r.facturado,0) + caja.total,
       neto: rows.reduce((a,r)=>a+r.neto,0),
     }
   })
 
-  // Por tipo de cliente (mes actual)
+  // Por tipo de cliente (mes actual) — se agrega "Caja (sin factura)" como un tipo más,
+  // para que las ventas de Caja también se vean en este desglose y no falten del total.
   const meActual = new Date().toISOString().slice(0,7)
-  const porTipo = datos.filter(d=>d.mes===meActual)
+  const cajaMesActual = ventasCajaPorMes[meActual]
+  const porTipo = [
+    ...datos.filter(d=>d.mes===meActual),
+    ...(cajaMesActual && cajaMesActual.total > 0
+      ? [{ mes:meActual, operaciones:cajaMesActual.operaciones, facturado:cajaMesActual.total, neto:0, iva_total:0, tipo_cliente:'Caja (sin factura)' }]
+      : [])
+  ]
 
   // Totales acumulados del período
   const totalFact = porMes.reduce((a,m)=>a+m.facturado,0)
