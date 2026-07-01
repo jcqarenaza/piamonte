@@ -39,6 +39,7 @@ interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; c
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 interface ItemVenta { d:string; c:number; p:number; costo?:number; stock_id?:string; articulo_id?:string|null }
+interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
@@ -84,6 +85,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [siniestro, setSiniestro] = useState('')
   const [cfNombre, setCfNombre] = useState('')
   const [cfTel, setCfTel]       = useState('')
+  const [rubros, setRubros]           = useState<RubroPrecio[]>([])
+  const [rubrosEdit, setRubrosEdit]   = useState<Record<string,number>>({})
   const [items, setItems]       = useState<ItemVenta[]>([])
   // Buscador unificado: primero busca en el catálogo maestro de artículos (con su costo de
   // reposición y SKU); si la pieza ya está en stock con cantidad disponible, también se ofrece
@@ -106,6 +109,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   // Buscar en stock (piezas con unidades disponibles) y en el catálogo de artículos en paralelo —
   // se muestran agrupados, dejando claro cuál ya tiene unidades físicas y cuál es solo catálogo.
+  const rubrosSugs = stockQ.trim().length >= 2
+    ? rubros.filter(r => r.nombre.toLowerCase().includes(stockQ.trim().toLowerCase()))
+    : []
+
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
     supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0)
@@ -129,6 +136,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     supabase.from('comprobantes').select('*').order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
+    supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
   },[supabase])
 
   useEffect(() => {
@@ -715,6 +723,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return c.categoria !== 'nc' && c.tipo === filtroTipo
   })
 
+  function addRubro(r: RubroPrecio) {
+    const precio = rubrosEdit[r.id] ?? r.precio_base
+    setItems(prev=>[...prev, { d:r.nombre, c:1, p:precio, articulo_id:null }])
+  }
+
   return (
     <div>
       {toast && (
@@ -995,7 +1008,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
             <div className="relative">
               <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder="Buscar por descripción…"/>
-              {(stockSugs.length>0 || articuloSugs.length>0) &&(
+              {(stockSugs.length>0 || articuloSugs.length>0 || rubrosSugs.length>0) &&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
                   {stockSugs.length > 0 && (
                     <>
@@ -1024,6 +1037,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
                           <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
                           <p className="text-[10px] text-p-ink2">{a.sku_interno} · sin stock cargado — completá el precio a mano</p>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {rubrosSugs.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">🔧 Servicios y rubros</p>
+                      {rubrosSugs.map(r=>(
+                        <button key={r.id} onClick={()=>{
+                          addRubro(r)
+                          setStockQ(''); setStockSugs([]); setArticuloSugs([])
+                        }} className="w-full text-left px-3 py-2.5 hover:bg-green-50 border-b border-p-line2 last:border-0 flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-p-ink">{r.nombre}</p>
+                          <span className="font-mono font-bold text-sm text-p-green shrink-0">{moneyARS(rubrosEdit[r.id]??r.precio_base)}</span>
                         </button>
                       ))}
                     </>
