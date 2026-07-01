@@ -1,0 +1,377 @@
+'use client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Modal, Field, Input, Empty } from '@/components/ui'
+import { moneyARS, todayStr } from '@/lib/utils/format'
+
+const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
+const btnSm   = { ...btn, padding:'6px 14px', fontSize:12 } as const
+const btnGray = { ...btnSm, background:'#6b7280' } as const
+
+type Tipo     = 'tercero'|'propio'
+type Modalidad= 'al_dia'|'diferido'
+type Formato  = 'fisico'|'echeq'
+type Estado   = 'en_cartera'|'depositado'|'endosado'|'emitido'|'cobrado'|'rebotado'|'anulado'
+
+interface Cheque {
+  id:string; tipo:Tipo; modalidad:Modalidad; formato:Formato; numero:string; banco:string
+  fecha_emision:string; fecha_cobro:string; monto:number
+  contraparte:string|null; estado:Estado; destino:string|null
+  notas:string|null; created_at:string
+}
+
+const BANCOS = ['Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco HSBC','Banco Macro','Banco Credicoop','Otro']
+const ESTADO_LABEL: Record<Estado,string> = {
+  en_cartera:'🗃 En cartera', depositado:'🏦 Depositado', endosado:'↗ Endosado',
+  emitido:'📝 Emitido', cobrado:'✅ Cobrado', rebotado:'❌ Rebotado', anulado:'🚫 Anulado'
+}
+const ESTADO_COLOR: Record<Estado,string> = {
+  en_cartera:'bg-blue-100 text-blue-700', depositado:'bg-indigo-100 text-indigo-700',
+  endosado:'bg-purple-100 text-purple-700', emitido:'bg-amber-100 text-amber-700',
+  cobrado:'bg-green-100 text-green-700', rebotado:'bg-red-100 text-red-700', anulado:'bg-gray-100 text-gray-500'
+}
+const ESTADOS_TERCERO: Estado[] = ['en_cartera','depositado','endosado','cobrado','rebotado','anulado']
+const ESTADOS_PROPIO:  Estado[] = ['emitido','cobrado','rebotado','anulado']
+
+const emptyForm = {
+  tipo:'tercero' as Tipo, modalidad:'al_dia' as Modalidad, formato:'fisico' as Formato,
+  numero:'', banco:'Banco Nación', fecha_emision:todayStr(), fecha_cobro:todayStr(),
+  monto:'', contraparte:'', estado:'en_cartera' as Estado, destino:'', notas:''
+}
+
+function addDays(fecha:string, dias:number) {
+  const d = new Date(fecha+'T00:00:00'); d.setDate(d.getDate()+dias); return d.toISOString().slice(0,10)
+}
+function diffDays(desde:string, hasta:string) {
+  return Math.ceil((new Date(hasta+'T00:00:00').getTime()-new Date(desde+'T00:00:00').getTime())/86400000)
+}
+
+// Rangos del dashboard
+const RANGOS = [
+  { label:'Vencen hoy / Vencidos', key:'hoy',  color:'bg-red-100 border-red-300 text-red-700',   fn:(d:number)=>d<=0 },
+  { label:'2 – 7 días',            key:'r7',   color:'bg-orange-100 border-orange-300 text-orange-700', fn:(d:number)=>d>=1&&d<=7 },
+  { label:'8 – 15 días',           key:'r15',  color:'bg-amber-100 border-amber-300 text-amber-700',    fn:(d:number)=>d>=8&&d<=15 },
+  { label:'16 – 30 días',          key:'r30',  color:'bg-yellow-100 border-yellow-300 text-yellow-700', fn:(d:number)=>d>=16&&d<=30 },
+  { label:'31 – 60 días',          key:'r60',  color:'bg-blue-100 border-blue-300 text-blue-700',       fn:(d:number)=>d>=31&&d<=60 },
+  { label:'Más de 60 días',        key:'r60p', color:'bg-gray-100 border-gray-300 text-gray-600',       fn:(d:number)=>d>60 },
+]
+
+export default function ChequesClient({ userId }: { userId?: string }) {
+  const [cheques, setCheques]   = useState<Cheque[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState<'dashboard'|Tipo>('dashboard')
+  const [filtroEstado, setFiltroEstado] = useState<'pendientes'|'todos'|Estado>('pendientes')
+  const [expandido, setExpandido] = useState<string|null>(null)
+  const [open, setOpen]         = useState(false)
+  const [editId, setEditId]     = useState<string|null>(null)
+  const [form, setForm]         = useState(emptyForm)
+  const supabase = createClient()
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('cheques').select('*').order('fecha_cobro').order('created_at',{ascending:false})
+    setCheques(data??[])
+    setLoading(false)
+  }
+  useEffect(()=>{ load() },[])
+
+  function abrirNuevo(tipo?: Tipo) {
+    setEditId(null)
+    setForm({...emptyForm, tipo:tipo||'tercero', estado:tipo==='propio'?'emitido':'en_cartera'})
+    setOpen(true)
+  }
+  function abrirEditar(c:Cheque) {
+    setEditId(c.id)
+    setForm({ tipo:c.tipo, modalidad:c.modalidad, formato:c.formato||'fisico',
+      numero:c.numero, banco:c.banco, fecha_emision:c.fecha_emision, fecha_cobro:c.fecha_cobro,
+      monto:String(c.monto), contraparte:c.contraparte||'', estado:c.estado, destino:c.destino||'', notas:c.notas||'' })
+    setOpen(true)
+  }
+  async function guardar() {
+    if (!form.numero||!form.monto) return
+    const payload = {
+      tipo:form.tipo, modalidad:form.modalidad, formato:form.formato,
+      numero:form.numero, banco:form.banco,
+      fecha_emision:form.fecha_emision,
+      fecha_cobro:form.modalidad==='al_dia'?form.fecha_emision:form.fecha_cobro,
+      monto:+form.monto, contraparte:form.contraparte||null,
+      estado:form.estado, destino:form.destino||null, notas:form.notas||null,
+      updated_at:new Date().toISOString()
+    }
+    if (editId) await supabase.from('cheques').update(payload).eq('id',editId)
+    else        await supabase.from('cheques').insert(payload)
+    setOpen(false); load()
+  }
+  async function cambiarEstado(id:string, estado:Estado) {
+    await supabase.from('cheques').update({estado,updated_at:new Date().toISOString()}).eq('id',id)
+    setCheques(prev=>prev.map(c=>c.id===id?{...c,estado}:c))
+  }
+
+  const hoy = todayStr()
+
+  // Pendientes activos: en cartera, depositados, endosados (terceros) y emitidos (propios)
+  const pendientesActivosTerceros = cheques.filter(c=>c.tipo==='tercero'&&['en_cartera','depositado','endosado'].includes(c.estado))
+  const pendientesActivosPropios  = cheques.filter(c=>c.tipo==='propio'&&c.estado==='emitido')
+
+  // Dashboard: toma solo "en cartera" (terceros) y "emitidos" (propios) para los rangos
+  // Los depositados ya están en el banco, los endosados ya salieron — no hace falta alertarlos
+  const activosParaDash = cheques.filter(c=>
+    (c.tipo==='tercero'&&c.estado==='en_cartera') || (c.tipo==='propio'&&c.estado==='emitido')
+  )
+  const rangoDash = RANGOS.map(r=>({
+    ...r,
+    cheques: activosParaDash.filter(c=>r.fn(diffDays(hoy,c.fecha_cobro))),
+  }))
+  const totalDash = rangoDash.reduce((a,r)=>a+r.cheques.reduce((s,c)=>s+c.monto,0),0)
+
+  // Listado de cada tab (terceros / propios)
+  function filtradosTipo(tipo:Tipo) {
+    return cheques.filter(c=>{
+      if (c.tipo!==tipo) return false
+      if (filtroEstado==='pendientes') return ['en_cartera','depositado','endosado','emitido'].includes(c.estado)
+      if (filtroEstado!=='todos') return c.estado===filtroEstado
+      return true
+    })
+  }
+
+  function diasLabel(fecha:string) {
+    const d = diffDays(hoy,fecha)
+    if (d<0) return `${Math.abs(d)}d vencido`
+    if (d===0) return 'vence hoy'
+    return `${d}d`
+  }
+  const estadosDisp = form.tipo==='tercero' ? ESTADOS_TERCERO : ESTADOS_PROPIO
+
+  function ChequeRow({ c }:{ c:Cheque }) {
+    const vencido  = ['en_cartera','emitido'].includes(c.estado) && c.fecha_cobro<hoy
+    const proxVenc = ['en_cartera','emitido'].includes(c.estado) && c.fecha_cobro>=hoy && c.fecha_cobro<=addDays(hoy,7)
+    const dias     = diffDays(hoy,c.fecha_cobro)
+    return (
+      <div onClick={()=>setExpandido(e=>e===c.id?null:c.id)} onDoubleClick={()=>abrirEditar(c)}
+        title="Click para acciones · doble click para editar"
+        className={`bg-white rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden border ${vencido?'border-l-4 border-l-red-400 border-red-200':proxVenc?'border-l-4 border-l-amber-400 border-amber-100':'border-p-line'}`}>
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${ESTADO_COLOR[c.estado]}`}>{ESTADO_LABEL[c.estado]}</span>
+          {c.formato==='echeq'&&<span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full shrink-0">E-CHQ</span>}
+          {c.modalidad==='diferido'&&<span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full shrink-0">Dif.</span>}
+          <span className="font-mono text-xs text-p-dark shrink-0">#{c.numero}</span>
+          <span className="text-xs text-p-ink2 shrink-0">{c.banco}</span>
+          {c.contraparte&&<span className="text-sm font-semibold text-p-ink truncate" style={{maxWidth:200}}>{c.contraparte}</span>}
+          <div className="flex-1 min-w-[8px]"/>
+          {['en_cartera','emitido'].includes(c.estado)&&(
+            <span className={`text-[10px] font-bold shrink-0 font-mono ${vencido?'text-red-600':dias<=7?'text-amber-600':'text-p-ink2'}`}>
+              {diasLabel(c.fecha_cobro)}
+            </span>
+          )}
+          <span className="font-mono text-xs text-p-ink2 shrink-0">{c.fecha_cobro.split('-').reverse().join('/')}</span>
+          <span className="font-saira font-bold text-p-ink shrink-0">{moneyARS(c.monto)}</span>
+        </div>
+        {expandido===c.id&&(
+          <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+            <div className="flex flex-wrap gap-3 text-xs text-p-ink2 mb-2.5">
+              <span>Emitido: {c.fecha_emision.split('-').reverse().join('/')}</span>
+              {c.destino&&<span>Destino: {c.destino}</span>}
+              {c.notas&&<span className="italic">"{c.notas}"</span>}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={()=>abrirEditar(c)} style={btnGray}>✏ Editar</button>
+              {c.tipo==='tercero'&&c.estado==='en_cartera'&&<>
+                <button onClick={()=>cambiarEstado(c.id,'depositado')} style={{...btnSm,background:'#4f46e5'}}>🏦 Depositar</button>
+                <button onClick={()=>cambiarEstado(c.id,'endosado')}   style={{...btnSm,background:'#7c3aed'}}>↗ Endosar</button>
+                <button onClick={()=>cambiarEstado(c.id,'cobrado')}    style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
+                <button onClick={()=>cambiarEstado(c.id,'rebotado')}   style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
+              </>}
+              {c.tipo==='tercero'&&c.estado==='depositado'&&<>
+                <button onClick={()=>cambiarEstado(c.id,'cobrado')}  style={{...btnSm,background:'#16a34a'}}>✅ Acreditado</button>
+                <button onClick={()=>cambiarEstado(c.id,'rebotado')} style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
+              </>}
+              {c.tipo==='propio'&&c.estado==='emitido'&&<>
+                <button onClick={()=>cambiarEstado(c.id,'cobrado')}  style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
+                <button onClick={()=>cambiarEstado(c.id,'rebotado')} style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
+              </>}
+              {!['cobrado','rebotado','anulado'].includes(c.estado)&&(
+                <button onClick={()=>cambiarEstado(c.id,'anulado')} style={{...btnSm,background:'#6b7280'}}>🚫 Anular</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Tabs principales */}
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div className="flex border-b border-p-line">
+          {([['dashboard','📊 Dashboard'],['tercero','📥 De terceros'],['propio','📤 Propios']] as const).map(([v,l])=>(
+            <button key={v} onClick={()=>setTab(v)}
+              style={{padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',
+                borderBottom:tab===v?'3px solid #00A550':'3px solid transparent',
+                color:tab===v?'#00A550':'#6b7280'}}>
+              {l}
+              {v==='tercero'&&pendientesActivosTerceros.length>0&&<span className="ml-1.5 text-[9px] font-bold bg-blue-500 text-white rounded-full px-1.5">{pendientesActivosTerceros.length}</span>}
+              {v==='propio'&&pendientesActivosPropios.length>0&&<span className="ml-1.5 text-[9px] font-bold bg-amber-500 text-white rounded-full px-1.5">{pendientesActivosPropios.length}</span>}
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>abrirNuevo(tab==='dashboard'?undefined:tab as Tipo)} style={btn}>+ Nuevo cheque</button>
+      </div>
+
+      {/* DASHBOARD */}
+      {tab==='dashboard'&&(
+        <div>
+          <div className="bg-white border border-p-line rounded-2xl p-5 shadow-sm mb-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-saira font-bold text-p-ink">Cheques activos por vencimiento</p>
+              <p className="text-sm text-p-ink2">Total: <span className="font-bold text-p-ink">{moneyARS(totalDash)}</span></p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {rangoDash.map(r=>(
+                <div key={r.key} onClick={()=>{setTab(r.cheques[0]?.tipo||'tercero'); setFiltroEstado('pendientes')}}
+                  className={`border rounded-xl p-4 cursor-pointer hover:shadow-md transition-shadow ${r.color} ${r.cheques.length?'opacity-100':'opacity-40'}`}>
+                  <p className="text-[11px] font-bold uppercase tracking-wide mb-2">{r.label}</p>
+                  <div className="flex items-end justify-between gap-2">
+                    <div>
+                      <p className="font-saira font-bold text-2xl">{moneyARS(r.cheques.reduce((a,c)=>a+c.monto,0))}</p>
+                      <p className="text-[10px] opacity-75 mt-0.5">{r.cheques.length} cheque(s)</p>
+                    </div>
+                    {r.cheques.length>0&&(
+                      <div className="text-right text-[10px] opacity-80 shrink-0">
+                        <p>{r.cheques.filter(c=>c.tipo==='tercero').length} terceros</p>
+                        <p>{r.cheques.filter(c=>c.tipo==='propio').length} propios</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Lista unificada de los más urgentes */}
+          {(rangoDash[0].cheques.length>0||rangoDash[1].cheques.length>0)&&(
+            <div>
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-3">⚠ Requieren atención (vencen en 7 días o ya vencidos)</p>
+              <div className="flex flex-col gap-2">
+                {[...rangoDash[0].cheques,...rangoDash[1].cheques]
+                  .sort((a,b)=>a.fecha_cobro.localeCompare(b.fecha_cobro))
+                  .map(c=><ChequeRow key={c.id} c={c}/>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB TERCEROS */}
+      {tab==='tercero'&&(
+        <div>
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {(['pendientes','todos','en_cartera','depositado','endosado','cobrado','rebotado'] as const).map(v=>(
+              <button key={v} onClick={()=>setFiltroEstado(v)}
+                style={{background:filtroEstado===v?'#00A550':'#fff',color:filtroEstado===v?'#fff':'#4A6655',
+                  border:`1.5px solid ${filtroEstado===v?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'5px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}}>
+                {v==='pendientes'?'Activos':v==='todos'?'Todos':ESTADO_LABEL[v as Estado]}
+              </button>
+            ))}
+          </div>
+          {loading?<p className="text-sm text-center py-8 text-p-gray">Cargando…</p>:
+           filtradosTipo('tercero').filter(c=>filtroEstado==='pendientes'?['en_cartera','depositado','endosado'].includes(c.estado):filtroEstado==='todos'?true:c.estado===filtroEstado).length===0
+            ?<Empty msg="Sin cheques de terceros para este filtro."/>
+            :<div className="flex flex-col gap-2">
+              {filtradosTipo('tercero').filter(c=>filtroEstado==='pendientes'?['en_cartera','depositado','endosado'].includes(c.estado):filtroEstado==='todos'?true:c.estado===filtroEstado)
+                .map(c=><ChequeRow key={c.id} c={c}/>)}
+            </div>}
+        </div>
+      )}
+
+      {/* TAB PROPIOS */}
+      {tab==='propio'&&(
+        <div>
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {(['pendientes','todos','emitido','cobrado','rebotado'] as const).map(v=>(
+              <button key={v} onClick={()=>setFiltroEstado(v)}
+                style={{background:filtroEstado===v?'#d97706':'#fff',color:filtroEstado===v?'#fff':'#92400e',
+                  border:`1.5px solid ${filtroEstado===v?'#d97706':'#fde68a'}`,borderRadius:10,padding:'5px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}}>
+                {v==='pendientes'?'Activos':v==='todos'?'Todos':ESTADO_LABEL[v as Estado]}
+              </button>
+            ))}
+          </div>
+          {loading?<p className="text-sm text-center py-8 text-p-gray">Cargando…</p>:
+           filtradosTipo('propio').filter(c=>filtroEstado==='pendientes'?c.estado==='emitido':filtroEstado==='todos'?true:c.estado===filtroEstado).length===0
+            ?<Empty msg="Sin cheques propios para este filtro."/>
+            :<div className="flex flex-col gap-2">
+              {filtradosTipo('propio').filter(c=>filtroEstado==='pendientes'?c.estado==='emitido':filtroEstado==='todos'?true:c.estado===filtroEstado)
+                .map(c=><ChequeRow key={c.id} c={c}/>)}
+            </div>}
+        </div>
+      )}
+
+      {/* Modal alta/edición */}
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId?'Editar cheque':'Nuevo cheque'}>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tipo">
+              <select value={form.tipo} onChange={e=>{
+                const t=e.target.value as Tipo
+                setForm(p=>({...p,tipo:t,estado:t==='tercero'?'en_cartera':'emitido'}))
+              }} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="tercero">📥 De tercero (recibido)</option>
+                <option value="propio">📤 Propio (emitido)</option>
+              </select>
+            </Field>
+            <Field label="Formato">
+              <select value={form.formato} onChange={e=>setForm(p=>({...p,formato:e.target.value as Formato}))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="fisico">📄 Cheque físico</option>
+                <option value="echeq">💻 E-Cheq</option>
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Modalidad">
+              <select value={form.modalidad} onChange={e=>setForm(p=>({...p,modalidad:e.target.value as Modalidad}))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="al_dia">Al día</option>
+                <option value="diferido">Diferido</option>
+              </select>
+            </Field>
+            <Field label="Banco *">
+              <select value={form.banco} onChange={e=>setForm(p=>({...p,banco:e.target.value}))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                {BANCOS.map(b=><option key={b}>{b}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="N° de cheque *"><Input value={form.numero} onChange={e=>setForm(p=>({...p,numero:e.target.value}))} placeholder="12345678"/></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha de emisión"><Input type="date" value={form.fecha_emision} onChange={e=>setForm(p=>({...p,fecha_emision:e.target.value}))}/></Field>
+            {form.modalidad==='diferido'&&<Field label="Fecha de cobro"><Input type="date" value={form.fecha_cobro} onChange={e=>setForm(p=>({...p,fecha_cobro:e.target.value}))}/></Field>}
+          </div>
+          <Field label="Monto *"><Input value={form.monto} onChange={e=>setForm(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
+          <Field label={form.tipo==='tercero'?'Recibido de':'Emitido a'}>
+            <Input value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Nombre del cliente / proveedor…"/>
+          </Field>
+          <Field label="Estado">
+            <select value={form.estado} onChange={e=>setForm(p=>({...p,estado:e.target.value as Estado}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+              {estadosDisp.map(s=><option key={s} value={s}>{ESTADO_LABEL[s]}</option>)}
+            </select>
+          </Field>
+          {['depositado','endosado'].includes(form.estado)&&(
+            <Field label={form.estado==='endosado'?'Endosado a':'Depositado en (cuenta)'}>
+              <Input value={form.destino} onChange={e=>setForm(p=>({...p,destino:e.target.value}))} placeholder="…"/>
+            </Field>
+          )}
+          <Field label="Notas"><Input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Opcional…"/></Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
+            <button onClick={guardar} disabled={!form.numero||!form.monto}
+              style={{...btn,opacity:(!form.numero||!form.monto)?.5:1}}>
+              {editId?'Guardar cambios':'Registrar cheque'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}

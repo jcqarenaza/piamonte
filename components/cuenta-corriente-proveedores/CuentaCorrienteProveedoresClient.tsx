@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
 import { LOGO_BASE64 } from '@/lib/logo'
+import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
@@ -20,13 +21,15 @@ export default function CuentaCorrienteProveedoresClient() {
   const [movs, setMovs]         = useState<Movimiento[]>([])
   const [q, setQ]               = useState('')
   const [openPago, setOpenPago] = useState(false)
-  const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'' })
+  const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'', forma_pago:'Transferencia' })
+  const [chequePago, setChequePago] = useState<ChequeData>(EMPTY_CHEQUE)
   const [loading, setLoading]   = useState(true)
   // Orden de Pago: facturas y NC pendientes del proveedor seleccionado, y cuáles se eligieron pagar.
   const [opOpen, setOpOpen]         = useState(false)
   const [pendientes, setPendientes] = useState<Pendiente[]>([])
   const [seleccion, setSeleccion]   = useState<Record<string, boolean>>({})
   const [opForm, setOpForm]         = useState({ forma_pago:'Transferencia', fecha:'', notas:'' })
+  const [chequeOP, setChequeOP]     = useState<ChequeData>(EMPTY_CHEQUE)
   const [guardandoOp, setGuardandoOp] = useState(false)
   const supabase = createClient()
 
@@ -55,17 +58,24 @@ export default function CuentaCorrienteProveedoresClient() {
   async function registrarPago() {
     if(!sel || !formPago.monto) return
     const monto = +formPago.monto
+    const fechaPago = formPago.fecha || new Date().toISOString().slice(0,10)
     await supabase.from('cuenta_corriente_proveedores').insert({
-      proveedor_id: sel.proveedor_id,
-      proveedor_nombre: sel.proveedor_nombre,
-      fecha: formPago.fecha || new Date().toISOString().slice(0,10),
-      tipo: 'pago',
-      descripcion: 'Pago a proveedor',
-      debe: 0, haber: monto,
-      notas: formPago.notas||null
+      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
+      fecha: fechaPago, tipo: 'pago', descripcion: 'Pago a proveedor',
+      debe: 0, haber: monto, notas: formPago.notas||null
     })
+    if (formPago.forma_pago === 'Cheque' && chequePago.numero) {
+      await supabase.from('cheques').insert({
+        tipo:'propio', formato:chequePago.formato, modalidad:chequePago.modalidad,
+        numero:chequePago.numero, banco:chequePago.banco,
+        fecha_emision: fechaPago, fecha_cobro: chequePago.modalidad==='al_dia'?fechaPago:chequePago.fecha_cobro,
+        monto, contraparte: sel.proveedor_nombre, estado:'emitido',
+        notas: formPago.notas||null,
+      })
+    }
     setOpenPago(false)
-    setFormPago({ monto:'', fecha:'', notas:'' })
+    setFormPago({ monto:'', fecha:'', notas:'', forma_pago:'Transferencia' })
+    setChequePago(EMPTY_CHEQUE)
     load()
     loadMovs(sel.proveedor_nombre)
   }
@@ -138,6 +148,16 @@ export default function CuentaCorrienteProveedoresClient() {
 
     setGuardandoOp(false)
     setOpOpen(false)
+    if (opForm.forma_pago === 'Cheque' && chequeOP.numero && opIns) {
+      await supabase.from('cheques').insert({
+        tipo:'propio', formato:chequeOP.formato, modalidad:chequeOP.modalidad,
+        numero:chequeOP.numero, banco:chequeOP.banco,
+        fecha_emision: fechaOp, fecha_cobro: chequeOP.modalidad==='al_dia'?fechaOp:chequeOP.fecha_cobro,
+        monto: totalAPagar, contraparte: sel.proveedor_nombre, estado:'emitido',
+        notas: `Orden de Pago Nº ${numero}`,
+      })
+    }
+    setChequeOP(EMPTY_CHEQUE)
     imprimirOrdenPago({
       numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
       facturas: facturasSel, nc: ncSel,
@@ -383,15 +403,28 @@ export default function CuentaCorrienteProveedoresClient() {
               </span>
             </div>
           )}
+          <Field label="Forma de pago">
+            <select value={formPago.forma_pago} onChange={e=>setFormPago(p=>({...p,forma_pago:e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+              <option value="Transferencia">Transferencia</option>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Cheque">🖊 Cheque</option>
+            </select>
+          </Field>
+          {formPago.forma_pago==='Cheque'&&<ChequeFields value={chequePago} onChange={setChequePago}/>}
           <Field label="Fecha">
             <Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/>
           </Field>
           <Field label="Notas">
-            <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Forma de pago, referencia…"/>
+            <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Referencia…"/>
           </Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpenPago(false)} style={btnGray}>Cancelar</button>
-            <button onClick={registrarPago} disabled={!formPago.monto} style={{...btn,opacity:!formPago.monto?.5:1}}>✓ Registrar pago</button>
+            <button onClick={registrarPago}
+              disabled={!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequePago.numero)}
+              style={{...btn,opacity:(!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequePago.numero))?.5:1}}>
+              ✓ Registrar pago
+            </button>
           </div>
         </div>
       </Modal>
@@ -437,9 +470,10 @@ export default function CuentaCorrienteProveedoresClient() {
                   <option value="Transferencia">Transferencia</option>
                   <option value="Efectivo">Efectivo</option>
                   <option value="Tarjeta">Tarjeta</option>
-                  <option value="Cheque">Cheque</option>
+                  <option value="Cheque">🖊 Cheque</option>
                 </select>
               </Field>
+              {opForm.forma_pago==='Cheque'&&<ChequeFields value={chequeOP} onChange={setChequeOP}/>}
               <Field label="Fecha">
                 <Input type="date" value={opForm.fecha} onChange={e=>setOpForm(p=>({...p,fecha:e.target.value}))}/>
               </Field>

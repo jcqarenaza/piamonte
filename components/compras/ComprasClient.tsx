@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
+import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 
 const IVA = 0.21
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -98,6 +99,7 @@ export default function ComprasClient() {
   })
   const [formaPagoModal, setFormaPagoModal] = useState(false)
   const [formPagoContado, setFormPagoContado] = useState({ forma_pago:'Efectivo', monto:'', fecha:todayStr() })
+  const [chequeContado, setChequeContado] = useState<ChequeData>(EMPTY_CHEQUE)
   const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
@@ -242,6 +244,21 @@ export default function ComprasClient() {
         forma_pago: pagoContado.forma_pago,
         comprobante: numeroFmt,
       })
+      // Si pagó con cheque, registrarlo en el libro de cheques como cheque propio
+      if (pagoContado.forma_pago === 'Cheque' && (pagoContado as any).cheque?.numero) {
+        const ch = (pagoContado as any).cheque as ChequeData
+        await supabase.from('cheques').insert({
+          tipo: 'propio', formato: ch.formato, modalidad: ch.modalidad,
+          numero: ch.numero, banco: ch.banco,
+          fecha_emision: pagoContado.fecha || todayStr(),
+          fecha_cobro: ch.modalidad === 'al_dia' ? (pagoContado.fecha || todayStr()) : ch.fecha_cobro,
+          monto: parseFloat(pagoContado.monto.replace(',','.')) || total,
+          contraparte: prov?.nombre || form.proveedor_nombre || null,
+          estado: 'emitido',
+          notas: `Pago factura ${numeroFmt}`,
+          comprobante_compra_id: (comp as any).id || null,
+        })
+      }
     }
     setOpen(false)
     setFormaPagoModal(false)
@@ -249,6 +266,7 @@ export default function ComprasClient() {
       proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
       descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'', forma_pago:'cuenta_corriente'})
     setFormPagoContado({ forma_pago:'Efectivo', monto:'', fecha:todayStr() })
+    setChequeContado(EMPTY_CHEQUE)
     setDescuentoTocadoAMano(false)
     setAjusteManual('')
     setItems([]); setIvaOn(true)
@@ -1062,8 +1080,12 @@ export default function ComprasClient() {
               <option value="Efectivo">Efectivo</option>
               <option value="Transferencia">Transferencia</option>
               <option value="Tarjeta">Tarjeta</option>
+              <option value="Cheque">🖊 Cheque</option>
             </Select>
           </Field>
+          {formPagoContado.forma_pago==='Cheque'&&(
+            <ChequeFields value={chequeContado} onChange={setChequeContado}/>
+          )}
           <Field label="Monto pagado">
             <Input value={formPagoContado.monto} onChange={e=>setFormPagoContado(p=>({...p,monto:e.target.value}))}/>
           </Field>
@@ -1075,8 +1097,11 @@ export default function ComprasClient() {
           </p>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setFormaPagoModal(false)} style={btnGray}>Cancelar</button>
-            <button onClick={()=>save(true, formPagoContado)} disabled={!formPagoContado.monto}
-              style={{...btn,opacity:!formPagoContado.monto?.5:1}}>✓ Confirmar pago y guardar</button>
+            <button onClick={()=>save(true, {...formPagoContado, cheque: formPagoContado.forma_pago==='Cheque'?chequeContado:undefined} as any)}
+              disabled={!formPagoContado.monto||(formPagoContado.forma_pago==='Cheque'&&!chequeContado.numero)}
+              style={{...btn,opacity:(!formPagoContado.monto||(formPagoContado.forma_pago==='Cheque'&&!chequeContado.numero))?.5:1}}>
+              ✓ Confirmar pago y guardar
+            </button>
           </div>
         </div>
       </Modal>

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
 import { LOGO_BASE64 } from '@/lib/logo'
+import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
@@ -19,6 +20,7 @@ export default function CuentaCorrienteClient() {
   const [q, setQ]               = useState('')
   const [openPago, setOpenPago] = useState(false)
   const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
+  const [chequeCobro, setChequeCobro] = useState<ChequeData>(EMPTY_CHEQUE)
   const [loading, setLoading]   = useState(true)
   const supabase = createClient()
 
@@ -71,7 +73,18 @@ export default function CuentaCorrienteClient() {
 
     setOpenPago(false)
     imprimirRecibo({ numero, fecha: fechaPago, cliente_nombre: sel.cliente_nombre, monto, forma_pago: formPago.forma_pago, notas: formPago.notas })
+    // Si cobró con cheque de tercero, registrarlo en el libro de cheques
+    if (formPago.forma_pago === 'Cheque' && chequeCobro.numero) {
+      await supabase.from('cheques').insert({
+        tipo:'tercero', formato:chequeCobro.formato, modalidad:chequeCobro.modalidad,
+        numero:chequeCobro.numero, banco:chequeCobro.banco,
+        fecha_emision: fechaPago, fecha_cobro: chequeCobro.modalidad==='al_dia'?fechaPago:chequeCobro.fecha_cobro,
+        monto, contraparte: sel.cliente_nombre, estado:'en_cartera',
+        notas: `Cobro Cta Cte — Recibo Nº ${numero}`,
+      })
+    }
     setFormPago({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
+    setChequeCobro(EMPTY_CHEQUE)
     load()
     loadMovs(sel.cliente_nombre)
   }
@@ -301,14 +314,20 @@ export default function CuentaCorrienteClient() {
               <option value="Efectivo">Efectivo</option>
               <option value="Transferencia">Transferencia</option>
               <option value="Tarjeta">Tarjeta</option>
+              <option value="Cheque">🖊 Cheque de tercero</option>
             </select>
           </Field>
+          {formPago.forma_pago==='Cheque'&&<ChequeFields value={chequeCobro} onChange={setChequeCobro}/>}
           <Field label="Notas">
-            <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Forma de pago, referencia…"/>
+            <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Referencia…"/>
           </Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpenPago(false)} style={btnGray}>Cancelar</button>
-            <button onClick={registrarPago} disabled={!formPago.monto} style={{...btn,opacity:!formPago.monto?.5:1}}>🧾 Registrar pago y emitir recibo</button>
+            <button onClick={registrarPago}
+              disabled={!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequeCobro.numero)}
+              style={{...btn,opacity:(!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequeCobro.numero))?.5:1}}>
+              🧾 Registrar pago y emitir recibo
+            </button>
           </div>
         </div>
       </Modal>
