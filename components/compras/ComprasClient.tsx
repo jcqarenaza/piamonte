@@ -48,7 +48,7 @@ function formatCuit(v: string) {
 }
 
 interface Proveedor { id:string; nombre:string; razon_social:string|null; cuit?:string|null; descuento_pct?:number|null }
-interface Item { d:string; c:number; p:number; articulo_id?:string|null }
+interface Item { d:string; c:number; p:number; articulo_id?:string|null; dto?:number|null }
 interface Comprobante {
   id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null
   fecha:string; proveedor_id:string|null; proveedor_nombre:string|null
@@ -102,7 +102,7 @@ export default function ComprasClient() {
   const [chequeContado, setChequeContado] = useState<ChequeData>(EMPTY_CHEQUE)
   const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
-  const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'' })
+  const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'', dto:'' })
   const [editandoItemIdx, setEditandoItemIdx] = useState<number|null>(null)
   // Artículo del catálogo maestro elegido para el ítem que se está cargando — igual patrón que Stock
   const [itemArticuloSel, setItemArticuloSel] = useState<{id:string;descripcion:string}|null>(null)
@@ -111,7 +111,17 @@ export default function ComprasClient() {
   const supabase = createClient()
 
   // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
-  const netoItems    = items.reduce((a,i)=>a+i.c*i.p, 0)
+  // El precio efectivo de cada ítem ya aplica su descuento individual (dto %)
+  const netoItems = items.reduce((a,it) => {
+    const bruto = it.c * it.p
+    const desc  = it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0
+    return a + bruto - desc
+  }, 0)
+  // Descuento total por ítem (para mostrar en el resumen)
+  const descuentoItemsTotal = items.reduce((a,it) => {
+    const bruto = it.c * it.p
+    return a + (it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0)
+  }, 0)
   const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
   const descuentoMonto = Math.round(netoItems * descuentoPct * 100) / 10000
   const netoConDescuento = netoItems - descuentoMonto
@@ -150,7 +160,13 @@ export default function ComprasClient() {
   useEffect(() => {
     if (!form.proveedor_id || descuentoTocadoAMano) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
-    setForm(p => ({ ...p, descuento_pct: prov?.descuento_pct ? String(prov.descuento_pct) : '' }))
+    const dtoStr = prov?.descuento_pct ? String(prov.descuento_pct) : ''
+    setForm(p => ({ ...p, descuento_pct: dtoStr }))
+    // También pre-cargar el dto en el form de nuevo ítem y en los ítems ya cargados
+    setItemForm(p => ({ ...p, dto: dtoStr }))
+    if (prov?.descuento_pct) {
+      setItems(prev => prev.map(it => ({ ...it, dto: it.dto ?? prov.descuento_pct })))
+    }
   }, [form.proveedor_id, proveedores, descuentoTocadoAMano])
 
   // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción del ítem —
@@ -175,14 +191,16 @@ export default function ComprasClient() {
     const p = parseFloat(itemForm.p.replace(/[^0-9.,]/g,'').replace(',','.'))
     const c = parseInt(itemForm.c)
     if (!itemForm.d || !p || !c) return
-    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null }
+    const dto = parseFloat(itemForm.dto) || null
+    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null, dto }
     if (editandoItemIdx !== null) {
       setItems(prev => prev.map((it,i) => i===editandoItemIdx ? nuevoItemData : it))
       setEditandoItemIdx(null)
     } else {
       setItems(prev=>[...prev, nuevoItemData])
     }
-    setItemForm({d:'',c:'1',p:''})
+    // Mantener el dto del proveedor para el próximo ítem, no borrarlo
+    setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}))
     setItemArticuloSel(null)
     setItemArticuloSugs([])
   }
@@ -270,6 +288,7 @@ export default function ComprasClient() {
     setDescuentoTocadoAMano(false)
     setAjusteManual('')
     setItems([]); setIvaOn(true)
+    setItemForm({d:'',c:'1',p:'',dto:''})
     load()
   }
 
@@ -955,11 +974,14 @@ export default function ComprasClient() {
                   </div>
                 )}
               </div>
-              <div className="col-span-2">
+              <div className="col-span-1">
                 <Input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant."/>
               </div>
               <div className="col-span-3">
-                <Input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio unit. (con decimales)"/>
+                <Input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio unit."/>
+              </div>
+              <div className="col-span-1">
+                <Input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" title="Descuento % para este ítem"/>
               </div>
               <button onClick={addItem} style={{...btnSm,padding:'9px 8px',fontSize:12,background:editandoItemIdx!==null?'#1d4ed8':undefined}} className="col-span-1">
                 {editandoItemIdx!==null ? '✓' : '+'}
@@ -971,24 +993,37 @@ export default function ComprasClient() {
               <p className="text-[11px] text-amber-600 mb-2">⚠ Sin coincidencia con el catálogo — el ítem se va a guardar solo con esta descripción</p>
             ) : null}
             {editandoItemIdx !== null && (
-              <button onClick={()=>{setEditandoItemIdx(null);setItemForm({d:'',c:'1',p:''});setItemArticuloSel(null)}}
+              <button onClick={()=>{setEditandoItemIdx(null);setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}));setItemArticuloSel(null)}}
                 className="text-[11px] text-p-ink2 underline mb-2">Cancelar edición</button>
             )}
-            {items.map((it,i)=>(
+            {items.map((it,i)=>{
+              const bruto = it.c * it.p
+              const desc  = it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0
+              const neto  = bruto - desc
+              return (
               <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                 {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
                 <span className="flex-1 truncate">{it.d}</span>
                 <span className="text-p-ink2 shrink-0">×{it.c}</span>
-                <span className="font-mono font-bold shrink-0">{moneyARS(it.p)}</span>
-                <span className="font-mono text-p-green font-bold shrink-0">{moneyARS(it.c*it.p)}</span>
+                <span className="font-mono shrink-0">{moneyARS(it.p)}</span>
+                {it.dto ? (
+                  <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded shrink-0 cursor-pointer"
+                    title="Click para quitar el descuento de este ítem"
+                    onClick={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,dto:null}:x))}>
+                    −{it.dto}% ✕
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-p-ink2 shrink-0">sin dto</span>
+                )}
+                <span className="font-mono font-bold text-p-green shrink-0">{moneyARS(neto)}</span>
                 <button onClick={()=>{
                   setEditandoItemIdx(i)
-                  setItemForm({ d: it.d, c: String(it.c), p: String(it.p) })
+                  setItemForm({ d: it.d, c: String(it.c), p: String(it.p), dto: it.dto ? String(it.dto) : '' })
                   setItemArticuloSel(it.articulo_id ? { id: it.articulo_id, descripcion: it.d } : null)
                 }} className="text-blue-500 text-xs shrink-0">✏</button>
                 <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
               </div>
-            ))}
+            )})}
           </div>
 
           {/* Descuento del proveedor */}
@@ -1007,9 +1042,15 @@ export default function ComprasClient() {
 
           {/* Totales */}
           <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1.5">
-            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
+            {descuentoItemsTotal > 0 && (
+              <div className="flex justify-between text-xs text-p-ink2"><span>Bruto ítems (antes de dto por ítem)</span><span className="font-mono">{moneyARS(items.reduce((a,it)=>a+it.c*it.p,0))}</span></div>
+            )}
+            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
+            {descuentoItemsTotal > 0 && (
+              <div className="flex justify-between text-xs text-green-600"><span>Descuento por ítem aplicado</span><span className="font-mono">−{moneyARS(descuentoItemsTotal)}</span></div>
+            )}
             {descuentoMonto > 0 && (
-              <div className="flex justify-between text-sm text-red-600"><span>Descuento ({descuentoPct}%)</span><span className="font-mono">−{moneyARS(descuentoMonto)}</span></div>
+              <div className="flex justify-between text-sm text-red-600"><span>Descuento adicional ({descuentoPct}%)</span><span className="font-mono">−{moneyARS(descuentoMonto)}</span></div>
             )}
             <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
               <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>

@@ -61,6 +61,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [loading, setLoading]   = useState(true)
   const [tab, setTab]           = useState<'dashboard'|Tipo>('dashboard')
   const [filtroEstado, setFiltroEstado] = useState<'pendientes'|'todos'|Estado>('pendientes')
+  const [filtroRango, setFiltroRango]   = useState<string|null>(null)
   const [expandido, setExpandido] = useState<string|null>(null)
   const [open, setOpen]         = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
@@ -180,8 +181,16 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   function filtradosTipo(tipo:Tipo) {
     return cheques.filter(c=>{
       if (c.tipo!==tipo) return false
-      if (filtroEstado==='pendientes') return ['en_cartera','depositado','endosado','emitido'].includes(c.estado)
-      if (filtroEstado!=='todos') return c.estado===filtroEstado
+      if (filtroEstado==='pendientes') {
+        if (!['en_cartera','depositado','endosado','emitido'].includes(c.estado)) return false
+      } else if (filtroEstado!=='todos') {
+        if (c.estado!==filtroEstado) return false
+      }
+      // Filtro de rango (viene del dashboard)
+      if (filtroRango) {
+        const r = RANGOS.find(r=>r.key===filtroRango)
+        if (r && !r.fn(diffDays(hoy,c.fecha_cobro))) return false
+      }
       return true
     })
   }
@@ -257,7 +266,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex border-b border-p-line">
           {([['dashboard','📊 Dashboard'],['tercero','📥 De terceros'],['propio','📤 Propios']] as const).map(([v,l])=>(
-            <button key={v} onClick={()=>setTab(v)}
+            <button key={v} onClick={()=>{ setTab(v); if(v!=='dashboard') setFiltroRango(null) }}
               style={{padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',
                 borderBottom:tab===v?'3px solid #00A550':'3px solid transparent',
                 color:tab===v?'#00A550':'#6b7280'}}>
@@ -283,7 +292,13 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {rangoDash.map(r=>(
-                <div key={r.key} onClick={()=>{setTab(r.cheques[0]?.tipo||'tercero'); setFiltroEstado('pendientes')}}
+                <div key={r.key} onClick={()=>{
+                  // Ir al tab correspondiente (si todos son propios, va a propios; si hay terceros, va a terceros)
+                  const hayTerceros = r.cheques.some(c=>c.tipo==='tercero')
+                  setTab(hayTerceros ? 'tercero' : 'propio')
+                  setFiltroEstado('pendientes')
+                  setFiltroRango(r.key)
+                }}
                   className={`border rounded-xl p-4 cursor-pointer hover:shadow-md transition-shadow ${r.color} ${r.cheques.length?'opacity-100':'opacity-40'}`}>
                   <p className="text-[11px] font-bold uppercase tracking-wide mb-2">{r.label}</p>
                   <div className="flex items-end justify-between gap-2">
@@ -320,6 +335,14 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       {/* TAB TERCEROS */}
       {tab==='tercero'&&(
         <div>
+          {filtroRango&&(
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full">
+                📅 {RANGOS.find(r=>r.key===filtroRango)?.label}
+              </span>
+              <button onClick={()=>setFiltroRango(null)} className="text-xs text-p-ink2 hover:text-p-ink underline">✕ Ver todos los rangos</button>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-4 flex-wrap">
             {(['pendientes','todos','en_cartera','depositado','endosado','cobrado','rebotado'] as const).map(v=>(
               <button key={v} onClick={()=>setFiltroEstado(v)}
@@ -342,6 +365,14 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       {/* TAB PROPIOS */}
       {tab==='propio'&&(
         <div>
+          {filtroRango&&(
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs bg-amber-100 text-amber-700 font-bold px-3 py-1 rounded-full">
+                📅 {RANGOS.find(r=>r.key===filtroRango)?.label}
+              </span>
+              <button onClick={()=>setFiltroRango(null)} className="text-xs text-p-ink2 hover:text-p-ink underline">✕ Ver todos los rangos</button>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-4 flex-wrap">
             {(['pendientes','todos','emitido','cobrado','rebotado'] as const).map(v=>(
               <button key={v} onClick={()=>setFiltroEstado(v)}
