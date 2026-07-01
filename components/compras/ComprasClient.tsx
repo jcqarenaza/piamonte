@@ -139,7 +139,8 @@ export default function ComprasClient() {
   const loadProveedores = useCallback(async () => {
     const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit,descuento_pct').eq('activo',true).order('nombre')
     setProveedores(data ?? [])
-  }, [supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -162,12 +163,13 @@ export default function ComprasClient() {
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
     const dtoStr = prov?.descuento_pct ? String(prov.descuento_pct) : ''
     setForm(p => ({ ...p, descuento_pct: dtoStr }))
-    // También pre-cargar el dto en el form de nuevo ítem y en los ítems ya cargados
     setItemForm(p => ({ ...p, dto: dtoStr }))
     if (prov?.descuento_pct) {
-      setItems(prev => prev.map(it => ({ ...it, dto: it.dto ?? prov.descuento_pct })))
+      const pct = prov.descuento_pct
+      setItems(prev => prev.map(it => it.dto != null ? it : { ...it, dto: pct }))
     }
-  }, [form.proveedor_id, proveedores, descuentoTocadoAMano])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.proveedor_id, descuentoTocadoAMano])
 
   // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción del ítem —
   // mismo criterio que ya usa Stock, para que Compras también quede vinculado al SKU.
