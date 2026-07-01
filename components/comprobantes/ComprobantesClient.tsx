@@ -3,6 +3,7 @@ import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
@@ -81,6 +82,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [fiscal, setFiscal]     = useState(emptyFiscal)
   const [clienteAseg, setClienteAseg] = useState('')
   const [siniestro, setSiniestro] = useState('')
+  const [cfNombre, setCfNombre] = useState('')
+  const [cfTel, setCfTel]       = useState('')
   const [items, setItems]       = useState<ItemVenta[]>([])
   // Buscador unificado: primero busca en el catálogo maestro de artículos (con su costo de
   // reposición y SKU); si la pieza ya está en stock con cantidad disponible, también se ofrece
@@ -89,6 +92,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
+  // Un ChequeData por cada fila de pago (mismo índice). Solo se usa cuando metodo==='Cheque'.
+  const [chequesPago, setChequesPago] = useState<Record<number,ChequeData>>({})
   const [toast, setToast]       = useState('')
   const [adjModal, setAdjModal]   = useState<Comprobante|null>(null)
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
@@ -227,7 +232,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
     setAseg(null); setAsegQ(''); setAsegSugs([])
-    setClienteAseg(''); setSiniestro('')
+    setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel("")
     setHistorialCli(null)
     setNuevoCliOpen(false)
     if (m === 'cf') {
@@ -405,8 +410,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const { data:comp } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
-      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? 'Consumidor Final' : null)),
-      cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : null,
+      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
+      cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
       cliente_cuit: fiscal.cuit||null,
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
@@ -443,6 +448,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
     }
 
+    // Cheques: si algún pago fue con cheque, registrarlo en el libro como cheque de tercero "en cartera"
+    if (comp) {
+      const numeroFmt = `${tipoDoc()}-${String(nextNum).padStart(8,'0')}`
+      const nombreContraparte = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? (cliSel?.nombre||cliQ||null) : 'Consumidor Final')
+      for (let i=0; i<pagos.length; i++) {
+        const p = pagos[i]
+        const ch = chequesPago[i]
+        if (p.metodo==='Cheque' && ch?.numero) {
+          const montoCh = parseFloat(p.monto.replace(/[^0-9.]/g,'')||'0')
+          await supabase.from('cheques').insert({
+            tipo:'tercero', formato:ch.formato, modalidad:ch.modalidad,
+            numero:ch.numero, banco:ch.banco,
+            fecha_emision: todayStr(), fecha_cobro: ch.modalidad==='al_dia'?todayStr():ch.fecha_cobro,
+            monto: montoCh, contraparte: nombreContraparte, estado:'en_cartera',
+            notas: `Cobro ${nombreContraparte} — Comprobante ${nextNum}`,
+            comprobante_id: (comp as any).id,
+          })
+        }
+      }
+    }
+
     for(const it of items){
       if(it.stock_id && it.c > 0){
         const {data:s} = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
@@ -473,10 +499,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     setOpen(false)
-    setItems([]); setPagos([{metodo:'Efectivo',monto:''}])
+    setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
     cambiarModo('cf')
     setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
     setClienteAseg(''); setSiniestro('')
+    setCfNombre(''); setCfTel('')
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
@@ -792,6 +819,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           </div>
 
+          {modo === 'cf' && (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Nombre (opcional)">
+                <Input value={cfNombre} onChange={e=>setCfNombre(e.target.value)} placeholder="Para el comprobante…"/>
+              </Field>
+              <Field label="Teléfono (opcional)">
+                <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
+              </Field>
+            </div>
+          )}
+
           {modo === 'cliente' && (
             <div>
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar cliente</label>
@@ -1051,23 +1089,30 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
             <div className="flex flex-col gap-2">
               {pagos.map((p,i)=>(
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-5">
-                    <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
-                      {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
-                    </Select>
-                  </div>
-                  {p.metodo.startsWith('Crédito')&&(
-                    <div className="col-span-2">
-                      <Select value={p.cuotas||1} onChange={e=>updPago(i,'cuotas',+e.target.value)}>
-                        {CUOTAS.map(c=><option key={c} value={c}>{c}c</option>)}
+                <div key={i}>
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-5">
+                      <Select value={p.metodo} onChange={e=>updPago(i,'metodo',e.target.value)}>
+                        {METODOS.map(m=><option key={m} value={m}>{m}</option>)}
                       </Select>
                     </div>
-                  )}
-                  <div className={p.metodo.startsWith('Crédito')?'col-span-4':'col-span-6'}>
-                    <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
+                    {p.metodo.startsWith('Crédito')&&(
+                      <div className="col-span-2">
+                        <Select value={p.cuotas||1} onChange={e=>updPago(i,'cuotas',+e.target.value)}>
+                          {CUOTAS.map(c=><option key={c} value={c}>{c}c</option>)}
+                        </Select>
+                      </div>
+                    )}
+                    <div className={p.metodo.startsWith('Crédito')?'col-span-4':'col-span-6'}>
+                      <Input value={p.monto} onChange={e=>updPago(i,'monto',e.target.value)} placeholder="$ monto"/>
+                    </div>
+                    {pagos.length>1&&<button onClick={()=>delPago(i)} className="text-red-400 text-xs col-span-1">✕</button>}
                   </div>
-                  {pagos.length>1&&<button onClick={()=>delPago(i)} className="text-red-400 text-xs col-span-1">✕</button>}
+                  {p.metodo==='Cheque'&&(
+                    <div className="mt-1.5">
+                      <ChequeFields value={chequesPago[i]||EMPTY_CHEQUE} onChange={v=>setChequesPago(prev=>({...prev,[i]:v}))}/>
+                    </div>
+                  )}
                 </div>
               ))}
               {usaCC && modo==='cf' && (
