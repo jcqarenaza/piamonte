@@ -1066,12 +1066,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               {items.map((it,i)=>(
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                   {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
-                  <span className="flex-1 text-p-ink min-w-0 truncate">{it.d}{it.c>1?` ×${it.c}`:''}</span>
+                  <span className="flex-1 text-p-ink min-w-0 truncate">{it.d}</span>
                   {it.stock_id&&<span className="text-[10px] text-p-green font-bold shrink-0">📦</span>}
                   <div className="shrink-0">
-                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">costo</div>
-                    <input type="number" value={it.costo||''} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,costo:v}:x))}}
-                      placeholder="$" className="w-24 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">cant.</div>
+                    <input type="number" min="1" value={it.c} onChange={e=>{const v=Math.max(1,+e.target.value||1);setItems(prev=>prev.map((x,j)=>j===i?{...x,c:v}:x))}}
+                      className="w-14 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-right mb-0.5">precio venta</div>
