@@ -14,19 +14,25 @@ export interface ChequeData {
 }
 
 export const EMPTY_CHEQUE: ChequeData = {
-  numero: '', banco: 'Banco Nación', fecha_cobro: todayStr(),
+  numero: '', banco: 'Banco de La Pampa', fecha_cobro: todayStr(),
   modalidad: 'diferido', formato: 'fisico'
 }
 
-const BANCOS = ['Banco Nación','Banco Provincia','Banco Galicia','Banco Santander',
-  'Banco BBVA','Banco HSBC','Banco Macro','Banco Credicoop','Otro']
+// Fallback estático si no se pasan bancos desde la DB
+export const BANCOS_DEFAULT = [
+  'Banco de La Pampa','Banco Nación','Banco Provincia','Banco Galicia',
+  'Banco Santander','Banco BBVA','Banco HSBC','Banco Macro','Banco Credicoop',
+  'Banco Patagonia','Banco Ciudad','Banco Supervielle','ICBC','Brubank','Naranja X','Otro'
+]
 
 interface Props {
   value: ChequeData
   onChange: (v: ChequeData) => void
+  bancos?: string[]  // lista desde la DB; si no se pasa, usa el fallback
 }
 
-export function ChequeFields({ value, onChange }: Props) {
+export function ChequeFields({ value, onChange, bancos }: Props) {
+  const lista = bancos && bancos.length > 0 ? bancos : BANCOS_DEFAULT
   const set = (k: keyof ChequeData, v: string) => onChange({ ...value, [k]: v })
   return (
     <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 flex flex-col gap-2.5">
@@ -54,7 +60,7 @@ export function ChequeFields({ value, onChange }: Props) {
         <Field label="Banco">
           <select value={value.banco} onChange={e=>set('banco',e.target.value)}
             className="w-full border border-p-line rounded-lg px-2.5 py-2 text-sm bg-white focus:outline-none focus:border-blue-400">
-            {BANCOS.map(b=><option key={b}>{b}</option>)}
+            {lista.map(b=><option key={b}>{b}</option>)}
           </select>
         </Field>
       </div>

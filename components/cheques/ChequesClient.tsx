@@ -20,7 +20,7 @@ interface Cheque {
   notas:string|null; created_at:string
 }
 
-const BANCOS = ['Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco HSBC','Banco Macro','Banco Credicoop','Otro']
+import { ChequeFields, EMPTY_CHEQUE, BANCOS_DEFAULT, type ChequeData } from '@/components/cheques/ChequeFields'
 const ESTADO_LABEL: Record<Estado,string> = {
   en_cartera:'🗃 En cartera', depositado:'🏦 Depositado', endosado:'↗ Endosado',
   emitido:'📝 Emitido', cobrado:'✅ Cobrado', rebotado:'❌ Rebotado', anulado:'🚫 Anulado'
@@ -65,15 +65,35 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [open, setOpen]         = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
   const [form, setForm]         = useState(emptyForm)
+  // Bancos desde la DB
+  const [bancos, setBancos]     = useState<string[]>(BANCOS_DEFAULT)
+  const [bancosModal, setBancosModal] = useState(false)
+  const [nuevoBanco, setNuevoBanco]   = useState('')
   const supabase = createClient()
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('cheques').select('*').order('fecha_cobro').order('created_at',{ascending:false})
-    setCheques(data??[])
+    const [{ data: chData }, { data: bData }] = await Promise.all([
+      supabase.from('cheques').select('*').order('fecha_cobro').order('created_at',{ascending:false}),
+      supabase.from('bancos_cheque').select('nombre').eq('activo',true).order('nombre'),
+    ])
+    setCheques(chData??[])
+    if (bData && bData.length > 0) setBancos(bData.map(b=>b.nombre))
     setLoading(false)
   }
   useEffect(()=>{ load() },[])
+
+  async function agregarBanco() {
+    if (!nuevoBanco.trim()) return
+    await supabase.from('bancos_cheque').insert({ nombre: nuevoBanco.trim() })
+    setNuevoBanco('')
+    const { data } = await supabase.from('bancos_cheque').select('nombre').eq('activo',true).order('nombre')
+    if (data) setBancos(data.map(b=>b.nombre))
+  }
+  async function eliminarBanco(nombre: string) {
+    await supabase.from('bancos_cheque').update({ activo: false }).eq('nombre', nombre)
+    setBancos(prev=>prev.filter(b=>b!==nombre))
+  }
 
   function abrirNuevo(tipo?: Tipo) {
     setEditId(null)
@@ -215,7 +235,10 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             </button>
           ))}
         </div>
-        <button onClick={()=>abrirNuevo(tab==='dashboard'?undefined:tab as Tipo)} style={btn}>+ Nuevo cheque</button>
+        <div className="flex gap-2">
+          <button onClick={()=>setBancosModal(true)} style={{...btnGray,padding:'10px 16px',fontSize:13}}>🏦 Bancos</button>
+          <button onClick={()=>abrirNuevo(tab==='dashboard'?undefined:tab as Tipo)} style={btn}>+ Nuevo cheque</button>
+        </div>
       </div>
 
       {/* DASHBOARD */}
@@ -338,7 +361,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             <Field label="Banco *">
               <select value={form.banco} onChange={e=>setForm(p=>({...p,banco:e.target.value}))}
                 className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
-                {BANCOS.map(b=><option key={b}>{b}</option>)}
+                {bancos.map(b=><option key={b}>{b}</option>)}
               </select>
             </Field>
           </div>
@@ -369,6 +392,31 @@ export default function ChequesClient({ userId }: { userId?: string }) {
               style={{...btn,opacity:(!form.numero||!form.monto)?.5:1}}>
               {editId?'Guardar cambios':'Registrar cheque'}
             </button>
+          </div>
+        </div>
+      </Modal>
+      {/* Modal gestión de bancos */}
+      <Modal open={bancosModal} onClose={()=>setBancosModal(false)} title="Gestionar bancos">
+        <div className="flex flex-col gap-3">
+          <p className="text-[11px] text-p-ink2">Estos bancos aparecen en todos los formularios de cheque del sistema.</p>
+          <div className="flex gap-2">
+            <Input value={nuevoBanco} onChange={e=>setNuevoBanco(e.target.value)}
+              placeholder="Nombre del banco…"
+              onKeyDown={e=>e.key==='Enter'&&agregarBanco()}/>
+            <button onClick={agregarBanco} style={btnSm} disabled={!nuevoBanco.trim()}>+ Agregar</button>
+          </div>
+          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+            {bancos.map(b=>(
+              <div key={b} className="flex items-center justify-between bg-white border border-p-line rounded-lg px-3 py-2">
+                <span className="text-sm text-p-ink">🏦 {b}</span>
+                {!['Banco de La Pampa','Banco Nación','Otro'].includes(b) && (
+                  <button onClick={()=>eliminarBanco(b)} className="text-red-400 text-xs hover:text-red-600">✕</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end pt-1">
+            <button onClick={()=>setBancosModal(false)} style={btnGray}>Cerrar</button>
           </div>
         </div>
       </Modal>
