@@ -69,6 +69,12 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [bancos, setBancos]     = useState<string[]>(BANCOS_DEFAULT)
   const [bancosModal, setBancosModal] = useState(false)
   const [nuevoBanco, setNuevoBanco]   = useState('')
+  const [impactoModal, setImpactoModal] = useState(false)
+  const [impactoCheque, setImpactoCheque] = useState<Cheque|null>(null)
+  const [impactoEstado, setImpactoEstado] = useState<Estado>('depositado')
+  const [cuentasBanco, setCuentasBanco]   = useState<{id:string;alias:string|null;banco:string;tipo:string}[]>([])
+  const [impactoCuentaId, setImpactoCuentaId] = useState('')
+  const [impactoFecha, setImpactoFecha]   = useState(todayStr())
   const supabase = createClient()
 
   async function load() {
@@ -125,6 +131,32 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   async function cambiarEstado(id:string, estado:Estado) {
     await supabase.from('cheques').update({estado,updated_at:new Date().toISOString()}).eq('id',id)
     setCheques(prev=>prev.map(c=>c.id===id?{...c,estado}:c))
+  }
+
+  async function abrirImpacto(c: Cheque, estado: Estado) {
+    const { data } = await supabase.from('cuentas_banco').select('id,alias,banco,tipo').eq('activo',true).order('banco')
+    setCuentasBanco(data??[])
+    setImpactoCuentaId(data?.[0]?.id||'')
+    setImpactoCheque(c); setImpactoEstado(estado); setImpactoFecha(todayStr()); setImpactoModal(true)
+  }
+
+  async function confirmarImpacto() {
+    if (!impactoCheque) return
+    await cambiarEstado(impactoCheque.id, impactoEstado)
+    if (impactoCuentaId) {
+      const esTercero = impactoCheque.tipo === 'tercero'
+      await supabase.from('movimientos_banco').insert({
+        cuenta_id: impactoCuentaId, fecha: impactoFecha,
+        tipo: esTercero ? 'credito' : 'debito',
+        concepto: esTercero
+          ? `Depósito cheque N° ${impactoCheque.numero} — ${impactoCheque.contraparte||''}`
+          : `Cobro cheque propio N° ${impactoCheque.numero} — ${impactoCheque.contraparte||''}`,
+        monto: impactoCheque.monto,
+        origen_tipo: esTercero ? 'cheque_tercero' : 'cheque_propio',
+        cheque_id: impactoCheque.id,
+      })
+    }
+    setImpactoModal(false); load()
   }
 
   const hoy = todayStr()
@@ -196,17 +228,17 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             <div className="flex gap-2 flex-wrap">
               <button onClick={()=>abrirEditar(c)} style={btnGray}>✏ Editar</button>
               {c.tipo==='tercero'&&c.estado==='en_cartera'&&<>
-                <button onClick={()=>cambiarEstado(c.id,'depositado')} style={{...btnSm,background:'#4f46e5'}}>🏦 Depositar</button>
-                <button onClick={()=>cambiarEstado(c.id,'endosado')}   style={{...btnSm,background:'#7c3aed'}}>↗ Endosar</button>
-                <button onClick={()=>cambiarEstado(c.id,'cobrado')}    style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
-                <button onClick={()=>cambiarEstado(c.id,'rebotado')}   style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
+                <button onClick={()=>abrirImpacto(c,'depositado')} style={{...btnSm,background:'#4f46e5'}}>🏦 Depositar</button>
+                <button onClick={()=>cambiarEstado(c.id,'endosado')} style={{...btnSm,background:'#7c3aed'}}>↗ Endosar</button>
+                <button onClick={()=>abrirImpacto(c,'cobrado')} style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
+                <button onClick={()=>cambiarEstado(c.id,'rebotado')} style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
               </>}
               {c.tipo==='tercero'&&c.estado==='depositado'&&<>
-                <button onClick={()=>cambiarEstado(c.id,'cobrado')}  style={{...btnSm,background:'#16a34a'}}>✅ Acreditado</button>
+                <button onClick={()=>abrirImpacto(c,'cobrado')} style={{...btnSm,background:'#16a34a'}}>✅ Acreditado</button>
                 <button onClick={()=>cambiarEstado(c.id,'rebotado')} style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
               </>}
               {c.tipo==='propio'&&c.estado==='emitido'&&<>
-                <button onClick={()=>cambiarEstado(c.id,'cobrado')}  style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
+                <button onClick={()=>abrirImpacto(c,'cobrado')} style={{...btnSm,background:'#16a34a'}}>✅ Cobrado</button>
                 <button onClick={()=>cambiarEstado(c.id,'rebotado')} style={{...btnSm,background:'#dc2626'}}>❌ Rebotado</button>
               </>}
               {!['cobrado','rebotado','anulado'].includes(c.estado)&&(
@@ -419,6 +451,38 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             <button onClick={()=>setBancosModal(false)} style={btnGray}>Cerrar</button>
           </div>
         </div>
+      </Modal>
+      {/* Modal impacto bancario */}
+      <Modal open={impactoModal} onClose={()=>setImpactoModal(false)} title="Impacto en cuenta bancaria">
+        {impactoCheque&&(
+          <div className="flex flex-col gap-3">
+            <div className="bg-p-light rounded-xl p-3 text-sm">
+              <p className="font-bold text-p-ink">Cheque N° {impactoCheque.numero}</p>
+              <p className="text-p-ink2 mt-0.5">{impactoCheque.contraparte} · {moneyARS(impactoCheque.monto)}</p>
+              <p className="text-[10px] text-p-ink2 mt-1">{impactoCheque.tipo==='tercero'?'→ Crédito en la cuenta seleccionada':'→ Débito en la cuenta seleccionada'}</p>
+            </div>
+            {cuentasBanco.length===0 ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700">
+                ⚠ No hay cuentas cargadas todavía. El cheque se marcará pero <strong>no generará movimiento bancario</strong>. Agregá una cuenta en el módulo Banco.
+              </div>
+            ) : (
+              <Field label="¿En qué cuenta impacta?">
+                <select value={impactoCuentaId} onChange={e=>setImpactoCuentaId(e.target.value)}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                  <option value="">Sin impacto bancario (solo cambiar estado)</option>
+                  {cuentasBanco.map(c=><option key={c.id} value={c.id}>🏦 {c.alias||c.banco} ({c.tipo==='Cuenta Corriente'?'CC':'CA'})</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="Fecha del movimiento">
+              <Input type="date" value={impactoFecha} onChange={e=>setImpactoFecha(e.target.value)}/>
+            </Field>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setImpactoModal(false)} style={btnGray}>Cancelar</button>
+              <button onClick={confirmarImpacto} style={btn}>✓ Confirmar</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
