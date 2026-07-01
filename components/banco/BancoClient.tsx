@@ -70,7 +70,7 @@ export default function BancoClient() {
   const sinConciliar = pendConcil.length
 
   async function guardarCuenta() {
-    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, saldo_inicial:+formCuenta.saldo_inicial||0, fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, activo:true, updated_at:new Date().toISOString() }
+    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, saldo_inicial:+formCuenta.saldo_inicial||0, fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, moneda:'ARS', activo:true, updated_at:new Date().toISOString() }
     if (editCuentaId) await supabase.from('cuentas_banco').update(payload).eq('id',editCuentaId)
     else await supabase.from('cuentas_banco').insert(payload)
     setCuentaModal(false); loadCuentas()
