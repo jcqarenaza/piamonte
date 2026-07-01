@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string; activo:boolean }
-interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean; activo:boolean; orden:number }
+interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean; activo:boolean; orden:number }
 
 const btn  = { background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer' } as const
 const btnRed  = { ...btn, background:'#ef4444' } as const
@@ -26,8 +26,8 @@ export default function ConfiguracionClient() {
   const [showNuevoTipo, setShowNuevoTipo] = useState(false)
 
   // Edición inline de rubros
-  const [rubroEdit, setRubroEdit] = useState<Record<string,{nombre:string;precio_base:string;visible:boolean}>>({})
-  const [nuevoRubro, setNuevoRubro] = useState({ nombre:'', precio_base:'', visible:false })
+  const [rubroEdit, setRubroEdit] = useState<Record<string,{nombre:string;precio_base:string;costo_base:string;visible:boolean}>>({})
+  const [nuevoRubro, setNuevoRubro] = useState({ nombre:'', precio_base:'', costo_base:'', visible:false })
   const [showNuevoRubro, setShowNuevoRubro] = useState(false)
 
   useEffect(() => {
@@ -66,12 +66,12 @@ export default function ConfiguracionClient() {
 
   // ── Rubros ────────────────────────────────────────────────────────────────
   function startEditRubro(r:RubroPrecio){
-    setRubroEdit(p=>({...p,[r.id]:{nombre:r.nombre,precio_base:String(r.precio_base),visible:r.visible_en_impresion}}))
+    setRubroEdit(p=>({...p,[r.id]:{nombre:r.nombre,precio_base:String(r.precio_base),costo_base:String(r.costo_base||0),visible:r.visible_en_impresion}}))
   }
   async function saveRubro(id:string){
     const e=rubroEdit[id]; if(!e) return
     setSaving(true)
-    await supabase.from('rubros_precio').update({nombre:e.nombre,precio_base:+e.precio_base,visible_en_impresion:e.visible}).eq('id',id)
+    await supabase.from('rubros_precio').update({nombre:e.nombre,precio_base:+e.precio_base,costo_base:+e.costo_base||0,visible_en_impresion:e.visible}).eq('id',id)
     const {data}=await supabase.from('rubros_precio').select('*').eq('activo',true).order('orden')
     setRubros(data??[])
     setRubroEdit(p=>{const n={...p};delete n[id];return n})
@@ -86,9 +86,9 @@ export default function ConfiguracionClient() {
     if(!nuevoRubro.nombre||!nuevoRubro.precio_base) return
     setSaving(true)
     const orden = (Math.max(...rubros.map(r=>r.orden),0))+1
-    await supabase.from('rubros_precio').insert({nombre:nuevoRubro.nombre,precio_base:+nuevoRubro.precio_base,visible_en_impresion:nuevoRubro.visible,orden})
+    await supabase.from('rubros_precio').insert({nombre:nuevoRubro.nombre,precio_base:+nuevoRubro.precio_base,costo_base:+nuevoRubro.costo_base||0,visible_en_impresion:nuevoRubro.visible,orden})
     const {data}=await supabase.from('rubros_precio').select('*').eq('activo',true).order('orden')
-    setRubros(data??[]); setNuevoRubro({nombre:'',precio_base:'',visible:false}); setShowNuevoRubro(false)
+    setRubros(data??[]); setNuevoRubro({nombre:'',precio_base:'',costo_base:'',visible:false}); setShowNuevoRubro(false)
     setSaving(false); ok('Rubro creado ✓')
   }
 
@@ -198,6 +198,11 @@ export default function ConfiguracionClient() {
               <input type="number" value={nuevoRubro.precio_base} onChange={e=>setNuevoRubro(p=>({...p,precio_base:e.target.value}))}
                 placeholder="15000" className="border border-p-line rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green w-28"/>
             </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-p-ink2 uppercase mb-1">Costo base</label>
+              <input type="number" value={nuevoRubro.costo_base} onChange={e=>setNuevoRubro(p=>({...p,costo_base:e.target.value}))}
+                placeholder="0" className="border border-amber-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-amber-400 w-28"/>
+            </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={nuevoRubro.visible} onChange={e=>setNuevoRubro(p=>({...p,visible:e.target.checked}))} className="accent-p-green"/>
               Visible en PDF
@@ -218,7 +223,12 @@ export default function ConfiguracionClient() {
                   <div className="flex items-center gap-1">
                     <span className="text-sm text-p-ink2">$</span>
                     <input type="number" value={e.precio_base} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],precio_base:ev.target.value}}))}
-                      className="border border-p-green rounded-lg px-2 py-1.5 text-sm font-mono w-28 focus:outline-none"/>
+                      placeholder="precio" className="border border-p-green rounded-lg px-2 py-1.5 text-sm font-mono w-28 focus:outline-none"/>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-p-ink2">costo $</span>
+                    <input type="number" value={e.costo_base} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],costo_base:ev.target.value}}))}
+                      placeholder="0" className="border border-amber-300 rounded-lg px-2 py-1.5 text-sm font-mono w-28 focus:outline-none"/>
                   </div>
                   <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={e.visible} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],visible:ev.target.checked}})) } className="accent-p-green"/>
@@ -231,6 +241,7 @@ export default function ConfiguracionClient() {
                 <>
                   <p className="font-semibold text-sm text-p-ink flex-1">{r.nombre}</p>
                   <p className="font-mono font-bold text-sm text-p-dark">{moneyARS(r.precio_base)}</p>
+                  {r.costo_base > 0 && <p className="font-mono text-xs text-amber-600">costo: {moneyARS(r.costo_base)}</p>}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.visible_en_impresion?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500'}`}>
                     {r.visible_en_impresion?'visible en PDF':'oculto en PDF'}
                   </span>

@@ -39,7 +39,7 @@ interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; c
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 interface ItemVenta { d:string; c:number; p:number; costo?:number; stock_id?:string; articulo_id?:string|null }
-interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean }
+interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
@@ -725,7 +725,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   function addRubro(r: RubroPrecio) {
     const precio = rubrosEdit[r.id] ?? r.precio_base
-    setItems(prev=>[...prev, { d:r.nombre, c:1, p:precio, articulo_id:null }])
+    setItems(prev=>[...prev, { d:r.nombre, c:1, p:precio, costo: r.costo_base||undefined, articulo_id:null }])
   }
 
   return (
@@ -1045,13 +1045,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     <>
                       <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">🔧 Servicios y rubros</p>
                       {rubrosSugs.map(r=>(
-                        <button key={r.id} onClick={()=>{
-                          addRubro(r)
-                          setStockQ(''); setStockSugs([]); setArticuloSugs([])
-                        }} className="w-full text-left px-3 py-2.5 hover:bg-green-50 border-b border-p-line2 last:border-0 flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-p-ink">{r.nombre}</p>
-                          <span className="font-mono font-bold text-sm text-p-green shrink-0">{moneyARS(rubrosEdit[r.id]??r.precio_base)}</span>
-                        </button>
+                        <div key={r.id} className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 border-b border-p-line2 last:border-0">
+                          <p className="text-sm font-medium text-p-ink flex-1 truncate">{r.nombre}</p>
+                          <input type="number"
+                            value={rubrosEdit[r.id]??r.precio_base}
+                            onChange={e=>setRubrosEdit(p=>({...p,[r.id]:+e.target.value}))}
+                            onClick={e=>e.stopPropagation()}
+                            className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                          <button onClick={()=>{
+                            addRubro(r)
+                            setStockQ(''); setStockSugs([]); setArticuloSugs([])
+                          }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'5px 10px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                            + Agregar
+                          </button>
+                        </div>
                       ))}
                     </>
                   )}
