@@ -834,7 +834,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
                 </span>
                 <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:220}}>
-                  {c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}
+                  {c.aseguradora_nombre||c.cliente_nombre||'Consumidor Final'}
                 </p>
                 {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🧾 NC</span>}
                 {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 shrink-0">↩ Saldada</span>}
@@ -877,7 +877,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante" size="lg">
+      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante" size="xl">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
           <div>
