@@ -45,12 +45,12 @@ export default function ContabilidadClient() {
     <div>
       {/* Selector mes */}
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={()=>{const d=new Date(mes+'-01');d.setMonth(d.getMonth()-1);setMes(d.toISOString().slice(0,7))}}
+        <button onClick={()=>{const d=new Date(mes+'-15');d.setUTCMonth(d.getUTCMonth()-1);setMes(d.toISOString().slice(0,7))}}
           className="border border-p-line rounded-lg px-3 py-2 hover:bg-p-light">←</button>
         <div className="font-saira font-bold text-lg text-p-ink px-3">
           {MESES[+m-1]} {y}
         </div>
-        <button onClick={()=>{const d=new Date(mes+'-01');d.setMonth(d.getMonth()+1);setMes(d.toISOString().slice(0,7))}}
+        <button onClick={()=>{const d=new Date(mes+'-15');d.setUTCMonth(d.getUTCMonth()+1);setMes(d.toISOString().slice(0,7))}}
           className="border border-p-line rounded-lg px-3 py-2 hover:bg-p-light">→</button>
         <button onClick={()=>setMes(new Date().toISOString().slice(0,7))} className="text-sm text-p-green font-semibold hover:underline">Este mes</button>
       </div>
