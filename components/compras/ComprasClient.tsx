@@ -178,11 +178,12 @@ export default function ComprasClient() {
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
     const palabras = texto.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    const pLarga = palabras.reduce((a,b)=>b.length>a.length?b:a, palabras[0])
+    const resto   = palabras.filter(p=>p!==pLarga)
     const { data } = await supabase.from('articulos_maestro')
       .select('id,descripcion,sku_interno,codigo_referencia').eq('activo', true)
-      .or(`descripcion.ilike.%${palabras[0]}%,sku_interno.ilike.%${palabras[0]}%,codigo_referencia.ilike.%${palabras[0]}%`).limit(40)
-    const resto = palabras.slice(1)
-    const filtrado = resto.length === 0 ? (data??[]) : (data??[]).filter((a:any) => {
+      .or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`).limit(200)
+    const filtrado = resto.length===0 ? (data??[]) : (data??[]).filter((a:any) => {
       const txt = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
       return resto.every((p:string) => txt.includes(p))
     })

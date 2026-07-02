@@ -121,18 +121,21 @@ export default function ArticulosClient() {
     setLoading(true)
     let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 2000 : 100)
     const palabras = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    if (palabras.length) {
-      query = query.or(`descripcion.ilike.%${palabras[0]}%,sku_interno.ilike.%${palabras[0]}%,codigo_referencia.ilike.%${palabras[0]}%`)
+    // Buscamos con la palabra más larga (más restrictiva) y filtramos el resto en JS
+    const pLarga = palabras.length ? palabras.reduce((a:string,b:string)=>b.length>a.length?b:a, palabras[0]) : ''
+    if (pLarga) {
+      query = query.or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`)
+      query = (query as any).limit(tab === 'pendientes' ? 2000 : 300)
     }
     const { data } = await query
     let arr = (data ?? []).map((a:any) => ({ ...a, equivalencias: a.articulo_equivalencias }))
 
-    // Filtro AND: todas las palabras deben aparecer (multi-palabra)
+    // Filtro AND en JS con todas las palabras restantes
     if (palabras.length > 1) {
-      const resto = palabras.slice(1)
+      const restoP = palabras.filter((p:string)=>p!==pLarga)
       arr = arr.filter((a:any) => {
         const texto = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
-        return resto.every((p:string) => texto.includes(p))
+        return restoP.every((p:string) => texto.includes(p))
       })
     }
 

@@ -117,19 +117,24 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
     const palabras = stockQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    const p0 = palabras[0]
-    const resto = palabras.slice(1)
-    const filtrarResto = (items: any[], campos: string[]) =>
-      resto.length === 0 ? items : items.filter(it => {
-        const txt = campos.map(c => it[c]||'').join(' ').toLowerCase()
-        return resto.every(p => txt.includes(p))
+
+    // Para cada palabra construimos un filtro ilike independiente y hacemos AND en JS
+    // Supabase no soporta AND de ilikes en una sola query, así que buscamos con la más
+    // restrictiva (la más larga) y filtramos las demás en JS con un limite amplio
+    const pLarga = palabras.reduce((a,b)=>b.length>a.length?b:a, palabras[0])
+    const resto   = palabras.filter(p=>p!==pLarga)
+    const filtrar = (items:any[], campos:string[]) =>
+      resto.length===0 ? items : items.filter(it=>{
+        const txt = campos.map(c=>it[c]||'').join(' ').toLowerCase()
+        return resto.every(p=>txt.includes(p))
       })
+
     supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${p0}%`).limit(30)
-      .then(({data})=>setStockSugs(filtrarResto(data??[], ['descripcion'])))
+      .ilike('descripcion',`%${pLarga}%`).limit(200)
+      .then(({data})=>setStockSugs(filtrar(data??[], ['descripcion']).slice(0,8)))
     supabase.from('articulos_maestro').select('id,descripcion,sku_interno,codigo_referencia').eq('activo',true)
-      .or(`descripcion.ilike.%${p0}%,sku_interno.ilike.%${p0}%,codigo_referencia.ilike.%${p0}%`).limit(30)
-      .then(({data})=>setArticuloSugs(filtrarResto(data??[], ['descripcion','sku_interno','codigo_referencia']).slice(0,6)))
+      .or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`).limit(200)
+      .then(({data})=>setArticuloSugs(filtrar(data??[], ['descripcion','sku_interno','codigo_referencia']).slice(0,8)))
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'
