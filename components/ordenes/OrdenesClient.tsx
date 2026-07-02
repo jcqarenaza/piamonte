@@ -185,12 +185,21 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     const nextNum = (parseInt(String((nuevas?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     if(editId) {
+      // Restaurar el stock de la OS anterior antes de guardar los nuevos ítems
+      await restaurarStockOS(editId)
       const { error: updErr } = await supabase.from('ordenes_servicio').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
         patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
         poliza:form.pol||null, obs:form.obs||null, items, total, iva:iva||null, neto,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
+      // Descontar el nuevo stock (los ítems que tienen stock_id)
+      for (const it of items) {
+        if (it.stock_id) {
+          const { data: s } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
+          if (s) await supabase.from('stock').update({ cantidad: Math.max(0, (s as any).cantidad - (it.c||1)) }).eq('id', it.stock_id)
+        }
+      }
       setEditId(null)
     } else {
     await supabase.from('ordenes_servicio').insert({
@@ -215,8 +224,21 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     setLoading(false); load()
   }
 
+  async function restaurarStockOS(id: string) {
+    // Busca los ítems de la OS y devuelve al stock las unidades que se habían descontado
+    const { data: os } = await supabase.from('ordenes_servicio').select('items').eq('id', id).maybeSingle()
+    if (!os?.items) return
+    for (const it of (os.items as any[])) {
+      if (it.stock_id) {
+        const { data: s } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
+        if (s) await supabase.from('stock').update({ cantidad: (s as any).cantidad + (it.c || 1) }).eq('id', it.stock_id)
+      }
+    }
+  }
+
   async function del(id:string) {
     if(!confirm('¿Borrar esta orden?')) return
+    await restaurarStockOS(id)
     await supabase.from('ordenes_servicio').delete().eq('id',id); load()
   }
 
@@ -683,7 +705,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0"
                       onClick={()=>{
                         setStockSel(s); setStockSugs([]); setStockQ('')
-                        setItems(prev=>[...prev,{d:s.descripcion+(s.codigo?` [${s.codigo}]`:''),c:1,p:s.precio_venta||0}])
+                        setItems(prev=>[...prev,{d:s.descripcion+(s.codigo?` [${s.codigo}]`:''),c:1,p:s.precio_venta||0,stock_id:s.id}])
                       }}>
                       <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
                       <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>

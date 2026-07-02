@@ -79,6 +79,7 @@ export interface VentaItem {
   d: string   // descripción
   c: number   // cantidad
   p: number   // precio unitario
+  stock_id?: string | null  // referencia al stock descontado
 }
 
 export interface Venta {
