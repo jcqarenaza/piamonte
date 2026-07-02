@@ -967,58 +967,48 @@ export default function ComprasClient() {
             </Field>
           )}
 
-          {/* Ítems */}
+          {/* Ítems — mismo estilo que Comprobantes */}
           <div className="border-t border-p-line2 pt-3">
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">
-              Ítems {editandoItemIdx !== null && <span className="text-blue-600 font-normal">— editando ítem #{editandoItemIdx+1}</span>}
-            </label>
-            <div className="grid grid-cols-12 gap-2 mb-2">
-              <div className="col-span-6 relative">
-                <Input value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Descripción / código"/>
-                {itemArticuloSugs.length > 0 && (
-                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                    {itemArticuloSugs.map((a:any) => (
-                      <button key={a.id} type="button" onClick={()=>elegirItemArticulo(a)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
-                        <p className="font-medium text-p-ink">{a.descripcion}</p>
-                        <p className="text-[10px] font-mono text-p-ink2">
-                          {a.proveedor && <span className="font-bold">{a.proveedor} · </span>}
-                          {a.costo_neto ? moneyARS(a.costo_neto) : a.sku_interno || ''}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="col-span-1">
-                <Input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant."/>
-              </div>
-              <div className="col-span-3">
-                <Input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio unit."/>
-              </div>
-              <div className="col-span-1">
-                <Input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" title="Descuento % para este ítem"/>
-              </div>
-              <button onClick={addItem} style={{...btnSm,padding:'9px 8px',fontSize:12,background:editandoItemIdx!==null?'#1d4ed8':undefined}} className="col-span-1">
-                {editandoItemIdx!==null ? '✓' : '+'}
-              </button>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
+
+            {/* Buscador igual que en Comprobantes */}
+            <div className="relative mb-2">
+              <Input value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Buscar pieza (catálogo o descripción libre)…"/>
+              {itemArticuloSugs.length > 0 && (
+                <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                  {itemArticuloSugs.map((a:any) => (
+                    <button key={a.id} type="button" onClick={()=>elegirItemArticulo(a)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                      <p className="font-medium text-p-ink">{a.descripcion}</p>
+                      <p className="text-[10px] font-mono text-p-ink2">
+                        {a.proveedor && <span className="font-bold">{a.proveedor} · </span>}
+                        {a.costo_neto ? moneyARS(a.costo_neto) : ''}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            {/* Botón rápido de flete */}
-            <div className="flex gap-2 mb-2">
+
+            {/* Fila de precio/cant/dto para el ítem pendiente + botón agregar */}
+            {itemForm.d.trim().length > 0 && (
+              <div className="flex gap-2 items-center mb-2 bg-p-light/50 rounded-xl px-3 py-2">
+                <span className="text-sm text-p-ink flex-1 truncate">{itemForm.d}</span>
+                <input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-p-green"/>
+                <input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio" className="w-28 border border-p-line rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green"/>
+                <input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-amber-400" title="Descuento %"/>
+                <button onClick={addItem} style={{...btnSm,padding:'7px 12px'}} disabled={!itemForm.p}>+ Agregar</button>
+                <button onClick={()=>{setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}));setItemArticuloSel(null)}} className="text-red-400 text-xs">✕</button>
+              </div>
+            )}
+
+            {/* Flete rápido */}
+            <div className="mb-2">
               <button onClick={()=>setItemForm(p=>({...p,d:'FLETE',c:'1',p:form.flete||'',dto:''}))}
                 style={{...btnSm,background:'#6b7280',fontSize:11,padding:'4px 10px'}}>
-                🚛 Cargar flete como ítem
+                🚛 Flete como ítem
               </button>
             </div>
-            {itemArticuloSel ? (
-              <p className="text-[11px] text-p-green font-semibold mb-2">✓ Vinculado al artículo del catálogo maestro ({itemArticuloSel.descripcion})</p>
-            ) : itemForm.d.trim().length >= 2 ? (
-              <p className="text-[11px] text-amber-600 mb-2">⚠ Sin coincidencia con el catálogo — el ítem se va a guardar solo con esta descripción</p>
-            ) : null}
-            {editandoItemIdx !== null && (
-              <button onClick={()=>{setEditandoItemIdx(null);setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}));setItemArticuloSel(null)}}
-                className="text-[11px] text-p-ink2 underline mb-2">Cancelar edición</button>
-            )}
             {items.map((it,i)=>{
               const bruto = it.c * it.p
               const desc  = it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0
@@ -1026,24 +1016,24 @@ export default function ComprasClient() {
               return (
               <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                 {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
-                <span className="flex-1 truncate">{it.d}</span>
-                <span className="text-p-ink2 shrink-0">×{it.c}</span>
-                <span className="font-mono shrink-0">{moneyARS(it.p)}</span>
+                <span className="flex-1 text-p-ink text-sm break-words min-w-0">{it.d}</span>
+                <div className="shrink-0">
+                  <div className="text-[9px] text-p-ink2 text-center mb-0.5">cant.</div>
+                  <input type="number" min="1" value={it.c} onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,c:+e.target.value||1}:x))}
+                    className="w-12 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-center focus:outline-none focus:border-p-green"/>
+                </div>
+                <div className="shrink-0">
+                  <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
+                  <input value={it.p} onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:+e.target.value.replace(/[^0-9.]/g,'')||0}:x))}
+                    className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-p-green"/>
+                </div>
                 {it.dto ? (
                   <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded shrink-0 cursor-pointer"
-                    title="Click para quitar el descuento de este ítem"
                     onClick={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,dto:null}:x))}>
                     −{it.dto}% ✕
                   </span>
-                ) : (
-                  <span className="text-[10px] text-p-ink2 shrink-0">sin dto</span>
-                )}
-                <span className="font-mono font-bold text-p-green shrink-0">{moneyARS(neto)}</span>
-                <button onClick={()=>{
-                  setEditandoItemIdx(i)
-                  setItemForm({ d: it.d, c: String(it.c), p: String(it.p), dto: it.dto ? String(it.dto) : '' })
-                  setItemArticuloSel(it.articulo_id ? { id: it.articulo_id, descripcion: it.d } : null)
-                }} className="text-blue-500 text-xs shrink-0">✏</button>
+                ) : null}
+                <span className="font-mono font-bold text-p-green shrink-0 w-24 text-right">{moneyARS(neto)}</span>
                 <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
               </div>
             )})}

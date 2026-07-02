@@ -1090,7 +1090,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
             <div className="relative">
-              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder="Buscar por descripción…"/>
+              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder={items.length>0?"+ Agregar otra pieza, servicio o rubro…":"Buscar pieza (stock o catálogo)…"}/>
               {(stockSugs.length>0 || articuloSugs.length>0 || rubrosSugs.length>0) &&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
                   {stockSugs.length > 0 && (

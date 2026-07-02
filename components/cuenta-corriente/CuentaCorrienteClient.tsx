@@ -166,7 +166,10 @@ export default function CuentaCorrienteClient() {
 
   const totalDeuda = saldos.reduce((a,s)=>a+Math.max(0,s.saldo_actual),0)
   const conSaldo   = saldos.filter(s=>s.saldo_actual>0).length
-  const filtrados  = saldos.filter(s=>!q||s.cliente_nombre.toLowerCase().includes(q.toLowerCase()))
+  const filtrados  = saldos.filter(s=>
+    s.saldo_actual !== 0 && // ocultar saldados
+    (!q || s.cliente_nombre.toLowerCase().includes(q.toLowerCase()))
+  )
 
   return (
     <div className="flex gap-4">
@@ -221,7 +224,7 @@ export default function CuentaCorrienteClient() {
                   </div>
                   <div className="text-right">
                     <p className={`font-saira font-bold text-xl ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
-                      {s.saldo_actual>0?'Debe ':'Favor '}{moneyARS(Math.abs(s.saldo_actual))}
+                      {s.saldo_actual>0?'Debe ':s.saldo_actual<0?'Favor ':''}{moneyARS(Math.abs(s.saldo_actual))}
                     </p>
                     <p className="text-[10px] text-p-ink2">
                       Cargado: {moneyARS(s.total_debe)} · Pagado: {moneyARS(s.total_haber)}
