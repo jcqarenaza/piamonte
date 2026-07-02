@@ -899,18 +899,6 @@ export default function ComprasClient() {
             </Field>
           )}
 
-          {/* CAE — solo para Factura */}
-          {form.tipo === 'factura' && (
-            <div className="grid grid-cols-2 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <Field label="CAE">
-                <Input value={form.cae} onChange={e=>setForm(p=>({...p,cae:e.target.value}))} placeholder="N° de CAE (opcional)"/>
-              </Field>
-              <Field label="Vencimiento CAE">
-                <Input type="date" value={form.cae_vencimiento} onChange={e=>setForm(p=>({...p,cae_vencimiento:e.target.value}))}/>
-              </Field>
-            </div>
-          )}
-
           {/* Vincular a remito ya recibido — evita duplicar la carga a stock */}
           {form.tipo === 'factura' && remitosDisponibles.length > 0 && (
             <Field label="¿Corresponde a un remito ya recibido?">
@@ -1098,6 +1086,18 @@ export default function ComprasClient() {
             <p className="text-[11px] text-p-ink2 -mt-1">
               Al guardar, vas a poder vincular cada ítem con su artículo en stock desde el listado.
             </p>
+          )}
+
+          {/* CAE — al final, una vez cargados todos los ítems e importes */}
+          {form.tipo === 'factura' && (
+            <div className="grid grid-cols-2 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <Field label="CAE">
+                <Input value={form.cae} onChange={e=>setForm(p=>({...p,cae:e.target.value}))} placeholder="N° de CAE (opcional)"/>
+              </Field>
+              <Field label="Vencimiento CAE">
+                <Input type="date" value={form.cae_vencimiento} onChange={e=>setForm(p=>({...p,cae_vencimiento:e.target.value}))}/>
+              </Field>
+            </div>
           )}
 
           <Field label="Notas">
