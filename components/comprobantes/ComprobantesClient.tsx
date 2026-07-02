@@ -1160,7 +1160,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               {items.map((it,i)=>(
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                   {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
-                  <span className="flex-1 text-p-ink min-w-0 truncate">{it.d}</span>
+                  <span className="flex-1 text-p-ink min-w-0 text-sm break-words">{it.d}</span>
                   {it.stock_id&&<span className="text-[10px] text-p-green font-bold shrink-0">📦</span>}
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-right mb-0.5">cant.</div>
