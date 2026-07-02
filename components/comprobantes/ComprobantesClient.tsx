@@ -833,9 +833,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 <span className="font-mono text-[11px] font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full shrink-0">
                   {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
                 </span>
-                <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:220}}>
-                  {c.aseguradora_nombre||c.cliente_nombre||'Consumidor Final'}
-                </p>
+                <div className="flex flex-col min-w-0" style={{maxWidth:240}}>
+                  <p className="font-saira font-bold text-p-ink text-sm truncate">
+                    {c.aseguradora_nombre||c.cliente_nombre||'Consumidor Final'}
+                  </p>
+                  {c.aseguradora_nombre && c.cliente_nombre && (
+                    <p className="text-[10px] text-p-ink2 truncate">Aseg: {c.cliente_nombre}</p>
+                  )}
+                </div>
                 {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🧾 NC</span>}
                 {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 shrink-0">↩ Saldada</span>}
                 {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white shrink-0">⚫</span>}
