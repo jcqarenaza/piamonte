@@ -120,13 +120,23 @@ export default function ArticulosClient() {
   const load = useCallback(async () => {
     setLoading(true)
     let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 2000 : 100)
-    if (q.trim()) query = query.or(`descripcion.ilike.%${q}%,sku_interno.ilike.%${q}%,codigo_referencia.ilike.%${q}%`)
+    const palabras = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (palabras.length) {
+      query = query.or(`descripcion.ilike.%${palabras[0]}%,sku_interno.ilike.%${palabras[0]}%,codigo_referencia.ilike.%${palabras[0]}%`)
+    }
     const { data } = await query
     let arr = (data ?? []).map((a:any) => ({ ...a, equivalencias: a.articulo_equivalencias }))
 
+    // Filtro AND: todas las palabras deben aparecer (multi-palabra)
+    if (palabras.length > 1) {
+      const resto = palabras.slice(1)
+      arr = arr.filter((a:any) => {
+        const texto = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
+        return resto.every((p:string) => texto.includes(p))
+      })
+    }
+
     if (tab === 'pendientes') {
-      // "Pendiente" = sin NINGÚN proveedor asociado todavía. Si ya tiene al menos uno, está
-      // bien — los demás se van completando solos a medida que se cargan más listas.
       arr = arr.filter((a:Articulo) => !a.equivalencias || a.equivalencias.length === 0)
     } else if (filtroFaltante) {
       arr = arr.filter((a:Articulo) => !a.equivalencias?.some(e => e.proveedor === filtroFaltante))

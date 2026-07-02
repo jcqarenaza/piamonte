@@ -116,12 +116,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
+    const palabras = stockQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    const p0 = palabras[0]
+    const resto = palabras.slice(1)
+    const filtrarResto = (items: any[], campos: string[]) =>
+      resto.length === 0 ? items : items.filter(it => {
+        const txt = campos.map(c => it[c]||'').join(' ').toLowerCase()
+        return resto.every(p => txt.includes(p))
+      })
     supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${stockQ}%`).limit(8)
-      .then(({data})=>setStockSugs(data??[]))
+      .ilike('descripcion',`%${p0}%`).limit(30)
+      .then(({data})=>setStockSugs(filtrarResto(data??[], ['descripcion'])))
     supabase.from('articulos_maestro').select('id,descripcion,sku_interno,codigo_referencia').eq('activo',true)
-      .or(`descripcion.ilike.%${stockQ}%,sku_interno.ilike.%${stockQ}%`).limit(6)
-      .then(({data})=>setArticuloSugs(data??[]))
+      .or(`descripcion.ilike.%${p0}%,sku_interno.ilike.%${p0}%,codigo_referencia.ilike.%${p0}%`).limit(30)
+      .then(({data})=>setArticuloSugs(filtrarResto(data??[], ['descripcion','sku_interno','codigo_referencia']).slice(0,6)))
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'

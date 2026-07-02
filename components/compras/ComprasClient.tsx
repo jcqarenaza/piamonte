@@ -177,10 +177,16 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
+    const palabras = texto.trim().toLowerCase().split(/\s+/).filter(Boolean)
     const { data } = await supabase.from('articulos_maestro')
-      .select('id,descripcion,sku_interno').eq('activo', true)
-      .or(`descripcion.ilike.%${texto}%,sku_interno.ilike.%${texto}%`).limit(6)
-    setItemArticuloSugs(data ?? [])
+      .select('id,descripcion,sku_interno,codigo_referencia').eq('activo', true)
+      .or(`descripcion.ilike.%${palabras[0]}%,sku_interno.ilike.%${palabras[0]}%,codigo_referencia.ilike.%${palabras[0]}%`).limit(40)
+    const resto = palabras.slice(1)
+    const filtrado = resto.length === 0 ? (data??[]) : (data??[]).filter((a:any) => {
+      const txt = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
+      return resto.every((p:string) => txt.includes(p))
+    })
+    setItemArticuloSugs(filtrado.slice(0, 8))
   }
 
   function elegirItemArticulo(a: any) {
