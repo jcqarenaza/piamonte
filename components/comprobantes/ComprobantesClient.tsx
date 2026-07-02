@@ -877,7 +877,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante">
+      <Modal open={open} onClose={()=>setOpen(false)} title="Nuevo comprobante" size="lg">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
           <div>
