@@ -243,7 +243,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
     setAseg(null); setAsegQ(''); setAsegSugs([])
-    setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel("")
+    setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel(""); setCfDni("")
     setHistorialCli(null)
     setNuevoCliOpen(false)
     if (m === 'cf') {
@@ -423,7 +423,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
       cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
       cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
-      cliente_cuit: fiscal.cuit||null,
+      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && cfDni ? cfDni : null),
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
@@ -514,7 +514,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     cambiarModo('cf')
     setFiscal(emptyFiscal); setObs('')
     setClienteAseg(''); setSiniestro('')
-    setCfNombre(''); setCfTel('')
+    setCfNombre(''); setCfTel(''); setCfDni('')
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])
@@ -836,10 +836,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
 
           {modo === 'cf' && (
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Nombre (opcional)">
-                <Input value={cfNombre} onChange={e=>setCfNombre(e.target.value)} placeholder="Para el comprobante…"/>
-              </Field>
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Nombre *">
+                  <Input value={cfNombre} onChange={e=>setCfNombre(e.target.value)} placeholder="Apellido y nombre…"/>
+                </Field>
+                <Field label="DNI *">
+                  <Input value={cfDni} onChange={e=>setCfDni(e.target.value.replace(/\D/g,''))} placeholder="12345678" maxLength={8}/>
+                </Field>
+              </div>
               <Field label="Teléfono (opcional)">
                 <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
               </Field>
