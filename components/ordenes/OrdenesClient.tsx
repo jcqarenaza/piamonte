@@ -460,7 +460,6 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                             style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
                         ) : (
                           <button onClick={async()=>{
-                            await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
                             const params = new URLSearchParams({
                               cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
                               items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
