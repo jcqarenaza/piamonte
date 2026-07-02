@@ -3,6 +3,7 @@ import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { buscarUnificado } from '@/lib/utils/buscarArticulos'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
@@ -116,25 +117,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
-    const palabras = stockQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
-
-    // Para cada palabra construimos un filtro ilike independiente y hacemos AND en JS
-    // Supabase no soporta AND de ilikes en una sola query, así que buscamos con la más
-    // restrictiva (la más larga) y filtramos las demás en JS con un limite amplio
-    const pLarga = palabras.reduce((a,b)=>b.length>a.length?b:a, palabras[0])
-    const resto   = palabras.filter(p=>p!==pLarga)
-    const filtrar = (items:any[], campos:string[]) =>
-      resto.length===0 ? items : items.filter(it=>{
-        const txt = campos.map(c=>it[c]||'').join(' ').toLowerCase()
-        return resto.every(p=>txt.includes(p))
-      })
-
-    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${pLarga}%`).limit(200)
-      .then(({data})=>setStockSugs(filtrar(data??[], ['descripcion']).slice(0,8)))
-    supabase.from('articulos_maestro').select('id,descripcion,sku_interno,codigo_referencia').eq('activo',true)
-      .or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`).limit(200)
-      .then(({data})=>setArticuloSugs(filtrar(data??[], ['descripcion','sku_interno','codigo_referencia']).slice(0,8)))
+    buscarUnificado(supabase, stockQ).then(resultados=>{
+      setStockSugs(resultados.filter(r=>r.fuente==='stock').slice(0,8))
+      // Combinar catálogo de precios + artículos_maestro en articuloSugs
+      setArticuloSugs([
+        ...resultados.filter(r=>r.fuente==='catalogo').slice(0,5),
+        ...resultados.filter(r=>r.fuente==='articulos_maestro').slice(0,5),
+      ])
+    })
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'

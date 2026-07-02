@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS } from '@/lib/utils/format'
+import { buscarUnificado } from '@/lib/utils/buscarArticulos'
 
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm   = { ...btn, padding:'6px 14px', fontSize:13 } as const

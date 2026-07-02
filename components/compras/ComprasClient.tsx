@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
+import { buscarUnificado } from '@/lib/utils/buscarArticulos'
 
 const IVA = 0.21
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -177,17 +178,14 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
-    const palabras = texto.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    const pLarga = palabras.reduce((a,b)=>b.length>a.length?b:a, palabras[0])
-    const resto   = palabras.filter(p=>p!==pLarga)
-    const { data } = await supabase.from('articulos_maestro')
-      .select('id,descripcion,sku_interno,codigo_referencia').eq('activo', true)
-      .or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`).limit(200)
-    const filtrado = resto.length===0 ? (data??[]) : (data??[]).filter((a:any) => {
-      const txt = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
-      return resto.every((p:string) => txt.includes(p))
-    })
-    setItemArticuloSugs(filtrado.slice(0, 8))
+    const resultados = await buscarUnificado(supabase, texto, 8)
+    // Preferimos catálogo (tiene precio) y artículos_maestro; stock no aplica acá (compra)
+    const dedup = new Map<string, any>()
+    for (const r of resultados) {
+      const key = r.descripcion.trim().toUpperCase()
+      if (!dedup.has(key)) dedup.set(key, r)
+    }
+    setItemArticuloSugs([...dedup.values()].slice(0, 8))
   }
 
   function elegirItemArticulo(a: any) {
