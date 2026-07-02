@@ -663,7 +663,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ? (c.tipo==='A'?'NOTA DE CRÉDITO A':c.tipo==='B'?'NOTA DE CRÉDITO B':c.tipo==='C'?'NOTA DE CRÉDITO C':'NOTA DE CRÉDITO')
       : (c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE')
     doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
-    doc.setFontSize(10); doc.text(`N° ${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
+    doc.setFontSize(10); doc.text(`N° 0006-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
     doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
     y=38
     if (c.categoria==='nc') {
@@ -831,7 +831,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
               <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                 <span className="font-mono text-[11px] font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full shrink-0">
-                  {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
+                  {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':'X')}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
                 </span>
                 <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:220}}>
                   {c.cliente_nombre||c.aseguradora_nombre||'Consumidor Final'}
@@ -1298,7 +1298,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="font-mono text-sm font-bold text-p-dark bg-p-light px-3 py-1 rounded-full">
-                {verComp.categoria==='nc'?'NC':(verComp.tipo==='A'?'FA':verComp.tipo==='B'?'FB':verComp.tipo==='C'?'FC':'X')}-{String(verComp.nro_cbte_afip ?? verComp.numero ?? 0).padStart(8,'0')}
+                {verComp.categoria==='nc'?'NC':(verComp.tipo==='A'?'FA':verComp.tipo==='B'?'FB':verComp.tipo==='C'?'FC':'X')}-0006-{String(verComp.nro_cbte_afip ?? verComp.numero ?? 0).padStart(8,'0')}
               </span>
               <span className="text-sm text-p-ink2">{verComp.fecha.split('-').reverse().join('/')}</span>
             </div>
