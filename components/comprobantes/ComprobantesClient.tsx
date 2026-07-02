@@ -680,11 +680,24 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       filas.push(['Aseguradora:', c.aseguradora_nombre || ''])
       if (c.cliente_nombre) filas.push(['Asegurado:', c.cliente_nombre])
       if ((c as any).siniestro) filas.push(['N° Siniestro:', (c as any).siniestro])
+      // CUIT de la aseguradora — requerido en Factura A para identificar al receptor RI
+      let cuitAseg = c.cliente_cuit || ''
+      if (!cuitAseg && c.aseguradora_id) {
+        const { data: aRow } = await supabase.from('aseguradoras').select('cuit,condicion_iva').eq('id', c.aseguradora_id).maybeSingle()
+        cuitAseg = aRow?.cuit || ''
+        if (cuitAseg) {
+          filas.push(['CUIT:', cuitAseg])
+          filas.push(['Cond. IVA:', aRow?.condicion_iva || 'Responsable Inscripto'])
+        }
+      } else if (cuitAseg) {
+        filas.push(['CUIT:', cuitAseg])
+        filas.push(['Cond. IVA:', 'Responsable Inscripto'])
+      }
     } else {
       filas.push(['Cliente:', c.cliente_nombre || 'Consumidor Final'])
     }
     if (c.cliente_telefono) filas.push(['Tel:', c.cliente_telefono])
-    if (c.cliente_cuit) { filas.push(['CUIT:', c.cliente_cuit]); filas.push(['Cond. IVA:', tipoFiscalLabel(c.cliente_tipo_fiscal)]) }
+    if (!esAseg && c.cliente_cuit) { filas.push(['CUIT:', c.cliente_cuit]); filas.push(['Cond. IVA:', tipoFiscalLabel(c.cliente_tipo_fiscal)]) }
     if (c.vehiculo) filas.push(['Vehículo:', c.vehiculo])
     if ((c as any).patente) filas.push(['Patente:', (c as any).patente])
 
