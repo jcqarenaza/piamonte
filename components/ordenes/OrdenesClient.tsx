@@ -31,7 +31,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente' })
+  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente', turno_id:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [filtroAseg, setFiltroAseg] = useState('')
   const [adjModal, setAdjModal]   = useState<any|null>(null)
@@ -60,8 +60,10 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   // Pre-cargar desde presupuesto
   useEffect(() => {
     const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
+    const pat = searchParams.get('pat'), turnoId = searchParams.get('turno_id')
     const itemsStr = searchParams.get('items')
-    if (cli || tel || veh) setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'' }))
+    if (cli || tel || veh) setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'' }))
+    if (turnoId) setForm(p => ({ ...p, turno_id: turnoId }))
     if (itemsStr) { try { setItems(JSON.parse(itemsStr)) } catch {} }
     if (cli || tel) setOpen(true)
   }, [searchParams])
@@ -137,7 +139,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     setForm({
       cli: o.cliente||'', tel: o.telefono||'', veh: o.vehiculo||'',
       pat: o.patente||'', aseg: o.aseguradora||'', sin: o.siniestro||'',
-      pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente'
+      pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente', turno_id: o.turno_id||''
     })
     setFormProd(o.productor_id||'')
     setItems(o.items||[])
@@ -183,7 +185,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       items, neto, iva_pct:IVA_RATE, iva, total,
       tiene_adas: conADAS, numero_adas, user_id: userId,
       productor_id: formProd || null,
-      stock_id: stockSel?.id || null,
+      turno_id: form.turno_id || null,
       estado: 'pendiente',
     })
     // Descontar stock si se seleccionó una pieza
@@ -192,7 +194,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     }
     }
 
-    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente'})
+    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
     setStockSel(null); setStockQ(''); setFormProd('')
     setLoading(false); load()
   }

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import type { Turno } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, Badge, Empty } from '@/components/ui'
 import { fmtFecha, todayStr } from '@/lib/utils/format'
@@ -41,6 +42,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
   const [pendientes, setPendientes] = useState<TurnoPendiente[]>([])
   const [sincronizando, setSincronizando] = useState(false)
   const supabase = createClient()
+  const router   = useRouter()
 
   const emptyForm = { cliente: '', telefono: '', vehiculo: '', patente: '', trabajo: '', fecha, hora: '', precio_acordado: '', notas: '', estado: 'pendiente' as Turno['estado'] }
   const [form, setForm] = useState(emptyForm)
@@ -320,6 +322,17 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 <button onClick={() => openEdit(t)}
                   style={{background:'#fff',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
                   ✏
+                </button>
+                {/* Generar OS desde este turno */}
+                <button onClick={()=>{
+                  const params = new URLSearchParams({
+                    cli: t.cliente||'', tel: t.telefono||'', veh: t.vehiculo||'',
+                    pat: t.patente||'', turno_id: t.id,
+                  })
+                  router.push(`/ordenes?${params.toString()}`)
+                }} style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:11,cursor:'pointer'}}
+                title="Generar Orden de Servicio desde este turno">
+                  📋 OS
                 </button>
                 <button onClick={() => del(t.id)}
                   style={{background:'#fff',color:'#ef4444',border:'1px solid #fecaca',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>

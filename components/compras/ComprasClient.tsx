@@ -1003,6 +1003,13 @@ export default function ComprasClient() {
                 {editandoItemIdx!==null ? '✓' : '+'}
               </button>
             </div>
+            {/* Botón rápido de flete */}
+            <div className="flex gap-2 mb-2">
+              <button onClick={()=>setItemForm(p=>({...p,d:'FLETE',c:'1',p:form.flete||'',dto:''}))}
+                style={{...btnSm,background:'#6b7280',fontSize:11,padding:'4px 10px'}}>
+                🚛 Cargar flete como ítem
+              </button>
+            </div>
             {itemArticuloSel ? (
               <p className="text-[11px] text-p-green font-semibold mb-2">✓ Vinculado al artículo del catálogo maestro ({itemArticuloSel.descripcion})</p>
             ) : itemForm.d.trim().length >= 2 ? (
