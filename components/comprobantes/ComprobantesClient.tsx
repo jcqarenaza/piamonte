@@ -76,7 +76,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
 
   const [showFiscal, setShowFiscal] = useState(false)
-  const [ivaOn, setIvaOn]       = useState(false)
+  // ivaOn eliminado — el IVA se discrimina automaticamente segun tipo_fiscal del cliente
   const [ivaNegroP, setIvaNegroP] = useState(75)
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', patente:'' }
@@ -85,6 +85,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [siniestro, setSiniestro] = useState('')
   const [cfNombre, setCfNombre] = useState('')
   const [cfTel, setCfTel]       = useState('')
+  const [cfDni, setCfDni]       = useState('')
   const [rubros, setRubros]           = useState<RubroPrecio[]>([])
   const [rubrosEdit, setRubrosEdit]   = useState<Record<string,number>>({})
   const [items, setItems]       = useState<ItemVenta[]>([])
@@ -125,9 +126,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const esNegro = rol === 'caja'
   const neto  = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
+  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro está incluido en el precio
+  const discriminaIva = !esNegro && fiscal.tipo_fiscal === 'responsable_inscripto'
   const iva   = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
-    : (ivaOn ? Math.round(neto*IVA*100) / 100 : 0)
+    : (discriminaIva ? Math.round(neto*IVA*100) / 100 : 0)
   const total = Math.round((neto + iva) * 100) / 100
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
@@ -182,7 +185,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       setOpen(true)
     }
     if(itm){ try { setItems(JSON.parse(itm)) } catch {} }
-    if(iva_&&+iva_>0) setIvaOn(true)
+    // ivaOn eliminado
     if(cli||tel||asegNombre) setOpen(true)
   },[searchParams])
 
@@ -509,7 +512,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
     cambiarModo('cf')
-    setFiscal(emptyFiscal); setObs(''); setIvaOn(false)
+    setFiscal(emptyFiscal); setObs('')
     setClienteAseg(''); setSiniestro('')
     setCfNombre(''); setCfTel('')
     router.push('/comprobantes')
@@ -1098,12 +1101,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </select>
                 </div>
               ) : (
-                <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Incluir IVA 21%
-                </label>
+                <p className="text-[11px] text-p-ink2 mt-2">
+                  {discriminaIva
+                    ? '📋 IVA 21% discriminado — cliente Responsable Inscripto (Factura A)'
+                    : '💰 IVA incluido en el precio — no discriminado en esta factura'}
+                </p>
               )}
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
-                {(ivaOn||esNegro)&&<div className="flex justify-between text-p-ink2"><span>Subtotal neto</span><span className="font-mono">{moneyARS(neto)}</span></div>}
+                {(discriminaIva||esNegro)&&<div className="flex justify-between text-p-ink2"><span>Subtotal neto</span><span className="font-mono">{moneyARS(neto)}</span></div>}
                 {iva>0&&<div className="flex justify-between text-p-ink2">
                   <span>{esNegro?`IVA 21% (sobre ${ivaNegroP}% declarado)`:'IVA 21%'}</span>
                   <span className="font-mono">{moneyARS(iva)}</span>
