@@ -384,7 +384,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-<script>window.print()<\/script>
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)
@@ -513,7 +513,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-<script>window.print()<\/script>
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)

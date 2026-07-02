@@ -329,8 +329,18 @@ export default function ArqueoClient({ esPiamonte = false }: { esPiamonte?: bool
                   </button>
                 </div>
               )}
-              {arqueo.estado === 'cerrado' && arqueo.notas && (
-                <p className="text-sm text-p-ink2 bg-p-light rounded-lg px-3 py-2">{arqueo.notas}</p>
+              {arqueo.estado === 'cerrado' && (
+                <div className="flex flex-col gap-3">
+                  {arqueo.notas && <p className="text-sm text-p-ink2 bg-p-light rounded-lg px-3 py-2">{arqueo.notas}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={async()=>{
+                      await supabase.from('arqueos_caja').update({estado:'abierto',cerrado_at:null}).eq('id',arqueo.id)
+                      cargarDia(fecha)
+                    }} style={{...btnSm,background:'#d97706'}}>
+                      ✏ Reabrir y editar
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

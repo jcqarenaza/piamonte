@@ -47,7 +47,7 @@ export default function CuentaCorrienteClient() {
   useEffect(()=>{ if(sel) loadMovs(sel.cliente_nombre) },[sel])
 
   async function registrarPago() {
-    if(!sel || !formPago.monto) return
+    if(!sel || !formPago.monto || +formPago.monto <= 0) return
     const monto = +formPago.monto
     const fechaPago = formPago.fecha || new Date().toISOString().slice(0,10)
     const { data: mov } = await supabase.from('cuenta_corriente').insert({

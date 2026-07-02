@@ -167,11 +167,12 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     const nextNum = (parseInt(String((nuevas?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     if(editId) {
-      await supabase.from('ordenes_servicio').update({
+      const { error: updErr } = await supabase.from('ordenes_servicio').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
         patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
-        poliza:form.pol||null, obs:form.obs||null, items, total, iva:ivaOn||null,
+        poliza:form.pol||null, obs:form.obs||null, items, total, iva:iva||null, neto,
       }).eq('id', editId)
+      if (updErr) { alert('Error al guardar: ' + updErr.message); return }
       setEditId(null)
     } else {
     await supabase.from('ordenes_servicio').insert({
