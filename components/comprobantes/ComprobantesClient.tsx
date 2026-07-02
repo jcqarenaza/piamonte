@@ -1103,7 +1103,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">Catálogo proveedores</p>
                       {articuloSugs.map((a:any)=>(
                         <button key={a.id} onClick={()=>{
-                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:0,articulo_id:null}])
+                          // Precio según tipo de cliente:
+                          // modo aseguradora → margen del tipo "Compañías" o precio_lista
+                          // modo cliente con tipo → margen del tipo asignado
+                          // resto → precio_lista o costo_neto
+                          const costo = a.costo_neto || 0
+                          let precio = a.precio_lista || costo
+                          if (modo === 'aseguradora') {
+                            const tipoComp = tipos.find((t:any) => t.nombre === 'Compañías')
+                            if (tipoComp?.margen_pct) precio = Math.round(costo * (1 + +tipoComp.margen_pct))
+                          } else if (modo === 'cliente') {
+                            const tipoSel = tipos.find((t:any) => t.id === fiscal.tipo_cliente_id)
+                            if (tipoSel?.margen_pct) precio = Math.round(costo * (1 + +tipoSel.margen_pct))
+                          }
+                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:precio,articulo_id:null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
                           <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
