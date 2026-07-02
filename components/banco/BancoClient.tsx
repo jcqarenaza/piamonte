@@ -230,37 +230,6 @@ export default function BancoClient() {
         )
       )}
 
-      {/* Modal cuenta */}
-      <Modal open={cuentaModal} onClose={()=>setCuentaModal(false)} title={editCuentaId?'Editar cuenta':'Nueva cuenta bancaria'}>
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Banco">
-              <select value={formCuenta.banco} onChange={e=>setFormCuenta(p=>({...p,banco:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
-                {BANCOS_ARG.map(b=><option key={b}>{b}</option>)}
-              </select>
-            </Field>
-            <Field label="Tipo">
-              <select value={formCuenta.tipo} onChange={e=>setFormCuenta(p=>({...p,tipo:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
-                {TIPOS_CUENTA.map(t=><option key={t}>{t}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Alias"><Input value={formCuenta.alias} onChange={e=>setFormCuenta(p=>({...p,alias:e.target.value}))} placeholder="ej: CC La Pampa"/></Field>
-            <Field label="N° de cuenta"><Input value={formCuenta.nro_cuenta} onChange={e=>setFormCuenta(p=>({...p,nro_cuenta:e.target.value}))} placeholder="Opcional"/></Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Saldo inicial ($)"><Input value={formCuenta.saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,saldo_inicial:e.target.value}))} placeholder="0"/></Field>
-            <Field label="Fecha saldo inicial"><Input type="date" value={formCuenta.fecha_saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,fecha_saldo_inicial:e.target.value}))}/></Field>
-          </div>
-          <p className="text-[11px] text-p-ink2">El saldo inicial es el que tenía la cuenta antes de empezar a cargar movimientos en el sistema.</p>
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={()=>setCuentaModal(false)} style={btnGray}>Cancelar</button>
-            <button onClick={guardarCuenta} style={btn}>Guardar</button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Modal movimiento manual */}
       <Modal open={movModal} onClose={()=>setMovModal(false)} title={editMovId?'Editar movimiento':'Movimiento manual'}>
         <div className="flex flex-col gap-3">
@@ -290,6 +259,37 @@ export default function BancoClient() {
       </Modal>
 
       </>)}
+
+      {/* Modal cuenta — siempre renderizado, independiente de si hay cuentas cargadas */}
+      <Modal open={cuentaModal} onClose={()=>setCuentaModal(false)} title={editCuentaId?'Editar cuenta':'Nueva cuenta bancaria'}>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Banco">
+              <select value={formCuenta.banco} onChange={e=>setFormCuenta(p=>({...p,banco:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+                {BANCOS_ARG.map(b=><option key={b}>{b}</option>)}
+              </select>
+            </Field>
+            <Field label="Tipo">
+              <select value={formCuenta.tipo} onChange={e=>setFormCuenta(p=>({...p,tipo:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+                {TIPOS_CUENTA.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Alias"><Input value={formCuenta.alias} onChange={e=>setFormCuenta(p=>({...p,alias:e.target.value}))} placeholder="ej: CC La Pampa"/></Field>
+            <Field label="N° de cuenta"><Input value={formCuenta.nro_cuenta} onChange={e=>setFormCuenta(p=>({...p,nro_cuenta:e.target.value}))} placeholder="Opcional"/></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Saldo inicial ($)"><Input value={formCuenta.saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,saldo_inicial:e.target.value}))} placeholder="0"/></Field>
+            <Field label="Fecha saldo inicial"><Input type="date" value={formCuenta.fecha_saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,fecha_saldo_inicial:e.target.value}))}/></Field>
+          </div>
+          <p className="text-[11px] text-p-ink2">El saldo inicial es el que tenía la cuenta antes de empezar a cargar movimientos en el sistema.</p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setCuentaModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={guardarCuenta} style={btn}>Guardar</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
