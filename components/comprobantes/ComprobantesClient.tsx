@@ -48,7 +48,7 @@ interface Comprobante {
   cliente_tipo_fiscal:string|null; tipo_cliente_nombre:string|null; vehiculo:string|null
   items:ItemVenta[]; neto:number; iva:number; total:number; pagos:Pago[]
   presupuesto_id:string|null; orden_id:string|null; created_at:string
-  aseguradora_nombre?:string|null; es_negro?:boolean
+  aseguradora_id?:string|null; aseguradora_nombre?:string|null; es_negro?:boolean
   patente?:string|null; siniestro?:string|null
   cae_emitido?:string|null; cae_vencimiento?:string|null
   categoria?:string; comprobante_original_id?:string|null; motivo_nc?:string|null
@@ -418,9 +418,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     try {
       const tipoCbte = tipoCbteOverride ?? TIPO_CBTE_AFIP[c.tipo]
       if (!tipoCbte) { setCaeLoading(null); return }
-      const cuitLimpio = (c.cliente_cuit||'').replace(/[^0-9]/g,'')
-      const docTipo = cuitLimpio.length === 11 ? 80 : 99
-      const docNro  = cuitLimpio.length === 11 ? cuitLimpio : '0'
+
+      // Para facturas a aseguradora, el CUIT receptor es el de la aseguradora (no el del asegurado)
+      let cuitReceptor = (c.cliente_cuit||'').replace(/[^0-9]/g,'')
+      if (!cuitReceptor && c.aseguradora_id) {
+        const { data: aseg } = await supabase.from('aseguradoras').select('cuit').eq('id', c.aseguradora_id).maybeSingle()
+        cuitReceptor = (aseg?.cuit||'').replace(/[^0-9]/g,'')
+      }
+
+      const docTipo = cuitReceptor.length === 11 ? 80 : 99
+      const docNro  = cuitReceptor.length === 11 ? cuitReceptor : '0'
+
+      // AFIP requiere CUIT (docTipo=80) para Factura A (tipo 1) — validamos antes de llamar
+      if ([1,51].includes(tipoCbte) && cuitReceptor.length !== 11) {
+        setToast('⚠ Para emitir Factura A necesitás cargar el CUIT del cliente o la aseguradora (11 dígitos)')
+        setTimeout(()=>setToast(''), 5000)
+        setCaeLoading(null); return
+      }
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
           comprobante_id: c.id, tipoCbte,
