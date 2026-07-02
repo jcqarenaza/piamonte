@@ -871,6 +871,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     {c.categoria!=='nc' && !saldadaPorNC && (
                       <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
                     )}
+                    {c.orden_id && (
+                      <button onClick={()=>router.push(`/ordenes?edit=${c.orden_id}`)}
+                        style={{...btnSm,background:'#6b7280'}}>✏ Editar OS</button>
+                    )}
                     <button onClick={()=>setVerComp(c)} style={btnSm}>👁 Ver detalle</button>
                     <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                     <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>

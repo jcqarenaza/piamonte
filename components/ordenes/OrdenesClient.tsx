@@ -61,11 +61,27 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   useEffect(() => {
     const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
     const pat = searchParams.get('pat'), turnoId = searchParams.get('turno_id')
+    const editOsId = searchParams.get('edit')
     const itemsStr = searchParams.get('items')
-    if (cli || tel || veh) setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'' }))
+    if (editOsId) {
+      // Abrir directamente en modo edición la OS indicada
+      supabase.from('ordenes_servicio').select('*').eq('id', editOsId).maybeSingle()
+        .then(({data}) => {
+          if (data) {
+            setEditId(data.id)
+            setForm({ cli:data.cliente||'', tel:data.telefono||'', veh:data.vehiculo||'',
+              pat:data.patente||'', aseg:data.aseguradora||'', sin:data.siniestro||'',
+              pol:data.poliza||'', obs:data.obs||'', estado:data.estado||'pendiente', turno_id:data.turno_id||'' })
+            setItems(data.items||[])
+            setOpen(true)
+          }
+        })
+    } else if (cli || tel || veh) {
+      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'' }))
+    }
     if (turnoId) setForm(p => ({ ...p, turno_id: turnoId }))
     if (itemsStr) { try { setItems(JSON.parse(itemsStr)) } catch {} }
-    if (cli || tel) setOpen(true)
+    if (!editOsId && (cli || tel)) setOpen(true)
   }, [searchParams])
 
   // Presupuestos del cliente al escribir su nombre
@@ -436,7 +452,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                   <span className="text-xs text-p-ink2 shrink-0">{[o.vehiculo,(o as any).patente].filter(Boolean).join(' · ')}</span>
                   <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
                   <div className="flex-1 min-w-[8px]"/>
-                  <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(o.total)}</p>
+                  <p className="font-saira font-bold text-p-ink shrink-0">{o.total > 0 ? moneyARS(o.total) : <span className="text-p-ink2 text-xs font-normal">Sin precio</span>}</p>
                 </div>
 
                 {expandido===o.id && (
