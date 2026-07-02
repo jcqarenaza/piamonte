@@ -178,14 +178,32 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
-    const resultados = await buscarUnificado(supabase, texto, 8)
-    // Preferimos catálogo (tiene precio) y artículos_maestro; stock no aplica acá (compra)
-    const dedup = new Map<string, any>()
-    for (const r of resultados) {
-      const key = r.descripcion.trim().toUpperCase()
-      if (!dedup.has(key)) dedup.set(key, r)
+
+    const POS_KW: Record<string,string> = {
+      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
+      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
     }
-    setItemArticuloSugs([...dedup.values()].slice(0, 8))
+    const words    = texto.trim().toUpperCase().split(/\s+/).filter(Boolean)
+    const posWord  = words.find(w => POS_KW[w])
+    const nonPosWs = words.filter(w => !POS_KW[w])
+    const mainWord = nonPosWs[0] || words[0]
+    const restWords = nonPosWs.slice(1)
+
+    let cQ = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto,pos,marca,codigo').order('proveedor').limit(100)
+    if (posWord && nonPosWs.length>0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
+    else if (posWord)                  cQ = cQ.eq('pos', POS_KW[posWord])
+    else                               cQ = cQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
+
+    const { data } = await cQ
+    const filtrado = (data??[]).filter((c:any) =>
+      restWords.every((w:string) =>
+        (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
+      )
+    )
+    const dedup = new Map<string,any>()
+    for(const c of filtrado){ const k=(c.descripcion||'').toUpperCase().trim(); if(!dedup.has(k)) dedup.set(k,c) }
+    setItemArticuloSugs([...dedup.values()].slice(0,8))
   }
 
   function elegirItemArticulo(a: any) {
@@ -963,7 +981,10 @@ export default function ComprasClient() {
                       <button key={a.id} type="button" onClick={()=>elegirItemArticulo(a)}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
                         <p className="font-medium text-p-ink">{a.descripcion}</p>
-                        <p className="text-[10px] font-mono text-p-ink2">{a.sku_interno}</p>
+                        <p className="text-[10px] font-mono text-p-ink2">
+                          {a.proveedor && <span className="font-bold">{a.proveedor} · </span>}
+                          {a.costo_neto ? moneyARS(a.costo_neto) : a.sku_interno || ''}
+                        </p>
                       </button>
                     ))}
                   </div>

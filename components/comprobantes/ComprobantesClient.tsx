@@ -117,13 +117,46 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
-    buscarUnificado(supabase, stockQ).then(resultados=>{
-      setStockSugs(resultados.filter(r=>r.fuente==='stock').slice(0,8))
-      // Combinar catálogo de precios + artículos_maestro en articuloSugs
-      setArticuloSugs([
-        ...resultados.filter(r=>r.fuente==='catalogo').slice(0,5),
-        ...resultados.filter(r=>r.fuente==='articulos_maestro').slice(0,5),
-      ])
+
+    // Misma lógica exacta que BuscarClient
+    const POS_KW: Record<string,string> = {
+      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
+      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
+    }
+    const words    = stockQ.trim().toUpperCase().split(/\s+/).filter(Boolean)
+    const posWord  = words.find(w => POS_KW[w])
+    const nonPosWs = words.filter(w => !POS_KW[w])
+    const mainWord = nonPosWs[0] || words[0]
+    const restWords = nonPosWs.slice(1)
+
+    const filtrar = (items:any[]) => items.filter((c:any) =>
+      restWords.every((w:string) =>
+        (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
+      )
+    )
+
+    // Stock
+    let sQ = supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0).limit(30)
+    if (posWord && nonPosWs.length>0) sQ = sQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
+    else if (posWord)                  sQ = sQ.eq('pos', POS_KW[posWord])
+    else                               sQ = sQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%`)
+
+    // Catálogo de proveedores (misma tabla que Buscar)
+    let cQ = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto,pos,marca,codigo').order('proveedor').limit(100)
+    if (posWord && nonPosWs.length>0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
+    else if (posWord)                  cQ = cQ.eq('pos', POS_KW[posWord])
+    else                               cQ = cQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
+
+    Promise.all([sQ, cQ]).then(([{data:sd},{data:cd}])=>{
+      setStockSugs(filtrar(sd??[]).slice(0,8))
+      // Deduplicar catálogo por descripción y mostrar en articuloSugs
+      const dedup = new Map<string,any>()
+      for(const c of filtrar(cd??[])){
+        const k = (c.descripcion||'').toUpperCase().trim()
+        if(!dedup.has(k)) dedup.set(k,c)
+      }
+      setArticuloSugs([...dedup.values()].slice(0,8))
     })
   },[stockQ,supabase])
 
@@ -1040,14 +1073,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   )}
                   {articuloSugs.length > 0 && (
                     <>
-                      <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">Solo catálogo — sin unidades en stock</p>
+                      <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1 border-t border-p-line2">Catálogo proveedores</p>
                       {articuloSugs.map((a:any)=>(
                         <button key={a.id} onClick={()=>{
-                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:0,articulo_id:a.id}])
+                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:0,articulo_id:null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
                           <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
-                          <p className="text-[10px] text-p-ink2">{a.sku_interno} · sin stock cargado — completá el precio a mano</p>
+                          <p className="text-[10px] text-p-ink2">
+                            {a.proveedor && <span className="font-bold">{a.proveedor}</span>}
+                            {a.costo_neto ? ` · costo ${moneyARS(a.costo_neto)}` : ' · completá el precio a mano'}
+                          </p>
                         </button>
                       ))}
                     </>
