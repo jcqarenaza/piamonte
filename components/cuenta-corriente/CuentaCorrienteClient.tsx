@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
+import CuentaCorrienteAseguradorasClient from '@/components/cuenta-corriente-aseguradoras/CuentaCorrienteAseguradorasClient'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 
@@ -15,6 +16,7 @@ interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:numb
 interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|null; debe:number; haber:number; saldo:number; notas:string|null; created_at:string }
 
 export default function CuentaCorrienteClient() {
+  const [tab, setTab] = useState<'clientes'|'aseguradoras'>('clientes')
   const [saldos, setSaldos]     = useState<Saldo[]>([])
   const [sel, setSel]           = useState<Saldo|null>(null)
   const [movs, setMovs]         = useState<Movimiento[]>([])
@@ -174,7 +176,22 @@ export default function CuentaCorrienteClient() {
   )
 
   return (
-    <div className="flex gap-4">
+    <div>
+      {/* Tabs */}
+      <div className="flex border-b border-p-line mb-5">
+        {([['clientes','👤 Clientes'],['aseguradoras','🏢 Aseguradoras']] as const).map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+            style={{padding:'8px 24px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',
+              borderBottom:tab===v?'3px solid #00A550':'3px solid transparent',
+              color:tab===v?'#00A550':'#6b7280'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==='aseguradoras' && <CuentaCorrienteAseguradorasClient />}
+
+      {tab==='clientes' && <div className="flex gap-4">
       {/* Lista de clientes con saldo */}
       <div className="flex-1 min-w-0">
         {/* KPIs */}
@@ -354,6 +371,7 @@ export default function CuentaCorrienteClient() {
           </div>
         </div>
       </Modal>
+    </div>}
     </div>
   )
 }
