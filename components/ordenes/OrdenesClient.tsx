@@ -34,6 +34,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente', turno_id:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [filtroAseg, setFiltroAseg] = useState('')
+  const [buscarNombre, setBuscarNombre] = useState('')
   const [adjModal, setAdjModal]   = useState<any|null>(null)
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
@@ -413,11 +414,11 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const aseguradorasEnUso = Array.from(new Set(ordenes.map(o => o.aseguradora).filter(Boolean))) as string[]
 
   // Órdenes filtradas
-  const ordenesFiltradas = filtroAseg === ''
-    ? ordenes
-    : filtroAseg === '__sin__'
-      ? ordenes.filter(o => !o.aseguradora)
-      : ordenes.filter(o => o.aseguradora === filtroAseg)
+  const ordenesFiltradas = ordenes.filter(o => {
+    const asegOk   = !filtroAseg || (filtroAseg === '__sin__' ? !o.aseguradora : o.aseguradora === filtroAseg)
+    const nombreOk = !buscarNombre.trim() || (o.cliente||'').toLowerCase().includes(buscarNombre.toLowerCase())
+    return asegOk && nombreOk
+  })
 
   return (
     <div>
@@ -435,17 +436,18 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       </div>
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
-        {/* Filtro por compañía */}
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-          <button
-            onClick={()=>setFiltroAseg('')}
-            style={{...btnSm, background: filtroAseg==='' ? '#00A550' : '#e5e7eb', color: filtroAseg==='' ? '#fff' : '#374151'}}>
+        {/* Filtro por compañía — todos los tabs del mismo ancho, tooltip con nombre completo */}
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+          <button onClick={()=>setFiltroAseg('')}
+            style={{...btnSm, width:140, background: filtroAseg==='' ? '#00A550' : '#e5e7eb', color: filtroAseg==='' ? '#fff' : '#374151'}}>
             Todas
           </button>
           {aseguradorasEnUso.map(a=>(
-            <button key={a}
-              onClick={()=>setFiltroAseg(filtroAseg===a ? '' : a)}
-              style={{...btnSm, background: filtroAseg===a ? '#00A550' : '#e5e7eb', color: filtroAseg===a ? '#fff' : '#374151'}}>
+            <button key={a} onClick={()=>setFiltroAseg(filtroAseg===a ? '' : a)}
+              title={a}
+              style={{...btnSm, width:140, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis',
+                background: filtroAseg===a ? '#00A550' : '#e5e7eb',
+                color: filtroAseg===a ? '#fff' : '#374151'}}>
               {a}
             </button>
           ))}
@@ -454,22 +456,26 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
             return (o as any).estado===filtroEstado
           }).some(o=>!o.aseguradora) && (
-            <button
-              onClick={()=>setFiltroAseg('__sin__')}
-              style={{...btnSm, background: filtroAseg==='__sin__' ? '#6b7280' : '#e5e7eb', color: filtroAseg==='__sin__' ? '#fff' : '#374151'}}>
+            <button onClick={()=>setFiltroAseg('__sin__')}
+              style={{...btnSm, width:140, background: filtroAseg==='__sin__' ? '#6b7280' : '#e5e7eb', color: filtroAseg==='__sin__' ? '#fff' : '#374151'}}>
               Sin seguro
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <input value={buscarNombre} onChange={e=>setBuscarNombre(e.target.value)}
+            placeholder="Buscar por nombre de cliente…"
+            className="flex-1 border border-p-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+          {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
         <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>
       </div>
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
-          {ordenes.filter(o=>{
+          {ordenesFiltradas.filter(o=>{
             const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? ((o as any).estado==='realizado' && !(o as any).convertido_comp) : (o as any).estado===filtroEstado
-            const asegOk = !filtroAseg||o.aseguradora===filtroAseg
-            return estadoOk && asegOk
+            return estadoOk
           }).map(o => {
             const conADAS = (o as any).tiene_adas
             const numADAS = (o as any).numero_adas
