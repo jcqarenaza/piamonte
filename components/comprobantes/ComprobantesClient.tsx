@@ -587,6 +587,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setFiscal(emptyFiscal); setObs('')
     setClienteAseg(''); setSiniestro('')
     setCfNombre(''); setCfTel(''); setCfDni('')
+    const volverAOS = oidParam
+    setOidParam(null)
+    if (volverAOS) { router.push('/ordenes'); return }
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
     setComps(data??[])

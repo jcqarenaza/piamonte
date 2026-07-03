@@ -483,7 +483,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             return (
               <div key={o.id}
                 onClick={()=>setExpandido(e=>e===o.id?null:o.id)}
-                onDoubleClick={()=>openEdit(o)} title="Click para opciones · doble click para editar"
+                onDoubleClick={()=>{ if(!(o as any).convertido_comp) openEdit(o) }} title="Click para opciones · doble click para editar (solo sin facturar)"
                 className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${conADAS?'bg-blue-100 text-blue-700':'bg-p-light text-p-dark'}`}>
@@ -509,7 +509,9 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                       <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                         📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
                       </button>
-                      <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      {!(o as any).convertido_comp && (
+                        <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      )}
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
                       <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
                         style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
