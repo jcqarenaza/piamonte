@@ -198,7 +198,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
         .ilike('nombre', asegNombre).maybeSingle()
-        .then(({data}) => { if (data) { setAseg(data as AseguradoraMin); setAsegQ(data.nombre) } })
+        .then(({data}) => { if (data) selectAseguradora(data as AseguradoraMin) })
       setFiscal(p=>({...p, vehiculo:veh||'', patente:pat||'' }))
       setClienteAseg(cli||'')
       setSiniestro(sinNro||'')
