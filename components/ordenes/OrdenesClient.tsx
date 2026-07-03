@@ -1,6 +1,7 @@
 'use client'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
+import FacturarOSModal from './FacturarOSModal'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -39,6 +40,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
+  const [facturandoOS, setFacturandoOS] = useState<any|null>(null)
   const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
   const [presCli, setPresCli]   = useState<any[]>([])
   const [productores, setProductores] = useState<any[]>([])
@@ -531,13 +533,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                             style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
                         ) : (
                           <button onClick={async()=>{
-                            const params = new URLSearchParams({
-                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
-                              items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
-                              ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
-                              ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
-                            })
-                            router.push(`/comprobantes?${params.toString()}`)
+                            setFacturandoOS(o)
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
@@ -823,6 +819,13 @@ export default function OrdenesClient({ userId }: { userId: string }) {
         </div>
       </Modal>
 
+      {facturandoOS && (
+        <FacturarOSModal
+          os={facturandoOS}
+          onClose={()=>setFacturandoOS(null)}
+          onFacturado={()=>{ setFacturandoOS(null); load() }}
+        />
+      )}
     </div>
   )
 }
