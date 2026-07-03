@@ -836,15 +836,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       )}
 
       {/* Cuando venimos de una OS: mostrar solo el modal de factura, sin la lista */}
-      {oidParam && !open && (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <p className="text-p-ink2 text-sm">Preparando factura desde OS…</p>
-          <button onClick={()=>router.push('/ordenes')}
-            style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-            ← Volver a Órdenes
-          </button>
-        </div>
-      )}
+      {oidParam && !open && null}
 
       {!oidParam && <>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
