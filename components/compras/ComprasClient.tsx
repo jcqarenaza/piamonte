@@ -112,20 +112,22 @@ export default function ComprasClient() {
   const supabase = createClient()
 
   // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
-  // El precio efectivo de cada ítem ya aplica su descuento individual (dto %)
-  const netoItems = items.reduce((a,it) => {
+  // El flete no lleva descuento del proveedor — se excluye de la base de descuento
+  const itemsSinFlete = items.filter(it => it.d.trim().toUpperCase() !== 'FLETE')
+  const itemsFlete    = items.filter(it => it.d.trim().toUpperCase() === 'FLETE')
+  const netoItems = itemsSinFlete.reduce((a,it) => {
     const bruto = it.c * it.p
     const desc  = it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0
     return a + bruto - desc
   }, 0)
-  // Descuento total por ítem (para mostrar en el resumen)
-  const descuentoItemsTotal = items.reduce((a,it) => {
+  const netoFlete = itemsFlete.reduce((a,it) => a + it.c * it.p, 0)
+  const descuentoItemsTotal = itemsSinFlete.reduce((a,it) => {
     const bruto = it.c * it.p
     return a + (it.dto ? Math.round(bruto * it.dto * 100) / 10000 : 0)
   }, 0)
   const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
   const descuentoMonto = Math.round(netoItems * descuentoPct * 100) / 10000
-  const netoConDescuento = netoItems - descuentoMonto
+  const netoConDescuento = netoItems - descuentoMonto + netoFlete
   const iva   = ivaOn ? Math.round(netoConDescuento*IVA*100)/100 : 0
   const flete = parseFloat(form.flete.replace(',','.')) || 0
   const retIva = parseFloat(form.ret_iva.replace(',','.')) || 0
@@ -993,6 +995,7 @@ export default function ComprasClient() {
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
                       <p className="font-medium text-p-ink">{a.descripcion}</p>
                       <p className="text-[10px] font-mono text-p-ink2">
+                        {a.codigo && <span className="bg-p-light px-1 rounded mr-1 font-bold">{a.codigo}</span>}
                         {a.proveedor && <span className="font-bold">{a.proveedor} · </span>}
                         {a.costo_neto ? moneyARS(a.costo_neto) : ''}
                       </p>
