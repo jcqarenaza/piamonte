@@ -159,6 +159,24 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     })
     setFormProd(o.productor_id||'')
     setItems(o.items||[])
+    // Si tiene comprobante vinculado, completar datos que puedan faltar en la OS con los del comprobante
+    if (o.convertido_comp) {
+      supabase.from('comprobantes').select('cliente_nombre,cliente_telefono,vehiculo,patente,siniestro,aseguradora_nombre')
+        .eq('orden_id', o.id).maybeSingle()
+        .then(({data: comp}) => {
+          if (comp) {
+            setForm(p => ({
+              ...p,
+              cli: p.cli || comp.cliente_nombre || '',
+              tel: p.tel || comp.cliente_telefono || '',
+              veh: p.veh || (comp as any).vehiculo || '',
+              pat: p.pat || (comp as any).patente || '',
+              sin: p.sin || (comp as any).siniestro || '',
+              aseg: p.aseg || comp.aseguradora_nombre || '',
+            }))
+          }
+        })
+    }
     setOpen(true)
   }
 
@@ -510,7 +528,12 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
-                      <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                      {!(o as any).convertido_comp && (
+                        <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                      )}
+                      {(o as any).convertido_comp && (
+                        <span className="text-[10px] text-p-ink2 bg-green-50 border border-green-200 rounded-lg px-2 py-1">🔒 Facturada</span>
+                      )}
                     </div>
                   </div>
                 )}

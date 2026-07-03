@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
 import { LOGO_BASE64 } from '@/lib/logo'
@@ -23,6 +24,7 @@ export default function CuentaCorrienteClient() {
   const [chequeCobro, setChequeCobro] = useState<ChequeData>(EMPTY_CHEQUE)
   const [loading, setLoading]   = useState(true)
   const supabase = createClient()
+  const router   = useRouter()
 
   async function load() {
     setLoading(true)
@@ -255,6 +257,24 @@ export default function CuentaCorrienteClient() {
                 💵 Registrar pago
               </button>
             )}
+            <button onClick={()=>{
+              const params = new URLSearchParams({
+                cli: sel.cliente_nombre,
+                ...(sel.cliente_id ? {tel:''} : {}),
+              })
+              // Buscar el teléfono del cliente para pre-cargarlo
+              supabase.from('clientes').select('telefono,tipo_cliente_id').eq('id', sel.cliente_id||'').maybeSingle()
+                .then(({data})=>{
+                  const p = new URLSearchParams({
+                    cli: sel.cliente_nombre,
+                    ...(data?.telefono ? {tel: data.telefono} : {}),
+                    ...(data?.tipo_cliente_id ? {tipo_id: data.tipo_cliente_id} : {}),
+                  })
+                  router.push(`/comprobantes?${p.toString()}`)
+                })
+            }} style={{...btn,marginTop:8,width:'100%',textAlign:'center',background:'#1d4ed8'}}>
+              🧾 Nueva factura
+            </button>
           </div>
 
           {/* Movimientos */}

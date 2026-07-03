@@ -40,6 +40,7 @@ export default function ArticulosClient() {
   const [q, setQ] = useState('')
   const [filtroFaltante, setFiltroFaltante] = useState<string>('') // proveedor que falta
   const [loading, setLoading] = useState(false)
+  const [catalogFallback, setCatalogFallback] = useState(false)
   const supabase = createClient()
 
   const [editModal, setEditModal] = useState<Articulo|null>(null)
@@ -138,6 +139,36 @@ export default function ArticulosClient() {
         const texto = `${a.descripcion} ${a.sku_interno||''} ${a.codigo_referencia||''}`.toLowerCase()
         return restoP.every((p:string) => texto.includes(p))
       })
+    }
+
+    // Si no hay resultados en articulos_maestro, buscar en el catálogo de proveedores
+    if (arr.length === 0 && pLarga && tab !== 'pendientes') {
+      const POS_KW: Record<string,string> = {
+        'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
+        'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA','CUSTODIA':'CUSTODIA','ALETA':'ALETA',
+      }
+      const words    = q.trim().toUpperCase().split(/\s+/).filter(Boolean)
+      const posWord  = words.find(w => POS_KW[w])
+      const nonPosWs = words.filter(w => !POS_KW[w])
+      const mainWord = nonPosWs[0] || words[0]
+      const restWords = nonPosWs.slice(1)
+      let catQ = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto,pos').limit(100)
+      if (posWord && nonPosWs.length > 0) catQ = catQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
+      else catQ = catQ.ilike('descripcion', `%${mainWord}%`)
+      const { data: catData } = await catQ
+      const catFiltrado = (catData??[]).filter((c:any) =>
+        restWords.every(w => (c.descripcion||'').toUpperCase().includes(w))
+      )
+      // Deduplicar y mapear al formato de articulo para mostrar
+      const dedup = new Map<string,any>()
+      for (const c of catFiltrado) {
+        const k = (c.descripcion||'').toUpperCase().trim()
+        if (!dedup.has(k)) dedup.set(k, { id: c.id, descripcion: c.descripcion, sku_interno: c.proveedor, equivalencias: [], _delCatalogo: true, costo_neto: c.costo_neto })
+      }
+      arr = [...dedup.values()].slice(0, 50)
+      if (arr.length > 0) setCatalogFallback(true)
+    } else {
+      setCatalogFallback(false)
     }
 
     if (tab === 'pendientes') {
@@ -318,6 +349,11 @@ export default function ArticulosClient() {
         <span className="text-sm text-p-ink2">{articulos.length} artículos{tab==='todos' && ` · ${totalConTodos} completos`}</span>
       </div>
 
+      {catalogFallback && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 mb-3 text-xs text-amber-700">
+          📦 Sin resultados en artículos maestro — mostrando del <strong>catálogo de proveedores</strong>. Estos artículos no tienen equivalencias cargadas aún.
+        </div>
+      )}
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
        articulos.length === 0 ? <Empty msg={tab==='pendientes' ? '¡Sin pendientes! Todos los artículos activos tienen al menos un proveedor asociado.' : 'Sin artículos.'} /> : (
         <div className="flex flex-col gap-2">

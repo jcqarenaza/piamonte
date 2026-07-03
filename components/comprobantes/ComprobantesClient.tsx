@@ -776,8 +776,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`Comprobante-${c.numero}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
+  // Los comprobantes NO se pueden borrar. Una factura genera NC, una NC genera ND.
+  // Si tiene CAE es un documento fiscal irreversible ante AFIP.
+  // Esta función solo existe para comprobantes de prueba sin CAE (uso interno).
   async function del(id:string){
-    if(!confirm('¿Borrar comprobante?'))return
+    const comp = comps.find(c=>c.id===id)
+    if (comp?.cae_emitido) {
+      alert('Este comprobante tiene CAE y no puede eliminarse. Para anularlo emití una Nota de Crédito.')
+      return
+    }
+    if(!confirm('⚠ Este comprobante no tiene CAE.\n¿Seguro que querés eliminarlo? Esta acción es irreversible.'))return
     await supabase.from('comprobantes').delete().eq('id',id)
     setComps(prev=>prev.filter(c=>c.id!==id))
   }
@@ -880,7 +888,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     )}
                     <button onClick={()=>setVerComp(c)} style={btnSm}>👁 Ver detalle</button>
                     <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
-                    <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
+                    {!c.cae_emitido && (
+                      <button onClick={()=>del(c.id)} style={btnRed}>Borrar</button>
+                    )}
                   </div>
                 </div>
               )}
