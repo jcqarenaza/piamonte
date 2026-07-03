@@ -93,9 +93,8 @@ export default function ClientesClient({ userId }: { userId:string }) {
     setLoadingHist(false)
   }
 
-  function irAFacturar(os?: Historial['ordenes'][0]) {
-    if (!selected) return
-    const params = new URLSearchParams({ cli: selected.nombre, tel: selected.telefono||'' })
+  function irAFacturar(c: Cliente, os?: Historial['ordenes'][0]) {
+    const params = new URLSearchParams({ cli: c.nombre, tel: c.telefono||'' })
     if (os) {
       params.set('oid', os.id)
       params.set('veh', os.vehiculo||'')
@@ -161,7 +160,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 {c.tiene_cuenta_corriente && <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-2 py-0.5 rounded-full shrink-0">📒 CC</span>}
                 {c.telefono && <span className="text-xs text-p-ink2 shrink-0 hidden md:inline">{c.telefono}</span>}
                 <div className="flex gap-1.5 ml-auto shrink-0" onClick={e=>e.stopPropagation()}>
-                  <button onClick={()=>irAFacturar()} style={btnBlue}>🧾 Factura</button>
+                  <button onClick={()=>irAFacturar(c)} style={btnBlue}>🧾 Factura</button>
                   <button onClick={()=>{ setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }} style={btnGray}>✏</button>
                   <button onClick={()=>del(c.id)} style={{...btnGray,background:'#ef4444'}}>✕</button>
                 </div>
@@ -172,11 +171,6 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 <div className="border border-p-green rounded-b-xl border-t-0 bg-p-light/20 px-4 py-3">
                   {loadingHist ? <p className="text-sm text-center py-4 text-p-gray">Cargando historial…</p> : historial ? (
                     <div className="flex flex-col gap-4">
-
-                      {/* Botón facturar sin OS */}
-                      <div className="flex gap-2 flex-wrap">
-                        <button onClick={()=>irAFacturar()} style={btn}>🧾 Nueva factura directa</button>
-                      </div>
 
                       {/* OS pendientes de facturar */}
                       {historial.ordenes.filter(o=>!o.convertido_comp && o.total > 0).length > 0 && (
@@ -189,7 +183,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                                 <span className="font-mono text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
                                 <span className="flex-1 text-p-ink text-sm truncate">{o.aseguradora||o.vehiculo||'—'}</span>
                                 <span className="font-mono text-xs font-bold text-p-green shrink-0">{moneyARS(o.total)}</span>
-                                <button onClick={()=>irAFacturar(o)} style={{...btnBlue,fontSize:11,padding:'4px 10px'}}>🧾 Facturar esta OS</button>
+                                <button onClick={()=>irAFacturar(c, o)} style={{...btnBlue,fontSize:11,padding:'4px 10px'}}>🧾 Facturar esta OS</button>
                               </div>
                             ))}
                           </div>
