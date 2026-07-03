@@ -193,12 +193,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const piezaDesc = searchParams.get('pieza_desc')
     const piezaPrecio = searchParams.get('pieza_precio')
     if (asegNombre) {
-      // Factura a la aseguradora, pero el desglose necesita igual los datos del cliente real
-      // (auto, patente) — antes se perdían porque este branch ignoraba cli/veh/pat.
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
-        .ilike('nombre', asegNombre).maybeSingle()
-        .then(({data}) => { if (data) selectAseguradora(data as AseguradoraMin) })
+        .ilike('nombre', `%${asegNombre}%`).limit(1)
+        .then(({data}) => { if (data?.[0]) selectAseguradora(data[0] as AseguradoraMin) })
       setFiscal(p=>({...p, vehiculo:veh||'', patente:pat||'' }))
       setClienteAseg(cli||'')
       setSiniestro(sinNro||'')
@@ -208,9 +206,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if (tel) {
         supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
           .eq('telefono', tel).maybeSingle()
-          .then(({data}) => {
-            if (data) { setCli(data as ClienteMin); setCliQ(data.nombre) }
-            else if (cli) buscarOPedirAltaCliente(cli, tel)
+          .then(async ({data}) => {
+            if (data) await selectCliente(data as ClienteMin)  // ← selectCliente completo
+            else if (cli) await buscarOPedirAltaCliente(cli, tel)
           })
       } else if (cli) {
         buscarOPedirAltaCliente(cli, tel)
