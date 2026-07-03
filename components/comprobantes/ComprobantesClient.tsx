@@ -227,14 +227,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(cliQ.trim().length < 2){ setCliSugs([]); return }
     supabase.from('clientes').select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
-      .then(({data})=>setCliSugs((data??[]) as ClienteMin[]))
+      .then(async ({data})=>{
+        const lista = (data??[]) as ClienteMin[]
+        // Auto-seleccionar si hay exactamente 1 resultado o coincidencia exacta de nombre
+        const exacto = lista.find(c=>c.nombre.toLowerCase()===cliQ.trim().toLowerCase())
+        if (exacto) { await selectCliente(exacto); setCliSugs([]); return }
+        if (lista.length === 1) { await selectCliente(lista[0]); setCliSugs([]); return }
+        setCliSugs(lista)
+      })
   },[cliQ,supabase])
 
   useEffect(()=>{
     if(asegQ.trim().length < 2){ setAsegSugs([]); return }
     supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
       .ilike('nombre', `%${asegQ}%`).limit(8)
-      .then(({data})=>setAsegSugs((data??[]) as AseguradoraMin[]))
+      .then(async ({data})=>{
+        const lista = (data??[]) as AseguradoraMin[]
+        const exacto = lista.find(a=>a.nombre.toLowerCase()===asegQ.trim().toLowerCase())
+        if (exacto) { selectAseguradora(exacto); setAsegSugs([]); return }
+        if (lista.length === 1) { selectAseguradora(lista[0]); setAsegSugs([]); return }
+        setAsegSugs(lista)
+      })
   },[asegQ,supabase])
 
   // Al convertir un Presupuesto/OS, el nombre del cliente puede no estar cargado todavía como
