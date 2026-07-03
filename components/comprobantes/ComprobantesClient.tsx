@@ -193,7 +193,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const piezaDesc = searchParams.get('pieza_desc')
     const piezaPrecio = searchParams.get('pieza_precio')
     const oidUrl = searchParams.get('oid')
-    if (oidUrl) setOidParam(oidUrl)
+    if (oidUrl) { setOidParam(oidUrl); setOpen(true) }
     if (asegNombre) {
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')

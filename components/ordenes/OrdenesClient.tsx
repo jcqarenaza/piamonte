@@ -532,8 +532,14 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                           <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
                             style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
                         ) : (
-                          <button onClick={async()=>{
-                            setFacturandoOS(o)
+                          <button onClick={()=>{
+                            const params = new URLSearchParams({
+                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
+                              items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                              ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
+                              ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
+                            })
+                            router.push(`/comprobantes?${params.toString()}`)
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
