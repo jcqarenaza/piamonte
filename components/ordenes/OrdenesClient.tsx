@@ -209,7 +209,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       const { error: updErr } = await supabase.from('ordenes_servicio').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
         patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
-        poliza:form.pol||null, obs:form.obs||null, items, total, iva:iva||null, neto,
+        poliza:form.pol||null, obs:form.obs||null, items, total, iva: iva ?? 0, neto: neto ?? 0,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
       // Descontar el nuevo stock (los ítems que tienen stock_id)
@@ -226,7 +226,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
       aseguradora: form.aseg||null, siniestro: form.sin||null, poliza: form.pol||null,
       cliente: form.cli||null, telefono: form.tel||null, vehiculo: form.veh||null,
       patente: form.pat||null, obs: form.obs||null,
-      items, neto, iva_pct:IVA_RATE, iva, total,
+      items, neto: neto ?? 0, iva_pct:IVA_RATE, iva: iva ?? 0, total: total ?? 0,
       tiene_adas: conADAS, numero_adas, user_id: userId,
       productor_id: formProd || null,
       turno_id: form.turno_id || null,
