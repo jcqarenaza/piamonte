@@ -182,7 +182,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
   }
 
   async function save() {
-    if(!items.length) return
+    if(!form.cli && !form.aseg) { alert('Completá al menos el nombre del cliente o la aseguradora'); return }
     if(!form.aseg) { alert('La aseguradora es obligatoria en una Orden de Servicio.'); return }
     setLoading(true)
     const conADAS = tieneADAS(items)
