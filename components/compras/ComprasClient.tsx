@@ -253,6 +253,18 @@ export default function ComprasClient() {
   async function save(esContado: boolean = false, pagoContado?: {forma_pago:string; monto:string; fecha:string}) {
     if (!items.length && total === 0) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
+
+    // Validar duplicado: mismo proveedor + letra + punto_venta + número
+    if (form.tipo==='factura' && form.proveedor_id && form.numero && form.punto_venta) {
+      const { data: dup } = await supabase.from('comprobantes_compra')
+        .select('id,fecha').eq('proveedor_id', form.proveedor_id)
+        .eq('letra', form.letra||'A').eq('punto_venta', form.punto_venta).eq('numero', form.numero)
+        .maybeSingle()
+      if (dup) {
+        alert(`⚠ Ya existe una factura ${form.letra} ${form.punto_venta}-${form.numero} de este proveedor (cargada el ${dup.fecha.split('-').reverse().join('/')}). No se puede duplicar.`)
+        return
+      }
+    }
     // Si la factura está vinculada a un remito ya recibido, ese remito ya sumó el stock —
     // la factura no debe volver a tocarlo, solo queda de respaldo fiscal.
     const tieneRemitoVinculado = form.tipo==='factura' && !!form.remito_vinculado_id
