@@ -244,13 +244,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // hay match, abrimos directo "+ Nuevo cliente" con los datos ya completos para no trabar el flujo.
   async function buscarOPedirAltaCliente(nombre: string, telefono?: string|null) {
     setCliQ(nombre)
+    // Buscar por nombre (ilike) o por teléfono limpio
+    const telLimpio = (telefono||'').replace(/[^0-9]/g,'').slice(-8) // últimos 8 dígitos
     const { data } = await supabase.from('clientes')
       .select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
-      .or(`nombre.ilike.%${nombre}%${telefono?`,telefono.eq.${telefono}`:''}`)
-      .limit(1)
-    const match = (data ?? [])[0]
+      .ilike('nombre', `%${nombre}%`)
+      .limit(5)
+    // Preferir coincidencia exacta de nombre, luego por teléfono
+    const exacto = (data??[]).find(c => c.nombre.toLowerCase() === nombre.toLowerCase())
+    const porTel  = telLimpio ? (data??[]).find(c => (c.telefono||'').replace(/[^0-9]/g,'').endsWith(telLimpio)) : null
+    const match   = exacto || porTel || (data??[])[0]
     if (match) {
-      // Auto-seleccionar con todos los datos (tipo fiscal, CUIT, tipo cliente)
       await selectCliente(match as ClienteMin)
     } else {
       setNuevoCliOpen(true)
