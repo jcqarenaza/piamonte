@@ -491,8 +491,13 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                   </span>
                   <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:180}}>{o.cliente||'(sin nombre)'}</p>
                   {(o as any).estado && (o as any).estado !== 'pendiente' && (
-                    <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,background:(o as any).estado==='realizado'?'#dcfce7':'#dbeafe',color:(o as any).estado==='realizado'?'#16a34a':'#1d4ed8'}}>
-                      {(o as any).estado==='realizado'?'✅ Realizado':'🧾 Facturada'}
+                    <span style={{
+                      fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99,
+                      background: (o as any).convertido_comp ? '#f0fdf4' : (o as any).estado==='realizado' ? '#dcfce7' : '#dbeafe',
+                      color: (o as any).convertido_comp ? '#15803d' : (o as any).estado==='realizado' ? '#16a34a' : '#1d4ed8',
+                      border: (o as any).convertido_comp ? '1px solid #86efac' : 'none'
+                    }}>
+                      {(o as any).convertido_comp ? '🧾 Facturado' : (o as any).estado==='realizado' ? '✅ Realizado' : '🧾 Facturada'}
                     </span>
                   )}
                   <span className="text-xs text-p-ink2 shrink-0">{[o.vehiculo,(o as any).patente].filter(Boolean).join(' · ')}</span>
