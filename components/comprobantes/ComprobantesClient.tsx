@@ -246,10 +246,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setCliQ(nombre)
     const { data } = await supabase.from('clientes')
       .select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id')
-      .ilike('nombre', nombre).limit(1)
+      .or(`nombre.ilike.%${nombre}%${telefono?`,telefono.eq.${telefono}`:''}`)
+      .limit(1)
     const match = (data ?? [])[0]
     if (match) {
-      setCli(match as ClienteMin); setCliQ(match.nombre)
+      // Auto-seleccionar con todos los datos (tipo fiscal, CUIT, tipo cliente)
+      await selectCliente(match as ClienteMin)
     } else {
       setNuevoCliOpen(true)
       setNuevoCliForm(p => ({ ...p, nombre, telefono: telefono || p.telefono }))

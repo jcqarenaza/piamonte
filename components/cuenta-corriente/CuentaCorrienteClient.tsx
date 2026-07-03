@@ -169,7 +169,7 @@ export default function CuentaCorrienteClient() {
   const totalDeuda = saldos.reduce((a,s)=>a+Math.max(0,s.saldo_actual),0)
   const conSaldo   = saldos.filter(s=>s.saldo_actual>0).length
   const filtrados  = saldos.filter(s=>
-    s.saldo_actual !== 0 && // ocultar saldados
+    Math.abs(s.saldo_actual) >= 1 && // ocultar saldos de centavos por redondeo
     (!q || s.cliente_nombre.toLowerCase().includes(q.toLowerCase()))
   )
 
