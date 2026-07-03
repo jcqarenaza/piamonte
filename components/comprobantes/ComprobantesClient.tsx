@@ -105,6 +105,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [uploading, setUploading] = useState(false)
   const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
+  const [oidParam, setOidParam] = useState<string|null>(null)
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')
   const [obs, setObs]           = useState('')
@@ -188,10 +189,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const tipoId = searchParams.get('tipo_id')
     const asegNombre = searchParams.get('aseguradora')
     const sinNro = searchParams.get('siniestro')
-    // Llega desde Precios — viene con el id del artículo del catálogo maestro elegido
     const piezaId = searchParams.get('pieza_id')
     const piezaDesc = searchParams.get('pieza_desc')
     const piezaPrecio = searchParams.get('pieza_precio')
+    const oidUrl = searchParams.get('oid')
+    if (oidUrl) setOidParam(oidUrl)
     if (asegNombre) {
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
@@ -1072,7 +1074,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </div>
           )}
 
-          {historialCli && (historialCli.presupuestos.length > 0 || historialCli.ordenes.length > 0) && (
+          {historialCli && !oidParam && (historialCli.presupuestos.length > 0 || historialCli.ordenes.length > 0) && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
               <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">
                 📋 {modo==='aseguradora' ? 'OS pendientes de facturar' : 'Presupuestos pendientes de este cliente'}
