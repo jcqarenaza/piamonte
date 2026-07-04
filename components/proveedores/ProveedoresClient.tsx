@@ -117,6 +117,8 @@ async function parseEuroglass(file:File): Promise<CatRow[]> {
   }
   return items
 }
+
+async function parseSekurit(file:File): Promise<CatRow[]> {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['LP']

@@ -978,7 +978,8 @@ export default function ComprasClient() {
 
             {/* Buscador igual que en Comprobantes */}
             <div className="relative mb-2">
-              <Input ref={searchRef} value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Buscar pieza (catálogo o descripción libre)…"/>
+              <input ref={searchRef} value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Buscar pieza (catálogo o descripción libre)…"
+                className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white"/>
               {itemArticuloSugs.length > 0 && (
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                   {itemArticuloSugs.map((a:any) => (
