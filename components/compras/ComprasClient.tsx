@@ -181,6 +181,18 @@ export default function ComprasClient() {
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
 
+    // Si no tiene espacios y tiene 6+ chars, buscar como código de proveedor primero
+    const esCodigoDirecto = texto.trim().length >= 4 && !/\s/.test(texto.trim())
+    if (esCodigoDirecto) {
+      const { data: porCodigo } = await supabase.from('catalogo')
+        .select('id,descripcion,proveedor,costo_neto,pos,marca,codigo')
+        .ilike('codigo', `%${texto.trim()}%`).order('proveedor').limit(10)
+      if (porCodigo && porCodigo.length > 0) {
+        setItemArticuloSugs(porCodigo)
+        return
+      }
+    }
+
     const POS_KW: Record<string,string> = {
       'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
       'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
