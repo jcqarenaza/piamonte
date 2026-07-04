@@ -186,7 +186,9 @@ export default function ComprasClient() {
 
   function elegirItemArticulo(a: any) {
     setItemArticuloSel(a)
-    setItemForm(p => ({ ...p, d: a.descripcion }))
+    // Pre-cargar el costo_neto del catálogo como precio base (el usuario lo puede cambiar)
+    const precioBase = a.precio_venta || a.costo_neto || ''
+    setItemForm(p => ({ ...p, d: a.descripcion, p: precioBase ? String(precioBase) : p.p }))
     setItemArticuloSugs([])
   }
 
