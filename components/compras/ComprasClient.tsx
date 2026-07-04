@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
@@ -105,9 +105,13 @@ export default function ComprasClient() {
   const [items, setItems] = useState<Item[]>([])
   const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'', dto:'' })
   const [editandoItemIdx, setEditandoItemIdx] = useState<number|null>(null)
-  // Artículo del catálogo maestro elegido para el ítem que se está cargando — igual patrón que Stock
   const [itemArticuloSel, setItemArticuloSel] = useState<{id:string;descripcion:string}|null>(null)
   const [itemArticuloSugs, setItemArticuloSugs] = useState<any[]>([])
+  const searchRef = useRef<HTMLInputElement>(null) // para auto-focus tras agregar ítem
+  // Overrides manuales para subtotal, descuento, IVA (manejo de diferencias de redondeo)
+  const [ovSubtotal, setOvSubtotal] = useState<string>('')
+  const [ovDescuento, setOvDescuento] = useState<string>('')
+  const [ovIva, setOvIva] = useState<string>('')
 
   const supabase = createClient()
 
@@ -127,8 +131,14 @@ export default function ComprasClient() {
   }, 0)
   const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
   const descuentoMonto = Math.round(netoItems * descuentoPct * 100) / 10000
-  const netoConDescuento = netoItems - descuentoMonto + netoFlete
-  const iva   = ivaOn ? Math.round(netoConDescuento*IVA*100)/100 : 0
+  const calcSubtotal = netoItems - descuentoMonto + netoFlete
+  const calcDescuento = descuentoMonto
+  const calcIva = ivaOn ? Math.round(calcSubtotal * IVA * 100) / 100 : 0
+  // Valores finales: override manual si el usuario lo editó, sino el calculado
+  const finalSubtotal  = ovSubtotal  !== '' ? parseFloat(ovSubtotal.replace(',','.'))  || calcSubtotal  : calcSubtotal
+  const finalDescuento = ovDescuento !== '' ? parseFloat(ovDescuento.replace(',','.')) || calcDescuento : calcDescuento
+  const finalIva       = ovIva       !== '' ? parseFloat(ovIva.replace(',','.'))       || calcIva       : calcIva
+  const iva = finalIva
   const flete = parseFloat(form.flete.replace(',','.')) || 0
   const retIva = parseFloat(form.ret_iva.replace(',','.')) || 0
   const retGanancias = parseFloat(form.ret_ganancias.replace(',','.')) || 0
@@ -136,8 +146,8 @@ export default function ComprasClient() {
   const totalRetenciones = retIva + retGanancias + retIibb
   const [ajusteManual, setAjusteManual] = useState('')
   const ajuste = parseFloat(ajusteManual.replace(',','.')) || 0
-  const neto  = netoConDescuento
-  const total = Math.round((netoConDescuento + iva + flete - totalRetenciones + ajuste) * 100) / 100
+  const neto  = finalSubtotal
+  const total = Math.round((finalSubtotal + finalIva + flete - totalRetenciones + ajuste) * 100) / 100
 
   const loadProveedores = useCallback(async () => {
     const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit,descuento_pct').eq('activo',true).order('nombre')
@@ -186,8 +196,8 @@ export default function ComprasClient() {
 
   function elegirItemArticulo(a: any) {
     setItemArticuloSel(a)
-    // Pre-cargar el costo_neto del catálogo como precio base (el usuario lo puede cambiar)
-    const precioBase = a.precio_venta || a.costo_neto || ''
+    // Pre-cargar el precio de LISTA del catálogo (sin descuento) — el descuento se aplica por separado
+    const precioBase = a.precio_lista || a.costo_neto || ''
     setItemForm(p => ({ ...p, d: a.descripcion, p: precioBase ? String(precioBase) : p.p }))
     setItemArticuloSugs([])
   }
@@ -204,10 +214,13 @@ export default function ComprasClient() {
     } else {
       setItems(prev=>[...prev, nuevoItemData])
     }
-    // Mantener el dto del proveedor para el próximo ítem, no borrarlo
     setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}))
     setItemArticuloSel(null)
     setItemArticuloSugs([])
+    // Limpiar overrides cuando se agrega un ítem (los totales calculados cambian)
+    setOvSubtotal(''); setOvDescuento(''); setOvIva('')
+    // Auto-focus en el buscador para cargar el siguiente ítem sin usar el mouse
+    setTimeout(() => searchRef.current?.focus(), 50)
   }
 
   async function guardarProveedor() {
@@ -965,7 +978,7 @@ export default function ComprasClient() {
 
             {/* Buscador igual que en Comprobantes */}
             <div className="relative mb-2">
-              <Input value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Buscar pieza (catálogo o descripción libre)…"/>
+              <Input ref={searchRef} value={itemForm.d} onChange={e=>buscarItemArticulo(e.target.value)} placeholder="Buscar pieza (catálogo o descripción libre)…"/>
               {itemArticuloSugs.length > 0 && (
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                   {itemArticuloSugs.map((a:any) => (
@@ -1026,7 +1039,10 @@ export default function ComprasClient() {
                     −{it.dto}% ✕
                   </span>
                 ) : null}
-                <span className="font-mono font-bold text-p-green shrink-0 w-24 text-right">{moneyARS(neto)}</span>
+                <div className="shrink-0 text-right">
+                  <div className="text-[9px] text-p-ink2 mb-0.5">total línea</div>
+                  <span className="font-mono font-bold text-p-green">{moneyARS(neto)}</span>
+                </div>
                 <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
               </div>
             )})}
@@ -1051,18 +1067,54 @@ export default function ComprasClient() {
             {descuentoItemsTotal > 0 && (
               <div className="flex justify-between text-xs text-p-ink2"><span>Bruto ítems (antes de dto por ítem)</span><span className="font-mono">{moneyARS(items.reduce((a,it)=>a+it.c*it.p,0))}</span></div>
             )}
-            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
-            {descuentoItemsTotal > 0 && (
-              <div className="flex justify-between text-xs text-green-600"><span>Descuento por ítem aplicado</span><span className="font-mono">−{moneyARS(descuentoItemsTotal)}</span></div>
+            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems+netoFlete)}</span></div>
+
+            {/* Descuento editable */}
+            {(descuentoMonto > 0 || ovDescuento !== '') && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-red-600">Descuento ({descuentoPct}%)</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-p-ink2">−$</span>
+                  <input type="number" value={ovDescuento !== '' ? ovDescuento : calcDescuento.toFixed(2)}
+                    onChange={e=>setOvDescuento(e.target.value)}
+                    onFocus={e=>{ if(ovDescuento==='') setOvDescuento(calcDescuento.toFixed(2)); e.target.select() }}
+                    className="w-32 border border-red-300 rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-red-500"/>
+                  {ovDescuento !== '' && <button onClick={()=>setOvDescuento('')} className="text-[10px] text-p-ink2 hover:text-p-ink">↩</button>}
+                </div>
+              </div>
             )}
-            {descuentoMonto > 0 && (
-              <div className="flex justify-between text-sm text-red-600"><span>Descuento adicional ({descuentoPct}%)</span><span className="font-mono">−{moneyARS(descuentoMonto)}</span></div>
-            )}
+
+            {/* Subtotal neto editable */}
+            <div className="flex items-center justify-between gap-2 border-t border-p-line pt-1">
+              <span className="text-sm font-semibold text-p-ink">Subtotal neto</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-p-ink2">$</span>
+                <input type="number" value={ovSubtotal !== '' ? ovSubtotal : calcSubtotal.toFixed(2)}
+                  onChange={e=>setOvSubtotal(e.target.value)}
+                  onFocus={e=>{ if(ovSubtotal==='') setOvSubtotal(calcSubtotal.toFixed(2)); e.target.select() }}
+                  className="w-36 border border-p-line rounded px-2 py-0.5 text-sm font-mono text-right focus:outline-none focus:border-p-green"/>
+                {ovSubtotal !== '' && <button onClick={()=>setOvSubtotal('')} className="text-[10px] text-p-ink2 hover:text-p-ink">↩</button>}
+              </div>
+            </div>
+
+            {/* IVA editable */}
             <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
-              <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>
+              <input type="checkbox" checked={ivaOn} onChange={e=>{setIvaOn(e.target.checked);setOvIva('')}} className="accent-p-green"/>
               Incluir IVA 21%
             </label>
-            {ivaOn && <div className="flex justify-between text-sm text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
+            {ivaOn && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-p-ink2">IVA 21%</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-p-ink2">$</span>
+                  <input type="number" value={ovIva !== '' ? ovIva : calcIva.toFixed(2)}
+                    onChange={e=>setOvIva(e.target.value)}
+                    onFocus={e=>{ if(ovIva==='') setOvIva(calcIva.toFixed(2)); e.target.select() }}
+                    className="w-36 border border-p-line rounded px-2 py-0.5 text-sm font-mono text-right focus:outline-none focus:border-p-green"/>
+                  {ovIva !== '' && <button onClick={()=>setOvIva('')} className="text-[10px] text-p-ink2 hover:text-p-ink">↩</button>}
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-p-line my-1"/>
 
