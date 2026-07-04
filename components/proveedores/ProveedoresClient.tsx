@@ -298,12 +298,47 @@ export default function ProveedoresClient() {
   const [loading, setLoading]   = useState(false)
   const [progress, setProgress] = useState('')
   const [result, setResult]     = useState<{ok:boolean;msg:string}|null>(null)
+  // Tab activo: 'importar' | 'precios'
+  const [mainTab, setMainTab]   = useState<'importar'|'precios'>('importar')
+  // Vista de precios por proveedor
+  const [provFiltro, setProvFiltro] = useState('MALATESTA')
+  const [catItems, setCatItems] = useState<any[]>([])
+  const [catQ, setCatQ]         = useState('')
+  const [catLoading, setCatLoading] = useState(false)
+  const [editPrecio, setEditPrecio] = useState<{id:string; lista:string; costo:string}|null>(null)
   const supabase = createClient()
 
   useEffect(() => {
     supabase.from('listas_precio').select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct')
       .order('proveedor').then(({ data }) => setListas(data ?? []))
   }, [supabase])
+
+  async function cargarPrecios() {
+    setCatLoading(true)
+    let q = supabase.from('catalogo').select('id,codigo,descripcion,precio_lista,costo_neto,pos,marca')
+      .ilike('proveedor', provFiltro).order('descripcion').limit(500)
+    if (catQ.trim().length >= 2) {
+      const esCode = !/\s/.test(catQ.trim())
+      if (esCode) q = q.ilike('codigo', `%${catQ}%`)
+      else q = q.ilike('descripcion', `%${catQ}%`)
+    }
+    const { data } = await q
+    setCatItems(data ?? [])
+    setCatLoading(false)
+  }
+
+  async function guardarPrecio(id: string) {
+    if (!editPrecio) return
+    await supabase.from('catalogo').update({
+      precio_lista: parseFloat(editPrecio.lista.replace(',','.')) || null,
+      costo_neto:   parseFloat(editPrecio.costo.replace(',','.')) || null,
+    }).eq('id', id)
+    setCatItems(prev => prev.map(c => c.id===id ? { ...c,
+      precio_lista: parseFloat(editPrecio.lista.replace(',','.')),
+      costo_neto:   parseFloat(editPrecio.costo.replace(',','.')),
+    } : c))
+    setEditPrecio(null)
+  }
 
   async function saveEdit(id:string) {
     setSaving(true)
@@ -372,7 +407,77 @@ export default function ProveedoresClient() {
   const fmt = FORMATOS.find(f=>f.id===formato)!
 
   return (
-    <div style={{ maxWidth:560 }}>
+    <div>
+      {/* Tabs principales */}
+      <div className="flex border-b border-p-line mb-6">
+        {([['importar','📥 Importar listas'],['precios','💰 Precios por proveedor']] as const).map(([v,l])=>(
+          <button key={v} onClick={()=>setMainTab(v)}
+            style={{padding:'8px 24px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',
+              borderBottom:mainTab===v?'3px solid #00A550':'3px solid transparent',
+              color:mainTab===v?'#00A550':'#6b7280'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB: Precios por proveedor */}
+      {mainTab === 'precios' && (
+        <div>
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <select value={provFiltro} onChange={e=>{setProvFiltro(e.target.value);setCatItems([])}}
+              className="border border-p-line rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+              {['MALATESTA','GAMMA','SEKURIT','EUROGLASS'].map(p=><option key={p}>{p}</option>)}
+            </select>
+            <input value={catQ} onChange={e=>setCatQ(e.target.value)}
+              placeholder="Buscar código o descripción…" onKeyDown={e=>e.key==='Enter'&&cargarPrecios()}
+              className="flex-1 min-w-[180px] border border-p-line rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-p-green"/>
+            <button onClick={cargarPrecios} disabled={catLoading}
+              className="bg-p-green text-white font-bold text-sm px-5 py-2 rounded-xl cursor-pointer border-none">
+              {catLoading ? 'Cargando…' : 'Ver precios'}
+            </button>
+          </div>
+
+          {catItems.length > 0 && (
+            <div className="bg-white border border-p-line rounded-xl overflow-hidden">
+              <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line"
+                style={{gridTemplateColumns:'80px 1fr 130px 130px 80px'}}>
+                <span>Código</span><span>Descripción</span>
+                <span className="text-right">Precio lista</span>
+                <span className="text-right">Costo neto</span>
+                <span></span>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto">
+                {catItems.map(c=>(
+                  <div key={c.id} className="grid items-center px-4 py-2 border-b border-p-line2 hover:bg-p-light/50"
+                    style={{gridTemplateColumns:'80px 1fr 130px 130px 80px'}}>
+                    <span className="text-xs font-mono text-p-ink2 truncate">{c.codigo||'—'}</span>
+                    <span className="text-sm text-p-ink truncate pr-2">{c.descripcion}</span>
+                    {editPrecio?.id === c.id ? (<>
+                      <input value={editPrecio?.lista||''} onChange={e=>setEditPrecio(p=>p?{...p,lista:e.target.value}:p)}
+                        className="border border-p-green rounded px-2 py-1 text-xs font-mono text-right focus:outline-none"/>
+                      <input value={editPrecio?.costo||''} onChange={e=>setEditPrecio(p=>p?{...p,costo:e.target.value}:p)}
+                        className="border border-p-green rounded px-2 py-1 text-xs font-mono text-right focus:outline-none"/>
+                      <div className="flex gap-1">
+                        <button onClick={()=>guardarPrecio(c.id)} className="text-[10px] bg-p-green text-white rounded px-2 py-1 border-none cursor-pointer">✓</button>
+                        <button onClick={()=>setEditPrecio(null)} className="text-[10px] text-p-gray cursor-pointer">✕</button>
+                      </div>
+                    </>) : (<>
+                      <span className="text-sm font-mono text-right">{c.precio_lista ? `$${Number(c.precio_lista).toLocaleString('es-AR')}` : '—'}</span>
+                      <span className="text-sm font-mono text-right text-p-green">{c.costo_neto ? `$${Number(c.costo_neto).toLocaleString('es-AR')}` : '—'}</span>
+                      <button onClick={()=>setEditPrecio({id:c.id,lista:String(c.precio_lista||''),costo:String(c.costo_neto||'')})}
+                        className="text-[11px] text-p-ink2 hover:text-p-ink cursor-pointer bg-transparent border-none">✏ Editar</button>
+                    </>)}
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2 text-xs text-p-ink2 bg-p-light">{catItems.length} artículos · {provFiltro}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: Importar listas */}
+      {mainTab === 'importar' && <div style={{ maxWidth:560 }}>
 
       {/* Descuentos */}
       <h2 style={{ fontFamily:'var(--font-saira)',fontWeight:700,fontSize:16,marginBottom:12 }}>
@@ -454,6 +559,7 @@ export default function ProveedoresClient() {
           {result.msg}
         </div>
       )}
+      </div>}
     </div>
   )
 }

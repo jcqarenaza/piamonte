@@ -33,9 +33,9 @@ export interface ResultadoCatalogo {
 export async function buscarCatalogo(
   supabase: SupabaseClient,
   query: string,
-  opts: { incluirStock?: boolean; limit?: number } = {}
+  opts: { incluirStock?: boolean; limit?: number; proveedor?: string } = {}
 ): Promise<ResultadoCatalogo[]> {
-  const { incluirStock = true, limit = 8 } = opts
+  const { incluirStock = true, limit = 8, proveedor } = opts
   const q = query.trim()
   if (q.length < 2) return []
 
@@ -43,9 +43,12 @@ export async function buscarCatalogo(
 
   // --- Búsqueda por código ---
   if (esCodigoDirecto) {
-    const { data: porCodigo } = await supabase.from('catalogo')
-      .select('id,descripcion,codigo,proveedor,costo_neto,pos,marca')
-      .ilike('codigo', `%${q}%`).order('proveedor').limit(limit * 3)
+    let q = supabase.from('catalogo')
+      .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
+      .ilike('codigo', `%${query.trim()}%`)
+    if (proveedor) q = q.ilike('proveedor', proveedor)
+    q = q.order('proveedor').limit(limit * 3)
+    const { data: porCodigo } = await q
 
     if (porCodigo && porCodigo.length > 0) {
       // Deduplicar por descripción (misma pieza de distintos proveedores)
@@ -102,7 +105,8 @@ export async function buscarCatalogo(
   }
 
   // Catálogo
-  let cQ = supabase.from('catalogo').select('id,descripcion,codigo,proveedor,costo_neto,pos,marca').limit(150)
+  let cQ = supabase.from('catalogo').select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca').limit(150)
+  if (proveedor) cQ = cQ.ilike('proveedor', proveedor)
   if (posWord && nonPosWs.length > 0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
   else if (posWord)                    cQ = cQ.eq('pos', POS_KW[posWord])
   else                                 cQ = cQ.or(`descripcion.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)

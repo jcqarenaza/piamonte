@@ -190,7 +190,8 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
-    const resultados = await buscarCatalogo(supabase, texto, { incluirStock: false, limit: 8 })
+    const provNombre = proveedores.find(p=>p.id===form.proveedor_id)?.nombre || undefined
+    const resultados = await buscarCatalogo(supabase, texto, { incluirStock: false, limit: 8, proveedor: provNombre })
     setItemArticuloSugs(resultados)
   }
 
@@ -310,6 +311,48 @@ export default function ComprasClient() {
     }
     setOpen(false)
     setFormaPagoModal(false)
+
+    // Actualizar costo en stock/catálogo para los ítems de la factura
+    // costo = precio_lista × (1 - dto%) — lo que realmente pagamos
+    if (form.tipo === 'factura') {
+      const alertas: string[] = []
+      for (const it of items) {
+        if (it.d.trim().toUpperCase() === 'FLETE') continue
+        const dtoPct = (it.dto ?? descuentoPct) / 100
+        const costoNuevo = Math.round(it.p * (1 - dtoPct))
+        if (!costoNuevo) continue
+
+        // Buscar stock por código o descripción similar
+        const codigo = (it as any).codigo || null
+        let stockMatch: any = null
+        if (codigo) {
+          const { data } = await supabase.from('stock').select('id,costo,descripcion').eq('codigo', codigo).maybeSingle()
+          stockMatch = data
+        }
+        if (!stockMatch) {
+          const { data } = await supabase.from('stock')
+            .select('id,costo,descripcion').ilike('descripcion', `%${it.d.slice(0,20).trim()}%`).limit(1).maybeSingle()
+          stockMatch = data
+        }
+
+        if (stockMatch) {
+          // Alerta si difiere más del 5%
+          if (stockMatch.costo && Math.abs(costoNuevo - stockMatch.costo) / stockMatch.costo > 0.05) {
+            alertas.push(`${it.d.slice(0,40)}: costo anterior $${Math.round(stockMatch.costo).toLocaleString('es-AR')} → nuevo $${costoNuevo.toLocaleString('es-AR')}`)
+          }
+          await supabase.from('stock').update({ costo: costoNuevo }).eq('id', stockMatch.id)
+        }
+
+        // También actualizar catalogo.costo_neto si hay código
+        if (codigo) {
+          await supabase.from('catalogo').update({ costo_neto: costoNuevo }).eq('codigo', codigo)
+        }
+      }
+      if (alertas.length > 0) {
+        alert(`⚠ Diferencia de precio en ${alertas.length} artículo(s):\n\n${alertas.join('\n')}\n\nSe actualizó el costo. Si hay error, reclamá al proveedor.`)
+      }
+    }
+
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
       proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
       descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'', forma_pago:'cuenta_corriente'})
