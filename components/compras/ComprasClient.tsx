@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
+import { buscarCatalogo } from '@/lib/utils/buscarCatalogo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
-import { buscarUnificado } from '@/lib/utils/buscarArticulos'
 
 const IVA = 0.21
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -180,44 +180,8 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
-
-    // Si no tiene espacios y tiene 6+ chars, buscar como código de proveedor primero
-    const esCodigoDirecto = texto.trim().length >= 4 && !/\s/.test(texto.trim())
-    if (esCodigoDirecto) {
-      const { data: porCodigo } = await supabase.from('catalogo')
-        .select('id,descripcion,proveedor,costo_neto,pos,marca,codigo')
-        .ilike('codigo', `%${texto.trim()}%`).order('proveedor').limit(10)
-      if (porCodigo && porCodigo.length > 0) {
-        setItemArticuloSugs(porCodigo)
-        return
-      }
-    }
-
-    const POS_KW: Record<string,string> = {
-      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
-      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
-      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
-    }
-    const words    = texto.trim().toUpperCase().split(/\s+/).filter(Boolean)
-    const posWord  = words.find(w => POS_KW[w])
-    const nonPosWs = words.filter(w => !POS_KW[w])
-    const mainWord = nonPosWs[0] || words[0]
-    const restWords = nonPosWs.slice(1)
-
-    let cQ = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto,pos,marca,codigo').order('proveedor').limit(100)
-    if (posWord && nonPosWs.length>0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
-    else if (posWord)                  cQ = cQ.eq('pos', POS_KW[posWord])
-    else                               cQ = cQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
-
-    const { data } = await cQ
-    const filtrado = (data??[]).filter((c:any) =>
-      restWords.every((w:string) =>
-        (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
-      )
-    )
-    const dedup = new Map<string,any>()
-    for(const c of filtrado){ const k=(c.descripcion||'').toUpperCase().trim(); if(!dedup.has(k)) dedup.set(k,c) }
-    setItemArticuloSugs([...dedup.values()].slice(0,8))
+    const resultados = await buscarCatalogo(supabase, texto, { incluirStock: false, limit: 8 })
+    setItemArticuloSugs(resultados)
   }
 
   function elegirItemArticulo(a: any) {

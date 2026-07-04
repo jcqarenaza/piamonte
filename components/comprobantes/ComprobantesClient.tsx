@@ -3,7 +3,7 @@ import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { buscarUnificado } from '@/lib/utils/buscarArticulos'
+import { buscarCatalogo } from '@/lib/utils/buscarCatalogo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
@@ -118,46 +118,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
-
-    // Misma lógica exacta que BuscarClient
-    const POS_KW: Record<string,string> = {
-      'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
-      'LUNETA':'LUNETA','TECHO':'TECHO','PUERTA':'PUERTA',
-      'CUSTODIA':'CUSTODIA','ALETA':'ALETA',
-    }
-    const words    = stockQ.trim().toUpperCase().split(/\s+/).filter(Boolean)
-    const posWord  = words.find(w => POS_KW[w])
-    const nonPosWs = words.filter(w => !POS_KW[w])
-    const mainWord = nonPosWs[0] || words[0]
-    const restWords = nonPosWs.slice(1)
-
-    const filtrar = (items:any[]) => items.filter((c:any) =>
-      restWords.every((w:string) =>
-        (c.descripcion||'').toUpperCase().includes(w) || (c.marca||'').toUpperCase().includes(w)
-      )
-    )
-
-    // Stock
-    let sQ = supabase.from('stock').select('id,descripcion,cantidad,precio_venta,costo,articulo_id').eq('activo',true).gt('cantidad',0).limit(30)
-    if (posWord && nonPosWs.length>0) sQ = sQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
-    else if (posWord)                  sQ = sQ.eq('pos', POS_KW[posWord])
-    else                               sQ = sQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%`)
-
-    // Catálogo de proveedores (misma tabla que Buscar)
-    let cQ = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto,pos,marca,codigo').order('proveedor').limit(100)
-    if (posWord && nonPosWs.length>0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion',`%${mainWord}%`)
-    else if (posWord)                  cQ = cQ.eq('pos', POS_KW[posWord])
-    else                               cQ = cQ.or(`descripcion.ilike.%${mainWord}%,marca.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
-
-    Promise.all([sQ, cQ]).then(([{data:sd},{data:cd}])=>{
-      setStockSugs(filtrar(sd??[]).slice(0,8))
-      // Deduplicar catálogo por descripción y mostrar en articuloSugs
-      const dedup = new Map<string,any>()
-      for(const c of filtrar(cd??[])){
-        const k = (c.descripcion||'').toUpperCase().trim()
-        if(!dedup.has(k)) dedup.set(k,c)
-      }
-      setArticuloSugs([...dedup.values()].slice(0,8))
+    buscarCatalogo(supabase, stockQ, { incluirStock: true, limit: 8 }).then(resultados=>{
+      setStockSugs(resultados.filter(r=>r.stock_id).slice(0,6))
+      setArticuloSugs(resultados.filter(r=>!r.stock_id).slice(0,8))
     })
   },[stockQ,supabase])
 
