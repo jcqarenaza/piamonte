@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx'
 const FORMATOS = [
   { id: 'gamma',        label: 'GAMMA — Catálogo',               ext: '.xlsx', tipo: 'excel' },
   { id: 'malatesta',   label: 'Malatesta — Catálogo',            ext: '.xlsx', tipo: 'excel' },
+  { id: 'euroglass',   label: 'Euroglass — Oferta',              ext: '.xlsx', tipo: 'excel' },
   { id: 'sekurit',     label: 'Sekurit — Lista disponible',      ext: '.xlsx', tipo: 'excel' },
   { id: 'promo_ar',    label: 'Promo Alta Rotación 68%',         ext: '.xlsx', tipo: 'excel' },
   { id: 'promo_bg',    label: 'Promo Bajo Giro 68%',             ext: '.xlsx', tipo: 'excel' },
@@ -92,7 +93,30 @@ async function parseMalateseta(file:File): Promise<CatRow[]> {
   return items
 }
 
-async function parseSekurit(file:File): Promise<CatRow[]> {
+async function parseEuroglass(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array', cellFormula:false, cellNF:false })
+  // Buscar la hoja que tenga datos (cualquier nombre)
+  const wsName = wb.SheetNames[0]
+  const ws = wb.Sheets[wsName]
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
+  const items:CatRow[] = []
+  // Fila 0: headers de parámetros (IVA, FLETE, GANANCIA...)
+  // Fila 1: valores de parámetros
+  // Fila 2: encabezados columnas (Descripción, Pilk/Mix, Euroglass...)
+  // Fila 3+: datos
+  for (const r of rows.slice(3)) {
+    const desc = String(r[0]??'').trim()
+    const pricePilk = toNum(r[1])   // Col B: precio Pilkington/Mix
+    const priceEG   = toNum(r[2])   // Col C: precio Euroglass
+    if (!desc || (!pricePilk && !priceEG)) continue
+    // Cargar con el precio más bajo disponible como costo_neto
+    const costo = priceEG > 0 ? priceEG : pricePilk
+    const lista  = pricePilk > 0 ? pricePilk : priceEG
+    items.push(mkRow('EUROGLASS', '', desc, 'EUROGLASS', lista, costo))
+  }
+  return items
+}
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['LP']
@@ -298,6 +322,7 @@ export default function ProveedoresClient() {
       let items:CatRow[] = []
       if(formato==='gamma')         items = await parseGamma(file)
       else if(formato==='malatesta')items = await parseMalateseta(file)
+      else if(formato==='euroglass') items = await parseEuroglass(file)
       else if(formato==='sekurit')  items = await parseSekurit(file)
       else if(formato==='promo_ar'||formato==='promo_bg') items = await parsePromo(file)
       else if(formato==='oferta_gamma') items = await parsePdfGamma(file)
