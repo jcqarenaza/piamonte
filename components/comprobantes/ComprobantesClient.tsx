@@ -1,7 +1,7 @@
 'use client'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { buscarCatalogo } from '@/lib/utils/buscarCatalogo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
@@ -94,6 +94,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // reposición y SKU); si la pieza ya está en stock con cantidad disponible, también se ofrece
   // para descontar directamente. Mismo criterio que ya usan Stock y Compras.
   const [stockQ, setStockQ]     = useState('')
+  const stockSearchRef = useRef<HTMLInputElement>(null)
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
@@ -1090,7 +1091,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
             <div className="relative">
-              <Input value={stockQ} onChange={e=>setStockQ(e.target.value)} placeholder={items.length>0?"+ Agregar otra pieza, servicio o rubro…":"Buscar pieza (stock o catálogo)…"}/>
+              <input ref={stockSearchRef} value={stockQ} onChange={e=>setStockQ(e.target.value)}
+                placeholder={items.length>0?"+ Agregar otra pieza, servicio o rubro…":"Buscar pieza (stock o catálogo)…"}
+                className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white"/>
               {(stockSugs.length>0 || articuloSugs.length>0 || rubrosSugs.length>0) &&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
                   {stockSugs.length > 0 && (
@@ -1130,6 +1133,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                           }
                           setItems(prev=>[...prev,{d:a.descripcion,c:1,p:precio,articulo_id:null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
+                          setTimeout(()=>stockSearchRef.current?.focus(), 50)
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
                           <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
                           <p className="text-[10px] text-p-ink2">
@@ -1170,22 +1174,25 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <div className="border-t border-p-line2 pt-2">
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
               {items.map((it,i)=>(
-                <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
+                <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2">
                   {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
+                  {it.stock_id&&<span className="text-[10px] text-blue-500 font-bold shrink-0">📦</span>}
                   <span className="flex-1 text-p-ink min-w-0 text-sm break-words">{it.d}</span>
-                  {it.stock_id&&<span className="text-[10px] text-p-green font-bold shrink-0">📦</span>}
                   <div className="shrink-0">
-                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">cant.</div>
+                    <div className="text-[9px] text-p-ink2 text-center mb-0.5">cant.</div>
                     <input type="number" min="1" value={it.c} onChange={e=>{const v=Math.max(1,+e.target.value||1);setItems(prev=>prev.map((x,j)=>j===i?{...x,c:v}:x))}}
-                      className="w-14 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                      className="w-12 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-center focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0">
-                    <div className="text-[9px] text-p-ink2 text-right mb-0.5">precio venta</div>
+                    <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
                     <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
-                      className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                      className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   </div>
-                  <span className="font-mono text-xs w-20 text-right shrink-0">{moneyARS(it.c*it.p)}</span>
-                  <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[9px] text-p-ink2 mb-0.5">total línea</div>
+                    <span className="font-mono font-bold text-p-green text-sm">{moneyARS(it.c*it.p)}</span>
+                  </div>
+                  <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
                 </div>
               ))}
               {esNegro ? (

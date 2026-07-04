@@ -103,7 +103,7 @@ export default function ComprasClient() {
   const [chequeContado, setChequeContado] = useState<ChequeData>(EMPTY_CHEQUE)
   const [descuentoTocadoAMano, setDescuentoTocadoAMano] = useState(false)
   const [items, setItems] = useState<Item[]>([])
-  const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'', dto:'' })
+  const [itemForm, setItemForm] = useState({ d:'', c:'1', p:'', dto:'', codigo:'' })
   const [editandoItemIdx, setEditandoItemIdx] = useState<number|null>(null)
   const [itemArticuloSel, setItemArticuloSel] = useState<{id:string;descripcion:string}|null>(null)
   const [itemArticuloSugs, setItemArticuloSugs] = useState<any[]>([])
@@ -199,7 +199,7 @@ export default function ComprasClient() {
     setItemArticuloSel(a)
     // Pre-cargar el precio de LISTA del catálogo (sin descuento) — el descuento se aplica por separado
     const precioBase = a.precio_lista || a.costo_neto || ''
-    setItemForm(p => ({ ...p, d: a.descripcion, p: precioBase ? String(precioBase) : p.p }))
+    setItemForm(p => ({ ...p, d: a.descripcion, p: precioBase ? String(precioBase) : p.p, codigo: a.codigo || '' }))
     setItemArticuloSugs([])
   }
 
@@ -208,14 +208,14 @@ export default function ComprasClient() {
     const c = parseInt(itemForm.c)
     if (!itemForm.d || !p || !c) return
     const dto = parseFloat(itemForm.dto) || null
-    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null, dto }
+    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null, dto, ...(itemForm.codigo?{codigo:itemForm.codigo}:{}) }
     if (editandoItemIdx !== null) {
       setItems(prev => prev.map((it,i) => i===editandoItemIdx ? nuevoItemData : it))
       setEditandoItemIdx(null)
     } else {
       setItems(prev=>[...prev, nuevoItemData])
     }
-    setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}))
+    setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto,codigo:''}))
     setItemArticuloSel(null)
     setItemArticuloSugs([])
     // Limpiar overrides cuando se agrega un ítem (los totales calculados cambian)
@@ -353,6 +353,36 @@ export default function ComprasClient() {
       }
     }
 
+    // Actualizar costo_neto en catálogo para los ítems con código
+    // costo = precio_lista × (1 - descuento_pct)
+    const costosPrevios: string[] = []
+    if (form.tipo === 'factura' && descuentoPct > 0) {
+      for (const it of items) {
+        if (!it.d || it.d.toUpperCase() === 'FLETE') continue
+        const codigoItem = (it as any).codigo
+        const costoNuevo = Math.round(it.p * (1 - descuentoPct / 100) * 100) / 100
+        if (codigoItem) {
+          // Buscar el artículo en el catálogo por código
+          const { data: catRow } = await supabase.from('catalogo')
+            .select('id,costo_neto,precio_lista').eq('codigo', codigoItem).maybeSingle()
+          if (catRow) {
+            const costoAnterior = catRow.costo_neto || 0
+            const diff = Math.abs(costoNuevo - costoAnterior) / (costoAnterior || 1) * 100
+            if (diff > 5 && costoAnterior > 0) {
+              costosPrevios.push(`${it.d}: antes $${costoAnterior.toLocaleString('es-AR')} → ahora $${costoNuevo.toLocaleString('es-AR')} (${diff.toFixed(0)}% diferencia)`)
+            }
+            await supabase.from('catalogo').update({
+              costo_neto: costoNuevo,
+              precio_lista: it.p,
+            }).eq('id', catRow.id)
+          }
+        }
+      }
+      if (costosPrevios.length > 0) {
+        alert(`⚠ Precios actualizados con diferencia significativa:\n\n${costosPrevios.join('\n')}\n\nVerificá con el proveedor si corresponde.`)
+      }
+    }
+
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
       proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
       descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'', forma_pago:'cuenta_corriente'})
@@ -361,7 +391,7 @@ export default function ComprasClient() {
     setDescuentoTocadoAMano(false)
     setAjusteManual('')
     setItems([]); setIvaOn(true)
-    setItemForm({d:'',c:'1',p:'',dto:''})
+    setItemForm({d:'',c:'1',p:'',dto:'',codigo:''})
     load()
   }
 
@@ -1048,7 +1078,7 @@ export default function ComprasClient() {
                 <input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio" className="w-28 border border-p-line rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green"/>
                 <input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-amber-400" title="Descuento %"/>
                 <button onClick={addItem} style={{...btnSm,padding:'7px 12px'}} disabled={!itemForm.p}>+ Agregar</button>
-                <button onClick={()=>{setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto}));setItemArticuloSel(null)}} className="text-red-400 text-xs">✕</button>
+                <button onClick={()=>{setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto,codigo:''}));setItemArticuloSel(null)}} className="text-red-400 text-xs">✕</button>
               </div>
             )}
 
