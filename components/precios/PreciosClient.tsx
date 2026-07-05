@@ -69,6 +69,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoSel, setTipoSel] = useState<string>('todos')
+  const [precioInstalacion, setPrecioInstalacion] = useState(0)
+  const [conInstalacion, setConInstalacion] = useState(true)
   const isOnline = useOnlineStatus()
   const router = useRouter()
   const supabase = createClient()
@@ -76,6 +78,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   useEffect(() => {
     supabase.from('config_precios').select('*').eq('id', 1).maybeSingle()
       .then(({ data }) => { if (data) setConfigPrecios(data) })
+    supabase.from('rubros_precio').select('precio_base').ilike('nombre','%nstalac%').eq('activo',true).maybeSingle()
+      .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_base || 0) })
   }, [supabase])
 
   useEffect(() => {
@@ -239,9 +243,17 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         ))}
       </div>
 
-      <input value={q} onChange={e => setQ(e.target.value)}
-        placeholder="Buscá una pieza: ford focus parabrisas, vw gol luneta…"
-        className="w-full border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-sm mb-5 bg-white outline-none shadow-sm"/>
+      <div className="flex gap-3 items-center mb-5 flex-wrap">
+        <input value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Buscá una pieza: ford focus parabrisas, vw gol luneta…"
+          className="flex-1 border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-sm bg-white outline-none shadow-sm min-w-[200px]"/>
+        {precioInstalacion > 0 && (
+          <label className="flex items-center gap-2 cursor-pointer bg-white border border-p-line rounded-xl px-4 py-3 shadow-sm select-none shrink-0">
+            <input type="checkbox" checked={conInstalacion} onChange={e=>setConInstalacion(e.target.checked)} className="accent-p-green w-4 h-4"/>
+            <span className="text-sm font-semibold text-p-ink">+ Instalación ({moneyARS(precioInstalacion)})</span>
+          </label>
+        )}
+      </div>
 
       {loading && <p className="text-sm text-p-gray text-center py-8">Buscando…</p>}
 
@@ -282,6 +294,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                         {tipos
                           .filter(t => tipoSel === 'todos' || t.id === tipoSel)
                           .map((tipo, idx) => {
+                            const inst = conInstalacion ? precioInstalacion : 0
                             const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, configPrecios)
                             const isBest = precio.costo_neto === bestCosto
                             return (
@@ -295,15 +308,15 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                                   <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-2">
                                       <span className="text-[10px] text-p-ink2 w-24">💳 Tarjeta</span>
-                                      <span className={`font-saira font-bold text-base ${isBest ? 'text-p-green' : 'text-p-ink'}`}>{moneyARS(precios.tarjeta)}</span>
+                                      <span className={`font-saira font-bold text-base ${isBest ? 'text-p-green' : 'text-p-ink'}`}>{moneyARS(precios.tarjeta + inst)}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-[10px] text-p-ink2 w-24">🏦 Transf. <span className="text-green-600">-{configPrecios.descuento_transferencia_pct}%</span></span>
-                                      <span className="font-saira font-bold text-base text-blue-600">{moneyARS(precios.transferencia)}</span>
+                                      <span className="font-saira font-bold text-base text-blue-600">{moneyARS(precios.transferencia + inst)}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-[10px] text-p-ink2 w-24">💵 Efectivo <span className="text-green-600">-{configPrecios.descuento_efectivo_pct}%</span></span>
-                                      <span className="font-saira font-bold text-base text-green-700">{moneyARS(precios.efectivo)}</span>
+                                      <span className="font-saira font-bold text-base text-green-700">{moneyARS(precios.efectivo + inst)}</span>
                                     </div>
                                     {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && (
                                       <div className="mt-1 text-[10px] text-p-ink2">

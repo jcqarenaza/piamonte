@@ -23,10 +23,14 @@ export default function BuscarClient() {
   const [results, setResults] = useState<{ desc: string; stock?: StockItem; provs: CatRow[] }[]>([])
   const [loading, setLoading] = useState(false)
   const [hasCatalog, setHasCatalog] = useState<boolean | null>(null)
+  const [precioInstalacion, setPrecioInstalacion] = useState<number>(0)
+  const [mostrarConInstalacion, setMostrarConInstalacion] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
     supabase.from('catalogo').select('id', { count: 'exact', head: true }).then(({ count }) => setHasCatalog((count ?? 0) > 0))
+    supabase.from('rubros_precio').select('precio_base').ilike('nombre','%nstalac%').eq('activo',true).maybeSingle()
+      .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_base || 0) })
   }, [supabase])
 
   const search = useCallback(async () => {
@@ -115,11 +119,19 @@ export default function BuscarClient() {
 
   return (
     <div>
-      {/* Buscador */}
-      <div className="relative mb-4">
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Escribí modelo, marca o código de parabrisas…"
-          className="w-full border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-base text-p-ink focus:outline-none shadow-sm" autoFocus />
-        {loading && <span className="absolute right-4 top-3.5 text-p-gray text-sm">buscando…</span>}
+      {/* Buscador + toggle instalación */}
+      <div className="flex gap-3 items-center mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[280px]">
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Escribí modelo, marca o código de parabrisas…"
+            className="w-full border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-base text-p-ink focus:outline-none shadow-sm" autoFocus />
+          {loading && <span className="absolute right-4 top-3.5 text-p-gray text-sm">buscando…</span>}
+        </div>
+        {precioInstalacion > 0 && (
+          <label className="flex items-center gap-2 cursor-pointer bg-white border border-p-line rounded-xl px-4 py-3 shadow-sm select-none shrink-0">
+            <input type="checkbox" checked={mostrarConInstalacion} onChange={e=>setMostrarConInstalacion(e.target.checked)} className="accent-p-green w-4 h-4"/>
+            <span className="text-sm font-semibold text-p-ink">+ Instalación ({moneyARS(precioInstalacion)})</span>
+          </label>
+        )}
       </div>
 
       {/* Info si no hay catálogo */}
@@ -140,6 +152,8 @@ export default function BuscarClient() {
           const bestProv = provs.sort((a, b) => a.costo_neto - b.costo_neto)[0]
           const title = s?.descripcion ?? provs[0]?.descripcion ?? r.desc
           const pos = s?.pos ?? provs[0]?.pos ?? ''
+          const precioVenta = s?.precio_venta ?? (bestProv ? bestProv.precio_lista : 0)
+          const totalConInst = precioVenta + (mostrarConInstalacion ? precioInstalacion : 0)
           return (
             <div key={i} className={`bg-white border rounded-xl shadow-sm overflow-hidden ${s ? 'border-p-green border-2' : 'border-p-line'}`}>
               {/* Header */}
@@ -149,10 +163,15 @@ export default function BuscarClient() {
                   <p className="font-saira font-bold text-p-ink">{title}</p>
                   <p className="text-xs text-p-ink2">{s?.marca ?? provs[0]?.marca ?? ''} {pos ? '· ' + (POS_LABEL[pos] ?? pos) : ''}</p>
                 </div>
-                {s?.precio_venta && (
+                {precioVenta > 0 && (
                   <div className="text-right">
-                    <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(s.precio_venta)}</p>
-                    <p className="text-[10px] text-p-ink2 uppercase">tu precio de venta</p>
+                    {mostrarConInstalacion && precioInstalacion > 0 ? (<>
+                      <p className="font-saira font-bold text-2xl text-p-green">{moneyARS(totalConInst)}</p>
+                      <p className="text-[10px] text-p-ink2">vidrio {moneyARS(precioVenta)} + inst. {moneyARS(precioInstalacion)}</p>
+                    </>) : (<>
+                      <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(precioVenta)}</p>
+                      <p className="text-[10px] text-p-ink2 uppercase">precio de venta</p>
+                    </>)}
                   </div>
                 )}
               </div>
