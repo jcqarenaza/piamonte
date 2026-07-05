@@ -304,6 +304,75 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const TIPO_CBTE_AFIP: Record<string, number> = { A: 1, B: 6, C: 11 }
   const TIPO_CBTE_NC_AFIP: Record<string, number> = { A: 3, B: 8, C: 13 }
+  const TIPO_CBTE_ND_AFIP: Record<string, number> = { A: 2, B: 7, C: 12 }
+
+  // Nota de Débito
+  const [ndComp, setNdComp]       = useState<Comprobante|null>(null)
+  const [ndConcepto, setNdConcepto] = useState('')
+  const [ndMonto, setNdMonto]     = useState('')
+  const [ndIvaOn, setNdIvaOn]     = useState(true)
+  const [ndLoading, setNdLoading] = useState(false)
+
+  const CONCEPTOS_ND = [
+    { label: 'Gastos por cheque rechazado', iva: true },
+    { label: 'Cheque rechazado', iva: false },
+    { label: 'Intereses por mora', iva: true },
+    { label: 'Diferencia de precio', iva: true },
+    { label: 'Corrección de Nota de Crédito', iva: true },
+    { label: 'Gastos de gestión de cobro', iva: true },
+    { label: 'Otro concepto', iva: true },
+  ]
+
+  const ndMontoNum = parseFloat((ndMonto||'0').replace(',','.')) || 0
+  const ndNeto  = ndIvaOn ? Math.round(ndMontoNum / 1.21 * 100) / 100 : ndMontoNum
+  const ndIva   = ndIvaOn ? Math.round((ndMontoNum - ndNeto) * 100) / 100 : 0
+  const ndTotal = ndMontoNum
+
+  async function confirmarND() {
+    if (!ndComp || !ndConcepto || ndMontoNum <= 0) return
+    setNdLoading(true)
+    const { data: last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
+
+    const itemsNd: ItemVenta[] = [{ d: ndConcepto, c: 1, p: ndNeto }]
+    const { data: nd } = await supabase.from('comprobantes').insert({
+      numero: nextNum, fecha: todayStr(), tipo: ndComp.tipo, categoria: 'nd',
+      cliente_id: (ndComp as any).cliente_id ?? null,
+      cliente_nombre: ndComp.cliente_nombre, cliente_telefono: ndComp.cliente_telefono,
+      cliente_cuit: ndComp.cliente_cuit, cliente_tipo_fiscal: ndComp.cliente_tipo_fiscal,
+      aseguradora_id: (ndComp as any).aseguradora_id ?? null,
+      aseguradora_nombre: ndComp.aseguradora_nombre,
+      items: itemsNd, neto: ndNeto, iva: ndIva, total: ndTotal, pagos: [],
+      comprobante_original_id: ndComp.id,
+      es_negro: ndComp.es_negro || false,
+    }).select('*').single()
+
+    if (!nd) { setNdLoading(false); return }
+
+    // Sumar a Caja del día
+    await supabase.from('ventas').insert({
+      fecha: todayStr(), descripcion: `ND ${nextNum} — ${ndConcepto} Comp. ${ndComp.numero}`,
+      precio: ndTotal, costo: null, pendiente: false,
+      comprobante_id: (nd as any).id, user_id: userId,
+    })
+
+    // Emitir CAE con tipo ND
+    if (!ndComp.es_negro && ['A','B','C'].includes(ndComp.tipo)) {
+      const { data: feOriginal } = await supabase.from('facturacion_electronica')
+        .select('nro_cbte,tipo_cbte,punto_venta')
+        .eq('comprobante_id', ndComp.id).eq('estado','emitida')
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const cbteAsoc = feOriginal?.nro_cbte ? {
+        tipo: (feOriginal as any).tipo_cbte, ptoVta: (feOriginal as any).punto_venta, nro: (feOriginal as any).nro_cbte
+      } : undefined
+      await solicitarCAE(nd as any, TIPO_CBTE_ND_AFIP[ndComp.tipo], cbteAsoc)
+    }
+
+    setNdComp(null); setNdConcepto(''); setNdMonto(''); setNdIvaOn(true)
+    setNdLoading(false)
+    const {data:comps2}=await supabase.from('comprobantes').select('*').order('created_at',{ascending:false})
+    setComps(comps2??[])
+  }
   const [caeLoading, setCaeLoading] = useState<string|null>(null)
 
   // Nota de Crédito: devuelve stock, resta de Caja del día y emite con CAE propio en AFIP.
@@ -791,12 +860,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setComps(prev=>prev.filter(c=>c.id!==id))
   }
 
-  const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'negro'>('todos')
+  const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'nd'|'negro'>('todos')
   const [verComp, setVerComp] = useState<Comprobante|null>(null)
   const [expandido, setExpandido] = useState<string|null>(null)
   const compsFiltrados = comps.filter(c => {
     if (filtroTipo === 'todos') return true
     if (filtroTipo === 'nc') return c.categoria === 'nc'
+    if (filtroTipo === 'nd') return c.categoria === 'nd'
     if (filtroTipo === 'negro') return !!c.es_negro
     return c.categoria !== 'nc' && c.tipo === filtroTipo
   })
@@ -821,7 +891,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {([
-            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],
+            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],['nd','Notas de Débito'],
             ...(rol==='gerencial'||rol==='admin' ? [['negro','⚫ Negro'] as const] : []),
           ] as const).map(([val,label])=>(
             <button key={val} onClick={()=>setFiltroTipo(val)}
@@ -858,6 +928,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   )}
                 </div>
                 {c.categoria==='nc'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🧾 NC</span>}
+                {c.categoria==='nd'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🧾 ND</span>}
                 {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 shrink-0">↩ Saldada</span>}
                 {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white shrink-0">⚫</span>}
                 {!c.es_negro && ['A','B','C'].includes(c.tipo) && (
@@ -884,9 +955,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                         {caeLoading===c.id ? 'Solicitando…' : '⚠ Reintentar CAE'}
                       </button>
                     )}
-                    {c.categoria!=='nc' && !saldadaPorNC && (
+                    {c.categoria!=='nc' && c.categoria!=='nd' && !saldadaPorNC && (
                       <button onClick={()=>abrirNC(c)} style={{...btnSm,background:'#d97706'}}>🧾 Nota de Crédito</button>
                     )}
+                    <button onClick={()=>{ setNdComp(c); setNdConcepto(''); setNdMonto(''); setNdIvaOn(true) }}
+                      style={{...btnSm,background:'#7c3aed'}}>🧾 Nota de Débito</button>
                     {c.orden_id && (
                       <button onClick={()=>router.push(`/ordenes?edit=${c.orden_id}`)}
                         style={{...btnSm,background:'#6b7280'}}>✏ Editar OS</button>
@@ -1339,7 +1412,55 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         )}
       </Modal>
 
-      {/* Modal Ver detalle (solo lectura) */}
+      {/* Modal Nota de Débito */}
+      <Modal open={!!ndComp} onClose={()=>setNdComp(null)} title={`Nota de Débito — Comprobante ${ndComp?.numero}`}>
+        {ndComp && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-p-light rounded-xl px-4 py-3 text-sm">
+              <p className="text-p-ink2">Comprobante original:</p>
+              <p className="font-bold">{ndComp.tipo}-0006-{String(ndComp.nro_cbte_afip??ndComp.numero).padStart(8,'0')} · {ndComp.aseguradora_nombre||ndComp.cliente_nombre}</p>
+            </div>
+
+            <Field label="Concepto *">
+              <select value={ndConcepto} onChange={e=>{
+                const c = CONCEPTOS_ND.find(x=>x.label===e.target.value)
+                setNdConcepto(e.target.value)
+                if (c) setNdIvaOn(c.iva)
+              }} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="">Seleccioná un concepto…</option>
+                {CONCEPTOS_ND.map(c=><option key={c.label}>{c.label}</option>)}
+              </select>
+            </Field>
+
+            <Field label={ndIvaOn ? 'Monto total (con IVA) *' : 'Monto *'}>
+              <Input value={ndMonto} onChange={e=>setNdMonto(e.target.value)} placeholder="$" type="number"/>
+            </Field>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={ndIvaOn} onChange={e=>setNdIvaOn(e.target.checked)} className="accent-p-green"/>
+              Incluye IVA 21%
+            </label>
+
+            {ndMontoNum > 0 && (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm flex flex-col gap-1">
+                {ndIvaOn && <div className="flex justify-between text-p-ink2"><span>Neto</span><span className="font-mono">{moneyARS(ndNeto)}</span></div>}
+                {ndIvaOn && <div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(ndIva)}</span></div>}
+                <div className="flex justify-between font-bold text-purple-700 border-t border-purple-200 pt-1">
+                  <span>TOTAL ND</span><span className="font-mono font-saira text-lg">{moneyARS(ndTotal)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setNdComp(null)} style={btnGray}>Cancelar</button>
+              <button onClick={confirmarND} disabled={ndLoading || !ndConcepto || ndMontoNum<=0}
+                style={{...btn,background:'#7c3aed',opacity:(ndLoading||!ndConcepto||ndMontoNum<=0)?.5:1}}>
+                {ndLoading ? 'Generando…' : '🧾 Confirmar Nota de Débito'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
       <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante">
         {verComp && (
           <div className="flex flex-col gap-3">
