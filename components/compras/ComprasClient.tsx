@@ -353,7 +353,31 @@ export default function ComprasClient() {
       }
     }
 
-    // Actualizar costo_neto en catálogo para los ítems con código
+    // Registrar movimientos de stock para los ítems con stock vinculado
+    if (comp && form.tipo === 'factura') {
+      for (const it of items) {
+        if ((it as any).stock_id || it.articulo_id) {
+          // Buscar el stock_id por articulo_id si no viene directo
+          let stockId = (it as any).stock_id
+          if (!stockId && it.articulo_id) {
+            const { data: s } = await supabase.from('stock').select('id').eq('articulo_id', it.articulo_id).maybeSingle()
+            stockId = s?.id
+          }
+          if (stockId) {
+            const costoUnit = it.dto
+              ? Math.round(it.p * (1 - it.dto / 100) * 100) / 100
+              : descuentoPct > 0 ? Math.round(it.p * (1 - descuentoPct / 100) * 100) / 100 : it.p
+            await supabase.from('stock_movimientos').insert({
+              stock_id: stockId, tipo: 'entrada',
+              cantidad: it.c, costo_unitario: costoUnit,
+              fecha: form.fecha || todayStr(),
+              descripcion: it.d,
+              comprobante_compra_id: comp.id,
+            })
+          }
+        }
+      }
+    }
     // costo = precio_lista × (1 - descuento_pct)
     const costosPrevios: string[] = []
     if (form.tipo === 'factura' && descuentoPct > 0) {

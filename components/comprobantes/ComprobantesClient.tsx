@@ -513,12 +513,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
     }
 
+    const compId   = (comp as any)?.id
+    const fechaComp = todayStr()
+
     // Descontar stock solo en ventas directas — si viene de una OS la OS ya lo descontó al crearse
     if (!oid) {
       for(const it of items){
         if(it.stock_id && it.c > 0){
-          const {data:s} = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
-          if(s) await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
+          const {data:s} = await supabase.from('stock').select('cantidad,costo').eq('id',it.stock_id).single()
+          if(s) {
+            await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
+            // Registrar movimiento de salida
+            await supabase.from('stock_movimientos').insert({
+              stock_id: it.stock_id, tipo: 'salida',
+              cantidad: it.c,
+              costo_unitario: (s as any).costo || null,
+              precio_venta_unitario: it.p,
+              fecha: fechaComp,
+              descripcion: it.d,
+              comprobante_venta_id: compId,
+            })
+          }
         }
       }
     }

@@ -14,7 +14,7 @@ const FAM_MAP: Record<string, string> = {
 const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Custodias']
 const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', Custodias: '🔻' }
 
-type Tab = 'inventario' | 'vincular'
+type Tab = 'inventario' | 'vincular' | 'movimientos'
 
 export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [tab, setTab] = useState<Tab>('inventario')
@@ -23,6 +23,11 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [q, setQ] = useState('')
   const [depFilter, setDepFilter] = useState('')
   const [soloSinCosto, setSoloSinCosto] = useState(false)
+  // Movimientos
+  const [movs, setMovs] = useState<any[]>([])
+  const [movLoading, setMovLoading] = useState(false)
+  const [movFiltroTipo, setMovFiltroTipo] = useState<'todos'|'entrada'|'salida'>('todos')
+  const [movQ, setMovQ] = useState('')
   const [open, setOpen] = useState(false)
   const [ajusteOpen, setAjusteOpen] = useState(false)
   const [ajusteForm, setAjusteForm] = useState({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
@@ -33,6 +38,20 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [editId, setEditId] = useState<string|null>(null)
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const supabase = createClient()
+
+  async function cargarMovimientos() {
+    setMovLoading(true)
+    let q = supabase.from('stock_movimientos')
+      .select(`id, tipo, cantidad, costo_unitario, precio_venta_unitario, fecha, descripcion, created_at,
+        stock:stock_id(descripcion, codigo),
+        compra:comprobante_compra_id(numero, proveedor_nombre),
+        venta:comprobante_venta_id(numero, tipo, cliente_nombre, aseguradora_nombre)`)
+      .order('created_at', { ascending: false }).limit(200)
+    if (movFiltroTipo !== 'todos') q = q.eq('tipo', movFiltroTipo)
+    const { data } = await q
+    setMovs(data ?? [])
+    setMovLoading(false)
+  }
 
   const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
   const [articuloSel, setArticuloSel] = useState<{id:string;descripcion:string;codigo_referencia:string|null}|null>(null)
@@ -280,7 +299,67 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
             {sinVincularCount > 0 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{sinVincularCount}</span>}
           </button>
         )}
+        <button onClick={() => { setTab('movimientos'); cargarMovimientos() }}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='movimientos' ? 'border-p-green text-p-green' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
+          📊 Movimientos
+        </button>
       </div>
+
+      {tab === 'movimientos' && (
+        <div>
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <div className="flex border border-p-line rounded-xl overflow-hidden text-sm">
+              {(['todos','entrada','salida'] as const).map(v=>(
+                <button key={v} onClick={()=>{ setMovFiltroTipo(v); setTimeout(cargarMovimientos,0) }}
+                  className={`px-4 py-2 font-medium capitalize ${movFiltroTipo===v?'bg-p-green text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+                  {v==='todos'?'Todos':v==='entrada'?'📥 Entradas':'📤 Salidas'}
+                </button>
+              ))}
+            </div>
+            <input value={movQ} onChange={e=>setMovQ(e.target.value)} placeholder="Buscar artículo…"
+              className="flex-1 min-w-[180px] border border-p-line rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-p-green"/>
+          </div>
+
+          {movLoading ? <p className="text-sm text-p-gray text-center py-8">Cargando movimientos…</p> :
+            movs.length === 0 ? <p className="text-sm text-p-gray text-center py-8">Sin movimientos registrados todavía.</p> : (
+            <div className="bg-white border border-p-line rounded-xl overflow-hidden">
+              <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line"
+                style={{gridTemplateColumns:'90px 80px 1fr 110px 110px 110px'}}>
+                <span>Fecha</span><span>Tipo</span><span>Artículo</span>
+                <span className="text-right">Cant.</span>
+                <span className="text-right">Costo u.</span>
+                <span className="text-right">Precio u.</span>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto divide-y divide-p-line2">
+                {movs.filter(m=> !movQ || (m.stock?.descripcion||'').toLowerCase().includes(movQ.toLowerCase()) || (m.stock?.codigo||'').toLowerCase().includes(movQ.toLowerCase())).map(m=>(
+                  <div key={m.id} className="grid items-center px-4 py-2.5 hover:bg-p-light/50"
+                    style={{gridTemplateColumns:'90px 80px 1fr 110px 110px 110px'}}>
+                    <span className="text-xs text-p-ink2 font-mono">{m.fecha.split('-').reverse().join('/')}</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
+                      {m.tipo==='entrada'?'📥 Entrada':m.tipo==='salida'?'📤 Salida':'⚖ Ajuste'}
+                    </span>
+                    <div className="min-w-0 pr-2">
+                      <p className="text-sm text-p-ink font-medium truncate">{m.stock?.descripcion||'—'}</p>
+                      <p className="text-[10px] text-p-ink2">
+                        {m.stock?.codigo && <span className="font-mono bg-p-light px-1 rounded mr-1">{m.stock.codigo}</span>}
+                        {m.compra && <span>Compra: {m.compra.numero} · {m.compra.proveedor_nombre}</span>}
+                        {m.venta && <span>Venta: {m.venta.tipo}-{m.venta.numero} · {m.venta.aseguradora_nombre||m.venta.cliente_nombre}</span>}
+                        {m.descripcion && !m.compra && !m.venta && <span>{m.descripcion}</span>}
+                      </p>
+                    </div>
+                    <span className={`text-sm font-bold font-mono text-right ${m.tipo==='entrada'?'text-green-600':'text-red-500'}`}>
+                      {m.tipo==='entrada'?'+':'-'}{m.cantidad}
+                    </span>
+                    <span className="text-xs font-mono text-p-ink2 text-right">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
+                    <span className="text-xs font-mono text-p-green text-right">{m.precio_venta_unitario?moneyARS(m.precio_venta_unitario):'—'}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2 text-xs text-p-ink2 bg-p-light">{movs.length} movimientos</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'vincular' ? (
         <div>
