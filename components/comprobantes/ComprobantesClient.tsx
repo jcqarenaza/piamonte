@@ -887,7 +887,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       {/* Cuando venimos de una OS: mostrar solo el modal de factura, sin la lista */}
       {oidParam && !open && null}
 
-      {!oidParam && <>
+      {!oidParam && <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {([
@@ -976,7 +976,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           )})}
         </div>
       )}
-      </>}
+      </div>}
 
       <Modal open={open} onClose={()=>{ if(oidParam) router.push('/ordenes'); else setOpen(false) }} title="Nuevo comprobante" size="xl">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
@@ -1189,7 +1189,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       <p className="text-[10px] font-bold text-p-ink2 uppercase tracking-wider px-3 pt-2 pb-1">En stock</p>
                       {stockSugs.map((s:any)=>(
                         <button key={s.id} onClick={()=>{
-                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,costo:s.costo||0,stock_id:s.id,articulo_id:s.articulo_id||null}])
+                          const costoStock = s.costo_neto || s.costo || 0
+                          let precioStock = s.precio_venta || 0
+                          if (costoStock > 0) {
+                            if (modo === 'aseguradora') {
+                              const tc = tipos.find((t:any)=>t.nombre==='Compañías')
+                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1++tc.margen_pct))
+                            } else if (modo === 'cliente') {
+                              const tc = tipos.find((t:any)=>t.id===fiscal.tipo_cliente_id)
+                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1++tc.margen_pct))
+                            } else {
+                              // CF: usar precio_lista o precio_venta como referencia
+                              precioStock = s.precio_venta || Math.round(costoStock*1.45)
+                            }
+                          }
+                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:precioStock,costo:costoStock,stock_id:s.id,articulo_id:s.articulo_id||null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                         }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -1413,7 +1427,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       </Modal>
 
       {/* Modal Nota de Débito */}
-      <Modal open={!!ndComp} onClose={()=>setNdComp(null)} title={`Nota de Débito — Comprobante ${ndComp?.numero}`}>
+      <Modal open={!!ndComp} onClose={()=>setNdComp(null)} title={'Nota de Débito — Comprobante ' + (ndComp?.numero??'')}>
         {ndComp && (
           <div className="flex flex-col gap-4">
             <div className="bg-p-light rounded-xl px-4 py-3 text-sm">
