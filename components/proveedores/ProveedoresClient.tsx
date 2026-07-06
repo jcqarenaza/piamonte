@@ -424,7 +424,7 @@ export default function ProveedoresClient() {
       {mainTab === 'precios' && (
         <div>
           <div className="flex gap-3 mb-4 flex-wrap items-center">
-            <select value={provFiltro} onChange={e=>{setProvFiltro(e.target.value);setCatItems([])}}
+            <select value={provFiltro} onChange={e=>{setProvFiltro(e.target.value);setCatItems([]);setCatQ('');setTimeout(()=>cargarPrecios(),50)}}
               className="border border-p-line rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
               {['MALATESTA','GAMMA','SEKURIT','EUROGLASS'].map(p=><option key={p}>{p}</option>)}
             </select>
@@ -433,28 +433,33 @@ export default function ProveedoresClient() {
               className="flex-1 min-w-[180px] border border-p-line rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-p-green"/>
             <button onClick={cargarPrecios} disabled={catLoading}
               className="bg-p-green text-white font-bold text-sm px-5 py-2 rounded-xl cursor-pointer border-none">
-              {catLoading ? 'Cargando…' : 'Ver precios'}
+              {catLoading ? 'Cargando…' : 'Buscar'}
             </button>
           </div>
 
           {catItems.length > 0 && (
             <div className="bg-white border border-p-line rounded-xl overflow-hidden">
               <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line"
-                style={{gridTemplateColumns:'80px 1fr 130px 130px 80px'}}>
+                style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px'}}>
                 <span>Código</span><span>Descripción</span>
                 <span className="text-right">Precio lista</span>
-                <span className="text-right">Costo neto</span>
+                <span className="text-right text-red-500">−Dto</span>
+                <span className="text-right text-p-green">Costo neto</span>
                 <span></span>
               </div>
               <div className="max-h-[60vh] overflow-y-auto">
-                {catItems.map(c=>(
+                {catItems.map(c=>{
+                  const dto = c.precio_lista > 0 && c.costo_neto > 0
+                    ? Math.round((1 - c.costo_neto / c.precio_lista) * 100)
+                    : null
+                  return (
                   <div key={c.id} className="grid items-center px-4 py-2 border-b border-p-line2 hover:bg-p-light/50"
-                    style={{gridTemplateColumns:'80px 1fr 130px 130px 80px'}}>
+                    style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px'}}>
                     <span className="text-xs font-mono text-p-ink2 truncate">{c.codigo||'—'}</span>
                     <span className="text-sm text-p-ink truncate pr-2">{c.descripcion}</span>
+                    <span className="text-xs font-mono text-right text-p-ink2">{c.precio_lista?`$${Number(c.precio_lista).toLocaleString('es-AR')}`:'—'}</span>
+                    <span className="text-xs font-mono text-right text-red-500">{dto!==null?`${dto}%`:'—'}</span>
                     {editPrecio?.id === c.id ? (<>
-                      <input value={editPrecio?.lista||''} onChange={e=>setEditPrecio(p=>p?{...p,lista:e.target.value}:p)}
-                        className="border border-p-green rounded px-2 py-1 text-xs font-mono text-right focus:outline-none"/>
                       <input value={editPrecio?.costo||''} onChange={e=>setEditPrecio(p=>p?{...p,costo:e.target.value}:p)}
                         className="border border-p-green rounded px-2 py-1 text-xs font-mono text-right focus:outline-none"/>
                       <div className="flex gap-1">
@@ -462,13 +467,12 @@ export default function ProveedoresClient() {
                         <button onClick={()=>setEditPrecio(null)} className="text-[10px] text-p-gray cursor-pointer">✕</button>
                       </div>
                     </>) : (<>
-                      <span className="text-sm font-mono text-right">{c.precio_lista ? `$${Number(c.precio_lista).toLocaleString('es-AR')}` : '—'}</span>
-                      <span className="text-sm font-mono text-right text-p-green">{c.costo_neto ? `$${Number(c.costo_neto).toLocaleString('es-AR')}` : '—'}</span>
+                      <span className="text-sm font-mono font-bold text-right text-p-green">{c.costo_neto?`$${Number(c.costo_neto).toLocaleString('es-AR')}`:'—'}</span>
                       <button onClick={()=>setEditPrecio({id:c.id,lista:String(c.precio_lista||''),costo:String(c.costo_neto||'')})}
                         className="text-[11px] text-p-ink2 hover:text-p-ink cursor-pointer bg-transparent border-none">✏ Editar</button>
                     </>)}
                   </div>
-                ))}
+                )})}
               </div>
               <div className="px-4 py-2 text-xs text-p-ink2 bg-p-light">{catItems.length} artículos · {provFiltro}</div>
             </div>
