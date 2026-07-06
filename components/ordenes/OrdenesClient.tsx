@@ -21,7 +21,8 @@ function tieneADAS(items: VentaItem[]): boolean {
   return items.some(it => it.d.toLowerCase().includes('adas') || it.d.toLowerCase().includes('calibración'))
 }
 
-export default function OrdenesClient({ userId }: { userId: string }) {
+export default function OrdenesClient({ userId, rol }: { userId: string; rol?: string }) {
+  const esVentas = rol === 'ventas'
   const [ordenes, setOrdenes]   = useState<OrdenServicio[]>([])
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState<VentaItem[]>([])
@@ -485,7 +486,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
             className="flex-1 border border-p-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
           {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
-        <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>
+        {!esVentas && <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>}
       </div>
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
@@ -531,7 +532,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                       <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                         📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
                       </button>
-                      {!(o as any).convertido_comp && (
+                      {!(o as any).convertido_comp && !esVentas && (
                         <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                       )}
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
@@ -558,7 +559,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
-                      {!(o as any).convertido_comp && (
+                      {!(o as any).convertido_comp && !esVentas && (
                         <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
                       )}
                       {(o as any).convertido_comp && (
