@@ -334,21 +334,23 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     y+=6
 
     // ── Tabla de ítems ──
-    const cols = [100, 20, 35, 35]
+    const usableW = W - pad*2  // ancho útil real
+    const cols = [usableW - 20 - 32 - 32, 20, 32, 32]  // Detalle ocupa el resto
     doc.setFillColor(0,165,80)
-    doc.rect(pad, y, W-pad*2, 7, 'F')
+    doc.rect(pad, y, usableW, 7, 'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
     let xi = pad
     ;['Detalle','Cant.','Precio unit.','Subtotal'].forEach((h,i)=>{
-      doc.text(h, xi+(i>0?cols[i]-2:2), y+5, {align:i>0?'right':'left'}); xi+=cols[i]
+      doc.text(h, i===0 ? xi+2 : xi+cols[i]-2, y+5, {align:i>0?'right':'left'}); xi+=cols[i]
     })
     y+=7
 
     doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(9)
     ;(o.items as VentaItem[]).forEach((it,idx)=>{
-      if(idx%2===0){doc.setFillColor(240,250,245);doc.rect(pad,y,W-pad*2,6.5,'F')}
+      if(idx%2===0){doc.setFillColor(240,250,245);doc.rect(pad,y,usableW,6.5,'F')}
       let xi=pad
-      doc.text(it.d.slice(0,48), xi+2, y+4.5); xi+=cols[0]
+      const maxChars = Math.floor(cols[0]/2.5)
+      doc.text(it.d.slice(0,maxChars), xi+2, y+4.5); xi+=cols[0]
       doc.text(String(it.c), xi-2, y+4.5, {align:'right'}); xi+=cols[1]
       doc.text(moneyARS(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
       doc.text(moneyARS(it.c*it.p), xi-2, y+4.5, {align:'right'})
@@ -405,7 +407,17 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`,'_blank'),800)
   }
 
-  async function descargarPDF(o: OrdenServicio) {
+  function enviarWA(o: OrdenServicio) {
+    const tel = (o.telefono??'').replace(/[^0-9]/g,'')
+    if (!tel) { alert('La OS no tiene teléfono cargado.'); return }
+    const siniestro = (o as any).siniestro
+    const patente = (o as any).patente
+    const vehiculo = o.vehiculo || ''
+    const texto = siniestro
+      ? `Hola${o.cliente ? ' ' + o.cliente : ''}! Te escribimos desde El Piamonte para coordinar el turno para el cambio de cristal del siniestro N° ${siniestro}.${patente ? ` Vehículo: ${vehiculo} - Patente ${patente}.` : ''} ¿Cuándo te viene bien?`
+      : `Hola${o.cliente ? ' ' + o.cliente : ''}! Te escribimos desde El Piamonte para coordinar el turno para el cambio de cristal.${vehiculo ? ` Vehículo: ${vehiculo}.` : ''} ¿Cuándo te viene bien?`
+    window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`, '_blank')
+  }
     const blob = await generarPDF(o)
     const conADAS = (o as any).tiene_adas
     const numADAS = (o as any).numero_adas
@@ -515,7 +527,7 @@ export default function OrdenesClient({ userId }: { userId: string }) {
                   <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
                     {o.aseguradora && <p className="text-xs text-p-ink2 mb-2">🏢 {o.aseguradora}</p>}
                     <div className="flex gap-2 flex-wrap">
-                      <button onClick={()=>compartirWA(o)} style={btnWa}>📱 WhatsApp</button>
+                      <button onClick={()=>enviarWA(o)} style={btnWa}>📱 WhatsApp</button>
                       <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                         📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
                       </button>
