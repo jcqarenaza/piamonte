@@ -376,13 +376,14 @@ export default function ComprasClient() {
             })
           }
         }
-        // Si tiene código → buscar articulo_id en equivalencias y vincular el stock
+        // Si tiene código → buscar articulo_id en equivalencias y vincular el stock (solo código exacto)
         if ((it as any).codigo && (it as any).codigo !== 'FL') {
+          const codigo = (it as any).codigo as string
           const { data: eq } = await supabase.from('articulo_equivalencias')
-            .select('articulo_id').eq('codigo_proveedor', (it as any).codigo).maybeSingle()
+            .select('articulo_id').eq('codigo_proveedor', codigo).maybeSingle()
           if (eq?.articulo_id) {
             await supabase.from('stock').update({ articulo_id: eq.articulo_id })
-              .eq('codigo', (it as any).codigo).is('articulo_id', null)
+              .eq('codigo', codigo).is('articulo_id', null)
           }
         }
       }
