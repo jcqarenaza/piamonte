@@ -203,8 +203,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     setEditForm({
       codigo: m ? m[1] : '',
       descripcion: m ? m[2] : (v.descripcion ?? ''),
-      costo: v.costo ? String(Math.round(v.costo)) : '',
-      precio: String(Math.round(v.precio)),
+      costo: v.costo ? String(v.costo) : '',
+      precio: String(v.precio),
       cliente: v.cliente ?? '',
       pago: v.pago ?? 'Efectivo',
       comprobante: v.comprobante ?? '',
@@ -224,8 +224,9 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     if (editForm.pago !== v.pago) { campos.push(['pago', v.pago ?? '', editForm.pago]); upd.pago = editForm.pago }
     if (editForm.comprobante !== (v.comprobante ?? '')) { campos.push(['comprobante', v.comprobante ?? '', editForm.comprobante]); upd.comprobante = editForm.comprobante || null }
     if (Object.keys(upd).length === 0) { setEditId(null); return }
-    await supabase.from('ventas').update(upd).eq('id', v.id)
-    for (const [campo, ant, nvo] of campos) await registrarAuditoria(v.id, 'editar', campo, ant, nvo)
+    const { error } = await supabase.from('ventas').update(upd).eq('id', v.id)
+    if (error) { alert('Error al guardar: ' + error.message); return }
+    for (const [campo, ant, nvo] of campos) await registrarAuditoria(v.id, 'editar', campo, ant, nvo).catch(()=>{})
     setEditId(null)
     loadVentas()
   }
