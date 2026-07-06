@@ -1509,10 +1509,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Ítems</p>
               <div className="flex flex-col gap-1">
                 {verComp.items.map((it,i)=>(
-                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5">
-                    <span className="flex-1">{it.d}</span>
-                    <span className="text-p-ink2 w-16 text-center">x{it.c}</span>
-                    <span className="font-mono w-24 text-right">{moneyARS(it.p*it.c)}</span>
+                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5 gap-2">
+                    <div className="flex-1 min-w-0">
+                      {(it as any).codigo && <span className="text-[10px] font-mono font-bold bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                      <span>{it.d}</span>
+                    </div>
+                    <span className="text-p-ink2 shrink-0">x{it.c}</span>
+                    <span className="font-mono shrink-0 text-right">{moneyARS(it.p*it.c)}</span>
                   </div>
                 ))}
               </div>
