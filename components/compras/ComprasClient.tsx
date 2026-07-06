@@ -387,34 +387,7 @@ export default function ComprasClient() {
         }
       }
     }
-    // costo = precio_lista × (1 - descuento_pct)
-    const costosPrevios: string[] = []
-    if (form.tipo === 'factura' && descuentoPct > 0) {
-      for (const it of items) {
-        if (!it.d || it.d.toUpperCase() === 'FLETE') continue
-        const codigoItem = (it as any).codigo
-        const costoNuevo = Math.round(it.p * (1 - descuentoPct / 100) * 100) / 100
-        if (codigoItem) {
-          // Buscar el artículo en el catálogo por código
-          const { data: catRow } = await supabase.from('catalogo')
-            .select('id,costo_neto,precio_lista').eq('codigo', codigoItem).maybeSingle()
-          if (catRow) {
-            const costoAnterior = catRow.costo_neto || 0
-            const diff = Math.abs(costoNuevo - costoAnterior) / (costoAnterior || 1) * 100
-            if (diff > 5 && costoAnterior > 0) {
-              costosPrevios.push(`${it.d}: antes $${costoAnterior.toLocaleString('es-AR')} → ahora $${costoNuevo.toLocaleString('es-AR')} (${diff.toFixed(0)}% diferencia)`)
-            }
-            await supabase.from('catalogo').update({
-              costo_neto: costoNuevo,
-              precio_lista: it.p,
-            }).eq('id', catRow.id)
-          }
-        }
-      }
-      if (costosPrevios.length > 0) {
-        alert(`⚠ Precios actualizados con diferencia significativa:\n\n${costosPrevios.join('\n')}\n\nVerificá con el proveedor si corresponde.`)
-      }
-    }
+    // Los costos del catálogo se actualizan solo desde el importador de listas, no desde facturas
 
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
       proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
