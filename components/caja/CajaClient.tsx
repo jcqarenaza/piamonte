@@ -125,14 +125,14 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   }
 
   const gan = () => {
-    const c = +form.costo.replace(/[^0-9.]/g, ''), p = +form.precio.replace(/[^0-9.]/g, '')
+    const c = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, ''), p = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
     return c && p ? p - c : null
   }
 
   async function save() {
     if (!form.descripcion || !form.precio) { alert('Cargá descripción y precio.'); return }
-    const c = +form.costo.replace(/[^0-9.]/g, '') || null
-    const p = +form.precio.replace(/[^0-9.]/g, '')
+    const c = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
+    const p = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
     const { data: ventaIns } = await supabase.from('ventas').insert({
       fecha, descripcion: form.descripcion, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
@@ -181,7 +181,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   }
 
   async function updateCosto(v: Venta, costo: string) {
-    const c = +costo.replace(/[^0-9.]/g, '')
+    const c = +costo.replace(/,/g, '.').replace(/[^0-9.]/g, '')
     if (!c) return
     await supabase.from('ventas').update({ costo: c, pendiente: false }).eq('id', v.id)
     setVentas(prev => prev.map(x => x.id === v.id ? { ...x, costo: c, pendiente: false } : x))
@@ -216,9 +216,9 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     const upd: Record<string, any> = {}
     const descConCodigo = editForm.codigo ? `[${editForm.codigo}] ${editForm.descripcion}` : editForm.descripcion
     if (descConCodigo !== v.descripcion) { campos.push(['descripcion', v.descripcion ?? '', descConCodigo]); upd.descripcion = descConCodigo }
-    const newCosto = +editForm.costo.replace(/[^0-9.]/g, '') || null
+    const newCosto = +editForm.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
     if (newCosto !== v.costo) { campos.push(['costo', String(v.costo ?? ''), String(newCosto ?? '')]); upd.costo = newCosto; upd.pendiente = !newCosto }
-    const newPrecio = +editForm.precio.replace(/[^0-9.]/g, '')
+    const newPrecio = +editForm.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
     if (newPrecio !== v.precio) { campos.push(['precio', String(v.precio), String(newPrecio)]); upd.precio = newPrecio }
     if (editForm.cliente !== (v.cliente ?? '')) { campos.push(['cliente', v.cliente ?? '', editForm.cliente]); upd.cliente = editForm.cliente || null }
     if (editForm.pago !== v.pago) { campos.push(['pago', v.pago ?? '', editForm.pago]); upd.pago = editForm.pago }
@@ -247,7 +247,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       fecha,
       categoria: gastoForm.categoria,
       descripcion: gastoForm.descripcion,
-      monto: +gastoForm.monto.replace(/[^0-9.]/g, ''),
+      monto: +gastoForm.monto.replace(/,/g, '.').replace(/[^0-9.]/g, ''),
       forma_pago: gastoForm.forma_pago,
       comprobante: gastoForm.comprobante || null,
       user_id: userId,
@@ -536,8 +536,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             <Field label="Precio de venta *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
           </div>
           {gan() !== null && (() => {
-            const precio = +form.precio.replace(/[^0-9.]/g,'')
-            const costo  = +form.costo.replace(/[^0-9.]/g,'')
+            const precio = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g,'')
+            const costo  = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g,'')
             const r = calcRentabilidad(precio, costo)
             return r ? (
               <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
@@ -628,8 +628,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
               </Field>
               {/* Desglose rentabilidad real */}
               {(() => {
-                const precio = +editForm.precio.replace(/[^0-9.]/g,'')
-                const costo  = +editForm.costo.replace(/[^0-9.]/g,'')
+                const precio = +editForm.precio.replace(/,/g, '.').replace(/[^0-9.]/g,'')
+                const costo  = +editForm.costo.replace(/,/g, '.').replace(/[^0-9.]/g,'')
                 const r = precio && costo ? calcRentabilidad(precio, costo) : null
                 return r ? (
                   <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
