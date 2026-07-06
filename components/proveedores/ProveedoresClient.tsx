@@ -418,31 +418,36 @@ export default function ProveedoresClient() {
         setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
       }
       setResult({ ok:true, msg:`✅ Se importaron ${inserted.toLocaleString('es-AR')} piezas correctamente.` })
-      // Vincular códigos nuevos al maestro solo por código exacto
-      setProgress('Vinculando al maestro…')
+      // Para cada código nuevo → si no tiene equivalencia → crear articulo_maestro + equivalencia
+      setProgress('Creando artículos nuevos en el maestro…')
       try {
         const { data: codsEnCatalogo } = await supabase.from('catalogo')
-          .select('codigo,proveedor').not('codigo','is',null).neq('codigo','').limit(5000)
-        let vinculados = 0
+          .select('codigo,descripcion,proveedor,pos').not('codigo','is',null).neq('codigo','').limit(5000)
+        let creados = 0
         for (const cat of codsEnCatalogo??[]) {
-          if (!cat.codigo) continue
-          // Ya tiene equivalencia → saltar
+          if (!cat.codigo || !cat.descripcion) continue
+          // ¿Ya tiene equivalencia exacta?
           const { data: eq } = await supabase.from('articulo_equivalencias')
             .select('id').eq('codigo_proveedor', cat.codigo).maybeSingle()
           if (eq) continue
-          // Buscar equivalencia exacta del mismo código en otro proveedor
-          const { data: eqExacta } = await supabase.from('articulo_equivalencias')
-            .select('articulo_id').eq('codigo_proveedor', cat.codigo).maybeSingle()
-          if (eqExacta?.articulo_id) {
-            await supabase.from('articulo_equivalencias').insert({
-              articulo_id: eqExacta.articulo_id, codigo_proveedor: cat.codigo,
-              proveedor: cat.proveedor || formato, lista_nombre: 'Auto-import',
-            })
-            vinculados++
-          }
+          // Crear artículo en maestro con la descripción del catálogo
+          const { data: nuevo } = await supabase.from('articulos_maestro').insert({
+            descripcion: cat.descripcion,
+            pos: cat.pos || null,
+            activo: true,
+          }).select('id').single()
+          if (!nuevo) continue
+          // Crear la equivalencia
+          await supabase.from('articulo_equivalencias').insert({
+            articulo_id: nuevo.id,
+            codigo_proveedor: cat.codigo,
+            proveedor: cat.proveedor || formato,
+            lista_nombre: 'Auto-import',
+          })
+          creados++
         }
-        if (vinculados > 0)
-          setResult({ ok:true, msg:`✅ ${inserted.toLocaleString('es-AR')} piezas importadas · ${vinculados} códigos vinculados.` })
+        if (creados > 0)
+          setResult({ ok:true, msg:`✅ ${inserted.toLocaleString('es-AR')} piezas importadas · ${creados} artículos nuevos creados en el maestro.` })
       } catch {}
     } catch(e:unknown) {
       setResult({ ok:false, msg:`❌ ${e instanceof Error ? e.message : String(e)}` })
