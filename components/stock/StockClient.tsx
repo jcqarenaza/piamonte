@@ -449,15 +449,33 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       })()}
 
       {isAdmin && (
-        <div style={{background:'#E6F5EC', border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5 mb-3">
-          <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">Valorizado del stock (precio de venta)</p>
-          <p style={{color:'#0E5A2C'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
-          {valTotalVentaUSD != null && <p style={{color:'#1E8449'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>}
-          {sinCostoCount > 0 && (
-            <p style={{color:'#5B9C75'}} className="font-mono text-xs mt-2">
-              {itemsConAmbos.length} de {items.filter(s=>s.precio_venta||s.costo).length} piezas tienen también el costo cargado — todavía no alcanza para calcular el margen real del stock.
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {/* Costo total del stock */}
+          <div style={{background:'#E6F5EC',border:'1px solid #BFE6CE'}} className="rounded-xl px-5 py-3.5">
+            <p style={{color:'#1E8449'}} className="text-xs font-semibold uppercase tracking-wider">📦 Costo del stock</p>
+            <p style={{color:'#0E5A2C'}} className="font-saira font-bold text-2xl mt-1">
+              {moneyARS(items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0))}
             </p>
-          )}
+            {valTotalVentaUSD != null && (
+              <p style={{color:'#1E8449'}} className="font-mono text-sm mt-0.5">
+                US$ {(items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0)/dolarOficial!).toLocaleString('es-AR',{maximumFractionDigits:0})}
+              </p>
+            )}
+            <p style={{color:'#5B9C75'}} className="text-xs mt-1">
+              {items.filter(s=>s.costo&&s.costo>0&&s.cantidad>0).length} artículos con costo · {sinCostoCount > 0 ? `${sinCostoCount} sin costo` : 'todos con costo ✓'}
+            </p>
+          </div>
+          {/* Precio de venta total */}
+          <div style={{background:'#EBF4FB',border:'1px solid #BFD9F0'}} className="rounded-xl px-5 py-3.5">
+            <p style={{color:'#1A5276'}} className="text-xs font-semibold uppercase tracking-wider">💰 Valorizado (precio venta)</p>
+            <p style={{color:'#154360'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
+            {valTotalVentaUSD != null && <p style={{color:'#1A5276'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR',{maximumFractionDigits:0})}</p>}
+            <p style={{color:'#5D8AA8'}} className="text-xs mt-1">
+              Margen potencial: {valTotalVenta > 0 && items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0) > 0
+                ? moneyARS(valTotalVenta - items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0))
+                : '—'}
+            </p>
+          </div>
         </div>
       )}
       {dolarOficial && isAdmin && (
@@ -465,14 +483,16 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {sinVincularCount > 0 && isAdmin && (
-        <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
-          <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> piezas todavía no están vinculadas a un artículo del catálogo</p>
+        <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-2 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
+          <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> artículos sin vincular al catálogo</p>
           <span className="text-xs font-bold text-amber-700">Vincular →</span>
         </div>
       )}
-
       {sinCostoCount > 0 && isAdmin && (
-        <AlarmBar count={sinCostoCount} label="en stock sin costo — no suman al valor" onGo={() => setSoloSinCosto(true)} />
+        <div onClick={()=>setSoloSinCosto(true)} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 mb-3 cursor-pointer hover:bg-orange-100 transition-colors flex items-center justify-between">
+          <p className="text-sm text-orange-800">⚠ <strong>{sinCostoCount}</strong> artículos sin costo — no suman al valor</p>
+          <span className="text-xs font-bold text-orange-700">Ver →</span>
+        </div>
       )}
 
       {/* Controles */}
