@@ -553,6 +553,20 @@ export default function ComprasClient() {
           .select('proveedor,costo_neto,lista_nombre,codigo_proveedor')
           .eq('articulo_id', it.articulo_id)
         candidatos = data ?? []
+      } else if ((it as any).codigo && (it as any).codigo !== 'FL') {
+        // Buscar por código del proveedor en el catálogo directamente
+        const codigoBase = ((it as any).codigo as string).replace(/[^0-9]/g,'').slice(0,6)
+        const { data } = await supabase.from('catalogo')
+          .select('proveedor, costo_neto, precio_lista, codigo')
+          .ilike('codigo', `${codigoBase}%`)
+          .gt('costo_neto', 0).limit(20)
+        // Convertir al formato de equivalencias
+        const porProv = new Map<string,any>()
+        for (const row of (data??[])) {
+          if (!porProv.has(row.proveedor) || row.costo_neto < porProv.get(row.proveedor).costo_neto)
+            porProv.set(row.proveedor, { proveedor: row.proveedor, costo_neto: row.costo_neto, lista_nombre: 'Catálogo', codigo_proveedor: row.codigo })
+        }
+        candidatos = [...porProv.values()]
       } else {
         // Sin artículo vinculado todavía — fallback a la búsqueda por palabras de antes
         const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
@@ -1335,10 +1349,13 @@ export default function ComprasClient() {
               <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Ítems</p>
               <div className="flex flex-col gap-1">
                 {verComp.items.map((it,i)=>(
-                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5">
-                    <span className="flex-1">{it.articulo_id && '🔗 '}{it.d}</span>
-                    <span className="text-p-ink2 w-16 text-center">x{it.c}</span>
-                    <span className="font-mono w-24 text-right">{moneyARS(it.p*it.c)}</span>
+                  <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5 gap-2">
+                    <div className="flex-1 min-w-0">
+                      {(it as any).codigo && <span className="text-[10px] font-mono font-bold bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                      <span>{it.articulo_id && '🔗 '}{it.d}</span>
+                    </div>
+                    <span className="text-p-ink2 shrink-0">x{it.c}</span>
+                    <span className="font-mono shrink-0 text-right">{moneyARS(it.p*it.c)}</span>
                   </div>
                 ))}
               </div>
