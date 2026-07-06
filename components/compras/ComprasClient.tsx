@@ -546,6 +546,7 @@ export default function ComprasClient() {
 
     const resultados: any[] = []
     for (const it of c.items) {
+      if ((it.d||'').toUpperCase().trim() === 'FLETE') continue // el flete no se compara
       let candidatos: any[] = []
 
       if (it.articulo_id) {
@@ -590,11 +591,16 @@ export default function ComprasClient() {
       }
       const lista = [...porProveedor.values()].sort((a,b)=>a.costo_neto - b.costo_neto)
 
+      // El precio del ítem en la factura es el precio de LISTA (antes del descuento)
+      // Lo que realmente pagamos = precio_lista × (1 - descuento_pct/100)
+      const descPct = c.descuento_pct ? +c.descuento_pct / 100 : 0
+      const precioNetoReal = Math.round(it.p * (1 - descPct) * 100) / 100
+
       const masBarato = lista[0]
-      const diferencia = masBarato ? it.p - masBarato.costo_neto : null
+      const diferencia = masBarato ? precioNetoReal - masBarato.costo_neto : null
       const diferenciaPct = masBarato && masBarato.costo_neto > 0 ? (diferencia! / masBarato.costo_neto) * 100 : null
 
-      resultados.push({ item: it, candidatos: lista, sinMatch: lista.length === 0, diferencia, diferenciaPct, masBarato })
+      resultados.push({ item: it, candidatos: lista, sinMatch: lista.length === 0, diferencia, diferenciaPct, masBarato, precioNetoReal })
     }
 
     setComparacion(resultados)
@@ -886,7 +892,10 @@ export default function ComprasClient() {
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <p className="font-semibold text-sm text-p-ink">{r.item.articulo_id && '🔗 '}{r.item.d}</p>
                         <span className="font-mono text-sm">
-                          Pagado: <strong>{moneyARS2(r.item.p)}</strong>
+                          Pagado (neto): <strong>{moneyARS2(r.precioNetoReal ?? r.item.p)}</strong>
+                          {r.precioNetoReal && r.precioNetoReal !== r.item.p && (
+                            <span className="text-[10px] text-p-ink2 ml-1">lista: {moneyARS2(r.item.p)}</span>
+                          )}
                         </span>
                       </div>
 
