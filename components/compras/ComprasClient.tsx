@@ -445,12 +445,13 @@ export default function ComprasClient() {
     const init: Record<number,{stock_id:string;qty:number;costo:number}|null> = {}
     const initQ: Record<number,string> = {}
     c.items.forEach((it,i) => {
-      const match = stockItems.find(s =>
-        s.descripcion?.toLowerCase().includes(it.d.toLowerCase()) ||
-        it.d.toLowerCase().includes(s.descripcion?.toLowerCase() || '')
-      )
-      init[i] = match ? { stock_id: match.id, qty: it.c, costo: it.p } : null
-      initQ[i] = match ? match.descripcion : ''
+      const codigo = (it as any).codigo
+      // Match SOLO por código exacto — nunca mezclar por descripción parcial
+      const matchCodigo = codigo && codigo !== 'FL'
+        ? stockItems.find(s => s.codigo === codigo)
+        : null
+      init[i] = matchCodigo ? { stock_id: matchCodigo.id, qty: it.c, costo: it.p } : null
+      initQ[i] = matchCodigo ? matchCodigo.descripcion : ''
     })
     setMappings(init)
     setStockQ(initQ)
@@ -772,10 +773,20 @@ export default function ComprasClient() {
                 Vinculá cada ítem con su correspondiente artículo en stock. Los vinculados sumarán la cantidad al stock actual.
               </p>
               <div className="flex flex-col gap-4">
-                {remitoModal.items.map((it,i) => (
-                  <div key={i} className="bg-p-light rounded-xl p-3">
+                {remitoModal.items.map((it,i) => {
+                  const codigo = (it as any).codigo
+                  const esFlete = codigo === 'FL' || (it.d||'').toUpperCase().trim() === 'FLETE'
+                  return (
+                  <div key={i} className={`rounded-xl p-3 ${esFlete?'bg-gray-50 opacity-60':'bg-p-light'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{it.d}</p>
+                      <div>
+                        <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{it.d}</p>
+                        {codigo && !esFlete && (
+                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${mappings[i]?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>
+                            {codigo} {mappings[i]?'✓ código exacto encontrado':'⚠ no existe en stock — crear o vincular'}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-p-ink2">Cant:</span>
                         <input type="number" value={mappings[i]?.qty ?? it.c}
@@ -855,7 +866,7 @@ export default function ComprasClient() {
                       <p className="text-[10px] text-amber-600 mt-1.5">⚠ Sin vincular — no afectará el stock</p>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
             <div className="p-5 border-t border-p-line flex justify-between items-center">
