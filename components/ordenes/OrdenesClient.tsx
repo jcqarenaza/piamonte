@@ -396,7 +396,12 @@ export default function OrdenesClient({ userId }: { userId: string }) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
     const tel = (o.telefono??'').replace(/[^0-9]/g,'')
-    const texto = `Hola${o.cliente?' '+o.cliente:''}! Te enviamos ${conADAS?'el certificado ADAS':'la orden de servicio'} de Parabrisas El Piamonte. N° ${conADAS?String(numADAS||0).padStart(7,'0'):numOS}.`
+    const siniestro = (o as any).siniestro
+    const patente = (o as any).patente
+    const vehiculo = o.vehiculo || ''
+    const texto = siniestro
+      ? `Hola${o.cliente ? ' ' + o.cliente : ''}! Te escribimos desde El Piamonte para coordinar el turno para el cambio de cristal del siniestro N° ${siniestro}.${patente ? ` Vehículo: ${vehiculo} - Patente ${patente}.` : ''} ¿Cuándo te viene bien?`
+      : `Hola${o.cliente ? ' ' + o.cliente : ''}! Te escribimos desde El Piamonte para coordinar el turno para el cambio de cristal.${vehiculo ? ` Vehículo: ${vehiculo}.` : ''} ¿Cuándo te viene bien?`
     setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`,'_blank'),800)
   }
 
