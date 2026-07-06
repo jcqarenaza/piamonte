@@ -4,9 +4,10 @@ import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
 
 const FORMATOS = [
-  { id: 'gamma',        label: 'GAMMA — Catálogo',               ext: '.xlsx', tipo: 'excel' },
-  { id: 'malatesta',   label: 'Malatesta — Catálogo',            ext: '.xlsx', tipo: 'excel' },
-  { id: 'euroglass',   label: 'Euroglass — Oferta',              ext: '.xlsx', tipo: 'excel' },
+  { id: 'gamma',           label: 'GAMMA — Catálogo',               ext: '.xlsx', tipo: 'excel' },
+  { id: 'malatesta',       label: 'Malatesta — Catálogo (viejo)',    ext: '.xlsx', tipo: 'excel' },
+  { id: 'malatesta_julio', label: 'Malatesta — Catálogo Julio 2026', ext: '.xlsx', tipo: 'excel' },
+  { id: 'euroglass',       label: 'Euroglass — Oferta',              ext: '.xlsx', tipo: 'excel' },
   { id: 'sekurit',     label: 'Sekurit — Lista disponible',      ext: '.xlsx', tipo: 'excel' },
   { id: 'promo_ar',    label: 'Promo Alta Rotación 68%',         ext: '.xlsx', tipo: 'excel' },
   { id: 'promo_bg',    label: 'Promo Bajo Giro 68%',             ext: '.xlsx', tipo: 'excel' },
@@ -118,7 +119,25 @@ async function parseEuroglass(file:File): Promise<CatRow[]> {
   return items
 }
 
-async function parseSekurit(file:File): Promise<CatRow[]> {
+async function parseMalatestaJulio(file:File): Promise<CatRow[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type:'array', cellFormula:false, cellNF:false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows:unknown[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:null })
+  const items:CatRow[] = []
+  for (const r of rows) {
+    const codigo = String(r[0]??'').trim()
+    const desc   = String(r[1]??'').trim()
+    const origen = String(r[2]??'').trim()
+    const precio = toNum(r[4])
+    // Fila válida: código alfanumérico real + descripción + precio
+    if (!codigo || !desc || precio <= 0) continue
+    if (codigo === 'Codigo' || !codigo.match(/[0-9]/)) continue // saltar headers/marcas
+    const proveedor = origen.toLowerCase().includes('plk') ? 'PLK ARGENTINA' : 'MALATESTA'
+    items.push(mkRow(proveedor, codigo, desc, proveedor, precio, 0))
+  }
+  return items
+}
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type:'array' })
   const ws = wb.Sheets['LP']
@@ -358,8 +377,9 @@ export default function ProveedoresClient() {
     try {
       let items:CatRow[] = []
       if(formato==='gamma')         items = await parseGamma(file)
-      else if(formato==='malatesta')items = await parseMalateseta(file)
-      else if(formato==='euroglass') items = await parseEuroglass(file)
+      else if(formato==='malatesta')      items = await parseMalateseta(file)
+      else if(formato==='malatesta_julio') items = await parseMalatestaJulio(file)
+      else if(formato==='euroglass')       items = await parseEuroglass(file)
       else if(formato==='sekurit')  items = await parseSekurit(file)
       else if(formato==='promo_ar'||formato==='promo_bg') items = await parsePromo(file)
       else if(formato==='oferta_gamma') items = await parsePdfGamma(file)
