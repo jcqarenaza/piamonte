@@ -1194,10 +1194,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                           if (costoStock > 0) {
                             if (modo === 'aseguradora') {
                               const tc = tipos.find((t:any)=>t.nombre==='Compañías')
-                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1++tc.margen_pct))
+                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1 + +tc.margen_pct))
                             } else if (modo === 'cliente') {
                               const tc = tipos.find((t:any)=>t.id===fiscal.tipo_cliente_id)
-                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1++tc.margen_pct))
+                              if (tc?.margen_pct) precioStock = Math.round(costoStock*(1 + +tc.margen_pct))
                             } else {
                               // CF: usar precio_lista o precio_venta como referencia
                               precioStock = s.precio_venta || Math.round(costoStock*1.45)
