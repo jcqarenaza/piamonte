@@ -5,21 +5,52 @@ import { Modal, Field, Input, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
 
 interface Aseg { id:string; nombre:string }
-interface Mov { id:string; fecha:string; tipo:string; descripcion:string; debe:number; haber:number; notas:string|null }
+interface Mov { id:string; fecha:string; tipo:string; descripcion:string; debe:number; haber:number; notas:string|null; comprobante_id:string|null }
 interface Saldo { aseguradora_id:string; nombre:string; total_debe:number; total_haber:number; saldo:number; facturas:number }
+interface FacturaPendiente { id:string; numero:number; fecha:string; total:number; nro_cbte_afip:number|null }
+interface Retencion { tipo:'ganancias'|'iva'|'iibb'|'suss'|'otras'; label:string; monto:string; nro_cert:string; base:string }
 
-const btn    = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
-const btnSm  = { ...btn, padding:'7px 14px', fontSize:12 } as const
+const FORMAS = ['Transferencia','Multipay','Cheque','Efectivo','Otro']
+const RET_TIPOS: {tipo: Retencion['tipo']; label:string}[] = [
+  { tipo:'ganancias', label:'Ret. Ganancias' },
+  { tipo:'iva',       label:'Ret. IVA' },
+  { tipo:'iibb',      label:'Ret. IIBB' },
+  { tipo:'suss',      label:'Ret. SUSS' },
+  { tipo:'otras',     label:'Otras retenciones' },
+]
+
+const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
+const btnSm   = { ...btn, padding:'7px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
 
+function toNum(s:string){ return parseFloat(s.replace(',','.')) || 0 }
+
 export default function CuentaCorrienteAseguradorasClient() {
-  const [saldos, setSaldos]     = useState<Saldo[]>([])
-  const [sel, setSel]           = useState<Saldo|null>(null)
-  const [movs, setMovs]         = useState<Mov[]>([])
-  const [q, setQ]               = useState('')
-  const [pagoModal, setPagoModal] = useState(false)
-  const [formPago, setFormPago] = useState({ monto:'', fecha:todayStr(), notas:'' })
-  const [loading, setLoading]   = useState(false)
+  const [saldos, setSaldos]   = useState<Saldo[]>([])
+  const [sel, setSel]         = useState<Saldo|null>(null)
+  const [movs, setMovs]       = useState<Mov[]>([])
+  const [q, setQ]             = useState('')
+  const [loading, setLoading] = useState(false)
+
+  // Modal cobro
+  const [cobroModal, setCobroModal] = useState(false)
+  const [facturasPend, setFacturasPend] = useState<FacturaPendiente[]>([])
+  const [factSel, setFactSel] = useState<Record<string,boolean>>({})
+  const [forma, setForma]     = useState('Transferencia')
+  const [banco, setBanco]     = useState('')
+  const [cbu, setCbu]         = useState('')
+  const [ref, setRef]         = useState('')
+  const [nroOp, setNroOp]     = useState('')
+  const [fecha, setFecha]     = useState(todayStr())
+  const [retenciones, setRetenciones] = useState<Retencion[]>([
+    { tipo:'ganancias', label:'Ret. Ganancias', monto:'', nro_cert:'', base:'' },
+    { tipo:'iva',       label:'Ret. IVA',       monto:'', nro_cert:'', base:'' },
+    { tipo:'iibb',      label:'Ret. IIBB',      monto:'', nro_cert:'', base:'' },
+    { tipo:'suss',      label:'Ret. SUSS',      monto:'', nro_cert:'', base:'' },
+    { tipo:'otras',     label:'Otras ret.',     monto:'', nro_cert:'', base:'' },
+  ])
+  const [savingCobro, setSavingCobro] = useState(false)
+
   const supabase = createClient()
 
   useEffect(()=>{ loadSaldos() },[])
@@ -31,8 +62,8 @@ export default function CuentaCorrienteAseguradorasClient() {
     if (!data) return
     const map = new Map<string, Saldo>()
     for (const r of data as any[]) {
-      const id   = r.aseguradora_id
-      const nom  = r.aseguradoras?.nombre || ''
+      const id  = r.aseguradora_id
+      const nom = r.aseguradoras?.nombre || ''
       if (!map.has(id)) map.set(id, { aseguradora_id:id, nombre:nom, total_debe:0, total_haber:0, saldo:0, facturas:0 })
       const s = map.get(id)!
       s.total_debe  += +r.debe
@@ -57,19 +88,99 @@ export default function CuentaCorrienteAseguradorasClient() {
     setSel(s); loadMovs(s.aseguradora_id)
   }
 
-  async function registrarCobro() {
-    if (!sel || !formPago.monto || +formPago.monto <= 0) return
+  async function abrirCobro() {
+    if (!sel) return
+    // Traer facturas pendientes (con debe > 0 y sin cobro vinculado)
+    const { data: movsCc } = await supabase.from('cuenta_corriente_aseguradoras')
+      .select('comprobante_id, debe, haber').eq('aseguradora_id', sel.aseguradora_id)
+    
+    // Calcular saldo por comprobante
+    const saldoPorComp = new Map<string, number>()
+    for (const m of (movsCc??[]) as any[]) {
+      if (!m.comprobante_id) continue
+      const prev = saldoPorComp.get(m.comprobante_id) || 0
+      saldoPorComp.set(m.comprobante_id, prev + (+m.debe) - (+m.haber))
+    }
+    
+    // Traer datos de los comprobantes pendientes
+    const ids = [...saldoPorComp.entries()].filter(([,s])=>s>0).map(([id])=>id)
+    if (!ids.length) { setFacturasPend([]); setFactSel({}); setCobroModal(true); return }
+    
+    const { data: comps } = await supabase.from('comprobantes')
+      .select('id,numero,fecha,total,nro_cbte_afip').in('id', ids).order('fecha')
+    
+    const pend: FacturaPendiente[] = (comps??[]).map((c:any) => ({
+      ...c, total: saldoPorComp.get(c.id) || c.total
+    }))
+    setFacturasPend(pend)
+    // Pre-seleccionar todas
+    const sel2: Record<string,boolean> = {}
+    pend.forEach(f => sel2[f.id] = true)
+    setFactSel(sel2)
+    setCobroModal(true)
+  }
+
+  const montoFactSel = facturasPend.filter(f=>factSel[f.id]).reduce((a,f)=>a+f.total,0)
+  const totalRetenciones = retenciones.reduce((a,r)=>a+toNum(r.monto),0)
+  const montoNeto = montoFactSel - totalRetenciones
+
+  function updRet(tipo: string, field: keyof Retencion, value: string) {
+    setRetenciones(prev => prev.map(r => r.tipo === tipo ? {...r, [field]: value} : r))
+  }
+
+  async function confirmarCobro() {
+    if (!sel || montoFactSel <= 0) return
+    setSavingCobro(true)
+    
+    const { data: cobro } = await supabase.from('cobros_aseguradoras').insert({
+      aseguradora_id: sel.aseguradora_id,
+      fecha, forma_cobro: forma, banco: banco||null, cbu: cbu||null,
+      referencia: ref||null, nro_op: nroOp||null,
+      monto_bruto: montoFactSel,
+      ret_ganancias: toNum(retenciones.find(r=>r.tipo==='ganancias')?.monto||'0'),
+      ret_iva:       toNum(retenciones.find(r=>r.tipo==='iva')?.monto||'0'),
+      ret_iibb:      toNum(retenciones.find(r=>r.tipo==='iibb')?.monto||'0'),
+      ret_suss:      toNum(retenciones.find(r=>r.tipo==='suss')?.monto||'0'),
+      ret_otras:     toNum(retenciones.find(r=>r.tipo==='otras')?.monto||'0'),
+      monto_neto: montoNeto,
+    }).select('id').single()
+
+    if (!cobro) { setSavingCobro(false); return }
+
+    // Detalle facturas
+    const factsSel = facturasPend.filter(f=>factSel[f.id])
+    await supabase.from('cobros_aseguradoras_facturas').insert(
+      factsSel.map(f => ({ cobro_id: cobro.id, comprobante_id: f.id, monto: f.total }))
+    )
+
+    // Haber en CC por el total bruto
     await supabase.from('cuenta_corriente_aseguradoras').insert({
       aseguradora_id: sel.aseguradora_id,
-      fecha: formPago.fecha,
-      tipo: 'cobro',
-      descripcion: `Cobro — ${sel.nombre}`,
-      debe: 0,
-      haber: +formPago.monto,
-      notas: formPago.notas||null,
+      fecha, tipo: 'cobro',
+      descripcion: `Cobro OP ${nroOp||ref||'s/n'} — ${factsSel.length} fact.`,
+      debe: 0, haber: montoFactSel,
     })
-    setPagoModal(false)
-    setFormPago({ monto:'', fecha:todayStr(), notas:'' })
+
+    // Retenciones como certificados
+    const retsConMonto = retenciones.filter(r=>toNum(r.monto)>0)
+    if (retsConMonto.length) {
+      await supabase.from('retenciones_sufridas').insert(
+        retsConMonto.map(r => ({
+          cobro_id: cobro.id,
+          aseguradora_id: sel.aseguradora_id,
+          fecha, tipo: r.tipo,
+          nro_certificado: r.nro_cert||null,
+          monto: toNum(r.monto),
+          base_imponible: toNum(r.base)||null,
+        }))
+      )
+    }
+
+    // Reset
+    setCobroModal(false)
+    setForma('Transferencia'); setBanco(''); setCbu(''); setRef(''); setNroOp(''); setFecha(todayStr())
+    setRetenciones(prev => prev.map(r=>({...r,monto:'',nro_cert:'',base:''})))
+    setSavingCobro(false)
     loadSaldos(); loadMovs(sel.aseguradora_id)
   }
 
@@ -78,7 +189,7 @@ export default function CuentaCorrienteAseguradorasClient() {
 
   return (
     <div>
-      {/* KPI total */}
+      {/* KPI */}
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5 inline-flex items-center gap-4">
         <div>
           <p className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">Total pendiente de cobro</p>
@@ -87,15 +198,13 @@ export default function CuentaCorrienteAseguradorasClient() {
         <p className="text-xs text-red-500">{saldos.filter(s=>s.saldo>0).length} compañías con saldo</p>
       </div>
 
-      {/* Buscador */}
       <div className="mb-4">
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar aseguradora…"
           className="w-full max-w-md border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green"/>
       </div>
 
-      {/* Listado */}
       <div className="flex flex-col gap-2">
-        {filtrados.filter(s=>s.saldo > 0).map(s=>(
+        {filtrados.filter(s=>s.saldo>0).map(s=>(
           <div key={s.aseguradora_id}>
             <div onClick={()=>seleccionar(s)}
               className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 cursor-pointer ${sel?.aseguradora_id===s.aseguradora_id?'border-p-green bg-p-light/30':'border-p-line hover:border-p-green'}`}>
@@ -109,7 +218,7 @@ export default function CuentaCorrienteAseguradorasClient() {
             {sel?.aseguradora_id === s.aseguradora_id && (
               <div className="border border-p-green border-t-0 rounded-b-xl bg-p-light/10 px-4 py-3">
                 <div className="mb-3">
-                  <button onClick={()=>setPagoModal(true)} style={btn}>💵 Registrar cobro</button>
+                  <button onClick={abrirCobro} style={btn}>💵 Registrar cobro</button>
                 </div>
                 {loading ? <p className="text-sm text-p-gray py-2">Cargando…</p> : (
                   <table className="w-full text-xs">
@@ -147,15 +256,97 @@ export default function CuentaCorrienteAseguradorasClient() {
       </div>
 
       {/* Modal cobro */}
-      <Modal open={pagoModal} onClose={()=>setPagoModal(false)} title={`Registrar cobro — ${sel?.nombre}`}>
-        <div className="flex flex-col gap-3">
-          <Field label="Monto cobrado *"><Input value={formPago.monto} onChange={e=>setFormPago(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
-          <Field label="Fecha"><Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/></Field>
-          <Field label="Notas"><Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="N° transferencia, cheque…"/></Field>
+      <Modal open={cobroModal} onClose={()=>setCobroModal(false)} title={`Registrar cobro — ${sel?.nombre}`}>
+        <div className="flex flex-col gap-4 max-h-[80vh] overflow-y-auto pr-1">
+
+          {/* Facturas pendientes */}
+          <div>
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Facturas que cancela este cobro</p>
+            {facturasPend.length === 0
+              ? <p className="text-sm text-p-ink2">No hay facturas pendientes.</p>
+              : <div className="flex flex-col gap-1">
+                  {facturasPend.map(f=>(
+                    <label key={f.id} className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer text-sm ${factSel[f.id]?'border-p-green bg-green-50':'border-p-line'}`}>
+                      <input type="checkbox" checked={!!factSel[f.id]} onChange={()=>setFactSel(p=>({...p,[f.id]:!p[f.id]}))} className="accent-p-green"/>
+                      <span className="font-mono text-xs text-p-ink2">FA-0006-{String(f.nro_cbte_afip??f.numero).padStart(8,'0')}</span>
+                      <span className="text-p-ink2 text-xs">{f.fecha.split('-').reverse().join('/')}</span>
+                      <span className="ml-auto font-mono font-bold text-p-ink">{moneyARS(f.total)}</span>
+                    </label>
+                  ))}
+                  <div className="flex justify-between text-sm font-bold pt-1 border-t border-p-line mt-1">
+                    <span>Total seleccionado</span>
+                    <span className="font-mono">{moneyARS(montoFactSel)}</span>
+                  </div>
+                </div>
+            }
+          </div>
+
+          {/* Forma de cobro */}
+          <div>
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Forma de cobro</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Fecha">
+                <Input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+              </Field>
+              <Field label="Forma">
+                <select value={forma} onChange={e=>setForma(e.target.value)} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm">
+                  {FORMAS.map(f=><option key={f}>{f}</option>)}
+                </select>
+              </Field>
+              <Field label="N° Orden de Pago">
+                <Input value={nroOp} onChange={e=>setNroOp(e.target.value)} placeholder="Ej: 00220576"/>
+              </Field>
+              <Field label="Referencia / N° transferencia">
+                <Input value={ref} onChange={e=>setRef(e.target.value)} placeholder="Nro transferencia, cheque…"/>
+              </Field>
+              <Field label="Banco">
+                <Input value={banco} onChange={e=>setBanco(e.target.value)} placeholder="Ej: Banco Nación"/>
+              </Field>
+              <Field label="CBU">
+                <Input value={cbu} onChange={e=>setCbu(e.target.value)} placeholder="22 dígitos"/>
+              </Field>
+            </div>
+          </div>
+
+          {/* Retenciones */}
+          <div>
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Retenciones sufridas</p>
+            <div className="flex flex-col gap-2">
+              {retenciones.map(r=>(
+                <div key={r.tipo} className="grid grid-cols-3 gap-2 items-end">
+                  <Field label={r.label}>
+                    <Input value={r.monto} onChange={e=>updRet(r.tipo,'monto',e.target.value)} placeholder="$0"/>
+                  </Field>
+                  <Field label="N° Certificado">
+                    <Input value={r.nro_cert} onChange={e=>updRet(r.tipo,'nro_cert',e.target.value)} placeholder="Opcional"/>
+                  </Field>
+                  <Field label="Base imponible">
+                    <Input value={r.base} onChange={e=>updRet(r.tipo,'base',e.target.value)} placeholder="$0"/>
+                  </Field>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Resumen */}
+          <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1 text-sm">
+            <div className="flex justify-between"><span className="text-p-ink2">Total facturado cancelado</span><span className="font-mono">{moneyARS(montoFactSel)}</span></div>
+            {retenciones.filter(r=>toNum(r.monto)>0).map(r=>(
+              <div key={r.tipo} className="flex justify-between text-red-600">
+                <span>− {r.label}</span><span className="font-mono">{moneyARS(toNum(r.monto))}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-bold text-p-green border-t border-p-line pt-1 mt-1">
+              <span>Neto a acreditar</span><span className="font-mono font-saira text-lg">{moneyARS(montoNeto)}</span>
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={()=>setPagoModal(false)} style={btnGray}>Cancelar</button>
-            <button onClick={registrarCobro} disabled={!formPago.monto||+formPago.monto<=0}
-              style={{...btn,opacity:(!formPago.monto||+formPago.monto<=0)?.5:1}}>Registrar cobro</button>
+            <button onClick={()=>setCobroModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={confirmarCobro} disabled={savingCobro||montoFactSel<=0}
+              style={{...btn,opacity:(savingCobro||montoFactSel<=0)?.5:1}}>
+              {savingCobro?'Guardando…':'✓ Confirmar cobro'}
+            </button>
           </div>
         </div>
       </Modal>
