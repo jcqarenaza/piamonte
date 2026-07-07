@@ -494,9 +494,10 @@ export default function ProveedoresClient() {
           const { data: eq } = await supabase.from('articulo_equivalencias')
             .select('id').eq('codigo_proveedor', cat.codigo).maybeSingle()
           if (eq) continue
-          // Crear artículo en maestro
+          // Crear artículo en maestro — el código del proveedor ES el código de referencia Pilkington
           const { data: nuevo } = await supabase.from('articulos_maestro').insert({
             descripcion: cat.descripcion, pos: cat.pos || null, activo: true,
+            codigo_referencia: cat.codigo || null,
           }).select('id').single()
           if (!nuevo) continue
           // Crear la equivalencia
