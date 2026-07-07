@@ -451,31 +451,25 @@ export default function ProveedoresClient() {
         setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
       }
       setResult({ ok:true, msg:`✅ Se importaron ${inserted.toLocaleString('es-AR')} piezas correctamente.` })
-      // Para cada código nuevo → si no tiene equivalencia → crear articulo_maestro + equivalencia
+      // Crear articulos_maestro SOLO para los códigos del import actual que no tienen equivalencia
       setProgress('Creando artículos nuevos en el maestro…')
       try {
-        const { data: codsEnCatalogo } = await supabase.from('catalogo')
-          .select('codigo,descripcion,proveedor,pos').not('codigo','is',null).neq('codigo','').limit(5000)
         let creados = 0
-        for (const cat of codsEnCatalogo??[]) {
+        for (const cat of items) {
           if (!cat.codigo || !cat.descripcion) continue
           // ¿Ya tiene equivalencia exacta?
           const { data: eq } = await supabase.from('articulo_equivalencias')
             .select('id').eq('codigo_proveedor', cat.codigo).maybeSingle()
           if (eq) continue
-          // Crear artículo en maestro con la descripción del catálogo
+          // Crear artículo en maestro
           const { data: nuevo } = await supabase.from('articulos_maestro').insert({
-            descripcion: cat.descripcion,
-            pos: cat.pos || null,
-            activo: true,
+            descripcion: cat.descripcion, pos: cat.pos || null, activo: true,
           }).select('id').single()
           if (!nuevo) continue
           // Crear la equivalencia
           await supabase.from('articulo_equivalencias').insert({
-            articulo_id: nuevo.id,
-            codigo_proveedor: cat.codigo,
-            proveedor: cat.proveedor || formato,
-            lista_nombre: 'Auto-import',
+            articulo_id: nuevo.id, codigo_proveedor: cat.codigo,
+            proveedor: cat.proveedor || formato, lista_nombre: 'Auto-import',
           })
           creados++
         }
