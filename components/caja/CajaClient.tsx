@@ -564,19 +564,13 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             <Field label="Cliente"><Input value={form.cliente} onChange={e => setForm(p => ({ ...p, cliente: e.target.value }))} placeholder="Nombre" /></Field>
             <Field label="N° comprobante"><Input value={form.comprobante} onChange={e => setForm(p => ({ ...p, comprobante: e.target.value }))} placeholder="Factura / remito" /></Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Field label="Origen">
-                <Select value={form.origen} onChange={e => setForm(p => ({ ...p, origen: e.target.value as 'stock' | 'compra' }))}>
-                  <option value="stock">De mi stock</option>
-                  <option value="compra">Comprada para la venta</option>
-                </Select>
-              </Field>
-              <label className="flex items-center gap-2 mt-1.5 cursor-pointer select-none">
-                <input type="checkbox" checked={form.descontarStock} onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked}))} className="accent-p-green w-4 h-4"/>
-                <span className="text-xs text-p-ink2 font-medium">Descontar del stock</span>
-              </label>
-            </div>
+          <div className="grid grid-cols-2 gap-3 items-center">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={form.descontarStock}
+                onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked,origen:e.target.checked?'stock':'compra'}))}
+                className="accent-p-green w-4 h-4"/>
+              <span className="text-sm text-p-ink font-medium">Descontar del stock</span>
+            </label>
             <Field label="Forma de pago">
               <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
                 {PAGOS.map(p => <option key={p}>{p}</option>)}
