@@ -473,13 +473,23 @@ export default function ProveedoresClient() {
       const BATCH=200
       for(let i=0;i<items.length;i+=BATCH){
         const batch=items.slice(i,i+BATCH)
-        // Ofertas y promos tienen lista_nombre → conflicto incluye lista_nombre
-        // Catálogos regulares no tienen lista_nombre → conflicto solo proveedor+codigo
         const tieneListaNombre = batch.some(it => it.lista_nombre)
-        const conflictCols = tieneListaNombre ? 'proveedor,codigo,lista_nombre' : 'proveedor,codigo'
-        const { error } = await supabase.from('catalogo')
-          .upsert(batch, { onConflict: conflictCols, ignoreDuplicates:false })
-        if(error) throw new Error(error.message)
+        if (tieneListaNombre) {
+          // Para ofertas: eliminar las existentes y reinsertar (evita conflicto de índice)
+          const codigos = batch.map(it=>it.codigo).filter(Boolean)
+          const ln = batch[0].lista_nombre
+          if (codigos.length > 0) {
+            await supabase.from('catalogo')
+              .delete().in('codigo', codigos).eq('lista_nombre', ln)
+          }
+          const { error } = await supabase.from('catalogo').insert(batch)
+          if(error) throw new Error(error.message)
+        } else {
+          // Para catálogos regulares: upsert normal por proveedor+codigo
+          const { error } = await supabase.from('catalogo')
+            .upsert(batch, { onConflict:'proveedor,codigo', ignoreDuplicates:false })
+          if(error) throw new Error(error.message)
+        }
         inserted+=batch.length
         setProgress(`Importando… ${inserted.toLocaleString('es-AR')} / ${items.length.toLocaleString('es-AR')}`)
       }
