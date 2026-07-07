@@ -56,19 +56,21 @@ export default function CuentaCorrienteAseguradorasClient() {
   useEffect(()=>{ loadSaldos() },[])
 
   async function loadSaldos() {
-    const { data } = await supabase
-      .from('cuenta_corriente_aseguradoras')
-      .select('aseguradora_id, aseguradoras(nombre), debe, haber')
-    if (!data) return
+    const [{ data: movs }, { data: asegRows }] = await Promise.all([
+      supabase.from('cuenta_corriente_aseguradoras').select('aseguradora_id,debe,haber,tipo'),
+      supabase.from('aseguradoras').select('id,nombre'),
+    ])
+    if (!movs) return
+    const nombreMap = new Map((asegRows??[]).map((a:any) => [a.id, a.nombre]))
     const map = new Map<string, Saldo>()
-    for (const r of data as any[]) {
+    for (const r of movs as any[]) {
       const id  = r.aseguradora_id
-      const nom = r.aseguradoras?.nombre || ''
+      const nom = nombreMap.get(id) || ''
       if (!map.has(id)) map.set(id, { aseguradora_id:id, nombre:nom, total_debe:0, total_haber:0, saldo:0, facturas:0 })
       const s = map.get(id)!
       s.total_debe  += +r.debe
       s.total_haber += +r.haber
-      if (+r.debe > 0) s.facturas++
+      if (r.tipo === 'factura') s.facturas++
     }
     const arr = [...map.values()].map(s=>({...s, saldo: s.total_debe - s.total_haber}))
       .sort((a,b)=>b.saldo-a.saldo)
