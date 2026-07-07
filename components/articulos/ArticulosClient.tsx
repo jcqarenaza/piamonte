@@ -123,9 +123,19 @@ export default function ArticulosClient() {
     setLoading(true)
     let query = supabase.from('articulos_maestro').select('*, articulo_equivalencias(*)').eq('activo', true).order('descripcion').limit(tab === 'pendientes' ? 2000 : 100)
     const palabras = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    // Buscamos con la palabra más larga (más restrictiva) y filtramos el resto en JS
     const pLarga = palabras.length ? palabras.reduce((a:string,b:string)=>b.length>a.length?b:a, palabras[0]) : ''
-    if (pLarga) {
+    const esCodigo = pLarga.length >= 4 && !/\s/.test(q.trim())
+    if (esCodigo) {
+      // Buscar por código de proveedor en equivalencias primero
+      const { data: eqData } = await supabase.from('articulo_equivalencias')
+        .select('articulo_id').ilike('codigo_proveedor', `%${q.trim()}%`).limit(50)
+      const ids = [...new Set((eqData??[]).map((e:any) => e.articulo_id))]
+      if (ids.length > 0) {
+        query = query.in('id', ids).limit(100)
+      } else {
+        query = query.or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`).limit(300)
+      }
+    } else if (pLarga) {
       query = query.or(`descripcion.ilike.%${pLarga}%,sku_interno.ilike.%${pLarga}%,codigo_referencia.ilike.%${pLarga}%`)
       query = (query as any).limit(tab === 'pendientes' ? 2000 : 300)
     }
