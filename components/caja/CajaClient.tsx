@@ -30,6 +30,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
     descripcion: '', costo: '', precio: '', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
     stock_id: null as string | null,
+    descontarStock: true,
     tipo_id: '', tipo_nombre: ''
   })
   const [tipos, setTipos] = useState<{id:string;nombre:string}[]>([])
@@ -158,7 +159,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       })
     }
     // Descontar stock
-    if (form.origen === 'stock' && form.stock_id) {
+    if (form.origen === 'stock' && form.stock_id && form.descontarStock) {
       const s = stockItems.find(x => x.id === form.stock_id)
       if (s && s.cantidad > 0) {
         await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
@@ -166,7 +167,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       }
     }
     setOpen(false)
-    setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, tipo_id: '', tipo_nombre: '' })
+    setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, descontarStock: true, tipo_id: '', tipo_nombre: '' })
     loadVentas()
   }
 
@@ -564,12 +565,18 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             <Field label="N° comprobante"><Input value={form.comprobante} onChange={e => setForm(p => ({ ...p, comprobante: e.target.value }))} placeholder="Factura / remito" /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Origen">
-              <Select value={form.origen} onChange={e => setForm(p => ({ ...p, origen: e.target.value as 'stock' | 'compra' }))}>
-                <option value="stock">De mi stock (descuenta)</option>
-                <option value="compra">Comprada para la venta</option>
-              </Select>
-            </Field>
+            <div>
+              <Field label="Origen">
+                <Select value={form.origen} onChange={e => setForm(p => ({ ...p, origen: e.target.value as 'stock' | 'compra' }))}>
+                  <option value="stock">De mi stock</option>
+                  <option value="compra">Comprada para la venta</option>
+                </Select>
+              </Field>
+              <label className="flex items-center gap-2 mt-1.5 cursor-pointer select-none">
+                <input type="checkbox" checked={form.descontarStock} onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked}))} className="accent-p-green w-4 h-4"/>
+                <span className="text-xs text-p-ink2 font-medium">Descontar del stock</span>
+              </label>
+            </div>
             <Field label="Forma de pago">
               <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
                 {PAGOS.map(p => <option key={p}>{p}</option>)}
