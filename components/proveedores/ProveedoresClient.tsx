@@ -321,6 +321,12 @@ export default function ProveedoresClient() {
   const [result, setResult]     = useState<{ok:boolean;msg:string}|null>(null)
   // Tab activo: 'importar' | 'precios'
   const [mainTab, setMainTab]   = useState<'importar'|'precios'>('importar')
+
+  useEffect(() => {
+    if (mainTab === 'precios' && catItems.length === 0) {
+      cargarPrecios()
+    }
+  }, [mainTab])
   // Vista de precios por proveedor
   const [provFiltro, setProvFiltro] = useState('MALATESTA')
   const [catItems, setCatItems] = useState<any[]>([])
