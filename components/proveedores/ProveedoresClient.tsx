@@ -79,7 +79,7 @@ async function parseGamma(file:File): Promise<CatRow[]> {
   if(h<0) throw new Error('Sin encabezado en Lista General')
   return rows.slice(h+1)
     .filter(r=>r[iC]&&toNum(r[iP])&&String(r[iD]??'').trim())
-    .map(r=>mkRow('GAMMA',String(r[iC]).trim(),String(r[iD]??'').trim(),String(r[iM]??'').trim(),toNum(r[iP]),toNum(r[iP])*(1-0.48)*(1+0.015)))
+    .map(r=>mkRow('GAMMA',String(r[iC]).trim(),String(r[iD]??'').trim(),String(r[iM]??'').trim(),toNum(r[iP]),0))
 }
 
 async function parseMalateseta(file:File): Promise<CatRow[]> {
@@ -92,7 +92,7 @@ async function parseMalateseta(file:File): Promise<CatRow[]> {
   for(const r of rows){
     const c1=String(r[1]??'').trim(),c2=String(r[2]??'').trim(),c5=r[5]
     if(c1&&!/\d/.test(c1)&&!c2&&c5==null){marca=c1;continue}
-    if(cRe.test(c1)){const p=toNum(c5);if(!p)continue;items.push(mkRow('MALATESTA',c1,c2,marca,p,p*(1-0.53)*(1+0.01)))}
+    if(cRe.test(c1)){const p=toNum(c5);if(!p)continue;items.push(mkRow('MALATESTA',c1,c2,marca,p,0))}
   }
   return items
 }
@@ -136,7 +136,7 @@ async function parseMalatestaJulio(file:File): Promise<CatRow[]> {
     // Fila válida: código alfanumérico real + descripción + precio
     if (!codigo || !desc || precio <= 0) continue
     if (codigo === 'Codigo' || !codigo.match(/[0-9]/)) continue // saltar headers/marcas
-    const proveedor = origen.toLowerCase().includes('plk') ? 'PLK ARGENTINA' : 'MALATESTA'
+    const proveedor = 'MALATESTA' // PLK Argentina y EG son ambos Malatesta
     items.push(mkRow(proveedor, codigo, desc, proveedor, precio, 0))
   }
   return items
@@ -421,6 +421,35 @@ export default function ProveedoresClient() {
       else if(formato==='mix_malat')    items = await parsePdfMix(file)
 
       if(!items.length) throw new Error('No se encontraron ítems en el archivo')
+
+      // Unificar PLK ARGENTINA → MALATESTA (PLK no es un proveedor separado)
+      items = items.map(it => ({
+        ...it,
+        proveedor: it.proveedor === 'PLK ARGENTINA' ? 'MALATESTA' : it.proveedor
+      }))
+
+      // Aplicar el descuento desde listas_precio en vez de hardcodeado en cada parser
+      const FORMATO_LISTA: Record<string,string> = {
+        gamma: 'GAMMA', malatesta: 'MALATESTA', malatesta_julio: 'MALATESTA',
+        euroglass: 'EUROGLASS', sekurit: 'SEKURIT',
+        promo_ar: 'Promo Alta Rotación', promo_bg: 'Bajo Giro',
+      }
+      const proveedorLista = FORMATO_LISTA[formato]
+      const lista = proveedorLista ? listas.find(l =>
+        l.nombre.toUpperCase().includes(proveedorLista.toUpperCase()) ||
+        (l as any).proveedor?.toUpperCase() === proveedorLista.toUpperCase()
+      ) : null
+      const descPct = lista ? (lista as any).desc_pct : 0  // 0 = sin descuento (ofertas PDF)
+      const fletePct = lista ? (lista as any).flete_pct : 0
+
+      if (descPct > 0 || fletePct > 0) {
+        items = items.map(it => ({
+          ...it,
+          costo_neto: it.precio_lista > 0
+            ? Math.round(it.precio_lista * (1 - descPct) * (1 + fletePct))
+            : it.costo_neto
+        }))
+      }
 
       // Asignar lista_nombre según el formato importado
       const listaNombre: Record<string,string> = {

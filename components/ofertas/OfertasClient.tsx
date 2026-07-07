@@ -118,8 +118,10 @@ export default function OfertasClient() {
                     </thead>
                     <tbody>
                       {items.map((p, i) => {
-                        // Buscar precio de lista regular en catálogo (aproximado por descripción)
-                        const regular = piezas.find(x => !x.lista_nombre?.includes('ferta') && !x.lista_nombre?.includes('Mix') && x.proveedor === prov && x.descripcion === p.descripcion)
+                        // Buscar precio de lista regular por código exacto (más confiable que descripción)
+                        const regular = p.codigo
+                          ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre?.toLowerCase().includes('ferta') && !x.lista_nombre?.toLowerCase().includes('mix') && !x.lista_nombre?.toLowerCase().includes('promo'))
+                          : piezas.find(x => !x.lista_nombre?.toLowerCase().includes('ferta') && !x.lista_nombre?.toLowerCase().includes('mix') && x.proveedor === prov && x.descripcion === p.descripcion)
                         const ahorro = regular ? Math.round(((regular.costo_neto - p.costo_neto) / regular.costo_neto) * 100) : null
 
                         return (
