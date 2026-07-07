@@ -94,6 +94,8 @@ export default function BuscarClient() {
       groups.get(key)!.stock = s
     }
     const grupoMap = new Map<number, string>()
+    // Mapa de código → key de grupo para fusionar stock con catálogo por código
+    const codigoKeyMap = new Map<string, string>()
     for (const c of catData as CatRow[]) {
       const gid = (c as any).grupo_id as number|null
       let key: string
@@ -105,6 +107,19 @@ export default function BuscarClient() {
       }
       if (!groups.has(key)) groups.set(key, { provs: [], grupoId: gid || undefined })
       groups.get(key)!.provs.push(c as CatRow)
+      if (c.codigo) codigoKeyMap.set(c.codigo.toUpperCase(), key)
+    }
+    // Fusionar grupos de stock que tienen el mismo código que un grupo del catálogo
+    for (const [stockKey, stockGroup] of groups) {
+      if (!stockGroup.stock || stockGroup.provs.length > 0) continue
+      const codigo = (stockGroup.stock as any).codigo
+      if (!codigo) continue
+      const catKey = codigoKeyMap.get(codigo.toUpperCase())
+      if (catKey && catKey !== stockKey && groups.has(catKey)) {
+        // Mover el stock al grupo del catálogo
+        groups.get(catKey)!.stock = stockGroup.stock
+        groups.delete(stockKey)
+      }
     }
     const arr = [...groups.entries()].map(([k, v]) => ({ desc: k, ...v }))
       .sort((a, b) => (b.stock ? 1 : 0) - (a.stock ? 1 : 0))
