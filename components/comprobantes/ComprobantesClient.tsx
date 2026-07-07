@@ -563,7 +563,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       } else if (modo==='aseguradora' && asegSel?.id) {
         await supabase.from('cuenta_corriente_aseguradoras').insert({
           aseguradora_id: asegSel.id, fecha: todayStr(),
-          tipo: 'factura', descripcion: `Comprobante ${nextNum}`,
+          tipo: 'factura', descripcion: `FA-0006-${String(data?.nro_cbte_afip ?? nextNum).padStart(8,'0')} — ${asegSel?.nombre ?? ''}`,
           debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
         })
       }

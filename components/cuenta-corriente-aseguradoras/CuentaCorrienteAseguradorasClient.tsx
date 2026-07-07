@@ -51,6 +51,11 @@ export default function CuentaCorrienteAseguradorasClient() {
   ])
   const [savingCobro, setSavingCobro] = useState(false)
 
+  // Modal edición cobro
+  const [editCobro, setEditCobro] = useState<any|null>(null)
+  const [editForm, setEditForm] = useState({ ret_ganancias:'', ret_iva:'', ret_iibb:'', ret_suss:'', ret_otras:'', monto_neto:'', referencia:'', nro_op:'', notas:'' })
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const supabase = createClient()
 
   useEffect(()=>{ loadSaldos() },[])
@@ -186,6 +191,65 @@ export default function CuentaCorrienteAseguradorasClient() {
     loadSaldos(); loadMovs(sel.aseguradora_id)
   }
 
+  async function abrirEditCobro(mov: Mov) {
+    // Buscar el cobro en cobros_aseguradoras por comprobante o descripción
+    const { data } = await supabase.from('cobros_aseguradoras')
+      .select('*').eq('aseguradora_id', sel!.aseguradora_id)
+      .order('created_at', { ascending: false })
+    // Buscar el que corresponde a este movimiento por fecha y monto
+    const cobro = (data??[]).find((c:any) => 
+      c.fecha === mov.fecha && Math.abs(c.monto_bruto - mov.haber) < 1
+    ) || data?.[0]
+    if (!cobro) return
+    setEditCobro(cobro)
+    setEditForm({
+      ret_ganancias: String(cobro.ret_ganancias||''),
+      ret_iva:       String(cobro.ret_iva||''),
+      ret_iibb:      String(cobro.ret_iibb||''),
+      ret_suss:      String(cobro.ret_suss||''),
+      ret_otras:     String(cobro.ret_otras||''),
+      monto_neto:    String(cobro.monto_neto||''),
+      referencia:    cobro.referencia||'',
+      nro_op:        cobro.nro_op||'',
+      notas:         cobro.notas||'',
+    })
+  }
+
+  async function guardarEditCobro() {
+    if (!editCobro) return
+    setSavingEdit(true)
+    const totalRet = toNum(editForm.ret_ganancias) + toNum(editForm.ret_iva) + toNum(editForm.ret_iibb) + toNum(editForm.ret_suss) + toNum(editForm.ret_otras)
+    const montoNeto = toNum(editForm.monto_neto) || (editCobro.monto_bruto - totalRet)
+    await supabase.from('cobros_aseguradoras').update({
+      ret_ganancias: toNum(editForm.ret_ganancias),
+      ret_iva:       toNum(editForm.ret_iva),
+      ret_iibb:      toNum(editForm.ret_iibb),
+      ret_suss:      toNum(editForm.ret_suss),
+      ret_otras:     toNum(editForm.ret_otras),
+      monto_neto:    montoNeto,
+      referencia:    editForm.referencia||null,
+      nro_op:        editForm.nro_op||null,
+      notas:         editForm.notas||null,
+    }).eq('id', editCobro.id)
+    // Actualizar retenciones_sufridas
+    await supabase.from('retenciones_sufridas').delete().eq('cobro_id', editCobro.id)
+    const rets = [
+      { tipo:'ganancias', monto: toNum(editForm.ret_ganancias) },
+      { tipo:'iva',       monto: toNum(editForm.ret_iva) },
+      { tipo:'iibb',      monto: toNum(editForm.ret_iibb) },
+      { tipo:'suss',      monto: toNum(editForm.ret_suss) },
+      { tipo:'otras',     monto: toNum(editForm.ret_otras) },
+    ].filter(r => r.monto > 0)
+    if (rets.length) {
+      await supabase.from('retenciones_sufridas').insert(
+        rets.map(r => ({ cobro_id: editCobro.id, aseguradora_id: sel!.aseguradora_id, fecha: editCobro.fecha, tipo: r.tipo, monto: r.monto }))
+      )
+    }
+    setEditCobro(null)
+    setSavingEdit(false)
+    loadMovs(sel!.aseguradora_id)
+  }
+
   const filtrados = saldos.filter(s => !q || s.nombre.toLowerCase().includes(q.toLowerCase()))
   const totalPendiente = saldos.reduce((a,s)=>a+Math.max(0,s.saldo),0)
 
@@ -236,7 +300,12 @@ export default function CuentaCorrienteAseguradorasClient() {
                       {movs.map(m=>(
                         <tr key={m.id} className="border-b border-p-line2">
                           <td className="py-2 font-mono text-p-ink2">{m.fecha.split('-').reverse().join('/')}</td>
-                          <td className="py-2 text-p-ink">{m.descripcion}</td>
+                          <td className="py-2 text-p-ink flex items-center gap-2">
+                            {m.descripcion}
+                            {m.haber > 0 && (
+                              <button onClick={()=>abrirEditCobro(m)} className="text-[10px] text-blue-500 hover:underline ml-1">✏️ editar</button>
+                            )}
+                          </td>
                           <td className="py-2 text-right font-mono text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
                           <td className="py-2 text-right font-mono text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>
                         </tr>
@@ -351,6 +420,52 @@ export default function CuentaCorrienteAseguradorasClient() {
             </button>
           </div>
         </div>
+      </Modal>
+    </div>
+
+      {/* Modal edición cobro */}
+      <Modal open={!!editCobro} onClose={()=>setEditCobro(null)} title="Editar cobro">
+        {editCobro && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-p-light rounded-xl px-4 py-2 text-sm">
+              <span className="text-p-ink2">Bruto: </span>
+              <span className="font-bold font-mono">{moneyARS(editCobro.monto_bruto)}</span>
+              <span className="text-p-ink2 ml-4">Fecha: </span>
+              <span className="font-mono">{editCobro.fecha?.split('-').reverse().join('/')}</span>
+            </div>
+
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Retenciones</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { key:'ret_ganancias', label:'Ret. Ganancias' },
+                { key:'ret_iva',       label:'Ret. IVA' },
+                { key:'ret_iibb',      label:'Ret. IIBB' },
+                { key:'ret_suss',      label:'Ret. SUSS' },
+                { key:'ret_otras',     label:'Otras ret.' },
+              ].map(r=>(
+                <Field key={r.key} label={r.label}>
+                  <Input value={(editForm as any)[r.key]} onChange={e=>setEditForm(p=>({...p,[r.key]:e.target.value}))} placeholder="$0"/>
+                </Field>
+              ))}
+              <Field label="Neto acreditado">
+                <Input value={editForm.monto_neto} onChange={e=>setEditForm(p=>({...p,monto_neto:e.target.value}))} placeholder="Auto"/>
+              </Field>
+            </div>
+
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Datos del pago</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="N° Orden de Pago"><Input value={editForm.nro_op} onChange={e=>setEditForm(p=>({...p,nro_op:e.target.value}))}/></Field>
+              <Field label="Referencia"><Input value={editForm.referencia} onChange={e=>setEditForm(p=>({...p,referencia:e.target.value}))}/></Field>
+            </div>
+            <Field label="Notas"><Input value={editForm.notas} onChange={e=>setEditForm(p=>({...p,notas:e.target.value}))} placeholder="Opcional"/></Field>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={()=>setEditCobro(null)} style={btnGray}>Cancelar</button>
+              <button onClick={guardarEditCobro} disabled={savingEdit}
+                style={{...btn,opacity:savingEdit?.5:1}}>{savingEdit?'Guardando…':'✓ Guardar cambios'}</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
