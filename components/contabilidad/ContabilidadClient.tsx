@@ -253,7 +253,7 @@ export default function ContabilidadClient() {
                         <tr className="bg-p-dark text-white">
                           <td colSpan={5} className="px-4 py-3 font-bold">TOTAL RETENIDO</td>
                           <td className="px-3 py-3 text-right font-mono font-bold text-red-300">
-                            {moneyARS(Object.values(totRet).reduce((a,v)=>a+v,0))}
+                            {moneyARS(Object.values(totRet).reduce((a,v)=>a+(v as number),0))}
                           </td>
                         </tr>
                       </tfoot>
@@ -270,12 +270,12 @@ export default function ContabilidadClient() {
                   {Object.entries(RET_LABELS).map(([tipo, label])=>
                     (totRet[tipo]||0)>0 ? <p key={tipo}>{label}: {moneyARS(totRet[tipo])}</p> : null
                   )}
-                  <p className="font-bold border-t pt-1 mt-1">Total retenciones: {moneyARS(Object.values(totRet).reduce((a,v)=>a+v,0))}</p>
+                  <p className="font-bold border-t pt-1 mt-1">Total retenciones: {moneyARS(Object.values(totRet).reduce((a,v)=>a+(v as number),0))}</p>
                 </div>
                 <button onClick={()=>{
                   const lines = [`RETENCIONES SUFRIDAS — ${MESES[+m-1]} ${y}`]
                   Object.entries(RET_LABELS).forEach(([tipo,label])=>{ if((totRet[tipo]||0)>0) lines.push(`${label}: ${moneyARS(totRet[tipo])}`) })
-                  lines.push(`TOTAL: ${moneyARS(Object.values(totRet).reduce((a,v)=>a+v,0))}`)
+                  lines.push(`TOTAL: ${moneyARS(Object.values(totRet).reduce((a,v)=>a+(v as number),0))}`)
                   navigator.clipboard.writeText(lines.join('\n'))
                 }} style={{marginTop:12,background:'#92400e',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%'}}>
                   📋 Copiar resumen retenciones
