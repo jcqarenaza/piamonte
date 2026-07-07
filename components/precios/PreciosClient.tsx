@@ -170,12 +170,32 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       return
     }
 
+    const esCodigo = !/\s/.test(q.trim()) // sin espacios = posible código
     const words = q.toUpperCase().split(/\s+/).filter(Boolean)
     const posWord = words.find(w => POS_KW[w])
     const nonPos  = words.filter(w => !POS_KW[w])
     const pos     = posWord ? POS_KW[posWord] : null
     const first   = nonPos[0] || words[0]
     const rest    = nonPos.slice(1)
+
+    // Si parece un código, buscar primero por codigo_proveedor en equivalencias
+    if (esCodigo) {
+      const { data: eqData } = await supabase.from('articulo_equivalencias')
+        .select('articulo_id, proveedor, codigo_proveedor, costo_neto, lista_nombre')
+        .ilike('codigo_proveedor', `%${q.trim()}%`).limit(50)
+      if (eqData && eqData.length > 0) {
+        const artIds = [...new Set(eqData.map((e:any) => e.articulo_id))]
+        const { data: artData } = await supabase.from('articulos_maestro')
+          .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+          .in('id', artIds).eq('activo', true)
+        const resultado: Articulo[] = (artData ?? []).map((a: any) => ({
+          id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
+          descripcion: a.descripcion, pos: a.pos,
+          precios: dedupPorProveedor(a.articulo_equivalencias ?? []),
+        })).filter((a: Articulo) => a.precios.length > 0)
+        setArticulos(resultado); setLoading(false); return
+      }
+    }
 
     let query = supabase.from('articulos_maestro')
       .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
