@@ -419,6 +419,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       : `Hola${o.cliente ? ' ' + o.cliente : ''}! Te escribimos desde El Piamonte para coordinar el turno para el cambio de cristal.${vehiculo ? ` Vehículo: ${vehiculo}.` : ''} ¿Cuándo te viene bien?`
     window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`, '_blank')
   }
+
+  async function descargarPDF(o: OrdenServicio) {
     const blob = await generarPDF(o)
     const conADAS = (o as any).tiene_adas
     const numADAS = (o as any).numero_adas
