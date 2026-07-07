@@ -433,6 +433,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       comprobante_id: (nc as any).id, user_id: userId,
     })
 
+    // Si la factura original vino de una OS, liberarla para poder refacturar
+    if (ncComp.orden_id) {
+      await supabase.from('ordenes_servicio').update({ convertido_comp: false }).eq('id', ncComp.orden_id)
+    }
+
     // Emitir con CAE propio en AFIP si el original era fiscal — necesita el comprobante asociado
     // (tipo/PtoVta/Nro de la factura original, exigido por AFIP para toda NC).
     if (!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo)) {
@@ -845,7 +850,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function descargar(c:Comprobante){
     const blob=await generarPDF(c)
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`Comprobante-${c.numero}.pdf`; a.click(); URL.revokeObjectURL(url)
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const prefijo = c.categoria==="nc" ? `NC-${c.tipo}` : c.categoria==="nd" ? `ND-${c.tipo}` : `FAC-${c.tipo}`; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`${prefijo}_0006-${nroAfip}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
   // Los comprobantes NO se pueden borrar. Una factura genera NC, una NC genera ND.
