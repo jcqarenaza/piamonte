@@ -16,7 +16,7 @@ const FORMATOS = [
 ]
 
 interface Lista { id:string; nombre:string; proveedor:string; tipo:string; desc_pct:number; flete_pct:number; iva_pct:number }
-interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string }
+interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string; updated_by?:string; updated_source?:string }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function norm(s:string) {
@@ -57,7 +57,10 @@ function mkRow(prov:string,cod:string,desc:string,marca:string,pre:number,costo:
   return { proveedor:prov, codigo:cod||null, descripcion:desc, marca:marca||null,
     modelo:null, pos:decodePos(desc), precio_lista:pre,
     costo_neto:Math.round(costo), disponible:disp||null,
-    es_promo:promo, lista_nombre:null, updated_at:new Date().toISOString() }
+    es_promo:promo, lista_nombre:null, 
+    updated_at:new Date().toISOString(),
+    updated_by:'importador',
+    updated_source:'importador' }
 }
 
 
@@ -358,13 +361,13 @@ export default function ProveedoresClient() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.from('listas_precio').select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct')
+    supabase.from('listas_precio').select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct,updated_at')
       .order('proveedor').then(({ data }) => setListas(data ?? []))
   }, [supabase])
 
   async function cargarPrecios() {
     setCatLoading(true)
-    let q = supabase.from('catalogo').select('id,codigo,descripcion,precio_lista,costo_neto,pos,marca')
+    let q = supabase.from('catalogo').select('id,codigo,descripcion,precio_lista,costo_neto,pos,marca,updated_at,updated_source')
       .ilike('proveedor', provFiltro).order('descripcion').limit(500)
     if (catQ.trim().length >= 2) {
       const esCode = !/\s/.test(catQ.trim())
@@ -381,6 +384,8 @@ export default function ProveedoresClient() {
     await supabase.from('catalogo').update({
       precio_lista: parseFloat(editPrecio.lista.replace(',','.')) || null,
       costo_neto:   parseFloat(editPrecio.costo.replace(',','.')) || null,
+      updated_at: new Date().toISOString(),
+      updated_source: 'manual',
     }).eq('id', id)
     setCatItems(prev => prev.map(c => c.id===id ? { ...c,
       precio_lista: parseFloat(editPrecio.lista.replace(',','.')),
@@ -397,7 +402,7 @@ export default function ProveedoresClient() {
       iva_pct:  parseFloat(editVals.iva_pct)/100,
     }).eq('id',id)
     const { data } = await supabase.from('listas_precio')
-      .select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct').order('proveedor')
+      .select('id,nombre,proveedor,tipo,desc_pct,flete_pct,iva_pct,updated_at').order('proveedor')
     setListas(data??[]); setSaving(false); setEditId(null)
   }
 
@@ -521,7 +526,7 @@ export default function ProveedoresClient() {
           {catItems.length > 0 && (
             <div className="bg-white border border-p-line rounded-xl overflow-hidden">
               <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line select-none"
-                style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px'}}>
+                style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px 90px'}}>
                 {(['codigo','descripcion','precio_lista','dto','costo_neto'] as const).map((col,i)=>(
                   <button key={col} onClick={()=>toggleSort(col)}
                     className={`text-left flex items-center gap-1 cursor-pointer bg-transparent border-none p-0 hover:text-p-green transition-colors ${sortCol===col?'text-p-green':''}`}>
@@ -529,6 +534,7 @@ export default function ProveedoresClient() {
                     <span className="text-[9px]">{sortCol===col?(sortDir==='asc'?'↑':'↓'):'↕'}</span>
                   </button>
                 ))}
+                <span className="text-right">Actualizado</span>
                 <span></span>
               </div>
               <div className="max-h-[60vh] overflow-y-auto">
@@ -538,7 +544,7 @@ export default function ProveedoresClient() {
                     : null
                   return (
                   <div key={c.id} className="grid items-center px-4 py-2 border-b border-p-line2 hover:bg-p-light/50"
-                    style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px'}}>
+                    style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px 90px'}}>
                     <span className="text-xs font-mono text-p-ink2 truncate">{c.codigo||'—'}</span>
                     <span className="text-sm text-p-ink truncate pr-2">{c.descripcion}</span>
                     <span className="text-xs font-mono text-right text-p-ink2">{c.precio_lista?`$${Number(c.precio_lista).toLocaleString('es-AR')}`:'—'}</span>
@@ -551,7 +557,11 @@ export default function ProveedoresClient() {
                         <button onClick={()=>setEditPrecio(null)} className="text-[10px] text-p-gray cursor-pointer">✕</button>
                       </div>
                     </>) : (<>
-                      <span className="text-sm font-mono font-bold text-right text-p-green">{c.costo_neto?`$${Number(c.costo_neto).toLocaleString('es-AR')}`:'—'}</span>
+                      <span className="font-mono font-bold text-right text-p-green">{c.costo_neto?`$${Number(c.costo_neto).toLocaleString('es-AR')}`:'—'}</span>
+                      <div className="text-right">
+                        {(c as any).updated_at && <p className="text-[9px] font-mono text-p-ink2">{new Date((c as any).updated_at).toLocaleDateString('es-AR')}</p>}
+                        {(c as any).updated_source && <p className={`text-[9px] font-bold ${(c as any).updated_source==='manual'?'text-amber-600':'text-p-green'}`}>{(c as any).updated_source==='manual'?'✏ manual':'📥 import'}</p>}
+                      </div>
                       <button onClick={()=>setEditPrecio({id:c.id,lista:String(c.precio_lista||''),costo:String(c.costo_neto||'')})}
                         className="text-[11px] text-p-ink2 hover:text-p-ink cursor-pointer bg-transparent border-none">✏ Editar</button>
                     </>)}
@@ -606,6 +616,7 @@ export default function ProveedoresClient() {
                   <p style={{ fontFamily:'monospace',fontSize:12,color:'#4A6655',margin:'2px 0 0' }}>
                     −{pct(l.desc_pct)}% desc{l.flete_pct>0?` + ${pct(l.flete_pct)}% flete`:''} + {pct(l.iva_pct)}% IVA
                   </p>
+                  {(l as any).updated_at && <p style={{fontSize:10,color:'#9ca3af',margin:'2px 0 0'}}>Actualizado: {new Date((l as any).updated_at).toLocaleDateString('es-AR')}</p>}
                 </div>
                 <button onClick={()=>{ setEditId(l.id); setEditVals({ desc_pct:pct(l.desc_pct),flete_pct:pct(l.flete_pct),iva_pct:pct(l.iva_pct) }) }}
                   style={{ border:'1px solid #C2DDD0',background:'#fff',borderRadius:8,padding:'6px 14px',fontSize:13,cursor:'pointer' }}>
