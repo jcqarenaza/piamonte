@@ -11,7 +11,7 @@ const PROV_COLOR: Record<string, { bg: string; text: string }> = {
 
 interface Pieza {
   id: string; proveedor: string; descripcion: string
-  pos: string | null; costo_neto: number; precio_lista: number
+  pos: string | null; costo_neto: number; precio_lista: number | null
   lista_nombre: string | null; codigo: string | null
 }
 
@@ -118,11 +118,18 @@ export default function OfertasClient() {
                     </thead>
                     <tbody>
                       {items.map((p, i) => {
-                        // Buscar precio de lista regular por código exacto (más confiable que descripción)
-                        const regular = p.codigo
-                          ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre?.toLowerCase().includes('ferta') && !x.lista_nombre?.toLowerCase().includes('mix') && !x.lista_nombre?.toLowerCase().includes('promo'))
-                          : piezas.find(x => !x.lista_nombre?.toLowerCase().includes('ferta') && !x.lista_nombre?.toLowerCase().includes('mix') && x.proveedor === prov && x.descripcion === p.descripcion)
-                        const ahorro = regular ? Math.round(((regular.costo_neto - p.costo_neto) / regular.costo_neto) * 100) : null
+                        // 1) Buscar en lista regular por código exacto
+                        const regularRow = p.codigo
+                          ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre)
+                          : null
+                        // 2) Si no hay match en lista regular, usar precio_lista del mismo registro
+                        //    (para Mix Malatesta: precio_lista = precio Euroglass solo)
+                        const precioRef = regularRow
+                          ? regularRow.costo_neto
+                          : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
+                        const ahorro = precioRef && precioRef > p.costo_neto
+                          ? Math.round(((precioRef - p.costo_neto) / precioRef) * 100)
+                          : null
 
                         return (
                           <tr key={p.id} className={`border-b border-p-line2 last:border-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
@@ -132,7 +139,7 @@ export default function OfertasClient() {
                               <span className="font-mono font-bold" style={{ color: c.text }}>{moneyARS(p.costo_neto)}</span>
                             </td>
                             <td className="px-4 py-2.5 text-right font-mono text-p-ink2 text-xs">
-                              {regular ? moneyARS(regular.costo_neto) : '—'}
+                              {precioRef ? moneyARS(precioRef) : '—'}
                               {ahorro && ahorro > 0 && (
                                 <span className="ml-1 text-[10px] font-bold bg-green-100 text-green-700 px-1 rounded">-{ahorro}%</span>
                               )}

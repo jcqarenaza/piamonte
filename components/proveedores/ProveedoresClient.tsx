@@ -284,9 +284,9 @@ async function parsePdfMix(file:File): Promise<CatRow[]> {
   const text=await extractPdfText(bytes)
   // pdfjs devuelve un item por línea. Formato Malatesta Mix:
   // Línea N:   "PSAS. CHEVROLET AGILE / MONTANA '09/'15"  (descripción)
-  // Línea N+1: "125.803"  (precio Mix — el mayor, Pilkington+Euroglass)
+  // Línea N+1: "125.803"  (precio Mix Pilkington/Euroglass — el mayor)
   // Línea N+2: "$"
-  // Línea N+3: "116.484"  (precio Euroglass solo)
+  // Línea N+3: "116.484"  (precio Euroglass solo — el menor)
   // Línea N+4: "$"
   const lines=text.split('\n').map(l=>l.trim()).filter(Boolean)
   const descRe=/^(E-)?PSAS/i
@@ -295,15 +295,20 @@ async function parsePdfMix(file:File): Promise<CatRow[]> {
   while(i<lines.length){
     if(descRe.test(lines[i])){
       const desc=lines[i]
-      // El primer número tras la descripción es el precio Mix
-      let pMix=0, j=i+1
-      while(j<lines.length && j<i+4){
-        if(numRe.test(lines[j])){ pMix=toNum(lines[j]); j++; break }
+      // Capturar los dos primeros números tras la descripción
+      let nums:number[]=[], j=i+1
+      while(j<lines.length && j<i+8 && nums.length<2){
+        if(numRe.test(lines[j])){
+          const n=toNum(lines[j])
+          if(n>=1000) nums.push(n)
+        }
         j++
       }
       i=j
-      if(!pMix||pMix<1000)continue
-      items.push(mkRow('MALATESTA','',desc,'',pMix,pMix,'',true))
+      if(!nums.length) continue
+      const pMix  = nums[0]                    // precio Mix (Pilk+EG) — costo_neto
+      const pEuro = nums[1] ?? nums[0]         // precio solo Euroglass — precio_lista (para comparar)
+      items.push(mkRow('MALATESTA','',desc,'',pMix,pEuro,'',true))
     }else i++
   }
   return items
