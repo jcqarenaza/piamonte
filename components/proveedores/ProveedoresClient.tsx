@@ -333,6 +333,28 @@ export default function ProveedoresClient() {
   const [catQ, setCatQ]         = useState('')
   const [catLoading, setCatLoading] = useState(false)
   const [editPrecio, setEditPrecio] = useState<{id:string; lista:string; costo:string}|null>(null)
+  const [sortCol, setSortCol] = useState<'codigo'|'descripcion'|'precio_lista'|'costo_neto'|'dto'>('codigo')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+
+  function toggleSort(col: typeof sortCol) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const catOrdenado = [...catItems].sort((a, b) => {
+    let va: any, vb: any
+    if (sortCol === 'codigo') { va = a.codigo||''; vb = b.codigo||'' }
+    else if (sortCol === 'descripcion') { va = a.descripcion||''; vb = b.descripcion||'' }
+    else if (sortCol === 'precio_lista') { va = a.precio_lista||0; vb = b.precio_lista||0 }
+    else if (sortCol === 'costo_neto') { va = a.costo_neto||0; vb = b.costo_neto||0 }
+    else { // dto
+      va = a.precio_lista > 0 && a.costo_neto > 0 ? Math.round((1-a.costo_neto/a.precio_lista)*100) : -1
+      vb = b.precio_lista > 0 && b.costo_neto > 0 ? Math.round((1-b.costo_neto/b.precio_lista)*100) : -1
+    }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1
+    if (va > vb) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
   const supabase = createClient()
 
   useEffect(() => {
@@ -498,16 +520,19 @@ export default function ProveedoresClient() {
 
           {catItems.length > 0 && (
             <div className="bg-white border border-p-line rounded-xl overflow-hidden">
-              <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line"
+              <div className="grid text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light border-b border-p-line select-none"
                 style={{gridTemplateColumns:'100px 1fr 120px 90px 130px 90px'}}>
-                <span>Código</span><span>Descripción</span>
-                <span className="text-right">Precio lista</span>
-                <span className="text-right text-red-500">−Dto</span>
-                <span className="text-right text-p-green">Costo neto</span>
+                {(['codigo','descripcion','precio_lista','dto','costo_neto'] as const).map((col,i)=>(
+                  <button key={col} onClick={()=>toggleSort(col)}
+                    className={`text-left flex items-center gap-1 cursor-pointer bg-transparent border-none p-0 hover:text-p-green transition-colors ${sortCol===col?'text-p-green':''}`}>
+                    {['Código','Descripción','Precio lista','−Dto','Costo neto'][i]}
+                    <span className="text-[9px]">{sortCol===col?(sortDir==='asc'?'↑':'↓'):'↕'}</span>
+                  </button>
+                ))}
                 <span></span>
               </div>
               <div className="max-h-[60vh] overflow-y-auto">
-                {catItems.map(c=>{
+                {catOrdenado.map(c=>{
                   const dto = c.precio_lista > 0 && c.costo_neto > 0
                     ? Math.round((1 - c.costo_neto / c.precio_lista) * 100)
                     : null
