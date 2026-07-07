@@ -2,6 +2,7 @@
 import { LOGO_BASE64 } from '@/lib/logo'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
+import { buscarCatalogo } from '@/lib/utils/buscarCatalogo'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Presupuesto, VentaItem } from '@/lib/types/database'
@@ -30,6 +31,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [tipos, setTipos]     = useState<TipoCliente[]>([])
   const [rubros, setRubros]   = useState<RubroPrecio[]>([])
   const [open, setOpen]       = useState(false)
+  const [expandido, setExpandido] = useState<string|null>(null)
   const [editId, setEditId]   = useState<string|null>(null)
   const [tarjConfigs, setTarjConfigs] = useState<any[]>([])
   const [histCli, setHistCli] = useState<any[]>([])
@@ -75,22 +77,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   // Búsqueda catálogo
   useEffect(()=>{
-    if(catQ.trim().length<3){setCatHits([]);return}
-    // Detectar si el término es una posición conocida y buscar por pos también
-    const posMap: Record<string,string> = {
-      'parabrisa':'PARABRISAS','parabrisas':'PARABRISAS',
-      'luneta':'LUNETA','techo':'TECHO',
-      'puerta':'PUERTA', 'custodia':'CUSTODIA'
-    }
-    const termLow = catQ.toLowerCase().trim()
-    const posMatch = Object.entries(posMap).find(([k])=>termLow.includes(k))
-    let q2 = supabase.from('catalogo').select('id,descripcion,proveedor,costo_neto').order('costo_neto').limit(12)
-    if(posMatch) {
-      q2 = q2.or(`descripcion.ilike.%${catQ}%,pos.ilike.%${posMatch[1]}%`)
-    } else {
-      q2 = q2.or(`descripcion.ilike.%${catQ}%,marca.ilike.%${catQ}%`)
-    }
-    q2.then(({data})=>setCatHits(data??[]))
+    if(catQ.trim().length<2){setCatHits([]);return}
+    buscarCatalogo(supabase, catQ, { incluirStock: false, limit: 12 })
+      .then(resultados => setCatHits(resultados.map(r=>({
+        id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0
+      }))))
   },[catQ,supabase])
 
   // Búsqueda clientes
@@ -334,42 +325,46 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             const venc = p.vencimiento<today
             const usdBlue = p.dolar_blue?`US$${Math.round(p.total/p.dolar_blue).toLocaleString('es-AR')} blue`:''
             return (
-              <div key={p.id} className={`bg-white border border-p-line rounded-xl p-4 shadow-sm ${venc?'opacity-60':''}`}>
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-saira font-bold text-p-ink">{p.cliente||'(sin nombre)'}</p>
-                      {(p as any).tipo_cliente_nombre && (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark">{(p as any).tipo_cliente_nombre}</span>
-                      )}
+              <div key={p.id}
+                onClick={()=>setExpandido(e=>e===p.id?null:p.id)}
+                onDoubleClick={()=>openEdit(p)} title="Click para opciones · doble click para editar"
+                className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${venc?'opacity-60':''}`}>
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
+                  <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>{p.cliente||'(sin nombre)'}</p>
+                  {(p as any).tipo_cliente_nombre && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark shrink-0">{(p as any).tipo_cliente_nombre}</span>
+                  )}
+                  {venc && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">VENCIDO</span>}
+                  <span className="text-xs text-p-ink2 shrink-0">{p.vehiculo}</span>
+                  <span className="text-xs text-p-ink2 shrink-0">vence {p.vencimiento.split('-').reverse().join('/')}</span>
+                  <div className="flex-1 min-w-[8px]"/>
+                  {usdBlue&&<span className="font-mono text-xs text-p-dark shrink-0">{usdBlue}</span>}
+                  <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(p.total)}</p>
+                </div>
+
+                {expandido===p.id && (
+                  <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
+                    <p className="text-xs text-p-ink2 mb-2">{p.items.length} ítem(s) · {p.iva?'con IVA':'sin IVA'}</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
+                      <button onClick={async()=>{
+                        await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
+                        const params = new URLSearchParams({
+                          cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
+                          items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
+                          pid: p.id,
+                          ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
+                          ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
+                        })
+                        router.push(`/comprobantes?${params.toString()}`)
+                      }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                      <button onClick={()=>compartirWA(p)} style={btnWa}>📱 WA</button>
+                      <button onClick={()=>descargarPDF(p)} style={btnSm}>⬇ PDF</button>
+                      <button onClick={()=>del(p.id)} style={btnRed}>Borrar</button>
                     </div>
-                    <p className="text-xs text-p-ink2 mt-0.5">
-                      {[p.vehiculo,`${p.items.length} ítem(s)`,p.iva?'c/IVA':'s/IVA',`vence ${p.vencimiento.split('-').reverse().join('/')}${venc?' — VENCIDO':''}`].filter(Boolean).join(' · ')}
-                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-saira font-bold text-xl text-p-ink">{moneyARS(p.total)}</p>
-                    {usdBlue&&<p className="font-mono text-xs text-p-dark">{usdBlue}</p>}
-                  </div>
-                </div>
-                <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-p-line2">
-                  <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
-                  <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
-                  <button onClick={async()=>{
-                    await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
-                    const params = new URLSearchParams({
-                      cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
-                      items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
-                      pid: p.id,
-                      ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
-                      ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
-                    })
-                    router.push(`/comprobantes?${params.toString()}`)
-                  }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
-                  <button onClick={()=>compartirWA(p)} style={btnWa}>📱 WA</button>
-                  <button onClick={()=>descargarPDF(p)} style={btnSm}>⬇ PDF</button>
-                  <button onClick={()=>del(p.id)} style={btnRed}>Borrar</button>
-                </div>
+                )}
               </div>
             )
           })}
