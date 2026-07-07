@@ -1388,6 +1388,30 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — Comprobante ${ncComp?.numero}`}>
         {ncComp && (
           <div className="flex flex-col gap-3">
+            {/* Info del comprobante original */}
+            <div className="bg-p-light rounded-xl px-4 py-3 text-sm flex flex-col gap-1">
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-0.5">Comprobante original</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                {ncComp.aseguradora_nombre && (
+                  <span><span className="text-p-ink2">Aseguradora: </span><span className="font-semibold">{ncComp.aseguradora_nombre}</span></span>
+                )}
+                {ncComp.cliente_nombre && (
+                  <span><span className="text-p-ink2">{ncComp.aseguradora_nombre ? 'Asegurado: ' : 'Cliente: '}</span><span className="font-semibold">{ncComp.cliente_nombre}</span></span>
+                )}
+                {(ncComp as any).siniestro && (
+                  <span><span className="text-p-ink2">Siniestro: </span><span className="font-semibold">{(ncComp as any).siniestro}</span></span>
+                )}
+                {ncComp.vehiculo && (
+                  <span><span className="text-p-ink2">Vehículo: </span><span className="font-semibold">{ncComp.vehiculo}</span></span>
+                )}
+                {(ncComp as any).patente && (
+                  <span><span className="text-p-ink2">Patente: </span><span className="font-semibold">{(ncComp as any).patente}</span></span>
+                )}
+                {ncComp.cliente_tipo_fiscal && (
+                  <span><span className="text-p-ink2">Cond. IVA: </span><span className="font-semibold">{tipoFiscalLabel(ncComp.cliente_tipo_fiscal)}</span></span>
+                )}
+              </div>
+            </div>
             <p className="text-[11px] text-p-ink2">
               Destildá lo que no se devuelve o ajustá la cantidad. Al confirmar: se devuelve el stock de lo seleccionado,
               se resta de Caja del día de hoy{!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo) ? ', y se emite con su propio CAE en AFIP.' : '.'}
