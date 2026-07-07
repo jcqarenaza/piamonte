@@ -421,7 +421,6 @@ export default function CuentaCorrienteAseguradorasClient() {
           </div>
         </div>
       </Modal>
-    </div>
 
       {/* Modal edición cobro */}
       <Modal open={!!editCobro} onClose={()=>setEditCobro(null)} title="Editar cobro">
