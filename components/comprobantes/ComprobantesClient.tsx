@@ -546,12 +546,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       items, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
       iva_negro_pct: esNegro ? ivaNegroP : null,
-      pagos: pagos.filter(p=>p.monto),
+      pagos: modo==='aseguradora' && !pagos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagos.filter(p=>p.monto),
       observaciones: obs||null,
       user_id: userId,
     }).select().single()
 
-    const montoCC = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp) {
       if (modo==='cliente' && cliSel?.id) {
         await supabase.from('cuenta_corriente').insert({
@@ -560,9 +561,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
         })
       } else if (modo==='aseguradora' && asegSel?.id) {
-        await supabase.from('cuenta_corriente').insert({
-          aseguradora_id: asegSel.id, cliente_nombre: asegSel.nombre, fecha: todayStr(),
-          tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
+        await supabase.from('cuenta_corriente_aseguradoras').insert({
+          aseguradora_id: asegSel.id, fecha: todayStr(),
+          tipo: 'factura', descripcion: `Comprobante ${nextNum}`,
           debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
         })
       }
