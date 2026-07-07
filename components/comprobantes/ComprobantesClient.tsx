@@ -409,6 +409,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_id: (ncComp as any).cliente_id ?? null, cliente_nombre: ncComp.cliente_nombre,
       cliente_telefono: ncComp.cliente_telefono, cliente_cuit: ncComp.cliente_cuit,
       cliente_tipo_fiscal: ncComp.cliente_tipo_fiscal, vehiculo: ncComp.vehiculo,
+      aseguradora_id: (ncComp as any).aseguradora_id ?? null,
+      aseguradora_nombre: ncComp.aseguradora_nombre ?? null,
       items: itemsNc, neto: ncNeto, iva: ncIva, total: ncTotal, pagos: [],
       comprobante_original_id: ncComp.id, motivo_nc: ncMotivo || null,
       es_negro: ncComp.es_negro || false,
