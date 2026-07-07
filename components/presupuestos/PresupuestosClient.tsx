@@ -49,7 +49,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   // Items del presupuesto
   const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
   const [catQ, setCatQ]       = useState('')
-  const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number}[]>([])
+  const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}[]>([])
   const [rubrosEdit, setRubrosEdit] = useState<Record<string,number>>({})
   const [itemManual, setItemManual] = useState({ d:'', c:'1', p:'' })
 
@@ -80,7 +80,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(catQ.trim().length<2){setCatHits([]);return}
     buscarCatalogo(supabase, catQ, { incluirStock: false, limit: 12 })
       .then(resultados => setCatHits(resultados.map(r=>({
-        id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0
+        id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0, codigo: r.codigo || undefined
       }))))
   },[catQ,supabase])
 
@@ -462,7 +462,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                       <button key={h.id} onClick={()=>pickCat(h)} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-p-ink">{h.descripcion}</p>
-                          <p className="text-[10px] text-p-ink2">{h.proveedor} · costo {moneyARS(h.costo_neto)}</p>
+                          <p className="text-[10px] text-p-ink2 flex items-center gap-1.5">
+                            {h.codigo && <span className="font-mono font-bold bg-p-light px-1.5 rounded">{h.codigo}</span>}
+                            <span>{h.proveedor} · costo {moneyARS(h.costo_neto)}</span>
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-mono font-bold text-sm text-p-dark">{moneyARS(sug)}</p>

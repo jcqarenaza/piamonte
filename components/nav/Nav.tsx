@@ -10,7 +10,7 @@ const GRUPOS = [
     label: 'CLIENTES Y VEHÍCULOS',
     items: [
       { id:'clientes',     href:'/clientes',     label:'Clientes',     icon:'👥' },
-      { id:'vehiculo',     href:'/vehiculo',     label:'Vehículo',     icon:'🚗' },
+      
       { id:'aseguradoras', href:'/aseguradoras', label:'Aseguradoras', icon:'🛡️' },
     ]
   },

@@ -1238,9 +1238,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                           setTimeout(()=>stockSearchRef.current?.focus(), 50)
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
                           <p className="text-sm font-medium text-p-ink">{a.descripcion}</p>
-                          <p className="text-[10px] text-p-ink2">
+                          <p className="text-[10px] text-p-ink2 flex items-center gap-1.5">
+                            {a.codigo && <span className="font-mono font-bold bg-p-light px-1.5 rounded">{a.codigo}</span>}
                             {a.proveedor && <span className="font-bold">{a.proveedor}</span>}
-                            {a.costo_neto ? ` · costo ${moneyARS(a.costo_neto)}` : ' · completá el precio a mano'}
+                            {a.costo_neto ? ` · costo ${moneyARS(a.costo_neto)}` : ''}
                           </p>
                         </button>
                       ))}
