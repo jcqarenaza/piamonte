@@ -142,7 +142,7 @@ export default function OfertasClient() {
                         const precioRef = (regularRow || regularRowBase || regularRowDesc)
                           ? (regularRow || regularRowBase || regularRowDesc)!.costo_neto
                           : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
-                        const ahorro = precioRef && precioRef > p.costo_neto
+                        const ahorro = precioRef
                           ? Math.round(((precioRef - p.costo_neto) / precioRef) * 100)
                           : null
 
@@ -158,11 +158,17 @@ export default function OfertasClient() {
                             <td className="px-4 py-2.5 text-right">
                               <span className="font-mono font-bold" style={{ color: c.text }}>{moneyARS(p.costo_neto)}</span>
                             </td>
-                            <td className="px-4 py-2.5 text-right font-mono text-p-ink2 text-xs">
-                              {precioRef ? moneyARS(precioRef) : '—'}
-                              {ahorro && ahorro > 0 && (
-                                <span className="ml-1 text-[10px] font-bold bg-green-100 text-green-700 px-1 rounded">-{ahorro}%</span>
-                              )}
+                            <td className="px-4 py-2.5 text-right text-xs">
+                              {precioRef ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="font-mono text-p-ink2">{moneyARS(precioRef)}</span>
+                                  {ahorro !== null && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ahorro > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                      {ahorro > 0 ? '↓' : '↑'}{Math.abs(ahorro)}%
+                                    </span>
+                                  )}
+                                </div>
+                              ) : '—'}
                             </td>
                           </tr>
                         )
