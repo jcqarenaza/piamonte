@@ -144,14 +144,13 @@ export default function OfertasClient() {
                         const regularRowDesc = !regularRow && !regularRowBase
                           ? piezas.find(x => !x.lista_nombre && x.proveedor === prov && x.descripcion === p.descripcion)
                           : null
-                        // 4) precio_lista del registro (Malatesta: precio Euroglass con descuento)
-                        const desc = PROV_DESC[prov] || 0
+                        // 4) precio_lista del registro
+                        // Para Mix Malatesta (es_promo, sin código): precio_lista = precio Euroglass solo (ya es neto, sin descuento adicional)
+                        // Para lista regular: costo_neto ya tiene descuento aplicado
                         const refRow = regularRow || regularRowBase || regularRowDesc
                         const precioRef = refRow
-                          ? refRow.costo_neto  // ya tiene descuento aplicado
-                          : (p.precio_lista && p.precio_lista !== p.costo_neto
-                              ? Math.round(p.precio_lista * (1 - desc) * 100) / 100
-                              : null)
+                          ? refRow.costo_neto
+                          : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
                         const ahorro = precioRef
                           ? Math.round(((precioRef - p.costo_neto) / precioRef) * 100)
                           : null
