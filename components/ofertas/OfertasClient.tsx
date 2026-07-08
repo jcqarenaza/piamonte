@@ -182,10 +182,13 @@ export default function OfertasClient() {
                               {precioRef ? (
                                 <div className="flex items-center justify-end gap-1.5">
                                   <span className="font-mono text-p-ink2">{moneyARS(precioRef)}</span>
-                                  {ahorro !== null && (
+                                  {ahorro !== null && ahorro !== 0 && (
                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ahorro > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                                       {ahorro > 0 ? '↓' : '↑'}{Math.abs(ahorro)}%
                                     </span>
+                                  )}
+                                  {ahorro === 0 && (
+                                    <span className="text-[10px] text-p-ink2 px-1">＝</span>
                                   )}
                                 </div>
                               ) : '—'}
