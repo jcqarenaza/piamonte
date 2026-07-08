@@ -11,6 +11,12 @@ function origenLabel(codigo: string | null): string | null {
 }
 
 const moneyARS = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+const PROV_DESC: Record<string, number> = {
+  GAMMA:     0.48,
+  MALATESTA: 0.53,
+  SEKURIT:   0,
+}
+
 const PROV_COLOR: Record<string, { bg: string; text: string }> = {
   GAMMA:     { bg: '#dcfce7', text: '#166534' },
   MALATESTA: { bg: '#dbeafe', text: '#1e40af' },
@@ -138,10 +144,14 @@ export default function OfertasClient() {
                         const regularRowDesc = !regularRow && !regularRowBase
                           ? piezas.find(x => !x.lista_nombre && x.proveedor === prov && x.descripcion === p.descripcion)
                           : null
-                        // 4) precio_lista del registro (Malatesta: precio Euroglass)
-                        const precioRef = (regularRow || regularRowBase || regularRowDesc)
-                          ? (regularRow || regularRowBase || regularRowDesc)!.costo_neto
-                          : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
+                        // 4) precio_lista del registro (Malatesta: precio Euroglass con descuento)
+                        const desc = PROV_DESC[prov] || 0
+                        const refRow = regularRow || regularRowBase || regularRowDesc
+                        const precioRef = refRow
+                          ? refRow.costo_neto  // ya tiene descuento aplicado
+                          : (p.precio_lista && p.precio_lista !== p.costo_neto
+                              ? Math.round(p.precio_lista * (1 - desc) * 100) / 100
+                              : null)
                         const ahorro = precioRef
                           ? Math.round(((precioRef - p.costo_neto) / precioRef) * 100)
                           : null
