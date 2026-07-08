@@ -85,6 +85,7 @@ export default function OfertasClient() {
   const proveedores = [...new Set(piezas.map(p => p.proveedor))]
 
   const filtradas = piezas.filter(p => {
+    if (!p.lista_nombre) return false // excluir lista regular (solo para comparar)
     const matchQ = !q || p.descripcion.toLowerCase().includes(q.toLowerCase()) || (p.codigo||'').toLowerCase().includes(q.toLowerCase())
     const matchP = !provFilter || p.lista_nombre === provFilter
     return matchQ && matchP
