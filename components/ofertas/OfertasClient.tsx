@@ -118,14 +118,21 @@ export default function OfertasClient() {
                     </thead>
                     <tbody>
                       {items.map((p, i) => {
-                        // 1) Buscar en lista regular por código exacto
+                        // 1) Código exacto
                         const regularRow = p.codigo
                           ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre)
                           : null
-                        // 2) Si no hay match en lista regular, usar precio_lista del mismo registro
-                        //    (para Mix Malatesta: precio_lista = precio Euroglass solo)
-                        const precioRef = regularRow
-                          ? regularRow.costo_neto
+                        // 2) Código base (primeros 9 chars) — para variantes VSLP/VSLI etc.
+                        const regularRowBase = !regularRow && p.codigo
+                          ? piezas.find(x => x.codigo && x.codigo.slice(0,9) === p.codigo!.slice(0,9) && !x.lista_nombre && x.proveedor === prov)
+                          : null
+                        // 3) Por descripción exacta (fallback)
+                        const regularRowDesc = !regularRow && !regularRowBase
+                          ? piezas.find(x => !x.lista_nombre && x.proveedor === prov && x.descripcion === p.descripcion)
+                          : null
+                        // 4) precio_lista del registro (Malatesta: precio Euroglass)
+                        const precioRef = (regularRow || regularRowBase || regularRowDesc)
+                          ? (regularRow || regularRowBase || regularRowDesc)!.costo_neto
                           : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
                         const ahorro = precioRef && precioRef > p.costo_neto
                           ? Math.round(((precioRef - p.costo_neto) / precioRef) * 100)
