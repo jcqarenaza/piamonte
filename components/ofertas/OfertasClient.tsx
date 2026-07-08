@@ -138,7 +138,7 @@ export default function OfertasClient() {
                           : null
                         // 2) Código base (primeros 9 chars) — para variantes VSLP/VSLI etc.
                         const regularRowBase = !regularRow && p.codigo
-                          ? piezas.find(x => x.codigo && x.codigo.slice(0,9) === p.codigo!.slice(0,9) && !x.lista_nombre && x.proveedor === prov)
+                          ? piezas.find(x => x.codigo && x.codigo.slice(0,6) === p.codigo!.slice(0,6) && !x.lista_nombre && x.proveedor === prov)
                           : null
                         // 3) Por descripción exacta (fallback)
                         const regularRowDesc = !regularRow && !regularRowBase
