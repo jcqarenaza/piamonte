@@ -450,9 +450,12 @@ export default function ProveedoresClient() {
       if (descPct > 0 || fletePct > 0) {
         items = items.map(it => ({
           ...it,
-          costo_neto: it.precio_lista > 0
-            ? Math.round(it.precio_lista * (1 - descPct) * (1 + fletePct))
-            : it.costo_neto
+          // Para Mix Malatesta: costo_neto ya viene calculado (precio Euroglass), no aplicar descuento
+          costo_neto: it.es_promo && it.costo_neto > 0
+            ? it.costo_neto
+            : it.precio_lista > 0
+              ? Math.round(it.precio_lista * (1 - descPct) * (1 + fletePct))
+              : it.costo_neto
         }))
       }
 
