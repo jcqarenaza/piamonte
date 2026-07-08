@@ -37,12 +37,23 @@ export default function OfertasClient() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.from('catalogo')
-      .select('id,proveedor,descripcion,pos,costo_neto,precio_lista,lista_nombre,codigo')
-      .eq('es_promo', true)
-      .order('proveedor')
-      .limit(500)
-      .then(({ data }) => { setPiezas(data ?? []); setLoading(false) })
+    Promise.all([
+      supabase.from('catalogo')
+        .select('id,proveedor,descripcion,pos,costo_neto,precio_lista,lista_nombre,codigo')
+        .eq('es_promo', true)
+        .order('proveedor')
+        .limit(500),
+      // Lista regular de GAMMA para comparar precios
+      supabase.from('catalogo')
+        .select('id,proveedor,descripcion,pos,costo_neto,precio_lista,lista_nombre,codigo')
+        .eq('es_promo', false)
+        .is('lista_nombre', null)
+        .in('proveedor', ['GAMMA','MALATESTA'])
+        .limit(6000),
+    ]).then(([{ data: promos }, { data: regulares }]) => {
+      setPiezas([...(promos ?? []), ...(regulares ?? [])])
+      setLoading(false)
+    })
   }, [supabase])
 
   const listas = [...new Set(piezas.map(p => p.lista_nombre).filter(Boolean))]
