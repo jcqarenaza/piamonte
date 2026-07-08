@@ -230,12 +230,7 @@ export default function OfertasClient() {
                                   {ahorro === 0 && (
                                     <span className="text-[10px] text-p-ink2 px-1">＝</span>
                                   )}
-                                  {ahorro !== null && ahorro !== 0 && (
-                                    <div className="w-16 h-1.5 bg-p-line rounded-full mt-1 ml-auto">
-                                      <div className={`h-full rounded-full ${ahorro > 0 ? 'bg-green-400' : 'bg-red-400'}`}
-                                        style={{width: `${Math.min(Math.abs(ahorro), 100)}%`}}/>
-                                    </div>
-                                  )}
+
                                 </div>
                               ) : '—'}
                             </td>
