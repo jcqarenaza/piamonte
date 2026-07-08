@@ -2,6 +2,30 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+function expandDesc(desc: string): string {
+  return desc
+    .replace(/^E-PSAS\./i, 'E-Parabrisas')
+    .replace(/^PSAS\./i, 'Parabrisas')
+    .replace(/^P\.D\.D\./i, 'Puerta Del. Der.')
+    .replace(/^P\.D\.I\./i, 'Puerta Del. Izq.')
+    .replace(/^P\.T\.D\./i, 'Puerta Tras. Der.')
+    .replace(/^P\.T\.I\./i, 'Puerta Tras. Izq.')
+    .replace(/^LTA\.TER\./i, 'Lateral Trasero')
+    .replace(/^LTA\./i, 'Lateral')
+    .replace(/^P\.T\./i, 'Puerta Trasera')
+    .replace(/^P\.D\./i, 'Puerta Delantera')
+    .replace(/C\/PAS/gi, 'c/Pasacables')
+    .replace(/C\/CAP/gi, 'c/Capota')
+    .replace(/C\/ANT/gi, 'c/Antena')
+    .replace(/C\/SER/gi, 'c/Serrucho')
+    .replace(/C\/CAM/gi, 'c/Cámara')
+    .replace(/C\/SEN/gi, 'c/Sensor')
+    .replace(/S\/ANT/gi, 's/Antena')
+    .replace(/S\/SER/gi, 's/Serrucho')
+    .replace(/C\/C/gi, 'c/Calc.')
+    .replace(/DEGRADE/gi, 'Degradé')
+}
+
 function origenLabel(codigo: string | null): string | null {
   if (!codigo) return null
   const last = codigo.slice(-1).toUpperCase()
@@ -34,6 +58,7 @@ export default function OfertasClient() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [provFilter, setProvFilter] = useState('')
+  const [sortByDesc, setSortByDesc] = useState(true) // true = mayor descuento primero
   const supabase = createClient()
 
   useEffect(() => {
@@ -138,11 +163,26 @@ export default function OfertasClient() {
                         <th className="text-left px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Descripción</th>
                         <th className="text-left px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Cód.</th>
                         <th className="text-right px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Precio oferta</th>
-                        <th className="text-right px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Lista regular</th>
+                        <th className="text-right px-4 py-2 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">
+                          <button onClick={()=>setSortByDesc(p=>!p)} className="flex items-center gap-1 ml-auto hover:text-p-green">
+                            Lista regular {sortByDesc ? '↓' : '↑'}
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((p, i) => {
+                      {[...items].sort((a, b) => {
+                        const getRef = (p: Pieza) => {
+                          const regularRow = p.codigo ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre) : null
+                          const regularRowBase = !regularRow && p.codigo ? piezas.find(x => x.codigo && x.codigo.slice(0,6) === p.codigo!.slice(0,6) && !x.lista_nombre && x.proveedor === p.proveedor) : null
+                          const refRow = regularRow || regularRowBase
+                          return refRow ? refRow.costo_neto : (p.precio_lista && p.precio_lista !== p.costo_neto ? p.precio_lista : null)
+                        }
+                        const refA = getRef(a), refB = getRef(b)
+                        const pctA = refA ? (refA - a.costo_neto) / refA * 100 : -999
+                        const pctB = refB ? (refB - b.costo_neto) / refB * 100 : -999
+                        return sortByDesc ? pctB - pctA : pctA - pctB
+                      }).map((p, i) => {
                         // 1) Código exacto
                         const regularRow = p.codigo
                           ? piezas.find(x => x.codigo === p.codigo && !x.lista_nombre)
@@ -168,7 +208,7 @@ export default function OfertasClient() {
 
                         return (
                           <tr key={p.id} className={`border-b border-p-line2 last:border-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                            <td className="px-4 py-2.5 text-p-ink font-medium">{p.descripcion}</td>
+                            <td className="px-4 py-2.5 text-p-ink font-medium">{expandDesc(p.descripcion)}</td>
                             <td className="px-4 py-2.5 text-xs text-p-ink2">
                               <span className="font-mono">{p.codigo || '—'}</span>
                               {p.codigo && origenLabel(p.codigo) && (
@@ -189,6 +229,12 @@ export default function OfertasClient() {
                                   )}
                                   {ahorro === 0 && (
                                     <span className="text-[10px] text-p-ink2 px-1">＝</span>
+                                  )}
+                                  {ahorro !== null && ahorro !== 0 && (
+                                    <div className="w-16 h-1.5 bg-p-line rounded-full mt-1 ml-auto">
+                                      <div className={`h-full rounded-full ${ahorro > 0 ? 'bg-green-400' : 'bg-red-400'}`}
+                                        style={{width: `${Math.min(Math.abs(ahorro), 100)}%`}}/>
+                                    </div>
                                   )}
                                 </div>
                               ) : '—'}
