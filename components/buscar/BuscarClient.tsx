@@ -13,6 +13,15 @@ interface CatRow {
 }
 interface ResultGroup { stock?: StockItem; provs: CatRow[]; grupoId?: number }
 
+function origenLabel(codigo: string | null): string | null {
+  if (!codigo) return null
+  const last = codigo.slice(-1).toUpperCase()
+  if (last === 'P') return 'Pilkington'
+  if (last === 'I') return 'PLK Imp.'
+  if (last === 'U') return 'PLK Europa'
+  return null
+}
+
 const PROVCOLOR: Record<string, string> = {
   GAMMA: 'bg-green-100 text-green-700', MALATESTA: 'bg-blue-100 text-blue-700',
   SEKURIT: 'bg-purple-100 text-purple-700',
@@ -197,6 +206,9 @@ export default function BuscarClient() {
                     <div key={j} className={`flex items-center gap-3 px-4 py-2.5 flex-wrap ${j === 0 && bestProv?.costo_neto === c.costo_neto ? 'bg-p-light/50' : ''}`}>
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${PROVCOLOR[c.proveedor] ?? 'bg-gray-100 text-gray-600'}`}>{c.proveedor}</span>
                       {c.codigo && <span className="font-mono text-xs text-p-ink2">cód {c.codigo}</span>}
+                      {c.codigo && origenLabel(c.codigo) && (
+                        <span className="text-[10px] text-p-ink2 border border-p-line rounded px-1.5 py-0.5">{origenLabel(c.codigo)}</span>
+                      )}
                       {c.es_promo && <span className="text-[10px] font-bold bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded">PROMO</span>}
                       <span className="ml-auto font-mono font-bold text-sm text-p-ink">{moneyARS(c.costo_neto)}</span>
                       {c.disponible && (

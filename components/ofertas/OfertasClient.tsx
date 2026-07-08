@@ -2,6 +2,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+function origenLabel(codigo: string | null): string | null {
+  if (!codigo) return null
+  const last = codigo.slice(-1).toUpperCase()
+  if (last === "P") return "Pilkington"
+  if (last === "I") return "PLK Imp."
+  return null
+}
+
 const moneyARS = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
 const PROV_COLOR: Record<string, { bg: string; text: string }> = {
   GAMMA:     { bg: '#dcfce7', text: '#166534' },
@@ -141,7 +149,12 @@ export default function OfertasClient() {
                         return (
                           <tr key={p.id} className={`border-b border-p-line2 last:border-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                             <td className="px-4 py-2.5 text-p-ink font-medium">{p.descripcion}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-p-ink2">{p.codigo || '—'}</td>
+                            <td className="px-4 py-2.5 text-xs text-p-ink2">
+                              <span className="font-mono">{p.codigo || '—'}</span>
+                              {p.codigo && origenLabel(p.codigo) && (
+                                <span className="ml-1.5 text-[10px] border border-p-line rounded px-1 py-0.5 text-p-ink2">{origenLabel(p.codigo)}</span>
+                              )}
+                            </td>
                             <td className="px-4 py-2.5 text-right">
                               <span className="font-mono font-bold" style={{ color: c.text }}>{moneyARS(p.costo_neto)}</span>
                             </td>
