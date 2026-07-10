@@ -487,7 +487,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           ))}
           {ordenes.filter(o=>{
             if(filtroEstado==='todas') return true
-            if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
+            if(filtroEstado==='facturada') return !!(o as any).convertido_comp
             return (o as any).estado===filtroEstado
           }).some(o=>!o.aseguradora) && (
             <button onClick={()=>setFiltroAseg('__sin__')}
@@ -508,7 +508,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
           {ordenesFiltradas.filter(o=>{
-            const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? ((o as any).estado==='realizado' && !(o as any).convertido_comp) : (o as any).estado===filtroEstado
+            const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? (!!(o as any).convertido_comp) : (o as any).estado===filtroEstado
             return estadoOk
           }).map(o => {
             const conADAS = (o as any).tiene_adas
