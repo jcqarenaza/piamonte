@@ -576,7 +576,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         )
                       )}
                       {!(o as any).convertido_comp && !esVentas && (
-                        <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                        {o.estado !== 'realizado' && !o.turno_fecha && !o.convertido_comp && (
+                          <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
+                        )}
                       )}
                       {(o as any).convertido_comp && (
                         <span className="text-[10px] text-p-ink2 bg-green-50 border border-green-200 rounded-lg px-2 py-1">🔒 Facturada</span>
