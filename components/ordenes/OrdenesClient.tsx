@@ -575,7 +575,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
-                      {!(o as any).convertido_comp && !esVentas && o.estado !== 'realizado' && !o.turno_fecha && (
+                      {!(o as any).convertido_comp && !esVentas && (o as any).estado !== 'realizado' && !(o as any).turno_fecha && (
                         <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
                       )}
                       {(o as any).convertido_comp && (
