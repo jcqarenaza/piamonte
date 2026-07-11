@@ -23,6 +23,7 @@ function tieneADAS(items: VentaItem[]): boolean {
 
 export default function OrdenesClient({ userId, rol }: { userId: string; rol?: string }) {
   const esVentas = rol === 'ventas'
+  const esAdmin = rol === 'admin'
   const [ordenes, setOrdenes]   = useState<OrdenServicio[]>([])
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState<VentaItem[]>([])
@@ -47,7 +48,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [stockQ, setStockQ]     = useState('')
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [stockSel, setStockSel] = useState<any|null>(null)
-  const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'>('todas')
+  const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'|'facturadas'>('todas')
   // Aseguradoras — cargadas desde la base, no hardcodeadas, para que se puedan agregar nuevas
   // (Allianz, Mapfre, etc.) sin tocar código, y siempre desde un registro real, no texto libre.
   const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])
@@ -458,8 +459,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     <div>
       {/* Filtros de estado */}
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-        {(['todas','pendiente','realizado','facturada'] as const).map((val)=>{
-          const labels: Record<string,string> = {todas:'Todas',pendiente:'⏳ Pendientes',realizado:'✅ Realizadas',facturada:'🧾 Pend. facturar'}
+        {(['todas','pendiente','realizado','facturada','facturadas'] as const).map((val)=>{
+          const labels: Record<string,string> = {todas:'Todas',pendiente:'⏳ Pendientes',realizado:'✅ Realizadas',facturada:'🧾 Pend. facturar',facturadas:'🧾 Facturadas'}
           return (
             <button key={val} onClick={()=>setFiltroEstado(val)}
               style={{...btnSm, background:filtroEstado===val?'#00A550':'#e5e7eb', color:filtroEstado===val?'#fff':'#374151'}}>
@@ -488,6 +489,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           {ordenes.filter(o=>{
             if(filtroEstado==='todas') return true
             if(filtroEstado==='facturada') return (o as any).estado==='realizado' && !(o as any).convertido_comp
+            if(filtroEstado==='facturadas') return !!(o as any).convertido_comp
             return (o as any).estado===filtroEstado
           }).some(o=>!o.aseguradora) && (
             <button onClick={()=>setFiltroAseg('__sin__')}
@@ -502,13 +504,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             className="flex-1 border border-p-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
           {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
-        {!esVentas && <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>}
+        {esAdmin && <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>}
       </div>
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
         <div className="flex flex-col gap-4">
           {ordenesFiltradas.filter(o=>{
-            const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? ((o as any).estado==='realizado' && !(o as any).convertido_comp) : (o as any).estado===filtroEstado
+            const estadoOk = filtroEstado==='todas' ? true : filtroEstado==='facturada' ? ((o as any).estado==='realizado' && !(o as any).convertido_comp) : filtroEstado==='facturadas' ? (!!(o as any).convertido_comp) : (o as any).estado===filtroEstado
             return estadoOk
           }).map(o => {
             const conADAS = (o as any).tiene_adas
@@ -517,7 +519,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             return (
               <div key={o.id}
                 onClick={()=>setExpandido(e=>e===o.id?null:o.id)}
-                onDoubleClick={()=>{ if(!(o as any).convertido_comp) openEdit(o) }} title="Click para opciones · doble click para editar (solo sin facturar)"
+                onDoubleClick={()=>{ if(!(o as any).convertido_comp && esAdmin) openEdit(o) }} title="Click para opciones · doble click para editar (solo sin facturar)"
                 className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${conADAS?'bg-blue-100 text-blue-700':'bg-p-light text-p-dark'}`}>
@@ -548,7 +550,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                         📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
                       </button>
-                      {!(o as any).convertido_comp && !esVentas && (
+                      {!(o as any).convertido_comp && esAdmin && (
                         <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                       )}
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
@@ -575,9 +577,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                         )
                       )}
-                      {!(o as any).convertido_comp && !esVentas && (o as any).estado !== 'realizado' && !(o as any).turno_fecha && (
-                        <button onClick={()=>del(o.id)} style={btnRed}>Borrar</button>
-                      )}
+
                       {(o as any).convertido_comp && (
                         <span className="text-[10px] text-p-ink2 bg-green-50 border border-green-200 rounded-lg px-2 py-1">🔒 Facturada</span>
                       )}
