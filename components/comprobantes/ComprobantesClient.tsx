@@ -121,8 +121,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
     buscarCatalogo(supabase, stockQ, { incluirStock: true, limit: 8 }).then(resultados=>{
-      setStockSugs(resultados.filter(r=>r.stock_id).slice(0,6))
-      setArticuloSugs(resultados.filter(r=>!r.stock_id).slice(0,8))
+      const conStock = resultados.filter(r=>r.stock_id)
+      setStockSugs(conStock.slice(0,6))
+      // Solo mostrar catálogo si el código no tiene equivalente en stock
+      const codigosEnStock = new Set(conStock.map((r:any) => (r.codigo||'').slice(0,9).toUpperCase()))
+      const sinDuplicado = resultados.filter(r => !r.stock_id && !codigosEnStock.has((r.codigo||'').slice(0,9).toUpperCase()))
+      setArticuloSugs(sinDuplicado.slice(0,8))
     })
   },[stockQ,supabase])
 
@@ -523,6 +527,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function save(){
     if(!puedeGuardar) return
+    if (modo==='aseguradora' && !asegSel?.id) {
+      alert('Seleccioná la aseguradora del listado de sugerencias')
+      return
+    }
     const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
     const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
@@ -1307,7 +1315,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </div>
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
-                    <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
+                    <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}} onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
                       className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0 text-right">

@@ -75,7 +75,9 @@ export function Field({ label, children, className = '' }: { label: string; chil
 // ── INPUT ───────────────────────────────────────────────────
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <input {...props} className={`w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green focus:ring-1 focus:ring-p-green bg-white ${props.className ?? ''}`} />
+    <input {...props}
+      onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); props.onKeyDown?.(e) }}
+      className={`w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green focus:ring-1 focus:ring-p-green bg-white ${props.className ?? ''}`} />
   )
 }
 
