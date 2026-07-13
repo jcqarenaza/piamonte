@@ -552,7 +552,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       patente: fiscal.patente||null,
       siniestro: modo==='aseguradora' ? (siniestro||null) : null,
       presupuesto_id: pid||null,
-      orden_id: oid||null,
+      orden_id: oid||osSelId||null,
       items, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
       iva_negro_pct: esNegro ? ivaNegroP : null,
@@ -938,7 +938,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             return (
             <div key={c.id}
               onClick={()=>setExpandido(p=>p===c.id?null:c.id)}
-              onDoubleClick={()=>setVerComp(c)} title="Click para opciones · doble click para ver el detalle"
+              onDoubleClick={async()=>{ 
+                setVerComp(c)
+                const descs = (c.items||[]).map((it:any)=>it.d).filter(Boolean)
+                if (descs.length) {
+                  const { data } = await supabase.from('catalogo').select('codigo,descripcion').in('descripcion', descs).is('lista_nombre', null)
+                  const map: Record<string,string> = {}
+                  for (const r of data??[]) if (r.codigo && r.descripcion && !map[r.descripcion]) map[r.descripcion] = r.codigo
+                  setDetailDescMap(map)
+                }
+              }} title="Click para opciones · doble click para ver el detalle"
               className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
               <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                 <span className="font-mono text-[11px] font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full shrink-0">
@@ -1561,16 +1570,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <div>
               <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wide mb-1.5">Ítems</p>
               <div className="flex flex-col gap-1">
-                {verComp.items.map((it,i)=>(
+                {verComp.items.map((it,i)=>{
+                  const cod = (it as any).codigo || detailDescMap[it.d] || null
+                  return (
                   <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5 gap-2">
                     <div className="flex-1 min-w-0">
-                      {(it as any).codigo && <span className="text-[10px] font-mono font-bold bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                      {cod && <span className="text-[10px] font-mono font-bold bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{cod}</span>}
                       <span>{it.d}</span>
                     </div>
                     <span className="text-p-ink2 shrink-0">x{it.c}</span>
                     <span className="font-mono shrink-0 text-right">{moneyARS(it.p*it.c)}</span>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
 
