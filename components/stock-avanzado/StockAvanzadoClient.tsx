@@ -33,12 +33,19 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
   const [open, setOpen]           = useState(false)
   const [loading, setLoading]     = useState(true)
   const [loadingMov, setLoadingMov] = useState(false)
+  const [verComp, setVerComp] = useState<any|null>(null)
   const [tab, setTab]             = useState<'inventario'|'movimientos'>('inventario')
   const [form, setForm]           = useState({ stock_id:'', tipo:'entrada', motivo:'ajuste_manual', cantidad:'', costo_unitario:'', proveedor:'', nota:'' })
 
   const supabase = createClient()
 
   const isAdmin = rol === 'gerencial' || rol === 'admin'
+
+  async function abrirComprobante(compId: string) {
+    const { data } = await supabase.from('comprobantes_compra')
+      .select('*').eq('id', compId).single()
+    if (data) setVerComp(data)
+  }
 
   async function loadItems() {
     setLoading(true)
@@ -261,7 +268,10 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
                 </thead>
                 <tbody>
                   {movFiltrados.map((m,idx)=>(
-                    <tr key={m.id} className={`border-t border-p-line2 ${idx%2===0?'bg-white':'bg-p-light/40'}`}>
+                    <tr key={m.id} 
+                    className={`border-t border-p-line2 ${idx%2===0?'bg-white':'bg-p-light/40'} ${(m as any).comprobante_compra_id?'cursor-pointer hover:bg-blue-50/30':''}`}
+                    onDoubleClick={()=>{ if((m as any).comprobante_compra_id) abrirComprobante((m as any).comprobante_compra_id) }}
+                    title={(m as any).comprobante_compra_id?'Doble click para ver la factura':''}>
                       <td className="px-4 py-3 text-p-ink2 text-xs font-mono">{m.fecha}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium text-p-ink text-xs">{m.descripcion}</p>
@@ -282,7 +292,12 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
                       <td className="px-3 py-3 text-center text-p-ink2 text-xs">{m.stock_anterior??'—'}</td>
                       <td className="px-3 py-3 text-center font-bold text-p-dark text-xs">{m.stock_posterior??'—'}</td>
                       {isAdmin && <td className="px-3 py-3 text-right text-xs font-mono">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</td>}
-                      <td className="px-4 py-3 text-xs text-p-ink2 max-w-[180px] truncate" title={m.nota||m.motivo||''}>{m.nota||m.motivo||'—'}</td>
+                      <td className="px-4 py-3 text-xs max-w-[180px] truncate" title={m.nota||m.motivo||''}>
+                        {(m as any).comprobante_compra_id
+                          ? <span className="text-blue-600 font-semibold">🧾 {m.nota||'—'}</span>
+                          : <span className="text-p-ink2">{m.nota||m.motivo||'—'}</span>
+                        }
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -352,5 +367,42 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
         </div>
       </Modal>
     </div>
+
+    {/* Modal detalle comprobante de compra */}
+    {verComp && (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setVerComp(null)}}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-p-line">
+            <div>
+              <p className="font-saira font-bold text-p-ink">Factura {verComp.numero}</p>
+              <p className="text-xs text-p-ink2">{verComp.proveedor_nombre} · {verComp.fecha?.split('-').reverse().join('/')}</p>
+            </div>
+            <button onClick={()=>setVerComp(null)} className="text-p-gray hover:text-p-ink text-2xl leading-none">✕</button>
+          </div>
+          <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              {(verComp.items||[]).map((it:any,i:number)=>(
+                <div key={i} className="flex items-center justify-between text-sm border-b border-p-line2 py-1.5 gap-2">
+                  <div className="flex-1 min-w-0">
+                    {it.codigo && <span className="text-[10px] font-mono bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{it.codigo}</span>}
+                    <span className="text-p-ink">{it.d}</span>
+                  </div>
+                  <span className="text-p-ink2 shrink-0 text-xs">x{it.c}</span>
+                  <span className="font-mono text-xs shrink-0">${Math.round(it.p*it.c).toLocaleString('es-AR')}</span>
+                </div>
+              ))}
+            </div>
+            <div className="bg-p-light rounded-xl p-3 text-sm flex flex-col gap-1">
+              <div className="flex justify-between"><span className="text-p-ink2">Neto</span><span className="font-mono">${Math.round(verComp.neto||0).toLocaleString('es-AR')}</span></div>
+              <div className="flex justify-between"><span className="text-p-ink2">IVA</span><span className="font-mono">${Math.round(verComp.iva||0).toLocaleString('es-AR')}</span></div>
+              <div className="flex justify-between font-bold border-t border-p-line pt-1 mt-1 font-saira text-base">
+                <span>TOTAL</span><span>${Math.round(verComp.total||0).toLocaleString('es-AR')}</span>
+              </div>
+            </div>
+            {verComp.cae && <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">✓ CAE {verComp.cae}</p>}
+          </div>
+        </div>
+      </div>
+    )}
   )
 }
