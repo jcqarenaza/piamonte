@@ -106,6 +106,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [uploading, setUploading] = useState(false)
   const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
+  const [osSelId, setOsSelId] = useState<string|null>(null)
   const [oidParam, setOidParam] = useState<string|null>(null)
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')
@@ -617,6 +618,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     if (pid) await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', pid)
     if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', oid)
+    if (osSelId && !oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', osSelId)
 
     if(comp) {
       const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
@@ -641,7 +643,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
     cambiarModo('cf')
     setFiscal(emptyFiscal); setObs('')
-    setClienteAseg(''); setSiniestro('')
+    setClienteAseg(''); setSiniestro(''); setOsSelId(null)
     setCfNombre(''); setCfTel(''); setCfDni('')
     const volverAOS = oidParam
     setOidParam(null)
@@ -1161,16 +1163,19 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </button>
                 ))}
                 {historialCli.ordenes.map((o:any) => (
-                  <button key={o.id} onClick={async()=>{
+                  <button key={o.id} onClick={()=>{
                     setItems(o.items||[])
                     setFiscal(prev=>({...prev, vehiculo:o.vehiculo||prev.vehiculo, patente:o.patente||prev.patente}))
                     if (o.cliente) setClienteAseg(o.cliente)
                     if (o.siniestro) setSiniestro(o.siniestro)
-                    await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', o.id)
+                    setOsSelId(o.id) // guardar el id para marcar al guardar exitosamente
                     setHistorialCli(null)
                   }} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 text-left hover:bg-amber-50 border border-amber-100 transition-colors w-full">
                     <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">OS-{String(o.numero||0).padStart(4,'0')}</span>
-                    <span className="text-xs text-p-ink flex-1 truncate">{o.vehiculo||'Sin vehículo'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-p-ink truncate">{o.cliente||'Sin nombre'}</p>
+                      <p className="text-[10px] text-p-ink2 truncate">{o.vehiculo||''}{o.patente ? ' · ' + o.patente : ''}</p>
+                    </div>
                     <span className="text-xs font-mono font-bold text-p-dark shrink-0">{moneyARS(o.total)}</span>
                     <span className="text-[10px] text-p-ink2 shrink-0">{o.fecha?.split('-').reverse().join('/')}</span>
                   </button>
