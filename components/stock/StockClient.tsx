@@ -25,6 +25,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [q, setQ] = useState('')
   const [depFilter, setDepFilter] = useState('')
   const [soloSinCosto, setSoloSinCosto] = useState(false)
+  const [filtroFam, setFiltroFam] = useState<string|null>(null)
   // Movimientos
   const [movs, setMovs] = useState<any[]>([])
   const [movLoading, setMovLoading] = useState(false)
@@ -132,6 +133,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   if (depFilter) visible = visible.filter(s => (s.deposito || 'Principal') === depFilter)
   if (q) visible = visible.filter(s => (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase().includes(q.toUpperCase()))
   if (soloSinCosto) visible = visible.filter(s => !s.costo && s.cantidad > 0)
+  if (filtroFam) visible = visible.filter(s => FAM_MAP[normPos(s.pos)] === filtroFam)
 
   async function chgCant(id: string, delta: number) {
     const s = items.find(x => x.id === id)!
@@ -437,7 +439,9 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       {/* Resumen por familia */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {resumen.map(r => (
-          <div key={r.fam} className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+          <div key={r.fam}
+            onClick={()=>{ setFiltroFam(filtroFam===r.fam?null:r.fam); setQ(''); setSoloSinCosto(false) }}
+            className={`border rounded-xl p-4 shadow-sm cursor-pointer transition-all ${filtroFam===r.fam?'border-p-green bg-green-50':'bg-white border-p-line hover:border-p-green'}`}>
             <p className="text-xs font-semibold text-p-ink2 uppercase tracking-wider">{FAM_ICON[r.fam]} {r.fam}</p>
             <p className="font-saira font-bold text-2xl text-p-ink mt-1">{r.totalU}<span className="text-sm font-normal text-p-ink2"> u. / {r.items} mod.</span></p>
             <p className="font-mono text-xs text-p-dark mt-1">{r.valCosto > 0 ? moneyARS(r.valCosto) : 'sin costo'}</p>
@@ -504,6 +508,12 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {sinVincularCount > 0 && isAdmin && (
+        {filtroFam && (
+          <div className="bg-green-50 border border-p-green rounded-xl px-4 py-2 mb-2 flex items-center justify-between text-sm">
+            <span className="font-semibold text-p-green">Filtrando: {filtroFam}</span>
+            <button onClick={()=>setFiltroFam(null)} className="text-p-green hover:text-p-dark font-bold ml-2">✕ limpiar</button>
+          </div>
+        )}
         <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-2 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
           <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> artículos sin vincular al catálogo</p>
           <span className="text-xs font-bold text-amber-700">Vincular →</span>
