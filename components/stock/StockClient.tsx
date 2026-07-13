@@ -20,9 +20,12 @@ type Tab = 'inventario' | 'vincular' | 'movimientos'
 
 export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [tab, setTab] = useState<Tab>('inventario')
-  const [selMov, setSelMov] = useState<any|null>(null) // artículo con movimientos abiertos
+  const [selMov, setSelMov] = useState<any|null>(null)
   const [selMovData, setSelMovData] = useState<any[]>([])
   const [loadingSelMov, setLoadingSelMov] = useState(false)
+  const [ajusteCantModal, setAjusteCantModal] = useState<any|null>(null)
+  const [ajusteCantForm, setAjusteCantForm] = useState({ tipo: 'entrada', cant: '1', nota: '' })
+  const [savingAjuste, setSavingAjuste] = useState(false)
   const [items, setItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -44,6 +47,26 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [editId, setEditId] = useState<string|null>(null)
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const supabase = createClient()
+
+  async function confirmarAjusteCant() {
+    if (!ajusteCantModal || !ajusteCantForm.cant) return
+    setSavingAjuste(true)
+    const delta = ajusteCantForm.tipo === 'entrada' ? +ajusteCantForm.cant : -Math.abs(+ajusteCantForm.cant)
+    const nueva = ajusteCantModal.cantidad + delta
+    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
+    await supabase.from('ajustes_stock').insert({
+      stock_id: ajusteCantModal.id, tipo: ajusteCantForm.tipo,
+      cantidad: Math.abs(delta), fecha: new Date().toISOString().slice(0,10),
+      nota: ajusteCantForm.nota || null,
+      stock_anterior: ajusteCantModal.cantidad, stock_posterior: nueva,
+      descripcion: ajusteCantModal.descripcion,
+    })
+    setAjusteCantModal(null)
+    setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '' })
+    setSavingAjuste(false)
+    load()
+    if (selMov?.id === ajusteCantModal.id) abrirMovimientos({...ajusteCantModal, cantidad: nueva})
+  }
 
   async function abrirMovimientos(s: any) {
     if (selMov?.id === s.id) { setSelMov(null); setSelMovData([]); return }
@@ -521,17 +544,62 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
                 </div>
                 <div className="flex items-center gap-1">
                   {isAdmin && <>
-                    <button onClick={e=>{e.stopPropagation();chgCant(s.id,1)}} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">+</button>
-                    <button onClick={e=>{e.stopPropagation();chgCant(s.id,-1)}} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">−</button>
-                    <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50">✏</button>
+                    <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:''})}}
+                      className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
+                    <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
                   </>}
-                  <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Movimientos">📊</button>
+                  <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </>
+      )}
+
+      {/* Modal ajuste de cantidad */}
+      {ajusteCantModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setAjusteCantModal(null)}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-saira font-bold text-p-ink">⚖ Ajustar stock</p>
+                <p className="text-xs text-p-ink2">{ajusteCantModal.descripcion}</p>
+              </div>
+              <button onClick={()=>setAjusteCantModal(null)} className="text-p-gray text-xl">✕</button>
+            </div>
+            <div className="flex gap-2">
+              {(['entrada','salida'] as const).map(t=>(
+                <button key={t} onClick={()=>setAjusteCantForm(p=>({...p,tipo:t}))}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold border ${ajusteCantForm.tipo===t?(t==='entrada'?'bg-green-100 text-green-700 border-green-300':'bg-red-100 text-red-600 border-red-300'):'bg-white text-p-ink2 border-p-line'}`}>
+                  {t==='entrada'?'📥 Entrada':'📤 Salida'}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Cantidad</label>
+              <input type="number" min="1" value={ajusteCantForm.cant} onChange={e=>setAjusteCantForm(p=>({...p,cant:e.target.value}))}
+                className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Observación</label>
+              <input value={ajusteCantForm.nota} onChange={e=>setAjusteCantForm(p=>({...p,nota:e.target.value}))}
+                placeholder="Motivo del ajuste…"
+                className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+            </div>
+            <div className="bg-p-light rounded-lg px-3 py-2 text-sm flex justify-between">
+              <span className="text-p-ink2">Stock actual</span>
+              <span className="font-bold">{ajusteCantModal.cantidad} u.</span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>setAjusteCantModal(null)} style={{flex:1,background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
+              <button onClick={confirmarAjusteCant} disabled={savingAjuste||!ajusteCantForm.cant}
+                style={{flex:2,background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer',opacity:savingAjuste||!ajusteCantForm.cant?0.5:1}}>
+                {savingAjuste?'Guardando…':'✓ Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editId ? 'Editar artículo' : 'Agregar a stock'}>
