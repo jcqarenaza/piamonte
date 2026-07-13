@@ -505,7 +505,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         visible.length === 0 ? <Empty msg="Sin ítems con ese filtro." /> : (
           <div className="flex flex-col gap-2">
             {visible.slice(0, 300).map(s => (
-              <div key={s.id} onDoubleClick={() => openEditar(s)} title="Doble click para editar"
+              <div key={s.id} onDoubleClick={() => abrirMovimientos(s)} title="Doble click para ver movimientos"
                 className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${
                   s.stock_minimo > 0 && s.cantidad < s.stock_minimo ? 'border-l-4 border-l-red-400 border-p-line' :
                   !s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'
@@ -519,20 +519,13 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
                   {s.precio_venta && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(s.precio_venta)}</p>}
                   <p className="text-[10px] text-p-ink2 uppercase">venta</p>
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-1 min-w-[120px]">
-                    <input placeholder="costo" title="Costo de venta: costo consumidor final + recargo tarjeta + IVA" value={costoEdit[s.id] ?? (s.costo ? String(Math.round(s.costo)) : '')}
-                      onChange={e => setCostoEdit(p => ({ ...p, [s.id]: e.target.value }))}
-                      className={`w-24 border rounded px-2 py-1 text-xs font-mono focus:outline-none ${!s.costo ? 'border-amber-300' : 'border-p-line'}`} />
-                    <button onClick={() => saveCosto(s.id, costoEdit[s.id] ?? '')}
-                      className="text-xs bg-p-light text-p-dark border border-p-line px-2 py-1 rounded">ok</button>
-                  </div>
-                )}
                 <div className="flex items-center gap-1">
-                  <button onClick={() => chgCant(s.id, 1)} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">+</button>
-                  <button onClick={() => chgCant(s.id, -1)} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">−</button>
-                  <button onClick={() => openEditar(s)} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50">✏</button>
-                  {isAdmin && <button onClick={() => del(s.id)} className="w-7 h-7 border border-red-200 rounded-lg text-sm text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>}
+                  {isAdmin && <>
+                    <button onClick={e=>{e.stopPropagation();chgCant(s.id,1)}} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">+</button>
+                    <button onClick={e=>{e.stopPropagation();chgCant(s.id,-1)}} className="w-7 h-7 border border-p-line rounded-lg text-sm font-bold text-p-ink hover:bg-p-light">−</button>
+                    <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50">✏</button>
+                  </>}
+                  <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Movimientos">📊</button>
                 </div>
               </div>
             ))}
