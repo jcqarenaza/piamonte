@@ -9,10 +9,12 @@ const FAM_MAP: Record<string, string> = {
   PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas',
   PUERTA_DD: 'Puertas', PUERTA_DI: 'Puertas', PUERTA_TD: 'Puertas', PUERTA_TI: 'Puertas',
   CUSTODIA_D: 'Custodias', CUSTODIA_I: 'Custodias',
-  ALETA_D: 'Custodias', ALETA_I: 'Custodias', VENTANA_D: 'Custodias', VENTANA_I: 'Custodias',
+  ALETA_D: 'Aletas', ALETA_I: 'Aletas', ALETA: 'Aletas',
+  VENTANA_D: 'Custodias', VENTANA_I: 'Custodias',
+  TECHO: 'Otros', VIDRIO: 'Otros',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Custodias']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', Custodias: '🔻' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Custodias', 'Aletas', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', Custodias: '🔻', Aletas: '🔷', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -90,8 +92,27 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
 
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
 
+  function normPos(pos: string | null | undefined): string {
+    const p = (pos ?? '').trim().toUpperCase()
+    if (!p) return 'SIN_POS'
+    if (p.startsWith('PARABRISAS')) return 'PARABRISAS'
+    if (p.startsWith('LUNETA') || p === 'LUNETAS') return 'LUNETA'
+    if (p.startsWith('PUERTA') || p.startsWith('C.D.') || p.startsWith('PUERTA_') || p.startsWith('C.INF')) {
+      if (p.includes('TRASERA') || p.includes('_T')) return p.includes('IZQUIERDA') || p.includes('_TI') ? 'PUERTA_TI' : 'PUERTA_TD'
+      if (p.includes('IZQUIERDA') || p.startsWith('C.D.I') || p === 'PUERTA IZQUIERDA') return 'PUERTA_DI'
+      return 'PUERTA_DD'
+    }
+    if (p.startsWith('CUSTODIA') || p.startsWith('CUSODIA')) {
+      if (p.includes('IZQUIERDA') || p.includes('IZQUIERDO') || p.includes('_I')) return 'CUSTODIA_I'
+      return 'CUSTODIA_D'
+    }
+    if (p.startsWith('ALETA') || p === 'ALETA_I' || p === 'ALETA_D') return 'ALETA'
+    if (p.startsWith('VIDRIO') || p.startsWith('TECHO')) return 'VIDRIO'
+    return p
+  }
+
   const resumen = FAMS.map(fam => {
-    const arr = items.filter(s => FAM_MAP[s.pos ?? ''] === fam)
+    const arr = items.filter(s => FAM_MAP[normPos(s.pos)] === fam)
     const totalU = arr.reduce((a, s) => a + s.cantidad, 0)
     const valCosto = arr.filter(s => s.costo).reduce((a, s) => a + (s.costo ?? 0) * s.cantidad, 0)
     const sinCosto = arr.filter(s => !s.costo && s.cantidad > 0).reduce((a, s) => a + s.cantidad, 0)
