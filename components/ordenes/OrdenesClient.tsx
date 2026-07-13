@@ -98,7 +98,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   const load = useCallback(() => {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
-    supabase.from('ordenes_servicio').select('*').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
+    supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
     supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
     supabase.from('aseguradoras').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setAseguradoras(data??[]))
   }, [supabase])
@@ -453,6 +453,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const asegOk   = !filtroAseg || (filtroAseg === '__sin__' ? !o.aseguradora : o.aseguradora === filtroAseg)
     const nombreOk = !buscarNombre.trim() || (o.cliente||'').toLowerCase().includes(buscarNombre.toLowerCase())
     return asegOk && nombreOk
+  }).sort((a,b) => {
+    // Cuando filtramos facturadas, ordenar por updated_at (fecha en que se facturó)
+    if (filtroEstado === 'facturadas') {
+      return new Date((b as any).updated_at||b.created_at).getTime() - new Date((a as any).updated_at||a.created_at).getTime()
+    }
+    return 0 // mantener orden original (created_at desc desde la DB)
   })
 
   return (
