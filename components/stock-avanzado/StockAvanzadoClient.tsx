@@ -366,11 +366,10 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
           </div>
         </div>
       </Modal>
-    </div>
 
-    {/* Modal detalle comprobante de compra */}
-    {verComp && (
-      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setVerComp(null)}}>
+      {/* Modal detalle comprobante de compra */}
+      {verComp && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setVerComp(null)}}>
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
           <div className="flex items-center justify-between p-4 border-b border-p-line">
             <div>
@@ -402,7 +401,7 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
             {verComp.cae && <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">✓ CAE {verComp.cae}</p>}
           </div>
         </div>
-      </div>
-    )}
+      )}
+    </div>
   )
 }
