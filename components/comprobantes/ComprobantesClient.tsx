@@ -163,6 +163,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const piezaPrecio = searchParams.get('pieza_precio')
     const oidUrl = searchParams.get('oid')
     if (oidUrl) { setOidParam(oidUrl); setOpen(true) }
+    if (searchParams.get('nuevo') === '1') setOpen(true)
     if (asegNombre) {
       setModo('aseguradora')
       supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
@@ -903,7 +904,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   return (
     <div>
       {toast && (
-        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:60,background:'#ef4444',color:'#fff',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,boxShadow:'0 4px 14px rgba(0,0,0,.2)'}}>
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:60,background:toast.startsWith('✓')?'#00A550':'#ef4444',color:'#fff',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,boxShadow:'0 4px 14px rgba(0,0,0,.2)'}}>
           {toast}
         </div>
       )}
