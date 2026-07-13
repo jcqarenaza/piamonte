@@ -507,13 +507,13 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
         <p style={{color:'#6b7280'}} className="text-[11px] mb-3">Dólar oficial: {moneyARS(dolarOficial)}</p>
       )}
 
+      {filtroFam && (
+        <div className="bg-green-50 border border-p-green rounded-xl px-4 py-2 mb-2 flex items-center justify-between text-sm">
+          <span className="font-semibold text-p-green">Filtrando: {filtroFam}</span>
+          <button onClick={()=>setFiltroFam(null)} className="text-p-green hover:text-p-dark font-bold ml-2">✕ limpiar</button>
+        </div>
+      )}
       {sinVincularCount > 0 && isAdmin && (
-        {filtroFam && (
-          <div className="bg-green-50 border border-p-green rounded-xl px-4 py-2 mb-2 flex items-center justify-between text-sm">
-            <span className="font-semibold text-p-green">Filtrando: {filtroFam}</span>
-            <button onClick={()=>setFiltroFam(null)} className="text-p-green hover:text-p-dark font-bold ml-2">✕ limpiar</button>
-          </div>
-        )}
         <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-2 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
           <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> artículos sin vincular al catálogo</p>
           <span className="text-xs font-bold text-amber-700">Vincular →</span>
