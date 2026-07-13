@@ -159,7 +159,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const itemsConAmbos = items.filter(s => s.costo && s.precio_venta)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
-  const valTotalVentaUSD = dolarOficial ? valTotalVenta / dolarOficial : null
+  const valTotalVentaUSD = dolarOficial ? valTotalVentaNeto / dolarOficial : null
 
   // Cuántas filas de stock todavía no están vinculadas a un artículo maestro —
   // esto es lo que habilita comparar costos consistentemente entre Stock, Compras y Ventas.
@@ -470,7 +470,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           {/* Precio de venta total */}
           <div style={{background:'#EBF4FB',border:'1px solid #BFD9F0'}} className="rounded-xl px-5 py-3.5">
             <p style={{color:'#1A5276'}} className="text-xs font-semibold uppercase tracking-wider">💰 Valorizado (precio venta)</p>
-            <p style={{color:'#154360'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
+            <p style={{color:'#154360'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVentaNeto)}</p>
             {valTotalVentaUSD != null && <p style={{color:'#1A5276'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR',{maximumFractionDigits:0})}</p>}
             <p style={{color:'#5D8AA8'}} className="text-xs mt-1">
               Margen potencial (neto s/IVA): {valTotalVenta > 0 && items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0) > 0
