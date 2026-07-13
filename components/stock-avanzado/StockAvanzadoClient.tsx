@@ -265,7 +265,10 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
                       <td className="px-4 py-3 text-p-ink2 text-xs font-mono">{m.fecha}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium text-p-ink text-xs">{m.descripcion}</p>
-                        {m.proveedor&&<p className="text-[10px] text-p-ink2">{m.proveedor}</p>}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {m.codigo&&<span className="font-mono text-[10px] bg-p-light text-p-ink2 px-1.5 py-0.5 rounded">{m.codigo}</span>}
+                          {m.proveedor&&<span className="text-[10px] text-p-ink2">{m.proveedor}</span>}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-center">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
@@ -279,7 +282,7 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
                       <td className="px-3 py-3 text-center text-p-ink2 text-xs">{m.stock_anterior??'—'}</td>
                       <td className="px-3 py-3 text-center font-bold text-p-dark text-xs">{m.stock_posterior??'—'}</td>
                       {isAdmin && <td className="px-3 py-3 text-right text-xs font-mono">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</td>}
-                      <td className="px-4 py-3 text-xs text-p-ink2 max-w-[180px] truncate">{m.nota||m.motivo||'—'}</td>
+                      <td className="px-4 py-3 text-xs text-p-ink2 max-w-[180px] truncate" title={m.nota||m.motivo||''}>{m.nota||m.motivo||'—'}</td>
                     </tr>
                   ))}
                 </tbody>

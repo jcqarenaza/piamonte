@@ -788,11 +788,11 @@ export default function ComprasClient() {
                       <div>
                         <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{descMostrar}</p>
                         {codigo && !esFlete && (
-                          <span className="text-[10px] font-mono text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">
-                            {codigoRaw}
-                          </span>
-                          {mappings[i] && <span className="text-[10px] text-green-600 font-bold">✓</span>}
-                          {!mappings[i] && codigoRaw && <span className="text-[10px] text-amber-600">⚠ sin stock</span>}
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] font-mono text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">{codigoRaw}</span>
+                            {mappings[i] && <span className="text-[10px] text-green-600 font-bold">✓</span>}
+                            {!mappings[i] && codigoRaw && <span className="text-[10px] text-amber-600">⚠ sin stock</span>}
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
