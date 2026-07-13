@@ -1110,8 +1110,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <div>
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar aseguradora</label>
               <div className="relative">
-                <Input value={asegQ} onChange={e=>{setAsegQ(e.target.value);setAseg(null);setHistorialCli(null)}}
-                  placeholder="Allianz, Mapfre, Sancor…"/>
+                <div className="relative">
+                  <Input value={asegQ} onChange={e=>{setAsegQ(e.target.value);setAseg(null);setHistorialCli(null)}}
+                    placeholder="Allianz, Mapfre, Sancor…"/>
+                  {asegSel && (
+                    <button type="button" onClick={()=>{setAseg(null);setAsegQ('');setAsegSugs([]);setHistorialCli(null)}}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-p-gray hover:text-red-500 text-lg leading-none px-1"
+                      title="Cambiar aseguradora">✕</button>
+                  )}
+                </div>
                 {asegSugs.length>0&&(
                   <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                     {asegSugs.map(a=>(
