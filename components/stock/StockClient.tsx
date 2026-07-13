@@ -472,8 +472,8 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
             <p style={{color:'#154360'}} className="font-saira font-bold text-2xl mt-1">{moneyARS(valTotalVenta)}</p>
             {valTotalVentaUSD != null && <p style={{color:'#1A5276'}} className="font-mono text-sm mt-0.5">US$ {valTotalVentaUSD.toLocaleString('es-AR',{maximumFractionDigits:0})}</p>}
             <p style={{color:'#5D8AA8'}} className="text-xs mt-1">
-              Margen potencial: {valTotalVenta > 0 && items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0) > 0
-                ? moneyARS(valTotalVenta - items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0))
+              Margen potencial (neto s/IVA): {valTotalVenta > 0 && items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0) > 0
+                ? moneyARS((valTotalVenta / 1.21) - items.filter(s=>s.costo&&s.costo>0).reduce((a,s)=>a+(s.costo??0)*s.cantidad,0))
                 : '—'}
             </p>
           </div>
