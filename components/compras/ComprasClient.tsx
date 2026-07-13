@@ -85,6 +85,7 @@ export default function ComprasClient() {
   const [stockSugs, setStockSugs] = useState<Record<number,any[]>>({})
   const [procesando, setProcesando] = useState(false)
   const [nuevoItem, setNuevoItem] = useState<Record<number,{desc:string;codigo:string;precio:string}|null>>({})
+  const [catDescMap, setCatDescMap] = useState<Record<string,string>>({})
 
   // Informe de comparación: lo que se pagó en la factura vs. el costo vigente en las listas de precios
   const [compararModal, setCompararModal] = useState<Comprobante|null>(null)
@@ -322,14 +323,20 @@ export default function ComprasClient() {
         const costoNuevo = Math.round(it.p * (1 - dtoPct))
         if (!costoNuevo) continue
 
-        // Buscar stock por código o descripción similar
-        const codigo = (it as any).codigo || null
+        // Buscar stock por código — también buscar en catálogo si el campo d tiene el código
+        const codigo = (it as any).codigo || (it.d && it.d.match(/^[0-9]{6}[A-Z]/i) ? it.d.trim() : null)
         let stockMatch: any = null
         if (codigo) {
           const { data } = await supabase.from('stock').select('id,costo,descripcion').eq('codigo', codigo).maybeSingle()
           stockMatch = data
+          // Si no está en stock, buscar descripción en catálogo para crear correctamente
+          if (!stockMatch) {
+            const { data: cat } = await supabase.from('catalogo')
+              .select('descripcion,costo_neto').eq('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
+            if (cat) it.d = cat.descripcion // usar descripción del catálogo
+          }
         }
-        if (!stockMatch) {
+        if (!stockMatch && it.d && !it.d.match(/^[0-9]{6}[A-Z]/i)) {
           const { data } = await supabase.from('stock')
             .select('id,costo,descripcion').ilike('descripcion', `%${it.d.slice(0,20).trim()}%`).limit(1).maybeSingle()
           stockMatch = data
@@ -414,18 +421,26 @@ export default function ComprasClient() {
   }
 
   // Abre el modal de vinculación a stock — funciona para remitos Y para facturas con afecta_stock
-  function abrirVinculacion(c:Comprobante) {
+  async function abrirVinculacion(c:Comprobante) {
     setRemitoModal(c)
+    // Cargar descripciones del catálogo para los códigos de esta factura
+    const codigos = c.items.map(it => (it as any).codigo || (/^[0-9]{6}[A-Z]/i.test((it.d||'').trim()) ? it.d.trim() : null)).filter(Boolean)
+    if (codigos.length) {
+      const { data: catRows } = await supabase.from('catalogo').select('codigo,descripcion').in('codigo', codigos).is('lista_nombre', null)
+      const map: Record<string,string> = {}
+      for (const r of catRows??[]) if (r.codigo && !map[r.codigo]) map[r.codigo] = r.descripcion
+      setCatDescMap(map)
+    }
     const init: Record<number,{stock_id:string;qty:number;costo:number}|null> = {}
     const initQ: Record<number,string> = {}
     c.items.forEach((it,i) => {
-      const codigo = (it as any).codigo
-      // Match SOLO por código exacto — nunca mezclar por descripción parcial
-      const matchCodigo = codigo && codigo !== 'FL'
+      // Código puede venir en campo codigo O en campo d si se cargó con el código como nombre
+      const codigo = (it as any).codigo || (it.d && /^[0-9]{6}[A-Z]/i.test(it.d.trim()) ? it.d.trim() : null)
+      const matchStock = codigo && codigo !== 'FL'
         ? stockItems.find(s => s.codigo === codigo)
         : null
-      init[i] = matchCodigo ? { stock_id: matchCodigo.id, qty: it.c, costo: it.p } : null
-      initQ[i] = matchCodigo ? matchCodigo.descripcion : ''
+      init[i] = matchStock ? { stock_id: matchStock.id, qty: it.c, costo: it.p } : null
+      initQ[i] = matchStock ? matchStock.descripcion : ''
     })
     setMappings(init)
     setStockQ(initQ)
@@ -461,9 +476,13 @@ export default function ComprasClient() {
       costo: it.p||null,
       cantidad: 0,
       activo: true,
-      pos: 'STOCK',
+      pos: 'PARABRISAS',
       articulo_id: it.articulo_id || null,
     }).select('id,descripcion,codigo,cantidad').single()
+    // Actualizar descripción en catálogo si tiene código
+    if (n.codigo) {
+      await supabase.from('catalogo').update({ descripcion: n.desc }).eq('codigo', n.codigo).is('lista_nombre', null)
+    }
     if (data) {
       setStockItems(prev=>[...prev, data])
       pickStock(idx, data, mappings[idx]?.qty??it.c, it.p)
@@ -748,17 +767,22 @@ export default function ComprasClient() {
               </p>
               <div className="flex flex-col gap-4">
                 {remitoModal.items.map((it,i) => {
-                  const codigo = (it as any).codigo
+                  const codigoRaw = (it as any).codigo || (/^[0-9]{6}[A-Z]/i.test((it.d||'').trim()) ? it.d.trim() : null)
+                  const codigo = codigoRaw
                   const esFlete = codigo === 'FL' || (it.d||'').toUpperCase().trim() === 'FLETE'
+                  // Descripción desde catálogo si d parece un código
+                  const descMostrar = (/^[0-9]{6}[A-Z]/i.test((it.d||'').trim()) && catDescMap[it.d.trim()]) ? catDescMap[it.d.trim()] : it.d
                   return (
                   <div key={i} className={`rounded-xl p-3 ${esFlete?'bg-gray-50 opacity-60':'bg-p-light'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{it.d}</p>
+                        <p className="font-semibold text-sm text-p-ink">{it.articulo_id && '🔗 '}{descMostrar}</p>
                         {codigo && !esFlete && (
-                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${mappings[i]?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>
-                            {codigo} {mappings[i]?'✓ código exacto encontrado':'⚠ no existe en stock — crear o vincular'}
+                          <span className="text-[10px] font-mono text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">
+                            {codigoRaw}
                           </span>
+                          {mappings[i] && <span className="text-[10px] text-green-600 font-bold">✓</span>}
+                          {!mappings[i] && codigoRaw && <span className="text-[10px] text-amber-600">⚠ sin stock</span>}
                         )}
                       </div>
                       <div className="flex items-center gap-2">
@@ -788,7 +812,7 @@ export default function ComprasClient() {
                             {stockQ[i]?.length>=2 && !stockSugs[i]?.length && (
                               <div className="px-3 py-3 text-sm text-p-ink2">
                                 <p className="mb-2">No encontrado en stock.</p>
-                                <button onClick={()=>setNuevoItem(prev=>({...prev,[i]:{desc:it.d,codigo:'',precio:''}}))}
+                                <button onClick={()=>setNuevoItem(prev=>({...prev,[i]:{desc:catDescMap[codigoRaw||'']||descMostrar,codigo:codigoRaw||'',precio:''}}))}
                                   style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
                                   + Crear nuevo artículo
                                 </button>
