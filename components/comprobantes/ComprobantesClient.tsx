@@ -528,7 +528,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
-    const { data:comp } = await supabase.from('comprobantes').insert({
+    const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
       cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
@@ -551,6 +551,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       observaciones: obs||null,
       user_id: userId,
     }).select().single()
+
+    if (compError || !comp) {
+      alert(`Error al guardar el comprobante: ${compError?.message || 'Sin respuesta del servidor'}`)
+      console.error('Error comprobante:', compError)
+      return
+    }
 
     const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
