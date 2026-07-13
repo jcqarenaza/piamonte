@@ -155,6 +155,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
   const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
+  const valTotalVentaNeto = Math.round(valTotalVenta / 1.21)
   const itemsConAmbos = items.filter(s => s.costo && s.precio_venta)
   const uTotal = resumen.reduce((a, r) => a + r.totalU, 0)
   const sinCostoCount = resumen.reduce((a, r) => a + r.sinCosto, 0)
@@ -527,31 +528,61 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
         visible.length === 0 ? <Empty msg="Sin ítems con ese filtro." /> : (
           <div className="flex flex-col gap-2">
-            {visible.slice(0, 300).map(s => (
-              <div key={s.id} onDoubleClick={() => abrirMovimientos(s)} title="Doble click para ver movimientos"
-                className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap ${
-                  s.stock_minimo > 0 && s.cantidad < s.stock_minimo ? 'border-l-4 border-l-red-400 border-p-line' :
-                  !s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'
-                }`}>
-                <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
-                  <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
+            {visible.slice(0, 300).map(s => {
+              const precioNeto = s.precio_venta ? Math.round(s.precio_venta / 1.21) : null
+              return (
+              <div key={s.id}>
+                <div onDoubleClick={() => abrirMovimientos(s)} title="Doble click para ver movimientos"
+                  className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 flex-wrap cursor-pointer ${
+                    selMov?.id === s.id ? 'border-p-green' :
+                    s.stock_minimo > 0 && s.cantidad < s.stock_minimo ? 'border-l-4 border-l-red-400 border-p-line' :
+                    !s.costo && s.cantidad > 0 ? 'border-l-4 border-l-amber-400 border-p-line' : 'border-p-line'
+                  }`}>
+                  <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
+                    <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <div className="text-right min-w-[80px]">
+                    {precioNeto && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(precioNeto)}</p>}
+                    <p className="text-[10px] text-p-ink2 uppercase">venta s/IVA</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {isAdmin && <>
+                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:''})}}
+                        className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
+                      <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
+                    </>}
+                    <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
+                  </div>
                 </div>
-                <div className="text-right min-w-[80px]">
-                  {s.precio_venta && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(s.precio_venta)}</p>}
-                  <p className="text-[10px] text-p-ink2 uppercase">venta</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  {isAdmin && <>
-                    <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:''})}}
-                      className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
-                    <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                  </>}
-                  <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
-                </div>
+                {selMov?.id === s.id && (
+                  <div className="bg-white border border-p-green border-t-0 rounded-b-xl shadow-sm overflow-hidden mb-1">
+                    <div className="flex items-center justify-between px-4 py-2 bg-green-50 border-b border-p-line2">
+                      <span className="font-semibold text-sm text-p-green">📊 Movimientos — {selMov.descripcion}</span>
+                      <button onClick={()=>{setSelMov(null);setSelMovData([])}} className="text-p-gray hover:text-p-ink">✕</button>
+                    </div>
+                    {loadingSelMov ? <p className="text-sm text-p-gray text-center py-4">Cargando…</p>
+                    : selMovData.length === 0 ? <p className="text-sm text-p-gray text-center py-4">Sin movimientos.</p>
+                    : (
+                      <div className="divide-y divide-p-line2 max-h-56 overflow-y-auto">
+                        {selMovData.map((m:any)=>(
+                          <div key={m.id} className="grid px-4 py-2 text-xs items-center gap-2" style={{gridTemplateColumns:'80px 80px 50px 1fr 90px'}}>
+                            <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
+                              {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
+                            </span>
+                            <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
+                            <span className={`truncate ${(m as any).comprobante_compra_id?'text-blue-600':'text-p-ink2'}`}>{m.nota||m.motivo||'—'}</span>
+                            <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </>
