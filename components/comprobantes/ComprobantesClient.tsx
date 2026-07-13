@@ -994,15 +994,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">¿A quién se factura?</label>
             <div className="flex gap-2 flex-wrap">
-              <button onClick={()=>cambiarModo('cf')}
+              <button type="button" onClick={()=>cambiarModo('cf')}
                 style={{background:modo==='cf'?'#0C1810':'#fff',color:modo==='cf'?'#fff':'#4A6655',border:`1.5px solid ${modo==='cf'?'#0C1810':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 👤 Consumidor Final
               </button>
-              <button onClick={()=>cambiarModo('cliente')}
+              <button type="button" onClick={()=>cambiarModo('cliente')}
                 style={{background:modo==='cliente'?'#00A550':'#fff',color:modo==='cliente'?'#fff':'#4A6655',border:`1.5px solid ${modo==='cliente'?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 🧑‍💼 Cliente
               </button>
-              <button onClick={()=>cambiarModo('aseguradora')}
+              <button type="button" onClick={()=>cambiarModo('aseguradora')}
                 style={{background:modo==='aseguradora'?'#1d4ed8':'#fff',color:modo==='aseguradora'?'#fff':'#4A6655',border:`1.5px solid ${modo==='aseguradora'?'#1d4ed8':'#C2DDD0'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 🏢 Aseguradora
               </button>
@@ -1388,7 +1388,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button onClick={save} disabled={!puedeGuardar || (usaCC && modo==='cf')} style={{...btn,opacity:(!puedeGuardar || (usaCC && modo==='cf'))?.5:1}}>
+            <button type="button" onClick={save} disabled={!puedeGuardar || (usaCC && modo==='cf')} style={{...btn,opacity:(!puedeGuardar || (usaCC && modo==='cf'))?.5:1}}>
               ✓ Emitir comprobante
             </button>
           </div>
