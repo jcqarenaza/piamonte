@@ -63,14 +63,16 @@ export async function buscarCatalogo(
       if (incluirStock) {
         const { data: stockData } = await supabase.from('stock')
           .select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
-          .ilike('codigo', `%${q}%`).gt('cantidad', 0).eq('activo', true).limit(4)
+          .ilike('codigo', `%${query.trim()}%`).gt('cantidad', 0).eq('activo', true).limit(4)
         const stockItems: ResultadoCatalogo[] = (stockData||[]).map(s => ({
           id: s.id, descripcion: s.descripcion, codigo: s.codigo,
           proveedor: null, costo_neto: s.costo,
           pos: null, marca: null,
           stock_id: s.id, cantidad: s.cantidad, precio_venta: s.precio_venta, articulo_id: s.articulo_id
         }))
-        return [...stockItems, ...resultados]
+        // Si hay stock con ese código, NO mostrar catálogo (evita duplicados)
+        if (stockItems.length > 0) return stockItems
+        return resultados
       }
       return resultados
     }
@@ -119,5 +121,8 @@ export async function buscarCatalogo(
   }
   const catItems = [...dedup.values()].slice(0, limit)
 
-  return [...stockItems, ...catItems]
+  // Filtrar catálogo: no mostrar si el código base (6 chars) ya está en stock
+  const codigosEnStock = new Set(stockItems.map(s => (s.codigo||'').slice(0,9).toUpperCase()))
+  const catSinDuplicados = catItems.filter(c => !codigosEnStock.has((c.codigo||'').slice(0,9).toUpperCase()))
+  return [...stockItems, ...catSinDuplicados]
 }
