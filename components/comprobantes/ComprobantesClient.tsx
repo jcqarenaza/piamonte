@@ -887,6 +887,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const [filtroTipo, setFiltroTipo] = useState<'todos'|'A'|'B'|'C'|'nc'|'nd'|'negro'>('todos')
   const [verComp, setVerComp] = useState<Comprobante|null>(null)
+  const [detailDescMap, setDetailDescMap] = useState<Record<string,string>>({})
   const [expandido, setExpandido] = useState<string|null>(null)
   const compsFiltrados = comps.filter(c => {
     if (filtroTipo === 'todos') return true

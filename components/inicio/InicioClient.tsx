@@ -114,7 +114,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
             {dolar && <span className="ml-3 font-mono text-p-dark font-bold">💵 Blue ${dolar.blue.toLocaleString('es-AR')}</span>}
           </p>
         </div>
-        <Link href="/comprobantes" style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/comprobantes?nuevo=1" style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, textDecoration: 'none', display: 'inline-block' }}>
           + Nuevo comprobante
         </Link>
       </div>
