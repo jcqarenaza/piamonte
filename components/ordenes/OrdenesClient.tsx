@@ -108,9 +108,16 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);return}
-    supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).gt('cantidad',0)
-      .ilike('descripcion',`%${stockQ}%`).limit(6)
-      .then(({data})=>setStockSugs(data??[]))
+    const q = stockQ.trim()
+    // Buscar por código exacto primero, luego por descripción
+    Promise.all([
+      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).ilike('codigo',`%${q}%`).limit(4),
+      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).gt('cantidad',0).ilike('descripcion',`%${q}%`).limit(4),
+    ]).then(([{data:porCod},{data:porDesc}])=>{
+      const todos = [...(porCod??[]),...(porDesc??[])]
+      const unicos = todos.filter((s,i)=>todos.findIndex(x=>x.id===s.id)===i)
+      setStockSugs(unicos.slice(0,6))
+    })
   },[stockQ,supabase])
 
   const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
