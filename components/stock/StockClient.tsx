@@ -18,7 +18,7 @@ const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', 
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
-export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
+export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; userId?: string }) {
   const [tab, setTab] = useState<Tab>('inventario')
   const [selMov, setSelMov] = useState<any|null>(null)
   const [verComp, setVerComp] = useState<any|null>(null)
@@ -68,6 +68,7 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
       nota: ajusteCantForm.nota || null,
       stock_anterior: ajusteCantModal.cantidad, stock_posterior: nueva,
       descripcion: ajusteCantModal.descripcion,
+      user_id: userId || null,
     })
     setAjusteCantModal(null)
     setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '' })

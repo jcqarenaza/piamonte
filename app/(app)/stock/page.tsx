@@ -14,7 +14,7 @@ export default async function Page() {
     <div>
       <h1 className="font-saira font-bold text-2xl text-p-ink mb-1">Stock</h1>
       <p className="text-p-ink2 text-sm mb-4">Inventario, movimientos y valorización.</p>
-      <StockClient isAdmin={rol !== 'ventas'} />
+      <StockClient isAdmin={rol !== 'ventas'} userId={user.id} />
     </div>
   )
 }

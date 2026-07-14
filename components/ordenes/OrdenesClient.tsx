@@ -718,10 +718,33 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
           {/* Ítems */}
           <div className="border-t border-p-line2 pt-3">
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Rubros rápidos</label>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Posición del vidrio</label>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {[
+                {pos:'Parabrisas', label:'Parabrisas'},
+                {pos:'Luneta', label:'Luneta'},
+                {pos:'Puerta Del. Der.', label:'P.D.D'},
+                {pos:'Puerta Del. Izq.', label:'P.D.I'},
+                {pos:'Puerta Tras. Der.', label:'P.T.D'},
+                {pos:'Puerta Tras. Izq.', label:'P.T.I'},
+                {pos:'Custodia Der.', label:'Custodia D'},
+                {pos:'Custodia Izq.', label:'Custodia I'},
+                {pos:'Aleta', label:'Aleta'},
+              ].map(v=>(
+                <button type="button" key={v.pos}
+                  onClick={()=>setItems(prev=>{
+                    const existe = prev.find(x=>x.d===v.pos)
+                    return existe ? prev.filter(x=>x.d!==v.pos) : [...prev,{d:v.pos,c:1,p:0}]
+                  })}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${items.find(x=>x.d===v.pos)?'border-p-green bg-green-50 text-p-green font-semibold':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
+                  {items.find(x=>x.d===v.pos)?'✓ ':''}{v.label}
+                </button>
+              ))}
+            </div>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Servicios adicionales</label>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {rubros.map(r=>(
-                <button key={r.id} onClick={()=>setItems(prev=>[...prev,{d:r.nombre,c:1,p:r.precio_base}])}
+                <button type="button" key={r.id} onClick={()=>setItems(prev=>[...prev,{d:r.nombre,c:1,p:r.precio_base}])}
                   className={`text-xs px-2.5 py-1 rounded-full border ${r.nombre.toLowerCase().includes('adas')?'border-blue-300 bg-blue-50 text-blue-700':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
                   + {r.nombre}
                 </button>
