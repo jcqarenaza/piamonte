@@ -19,6 +19,10 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [editCosto, setEditCosto] = useState<Record<string, string>>({})
   const [editId, setEditId]     = useState<string|null>(null)
   const [editForm, setEditForm] = useState({ codigo:'', descripcion:'', costo:'', precio:'', cliente:'', pago:'', comprobante:'' })
+  const [modoAseg, setModoAseg] = useState(false)
+  const [asegCaja, setAsegCaja] = useState('')
+  const [osCaja, setOsCaja] = useState<any[]>([])
+  const [osSelCaja, setOsSelCaja] = useState<any|null>(null)
   const [editStockQ, setEditStockQ]   = useState('')
   const [editStockSug, setEditStockSug] = useState<StockItem[]>([])
   const supabase = createClient()
@@ -45,7 +49,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
 
   const loadVentas = useCallback(async () => {
     setLoading(true)
-    const esGerencial = perfil.rol === 'gerencial'
+    const esGerencial = perfil.rol === 'gerencial' || perfil.rol === 'admin'
     const esCaja = perfil.rol === 'caja'
 
     // Filtrar por es_caja2 según el rol
@@ -130,6 +134,34 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     return c && p ? p - c : null
   }
 
+  async function cargarOsCaja(aseg: string) {
+    setAsegCaja(aseg); setOsSelCaja(null)
+    if (!aseg) { setOsCaja([]); return }
+    const { data } = await supabase.from('ordenes_servicio')
+      .select('*').eq('aseguradora', aseg).eq('estado','realizado')
+      .eq('convertido_comp', false).order('fecha', {ascending:false}).limit(20)
+    setOsCaja(data??[])
+  }
+
+  function seleccionarOsCaja(os: any) {
+    setOsSelCaja(os)
+    // Precargar datos de la OS en el form
+    if (os.items?.length > 0) {
+      const it = os.items[0]
+      setForm(p=>({...p,
+        descripcion: it.d || '',
+        precio: String(it.p || ''),
+        costo: String(it.costo || ''),
+        cliente: os.cliente || '',
+        stock_id: it.stock_id || null,
+        descontarStock: !!it.stock_id,
+        origen: it.stock_id ? 'stock' : 'compra',
+      }))
+    } else {
+      setForm(p=>({...p, cliente: os.cliente || ''}))
+    }
+  }
+
   async function save() {
     if (!form.descripcion || !form.precio) { alert('Cargá descripción y precio.'); return }
     const c = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
@@ -144,6 +176,11 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       es_caja2: perfil.rol === 'caja'
     }).select('id').single()
 
+    // Si viene de una OS de aseguradora (Mercantil/Sancor), marcarla como procesada
+    if (osSelCaja?.id) {
+      await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', osSelCaja.id)
+      setOsSelCaja(null); setAsegCaja(''); setOsCaja([])
+    }
     // Si es cuenta corriente, registrar deuda del cliente
     if (form.pago === 'Cuenta corriente' && form.cliente) {
       await supabase.from('cuenta_corriente').insert({
@@ -579,6 +616,40 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
               </div>
             ) : null
           })()}
+          {/* Modo aseguradora (Mercantil / Sancor) */}
+          <div className="flex gap-2 mb-1">
+            <button type="button" onClick={()=>{setModoAseg(false);setAsegCaja('');setOsCaja([]);setOsSelCaja(null)}}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${!modoAseg?'bg-p-green text-white border-p-green':'bg-white text-p-ink2 border-p-line'}`}>👤 Cliente</button>
+            <button type="button" onClick={()=>setModoAseg(true)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${modoAseg?'bg-blue-600 text-white border-blue-600':'bg-white text-p-ink2 border-p-line'}`}>🏢 Aseguradora</button>
+          </div>
+          {modoAseg && (
+            <div className="flex flex-col gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Seleccioná la aseguradora</p>
+              <div className="flex gap-2">
+                {['Mercantil Andina','Sancor Seguros'].map(a=>(
+                  <button type="button" key={a} onClick={()=>cargarOsCaja(a)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border ${asegCaja===a?'bg-blue-600 text-white border-blue-600':'bg-white text-blue-700 border-blue-300'}`}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+              {osCaja.length > 0 && (
+                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase">OS pendientes de {asegCaja}</p>
+                  {osCaja.map(os=>(
+                    <button type="button" key={os.id} onClick={()=>seleccionarOsCaja(os)}
+                      className={`text-left px-3 py-2 rounded-lg text-xs border ${osSelCaja?.id===os.id?'bg-blue-100 border-blue-400':'bg-white border-blue-200 hover:bg-blue-50'}`}>
+                      <span className="font-bold text-blue-800">OS-{String(os.numero).padStart(4,'0')}</span>
+                      <span className="text-blue-600 ml-2">{os.cliente}</span>
+                      <span className="text-blue-500 ml-2">{os.vehiculo} · {os.patente}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {asegCaja && osCaja.length===0 && <p className="text-xs text-blue-500 text-center py-2">Sin OS pendientes</p>}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tipo de cliente">
               <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
