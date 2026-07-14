@@ -816,8 +816,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           if(prev.find(x=>x.stock_id===s.id)) return prev
                           return [...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,stock_id:s.id,codigo:s.codigo||null}]
                         })
-                        // Limpiar para permitir agregar otro artículo
-                        setTimeout(()=>{setStockSel(null);setStockQ('')},300)
+                        setStockSel(null); setStockQ('')
                       }}>
                       <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
                       <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>
