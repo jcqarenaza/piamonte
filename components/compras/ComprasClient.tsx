@@ -574,16 +574,30 @@ export default function ComprasClient() {
         }
         candidatos = [...porProv.values()]
       } else {
-        // Sin artículo vinculado todavía — fallback a la búsqueda por palabras de antes
-        const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
-        if (palabras.length > 0) {
-          const { data } = await supabase.from('articulos_maestro')
-            .select('id,descripcion,articulo_equivalencias(proveedor,costo_neto,lista_nombre,codigo_proveedor)')
-            .ilike('descripcion', `%${palabras[0]}%`).limit(20)
-          const match = (data ?? []).find((a:any) =>
-            palabras.every((w:string) => (a.descripcion||'').toUpperCase().includes(w))
-          )
-          candidatos = match?.articulo_equivalencias ?? []
+        // Buscar por descripción en catálogo directamente
+        const { data: catDirect } = await supabase.from('catalogo')
+          .select('proveedor, costo_neto, codigo')
+          .ilike('descripcion', `%${it.d.slice(0,20).trim()}%`)
+          .is('lista_nombre', null).gt('costo_neto', 0).limit(20)
+        if (catDirect && catDirect.length > 0) {
+          const porProv = new Map<string,any>()
+          for (const row of catDirect) {
+            if (!porProv.has(row.proveedor) || row.costo_neto < porProv.get(row.proveedor).costo_neto)
+              porProv.set(row.proveedor, { proveedor: row.proveedor, costo_neto: row.costo_neto, lista_nombre: 'Catálogo', codigo_proveedor: row.codigo })
+          }
+          candidatos = [...porProv.values()]
+        } else {
+          // Fallback a maestro
+          const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
+          if (palabras.length > 0) {
+            const { data } = await supabase.from('articulos_maestro')
+              .select('id,descripcion,articulo_equivalencias(proveedor,costo_neto,lista_nombre,codigo_proveedor)')
+              .ilike('descripcion', `%${palabras[0]}%`).limit(20)
+            const match = (data ?? []).find((a:any) =>
+              palabras.every((w:string) => (a.descripcion||'').toUpperCase().includes(w))
+            )
+            candidatos = match?.articulo_equivalencias ?? []
+          }
         }
       }
 
