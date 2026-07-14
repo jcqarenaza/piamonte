@@ -742,12 +742,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               ))}
             </div>
 
-            <div className="grid grid-cols-5 gap-2">
-              <div className="col-span-2"><Input value={item.d} onChange={e=>setItem(p=>({...p,d:e.target.value}))} placeholder="Concepto"/></div>
-              <Input type="number" value={item.c} onChange={e=>setItem(p=>({...p,c:e.target.value}))} min="1"/>
-              <div className="col-span-2"><Input value={item.p} onChange={e=>setItem(p=>({...p,p:e.target.value}))} placeholder="$ precio"/></div>
-            </div>
-            <button onClick={addItem} style={{...btnGray,width:'100%',marginTop:6}}>+ Agregar ítem</button>
+
           </div>
           {/* Lista ítems */}
           {items.length>0&&(
