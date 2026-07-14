@@ -21,6 +21,14 @@ type Tab = 'inventario' | 'vincular' | 'movimientos'
 export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
   const [tab, setTab] = useState<Tab>('inventario')
   const [selMov, setSelMov] = useState<any|null>(null)
+  const [verComp, setVerComp] = useState<any|null>(null)
+
+  async function abrirComprobante(id: string) {
+    const { data } = await supabase.from('comprobantes_compra').select('*').eq('id', id).single()
+    if (data) { setVerComp(data); return }
+    const { data: cv } = await supabase.from('comprobantes').select('*').eq('id', id).single()
+    if (cv) setVerComp(cv)
+  }
   const [selMovData, setSelMovData] = useState<any[]>([])
   const [loadingSelMov, setLoadingSelMov] = useState(false)
   const [ajusteCantModal, setAjusteCantModal] = useState<any|null>(null)
@@ -567,15 +575,19 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
                     : (
                       <div className="divide-y divide-p-line2 max-h-56 overflow-y-auto">
                         {selMovData.map((m:any)=>(
-                          <div key={m.id} className="grid px-4 py-2 text-xs items-center gap-2" style={{gridTemplateColumns:'80px 80px 50px 1fr 90px'}}>
-                            <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
-                              {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
-                            </span>
-                            <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
-                            <span className={`truncate ${(m as any).comprobante_compra_id?'text-blue-600':'text-p-ink2'}`}>{m.nota||m.motivo||'—'}</span>
-                            <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
-                          </div>
+                          <div key={m.id}
+                        onDoubleClick={()=>{ if((m as any).comprobante_venta_id || (m as any).comprobante_compra_id) abrirComprobante((m as any).comprobante_venta_id || (m as any).comprobante_compra_id) }}
+                        className={`grid px-4 py-2 text-xs items-center gap-2 ${(m as any).comprobante_venta_id||(m as any).comprobante_compra_id?'cursor-pointer hover:bg-blue-50/30':''}`}
+                        style={{gridTemplateColumns:'80px 80px 50px 1fr 80px 70px'}}>
+                        <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
+                        <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
+                          {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
+                        </span>
+                        <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
+                        <span className={`truncate ${(m as any).comprobante_compra_id?'text-blue-600':(m as any).comprobante_venta_id?'text-green-700':'text-p-ink2'}`}>{m.nota||m.motivo||'—'}</span>
+                        <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
+                        <span className="truncate text-p-ink2 text-[10px]">{(m as any).usuario_nombre||''}</span>
+                      </div>
                         ))}
                       </div>
                     )}
@@ -586,6 +598,37 @@ export default function StockClient({ isAdmin }: { isAdmin: boolean }) {
           </div>
         )}
       </>
+      )}
+
+      {/* Modal ver comprobante desde movimiento */}
+      {verComp && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)setVerComp(null)}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-p-line">
+              <div>
+                <p className="font-saira font-bold text-p-ink">
+                  {verComp.categoria ? `${verComp.tipo?.toUpperCase()}-0006-${String(verComp.nro_cbte_afip||verComp.numero||0).padStart(8,'0')}` : `Factura ${verComp.numero}`}
+                </p>
+                <p className="text-xs text-p-ink2">{verComp.aseguradora_nombre||verComp.proveedor_nombre||''} · {verComp.fecha?.split('-').reverse().join('/')}</p>
+              </div>
+              <button onClick={()=>setVerComp(null)} className="text-p-gray text-xl">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-3">
+              {(verComp.items||[]).map((it:any,i:number)=>(
+                <div key={i} className="flex justify-between text-sm border-b border-p-line2 py-1.5">
+                  <span className="flex-1 truncate">{it.d||it.descripcion}</span>
+                  <span className="text-p-ink2 mx-2">x{it.c||it.cantidad}</span>
+                  <span className="font-mono">{moneyARS((it.p||it.precio_unitario||0)*(it.c||it.cantidad||1))}</span>
+                </div>
+              ))}
+              <div className="bg-p-light rounded-xl p-3 text-sm">
+                <div className="flex justify-between font-bold font-saira text-base">
+                  <span>TOTAL</span><span>{moneyARS(verComp.total||0)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal ajuste de cantidad */}

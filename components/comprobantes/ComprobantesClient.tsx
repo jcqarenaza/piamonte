@@ -1333,12 +1333,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   <span className="flex-1 text-p-ink min-w-0 text-sm break-words">{it.d}</span>
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-center mb-0.5">cant.</div>
-                    <input type="number" min="1" value={it.c} onChange={e=>{const v=Math.max(1,+e.target.value||1);setItems(prev=>prev.map((x,j)=>j===i?{...x,c:v}:x))}}
+                    <input type="text" inputMode="numeric" min="1" value={it.c} onChange={e=>{const v=Math.max(1,+e.target.value||1);setItems(prev=>prev.map((x,j)=>j===i?{...x,c:v}:x))}} onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
                       className="w-12 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-center focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
-                    <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}} onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
+                    <input type="text" inputMode="decimal" value={it.p} onChange={e=>{const v=e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(v.replace(',','.'))||0}:x))}} onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
                       className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0 text-right">
