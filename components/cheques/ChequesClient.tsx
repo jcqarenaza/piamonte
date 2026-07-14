@@ -253,6 +253,9 @@ export default function ChequesClient({ userId }: { userId?: string }) {
               {!['cobrado','rebotado','anulado'].includes(c.estado)&&(
                 <button onClick={()=>cambiarEstado(c.id,'anulado')} style={{...btnSm,background:'#6b7280'}}>🚫 Anular</button>
               )}
+              {c.estado==='cobrado'&&(
+                <button onClick={()=>cambiarEstado(c.id, c.tipo==='propio'?'emitido':'en_cartera')} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Volver a pendiente</button>
+              )}
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import StockClient from '@/components/stock/StockClient'
+import ComprasClient from '@/components/compras/ComprasClient'
 
 export default async function Page() {
   const supabase = await createClient()
@@ -9,12 +9,9 @@ export default async function Page() {
   if (!user) redirect('/login')
   const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
   const rol = p?.rol || 'ventas'
-
   return (
     <div>
-      <h1 className="font-saira font-bold text-2xl text-p-ink mb-1">Stock</h1>
-      <p className="text-p-ink2 text-sm mb-4">Inventario, movimientos y valorización.</p>
-      <StockClient isAdmin={rol !== 'ventas'} />
+      <ComprasClient rol={rol} />
     </div>
   )
 }
