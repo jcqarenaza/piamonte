@@ -164,6 +164,19 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       if (s && s.cantidad > 0) {
         await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
         setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
+        // Actualizar nota del ajuste generado por el trigger con datos de la venta
+        const notaVenta = [
+          form.comprobante ? `FC ${form.comprobante}` : null,
+          form.cliente || null,
+          form.pago !== 'Efectivo' ? form.pago : null,
+        ].filter(Boolean).join(' · ') || 'Venta de caja'
+        await supabase.from('ajustes_stock')
+          .update({ nota: notaVenta })
+          .eq('stock_id', form.stock_id)
+          .eq('tipo', 'salida')
+          .is('nota', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
       }
     }
     setOpen(false)
