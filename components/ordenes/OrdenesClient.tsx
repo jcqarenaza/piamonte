@@ -226,13 +226,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         stock_codigo: stockSel?.codigo||null,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
-      // Descontar el nuevo stock (los ítems que tienen stock_id)
-      for (const it of items) {
-        if (it.stock_id) {
-          const { data: s } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
-          if (s) await supabase.from('stock').update({ cantidad: Math.max(0, (s as any).cantidad - (it.c||1)) }).eq('id', it.stock_id)
-        }
-      }
+      // Stock se descuenta solo al facturar, NO al guardar la OS
       setEditId(null)
     } else {
     await supabase.from('ordenes_servicio').insert({
@@ -246,10 +240,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       turno_id: form.turno_id || null,
       estado: 'pendiente',
     })
-    // Descontar stock si se seleccionó una pieza
-    if(stockSel?.id) {
-      await supabase.from('stock').update({ cantidad: Math.max(0, (stockSel.cantidad||1) - 1) }).eq('id', stockSel.id)
-    }
+    // Stock se descuenta solo al facturar, NO al guardar la OS
     }
 
     setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})

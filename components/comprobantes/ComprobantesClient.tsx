@@ -637,8 +637,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     if (pid) await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', pid)
-    if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', oid)
-    if (osSelId && !oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true }).eq('id', osSelId)
+    if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', oid)
+    if (osSelId && !oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', osSelId)
 
     if(comp) {
       const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
