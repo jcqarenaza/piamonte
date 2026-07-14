@@ -96,6 +96,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [stockQ, setStockQ]     = useState('')
   const stockSearchRef = useRef<HTMLInputElement>(null)
   const [stockSugs, setStockSugs] = useState<any[]>([])
+  const [precioEditStr, setPrecioEditStr] = useState<Record<number,string>>({})
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
   // Un ChequeData por cada fila de pago (mismo índice). Solo se usa cuando metodo==='Cheque'.
@@ -1338,7 +1339,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </div>
                   <div className="shrink-0">
                     <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
-                    <input type="text" inputMode="decimal" value={it.p} onChange={e=>{const v=e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(v.replace(',','.'))||0}:x))}} onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
+                    <input type="text" inputMode="decimal"
+                      value={precioEditStr[i] ?? String(it.p)}
+                      onChange={e=>{
+                        const v=e.target.value
+                        setPrecioEditStr(prev=>({...prev,[i]:v}))
+                        const num=parseFloat(v.replace(',','.'))||0
+                        setItems(prev=>prev.map((x,j)=>j===i?{...x,p:num}:x))
+                      }}
+                      onBlur={e=>{
+                        setPrecioEditStr(prev=>{const n={...prev};delete n[i];return n})
+                      }}
+                      onKeyDown={e=>{if(e.key==='Enter'||e.keyCode===13)e.preventDefault()}}
                       className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   </div>
                   <div className="shrink-0 text-right">
