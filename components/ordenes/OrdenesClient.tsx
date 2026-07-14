@@ -35,6 +35,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente', turno_id:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
+  const [posVidrio, setPosVidrio] = useState<string[]>([])
   const [filtroAseg, setFiltroAseg] = useState('')
   const [buscarNombre, setBuscarNombre] = useState('')
   const [adjModal, setAdjModal]   = useState<any|null>(null)
