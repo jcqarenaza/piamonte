@@ -212,6 +212,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
         patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
         poliza:form.pol||null, obs:form.obs||null, items, total, iva: iva ?? 0, neto: neto ?? 0,
+        posicion_vidrio: posVidrio.length ? posVidrio.join(',') : null,
+        stock_codigo: stockSel?.codigo||null,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
       // Descontar el nuevo stock (los ítems que tienen stock_id)
@@ -543,6 +545,17 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     </span>
                   )}
                   <span className="text-xs text-p-ink2 shrink-0">{[o.vehiculo,(o as any).patente].filter(Boolean).join(' · ')}</span>
+                  {(o as any).posicion_vidrio && (
+                    <span className="text-[10px] font-semibold text-p-green shrink-0">· {(o as any).posicion_vidrio}</span>
+                  )}
+                  {(() => {
+                    const stockItems = (o.items||[]).filter((it:any)=>it.stock_id&&it.codigo)
+                    return stockItems.length>0 ? stockItems.map((it:any)=>(
+                      <span key={it.stock_id} className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1 rounded">{it.codigo}</span>
+                    )) : (o as any).stock_codigo ? (
+                      <span className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1 rounded">{(o as any).stock_codigo}</span>
+                    ) : null
+                  })()}
                   <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
                   <div className="flex-1 min-w-[8px]"/>
                   <p className="font-saira font-bold text-p-ink shrink-0">{o.total > 0 ? moneyARS(o.total) : <span className="text-p-ink2 text-xs font-normal">Sin precio</span>}</p>
@@ -732,12 +745,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 {pos:'Aleta', label:'Aleta'},
               ].map(v=>(
                 <button type="button" key={v.pos}
-                  onClick={()=>setItems(prev=>{
-                    const existe = prev.find(x=>x.d===v.pos)
-                    return existe ? prev.filter(x=>x.d!==v.pos) : [...prev,{d:v.pos,c:1,p:0}]
-                  })}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${items.find(x=>x.d===v.pos)?'border-p-green bg-green-50 text-p-green font-semibold':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
-                  {items.find(x=>x.d===v.pos)?'✓ ':''}{v.label}
+                  onClick={()=>setPosVidrio(prev=>prev.includes(v.pos)?prev.filter(p=>p!==v.pos):[...prev,v.pos])}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${posVidrio.includes(v.pos)?'border-p-green bg-green-50 text-p-green font-semibold':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
+                  {posVidrio.includes(v.pos)?'✓ ':''}{v.label}
                 </button>
               ))}
             </div>
@@ -791,7 +801,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0"
                       onClick={()=>{
                         setStockSel(s); setStockSugs([]); setStockQ('')
-                        setItems(prev=>[...prev,{d:s.descripcion+(s.codigo?` [${s.codigo}]`:''),c:1,p:s.precio_venta||0,stock_id:s.id}])
+                        setItems(prev=>{
+                          // Si ya está en items, no duplicar
+                          if(prev.find(x=>x.stock_id===s.id)) return prev
+                          return [...prev,{d:s.descripcion,c:1,p:s.precio_venta||0,stock_id:s.id,codigo:s.codigo||null}]
+                        })
+                        // Limpiar para permitir agregar otro artículo
+                        setTimeout(()=>{setStockSel(null);setStockQ('')},300)
                       }}>
                       <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
                       <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>
