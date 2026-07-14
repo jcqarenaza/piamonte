@@ -277,6 +277,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
   const costo = ventas.filter(v => !v.pendiente).reduce((a, v) => a + (v.costo ?? 0), 0)
   const gan2 = fact - costo
   const [ventaFiltro, setVentaFiltro] = useState<'todas'|'contado'|'cc'>('todas')
+  const ventasFiltradas = ventaFiltro==='contado' ? ventas.filter(v=>v.pago!=='Cuenta corriente') : ventaFiltro==='cc' ? ventas.filter(v=>v.pago==='Cuenta corriente') : ventas
   const pend = ventas.filter(v => v.pendiente).length
   const totalRecibos = recibos.reduce((a,r)=>a+r.monto, 0)
   const totalPagosProv = pagosProveedores.reduce((a,p)=>a+p.haber, 0)
@@ -374,8 +375,6 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             📒 Cta. Cte. ({recibos.length + pagosProveedores.length})
           </button>
         </div>
-          )
-        })()}
         {tab==='gastos' && (
           <button onClick={()=>setGastoOpen(true)}
             style={{background:'#ef4444',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
