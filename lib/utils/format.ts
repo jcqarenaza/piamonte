@@ -22,7 +22,9 @@ export function cleanNum(s: string): number {
 }
 
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 10)
 }
 
 export function fmtFecha(iso: string): string {
