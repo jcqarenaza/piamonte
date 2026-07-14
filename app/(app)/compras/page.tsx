@@ -11,7 +11,7 @@ export default async function Page() {
   const rol = p?.rol || 'ventas'
   return (
     <div>
-      <ComprasClient rol={rol} />
+      <ComprasClient />
     </div>
   )
 }
