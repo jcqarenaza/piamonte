@@ -74,10 +74,19 @@ export function Field({ label, children, className = '' }: { label: string; chil
 
 // ── INPUT ───────────────────────────────────────────────────
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const { type, ...rest } = props
+  const isNumber = type === 'number'
   return (
-    <input {...props}
-      onKeyDown={e => { if (e.key === 'Enter' || e.keyCode === 13) e.preventDefault(); props.onKeyDown?.(e) }}
-      className={`w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green focus:ring-1 focus:ring-p-green bg-white ${props.className ?? ''}`} />
+    <input
+      {...rest}
+      type={isNumber ? 'text' : type}
+      inputMode={isNumber ? 'decimal' : undefined}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.keyCode === 13) e.preventDefault()
+        props.onKeyDown?.(e)
+      }}
+      className={`w-full border border-p-line rounded-lg px-3 py-2 text-sm text-p-ink focus:outline-none focus:border-p-green focus:ring-1 focus:ring-p-green bg-white ${props.className ?? ''}`}
+    />
   )
 }
 
