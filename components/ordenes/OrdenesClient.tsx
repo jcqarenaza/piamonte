@@ -741,15 +741,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 </button>
               ))}
             </div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Servicios adicionales</label>
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {rubros.map(r=>(
-                <button type="button" key={r.id} onClick={()=>setItems(prev=>[...prev,{d:r.nombre,c:1,p:r.precio_base}])}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${r.nombre.toLowerCase().includes('adas')?'border-blue-300 bg-blue-50 text-blue-700':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
-                  + {r.nombre}
-                </button>
-              ))}
-            </div>
+
             <div className="grid grid-cols-5 gap-2">
               <div className="col-span-2"><Input value={item.d} onChange={e=>setItem(p=>({...p,d:e.target.value}))} placeholder="Concepto"/></div>
               <Input type="number" value={item.c} onChange={e=>setItem(p=>({...p,c:e.target.value}))} min="1"/>
