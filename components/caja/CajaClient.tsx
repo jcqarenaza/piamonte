@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Venta, StockItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, KpiCard, Empty, AlarmBar } from '@/components/ui'
-import { moneyARS, todayStr } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 import { useDolar } from '@/components/dolar/DolarBar'
 
 const PAGOS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Cuenta corriente']
@@ -272,8 +272,11 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
 
   // KPIs
   const fact = ventas.reduce((a, v) => a + v.precio, 0)
+  const factContado = ventas.filter(v => v.pago !== 'Cuenta corriente').reduce((a, v) => a + v.precio, 0)
+  const factCC      = ventas.filter(v => v.pago === 'Cuenta corriente').reduce((a, v) => a + v.precio, 0)
   const costo = ventas.filter(v => !v.pendiente).reduce((a, v) => a + (v.costo ?? 0), 0)
   const gan2 = fact - costo
+  const [ventaFiltro, setVentaFiltro] = useState<'todas'|'contado'|'cc'>('todas')
   const pend = ventas.filter(v => v.pendiente).length
   const totalRecibos = recibos.reduce((a,r)=>a+r.monto, 0)
   const totalPagosProv = pagosProveedores.reduce((a,p)=>a+p.haber, 0)
@@ -305,7 +308,16 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             <div className="text-sm">
               <p className="text-p-ink2 text-xs mb-0.5">Ventas facturadas</p>
               <p className="font-saira font-bold text-p-ink">{moneyARS(fact)}</p>
-              <p className="text-[10px] text-p-ink2">{usdBNA(fact)}</p>
+              <div className="flex gap-2 mt-1">
+                <button type="button" onClick={()=>setVentaFiltro(ventaFiltro==='contado'?'todas':'contado')}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${ventaFiltro==='contado'?'bg-green-600 text-white':'bg-green-100 text-green-700'}`}>
+                  Contado {moneyARS(factContado)}
+                </button>
+                <button type="button" onClick={()=>setVentaFiltro(ventaFiltro==='cc'?'todas':'cc')}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${ventaFiltro==='cc'?'bg-amber-600 text-white':'bg-amber-100 text-amber-700'}`}>
+                  CC {moneyARS(factCC)}
+                </button>
+              </div>
             </div>
             <div className="text-sm">
               <p className="text-p-ink2 text-xs mb-0.5">+ Cobros Cta. Cte.</p>
@@ -362,6 +374,8 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             📒 Cta. Cte. ({recibos.length + pagosProveedores.length})
           </button>
         </div>
+          )
+        })()}
         {tab==='gastos' && (
           <button onClick={()=>setGastoOpen(true)}
             style={{background:'#ef4444',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
