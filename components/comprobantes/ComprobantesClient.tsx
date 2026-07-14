@@ -822,7 +822,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     c.items.forEach((it:any,idx:number)=>{
       if(idx%2===0){ doc.setFillColor(240,250,245); doc.rect(pad,y,W-pad*2,6.5,'F') }
       let xi=pad
-      doc.text(String(it.d||'').slice(0,45),xi+2,y+4.5); xi+=cols[0]
+      const codText = (it as any).codigo ? `[${(it as any).codigo}] ` : ''
+      doc.text((codText + String(it.d||'')).slice(0,50),xi+2,y+4.5); xi+=cols[0]
       doc.text(String(it.c||1),xi-2,y+4.5,{align:'right'}); xi+=cols[1]
       doc.text(moneyARS(it.p||0),xi-2,y+4.5,{align:'right'}); xi+=cols[2]
       doc.text(moneyARS((it.c||1)*(it.p||0)),xi-2,y+4.5,{align:'right'})
@@ -1200,7 +1201,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 ))}
                 {historialCli.ordenes.map((o:any) => (
                   <button key={o.id} onClick={()=>{
-                    setItems(o.items||[])
+                    setItems((o.items||[]).map((it:any)=>({...it,codigo:it.codigo||null})))
                     setFiscal(prev=>({...prev, vehiculo:o.vehiculo||prev.vehiculo, patente:o.patente||prev.patente}))
                     if (o.cliente) setClienteAseg(o.cliente)
                     if (o.siniestro) setSiniestro(o.siniestro)
@@ -1252,7 +1253,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                               precioStock = s.precio_venta || Math.round(costoStock*1.45)
                             }
                           }
-                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:precioStock,costo:costoStock,stock_id:s.id,articulo_id:s.articulo_id||null}])
+                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:precioStock,costo:costoStock,stock_id:s.id,articulo_id:s.articulo_id||null,codigo:s.codigo||null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                         }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                           <div className="min-w-0">
@@ -1282,7 +1283,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                             const tipoSel = tipos.find((t:any) => t.id === fiscal.tipo_cliente_id)
                             if (tipoSel?.margen_pct) precio = Math.round(costo * (1 + +tipoSel.margen_pct))
                           }
-                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:precio,articulo_id:null}])
+                          setItems(prev=>[...prev,{d:a.descripcion,c:1,p:precio,articulo_id:null,codigo:(a as any).codigo||null}])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                           setTimeout(()=>stockSearchRef.current?.focus(), 50)
                         }} className="w-full text-left px-3 py-2.5 hover:bg-amber-50 border-b border-p-line2 last:border-0">
@@ -1590,6 +1591,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       {cod && <span className="text-[10px] font-mono font-bold bg-p-light text-p-ink2 px-1.5 py-0.5 rounded mr-1.5">{cod}</span>}
                       <span>{it.d}</span>
                     </div>
+
                     <span className="text-p-ink2 shrink-0">x{it.c}</span>
                     <span className="font-mono shrink-0 text-right">{moneyARS(it.p*it.c)}</span>
                   </div>
