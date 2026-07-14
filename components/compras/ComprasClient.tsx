@@ -558,9 +558,10 @@ export default function ComprasClient() {
           .select('proveedor,costo_neto,lista_nombre,codigo_proveedor')
           .eq('articulo_id', it.articulo_id)
         candidatos = data ?? []
-      } else if ((it as any).codigo && (it as any).codigo !== 'FL') {
-        // Buscar por código del proveedor en el catálogo directamente
-        const codigoBase = ((it as any).codigo as string).replace(/[^0-9]/g,'').slice(0,6)
+      } else if (((it as any).codigo && (it as any).codigo !== 'FL') || /^[0-9]{6}[A-Z]/i.test((it.d||'').trim())) {
+        // Buscar por código — puede estar en it.codigo o en it.d (facturas GAMMA)
+        const codRaw = (it as any).codigo || it.d.trim()
+        const codigoBase = codRaw.replace(/[^0-9]/g,'').slice(0,6)
         const { data } = await supabase.from('catalogo')
           .select('proveedor, costo_neto, precio_lista, codigo')
           .ilike('codigo', `${codigoBase}%`)
