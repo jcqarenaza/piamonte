@@ -617,13 +617,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           if(s) {
             await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
             // Registrar movimiento de salida
+            const notaMov = [
+              comp ? `FC-0006-${String((comp as any).nro_cbte_afip || (comp as any).numero || '').padStart(8,'0')}` : null,
+              asegSel?.nombre || cliSel?.nombre || null,
+            ].filter(Boolean).join(' · ') || it.d
             await supabase.from('stock_movimientos').insert({
               stock_id: it.stock_id, tipo: 'salida',
               cantidad: it.c,
               costo_unitario: (s as any).costo || null,
               precio_venta_unitario: it.p,
               fecha: fechaComp,
-              descripcion: it.d,
+              descripcion: notaMov,
               comprobante_venta_id: compId,
             })
           }
