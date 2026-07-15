@@ -816,7 +816,7 @@ export default function ComprasClient() {
                     {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
                       <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
                     )}
-                    {c.estado!=='anulado' && periodoAbierto(c.fecha) && (
+                    {periodoAbierto(c.fecha) && (
                       <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
                     )}
                     {periodoAbierto(c.fecha) && (
