@@ -435,7 +435,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           {!editId && (
             <div className="flex rounded-xl overflow-hidden border border-p-line">
               <button onClick={()=>{setModoAseg(false);setItems([]);setAsegSel(null);setAsegQ('')}}
-                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!modoAseg?'bg-p-green text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!modoAseg?'bg-[#0C1810] text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
                 👤 Particular / Chapista
               </button>
               <button onClick={()=>{setModoAseg(true);setItems([]);setTipoSel(null);setCatQ('')}}
