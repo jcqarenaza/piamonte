@@ -38,7 +38,7 @@ const CONDICIONES_IVA = ['Responsable Inscripto', 'Monotributo', 'Exento', 'Cons
 interface Proveedor {
   id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null
   email:string|null; telefono:string|null; direccion:string|null; localidad:string|null
-  contacto:string|null; notas:string|null; activo:boolean; created_at:string; descuento_pct:number|null
+  contacto:string|null; notas:string|null; activo:boolean; created_at:string; descuento_pct:number|null; flete_pct:number|null
 }
 interface Compra { id:string; tipo:string; letra:string|null; punto_venta:string|null; numero:string|null; fecha:string; total:number; estado:string }
 
@@ -56,7 +56,7 @@ export default function ProveedoresCompraClient() {
 
   const [form, setForm] = useState({
     nombre:'', razon_social:'', cuit:'', condicion_iva:'', email:'', telefono:'',
-    direccion:'', localidad:'', contacto:'', notas:'', descuento_pct:''
+    direccion:'', localidad:'', contacto:'', notas:'', descuento_pct:'', flete_pct:''
   })
 
   const cuitCheck = validarCuit(form.cuit)
@@ -72,7 +72,7 @@ export default function ProveedoresCompraClient() {
   useEffect(() => { load() }, [load])
 
   function openNuevo() {
-    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'', descuento_pct:'' })
+    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', email:'', telefono:'', direccion:'', localidad:'', contacto:'', notas:'', descuento_pct:'', flete_pct:'' })
     setSelected(null)
     setOpen(true)
   }
@@ -81,7 +81,8 @@ export default function ProveedoresCompraClient() {
     setForm({
       nombre: p.nombre, razon_social: p.razon_social||'', cuit: p.cuit||'', condicion_iva: p.condicion_iva||'',
       email: p.email||'', telefono: p.telefono||'', direccion: p.direccion||'', localidad: p.localidad||'',
-      contacto: p.contacto||'', notas: p.notas||'', descuento_pct: p.descuento_pct?String(p.descuento_pct):''
+      contacto: p.contacto||'', notas: p.notas||'', descuento_pct: p.descuento_pct?String(p.descuento_pct):'',
+      flete_pct: p.flete_pct?String(+(p.flete_pct)*100):''
     })
     setSelected(p)
     setOpen(true)
@@ -96,6 +97,7 @@ export default function ProveedoresCompraClient() {
       condicion_iva: form.condicion_iva||null, email: form.email||null, telefono: form.telefono||null,
       direccion: form.direccion||null, localidad: form.localidad||null, contacto: form.contacto||null,
       notas: form.notas||null, descuento_pct: form.descuento_pct ? parseFloat(form.descuento_pct) : 0,
+      flete_pct: form.flete_pct ? parseFloat(form.flete_pct) / 100 : 0,
     }
     if (selected?.id) {
       await supabase.from('proveedores_compra').update(payload).eq('id', selected.id)
@@ -153,6 +155,7 @@ export default function ProveedoresCompraClient() {
                 {!p.activo && <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full shrink-0">Inactivo</span>}
                 {p.condicion_iva && <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full shrink-0">{p.condicion_iva}</span>}
                 {!!p.descuento_pct && <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full shrink-0">↓ {p.descuento_pct}%</span>}
+                {!!p.flete_pct && <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full shrink-0">🚚 {+(p.flete_pct)*100}%</span>}
                 {p.cuit && <span className="text-xs text-p-ink2 font-mono shrink-0">CUIT {p.cuit}</span>}
                 {p.telefono && <span className="text-xs text-p-ink2 shrink-0">📞 {p.telefono}</span>}
                 <div className="flex-1 min-w-[8px]"/>
@@ -228,10 +231,16 @@ export default function ProveedoresCompraClient() {
               </select>
             </Field>
           </div>
-          <Field label="Descuento habitual (%)">
-            <Input type="number" value={form.descuento_pct} onChange={e=>setForm(p=>({...p,descuento_pct:e.target.value}))} placeholder="Ej: 10"/>
-            <p className="text-[11px] text-p-ink2 mt-1">Se va a sugerir automáticamente al cargar una factura de este proveedor en Compras.</p>
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Descuento habitual (%)">
+              <Input type="number" value={form.descuento_pct} onChange={e=>setForm(p=>({...p,descuento_pct:e.target.value}))} placeholder="Ej: 48"/>
+              <p className="text-[11px] text-p-ink2 mt-1">Se sugiere automáticamente al cargar factura de este proveedor.</p>
+            </Field>
+            <Field label="Flete (%)">
+              <Input type="number" value={form.flete_pct} onChange={e=>setForm(p=>({...p,flete_pct:e.target.value}))} placeholder="Ej: 1.5" step="0.1"/>
+              <p className="text-[11px] text-p-ink2 mt-1">Se suma al costo neto para calcular el costo real del artículo.</p>
+            </Field>
+          </div>
           {form.cuit && (
             <div style={{
               background: cuitCheck.ok ? '#f0fdf4' : '#fef2f2',

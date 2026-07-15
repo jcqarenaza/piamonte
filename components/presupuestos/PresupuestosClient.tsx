@@ -51,6 +51,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [asegQ, setAsegQ]       = useState('')
   const [asegHits, setAsegHits] = useState<PrecioAseg[]>([])
 
+  // Flete por proveedor
+  const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
+
   // Form estado
   const [cliQ, setCliQ]       = useState('')
   const [cliSugs, setCliSugs] = useState<ClienteMin[]>([])
@@ -86,6 +89,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('cotizaciones').select('blue,mep,oficial').order('fecha',{ascending:false}).limit(1).maybeSingle().then(({data})=>{if(data)setCotiz(data)})
     supabase.from('aseguradoras').select('id,nombre,lista_precio,recargo_pct').eq('activo',true).order('nombre').then(({data})=>setAseguradoras((data??[]).map((a:any)=>({...a,recargo_pct:+a.recargo_pct}))))
+    supabase.from('proveedores_compra').select('nombre,flete_pct').eq('activo',true)
+      .then(({data}) => {
+        const m: Record<string,number> = {}
+        for (const p of (data??[])) m[p.nombre] = +(p.flete_pct||0)
+        setFleteProv(m)
+      })
   },[supabase])
 
   // Búsqueda catálogo (modo normal)
@@ -169,10 +178,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setCliQ(''); setCliSugs([])
   }
 
-  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number}) {
+  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
     const margen = tipoSel?.margen_pct ?? 0.45
-    const precioSug = Math.round(h.costo_neto * (1 + margen))
-    setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false}])
+    const flete = fleteProv[h.proveedor] || 0
+    const costoReal = h.costo_neto * (1 + flete)
+    const precioSug = Math.round(costoReal * (1 + margen))
+    setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false,codigo:h.codigo||undefined} as any])
     setCatQ(''); setCatHits([])
   }
 
@@ -332,7 +343,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(p.iva){ doc.text('IVA 21%:',totX,y); doc.text(fmt(p.iva),W-pad,y,{align:'right'}); y+=6 }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
     doc.text(esAseg ? 'TOTAL (IVA incl.):' : 'TOTAL:',totX,y); doc.text(fmt(p.total),W-pad,y,{align:'right'})
-    if(!esAseg && p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
+    if(p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
       doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`,W-pad,y,{align:'right'}) }
     y+=10
 
@@ -611,7 +622,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-52 overflow-y-auto mt-1">
                   {catHits.map(h=>{
                     const margen=tipoSel?.margen_pct??0.45
-                    const sug=Math.round(h.costo_neto*(1+margen))
+                    const flete=fleteProv[h.proveedor]||0
+                    const sug=Math.round(h.costo_neto*(1+flete)*(1+margen))
                     return(
                       <button key={h.id} onClick={()=>pickCat(h)} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                         <div>
@@ -704,7 +716,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
                   </>
                 )}
-                {!modoAseg && cotiz?.oficial&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.oficial).toLocaleString('es-AR')} oficial</p>}
+                {cotiz?.oficial&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.oficial).toLocaleString('es-AR')} oficial</p>}
               </div>
             </div>
           )}

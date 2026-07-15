@@ -26,11 +26,12 @@ const TIPO_ICON: Record<string, string> = { Particular: '👤', Chapista: '🔧'
 const IVA_RATE = 0.21
 const TIPOS_CON_IVA_DISCRIMINADO = ['Chapista']
 
-function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
-  const tarjeta     = Math.round(costo * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
+function calcPrecios(costo: number, margen: number, flete: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
+  const costoReal = costo * (1 + flete)
+  const tarjeta     = Math.round(costoReal * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
   const transferencia = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct / 100))
   const efectivo    = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))
-  return { tarjeta, transferencia, efectivo }
+  return { tarjeta, transferencia, efectivo, costoReal: Math.round(costoReal) }
 }
 function precioSinIva(precio: number) {
   return Math.round(precio / (1 + IVA_RATE))
@@ -71,6 +72,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [tipoSel, setTipoSel] = useState<string>('todos')
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
+  const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
   const isOnline = useOnlineStatus()
   const router = useRouter()
   const supabase = createClient()
@@ -80,6 +82,12 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       .then(({ data }) => { if (data) setConfigPrecios(data) })
     supabase.from('rubros_precio').select('precio_base').ilike('nombre','%nstalac%').eq('activo',true).maybeSingle()
       .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_base || 0) })
+    supabase.from('proveedores_compra').select('nombre,flete_pct').eq('activo',true)
+      .then(({data}) => {
+        const m: Record<string,number> = {}
+        for (const p of (data??[])) m[p.nombre] = +(p.flete_pct||0)
+        setFleteProv(m)
+      })
   }, [supabase])
 
   useEffect(() => {
@@ -234,7 +242,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const articulosOrdenados = [...articulos].sort((a, b) => b.precios.length - a.precios.length)
 
   function irAPresupuesto(articulo: Articulo, precio: PrecioProveedor, tipo: TipoCliente) {
-    const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, configPrecios)
+    const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, fleteProv[precio.proveedor]||0, configPrecios)
     const params = new URLSearchParams({
       pieza_id: articulo.id,
       pieza_desc: articulo.descripcion,
@@ -315,7 +323,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                           .filter(t => tipoSel === 'todos' || t.id === tipoSel)
                           .map((tipo, idx) => {
                             const inst = conInstalacion ? precioInstalacion : 0
-                            const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, configPrecios)
+                            const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, fleteProv[precio.proveedor]||0, configPrecios)
                             const isBest = precio.costo_neto === bestCosto
                             return (
                               <div key={tipo.id}
