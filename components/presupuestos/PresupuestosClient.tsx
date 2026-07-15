@@ -100,10 +100,19 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(!modoAseg || !asegSel){setAsegHits([]);return}
     if(asegQ.trim().length<2){setAsegHits([]);return}
     const lista = asegSel.lista_precio
-    const palabras = asegQ.trim().split(/\s+/)
-    let query = supabase.from('precios_aseguradora').select('id,codigo,descripcion,cristal,marca,modelo,precio_siva,instalacion_siva,total_siva').eq('lista', lista)
-    palabras.forEach(p => { query = query.ilike('descripcion', `%${p}%`) })
-    query.limit(15).then(({data})=>setAsegHits((data??[]).map((r:any)=>({...r,precio_siva:+r.precio_siva,instalacion_siva:+r.instalacion_siva,total_siva:+r.total_siva}))))
+    const q = asegQ.trim()
+    // Si parece código (empieza con número), buscar por codigo; sino por descripción
+    const esCodigo = /^\d/.test(q)
+    if (esCodigo) {
+      supabase.from('precios_aseguradora').select('id,codigo,descripcion,cristal,marca,modelo,precio_siva,instalacion_siva,total_siva')
+        .eq('lista', lista).ilike('codigo', `${q}%`).limit(15)
+        .then(({data})=>setAsegHits((data??[]).map((r:any)=>({...r,precio_siva:+r.precio_siva,instalacion_siva:+r.instalacion_siva,total_siva:+r.total_siva}))))
+    } else {
+      const palabras = q.split(/\s+/)
+      let query = supabase.from('precios_aseguradora').select('id,codigo,descripcion,cristal,marca,modelo,precio_siva,instalacion_siva,total_siva').eq('lista', lista)
+      palabras.forEach(p => { query = query.ilike('descripcion', `%${p}%`) })
+      query.limit(15).then(({data})=>setAsegHits((data??[]).map((r:any)=>({...r,precio_siva:+r.precio_siva,instalacion_siva:+r.instalacion_siva,total_siva:+r.total_siva}))))
+    }
   },[asegQ,asegSel,modoAseg,supabase])
 
   function pickAseg(h: PrecioAseg) {
@@ -600,7 +609,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           </div>
           </>)}
 
-          {/* Rubros rápidos (ambos modos) */}
+          {/* Rubros rápidos + Ítem libre (solo modo normal) */}
+          {!modoAseg && (<>
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Rubros rápidos</label>
             <div className="grid grid-cols-2 gap-2">
@@ -626,6 +636,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             </div>
             <button onClick={addItemManual} style={{...btnGray,width:'100%',marginTop:6}}>+ Agregar ítem libre</button>
           </div>
+          </>)}
 
           {/* Lista de ítems */}
           {items.length>0&&(
