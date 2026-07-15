@@ -568,17 +568,22 @@ export default function ComprasClient() {
   }
 
   function editarComprobante(c: Comprobante) {
-    // Precargar el form con los datos del comprobante
-    setProvSel(proveedores.find(p => p.id === c.proveedor_id) ?? null)
     setForm({
-      tipo: c.tipo, letra: c.letra || '', pv: c.punto_venta || '', num: c.numero || '',
-      fecha: c.fecha, notas: c.notas || ''
+      tipo: c.tipo, letra: c.letra || 'A', punto_venta: c.punto_venta || '0001', numero: c.numero || '',
+      fecha: c.fecha, proveedor_id: c.proveedor_id || '', proveedor_nombre: c.proveedor_nombre || '',
+      notas: c.notas || '', afecta_stock: c.afecta_stock ?? false,
+      cae: c.cae || '', cae_vencimiento: c.cae_vencimiento || '', remito_vinculado_id: '',
+      descuento_pct: c.descuento_pct ? String(c.descuento_pct) : '',
+      flete: c.flete ? String(c.flete) : '',
+      ret_iva: c.ret_iva ? String(c.ret_iva) : '',
+      ret_ganancias: c.ret_ganancias ? String(c.ret_ganancias) : '',
+      ret_iibb: c.ret_iibb ? String(c.ret_iibb) : '',
+      forma_pago: c.es_contado ? 'contado' : 'cuenta_corriente',
     })
     setItems(c.items.map((it: any) => ({
       d: it.d || '', c: it.c || 1, p: it.p || 0, dto: it.dto ?? null,
       codigo: it.codigo || '', articulo_id: it.articulo_id || null
     })))
-    setDescuentoPct(c.descuento_pct ? String(c.descuento_pct) : '')
     setEditId(c.id)
     setOpen(true)
   }
