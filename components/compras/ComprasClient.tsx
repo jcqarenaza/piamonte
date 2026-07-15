@@ -263,6 +263,7 @@ export default function ComprasClient() {
         flete: flete||0, ret_iva: retIva||0, ret_ganancias: retGanancias||0, ret_iibb: retIibb||0,
         ajuste_redondeo: ajuste||0,
         notas: form.notas||null,
+        estado: 'pendiente',
       }).eq('id', editId)
       setEditId(null); setOpen(false); setItems([]); load()
       return
@@ -1261,7 +1262,10 @@ export default function ComprasClient() {
                 </div>
                 <div className="shrink-0">
                   <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
-                  <input value={it.p} onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:+e.target.value.replace(/[^0-9.]/g,'')||0}:x))}
+                  <input value={it.p} onChange={e=>{
+                      const val = e.target.value.replace(',','.').replace(/[^0-9.]/g,'')
+                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(val)||0}:x))
+                    }}
                     className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-p-green"/>
                 </div>
                 {it.dto ? (
