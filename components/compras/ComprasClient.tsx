@@ -1263,8 +1263,12 @@ export default function ComprasClient() {
                 <div className="shrink-0">
                   <div className="text-[9px] text-p-ink2 text-center mb-0.5">precio</div>
                   <input value={it.p} onChange={e=>{
-                      const val = e.target.value.replace(',','.').replace(/[^0-9.]/g,'')
-                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(val)||0}:x))
+                      const val = e.target.value.replace(',','.')
+                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:val as any}:x))
+                    }}
+                    onBlur={e=>{
+                      const val = parseFloat(String(e.target.value).replace(',','.').replace(/[^0-9.]/g,'')) || 0
+                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:val}:x))
                     }}
                     className="w-24 border border-p-line rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:border-p-green"/>
                 </div>
