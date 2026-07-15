@@ -56,7 +56,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [cliSugs, setCliSugs] = useState<ClienteMin[]>([])
   const [cliSel, setCliSel]   = useState<ClienteMin|null>(null)
   const [tipoSel, setTipoSel] = useState<TipoCliente|null>(null)
-  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', dias:'7' })
+  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7' })
 
   // Items del presupuesto
   const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
@@ -203,7 +203,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function openEdit(p: any) {
     setEditId(p.id)
-    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', dias: String(p.validez_dias||7) })
+    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', pat: p.patente||'', dias: String(p.validez_dias||7) })
     setCliQ(p.cliente||'')
     setCliSugs([])
     setItems(p.items||[])
@@ -230,7 +230,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const venc=new Date(); venc.setDate(venc.getDate()+dias)
     if(editId) {
       await supabase.from('presupuestos').update({
-        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
+        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
         items, total:total, iva:iva||null,
         tipo_cliente_id:tipoSel?.id||null, tipo_cliente_nombre:tipoSel?.nombre||null,
       }).eq('id', editId)
@@ -238,7 +238,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     } else {
       await supabase.from('presupuestos').insert({
         fecha:todayStr(), vencimiento:venc.toISOString().slice(0,10),
-        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
+        cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
         items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
         dolar_blue:cotiz?.blue??null, dolar_mep:cotiz?.mep??null, user_id:userId,
         tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
@@ -250,7 +250,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
     setModoAseg(false); setAsegSel(null); setAsegQ('')
-    setForm({cli:'',tel:'',veh:'',dias:'7'})
+    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7'})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
   }
@@ -468,7 +468,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               <Field label="Nombre asegurado *"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre completo"/></Field>
               <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
             </div>
-            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+              <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value.toUpperCase()}))} placeholder="ABC 123"/></Field>
+            </div>
 
             {/* Búsqueda en lista Pilkington */}
             <div>
