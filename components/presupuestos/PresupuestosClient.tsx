@@ -413,7 +413,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   <span className="text-xs text-p-ink2 shrink-0">vence {p.vencimiento.split('-').reverse().join('/')}</span>
                   <div className="flex-1 min-w-[8px]"/>
                   {usdBlue&&<span className="font-mono text-xs text-p-dark shrink-0">{usdBlue}</span>}
-                  <p className="font-saira font-bold text-p-ink shrink-0">{moneyARS(p.total)}</p>
+                  <p className="font-saira font-bold text-p-ink shrink-0">{(p as any).es_aseguradora ? moneyARS2(p.total) : moneyARS(p.total)}</p>
                 </div>
 
                 {expandido===p.id && (
