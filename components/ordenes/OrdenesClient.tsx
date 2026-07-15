@@ -81,7 +81,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           }
         })
     } else if (cli || tel || veh) {
-      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'' }))
+      const asegNombre = searchParams.get('aseg_nombre')
+      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'', ...(asegNombre?{aseg:asegNombre}:{}) }))
     }
     if (turnoId) setForm(p => ({ ...p, turno_id: turnoId }))
     if (itemsStr) { try { setItems(JSON.parse(itemsStr)) } catch {} }
@@ -760,7 +761,10 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             <div className="border-t border-p-line2 pt-2">
               {items.map((it,i)=>(
                 <div key={i} className={`flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm ${it.d.toLowerCase().includes('adas')?'text-blue-700 font-semibold':''}`}>
-                  <span className="flex-1">{it.d}{it.c>1?` ×${it.c}`:''}</span>
+                  <span className="flex-1">
+                    {(it as any).codigo && <span className="font-mono text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                    {it.d}{it.c>1?` ×${it.c}`:''}
+                  </span>
                   <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
                     className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   <span className="font-mono text-xs w-24 text-right">{moneyARS(it.c*it.p)}</span>

@@ -216,10 +216,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', p.id)
     const params = new URLSearchParams({
       cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
+      pat: p.patente??'',
       items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
       pid: p.id,
       ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
       ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
+      ...(p.es_aseguradora?{es_aseg:'1'}:{}),
+      ...(p.aseguradora_id?{aseg_id:p.aseguradora_id}:{}),
+      ...(p.aseguradora_nombre?{aseg_nombre:p.aseguradora_nombre}:{}),
     })
     router.push(`/ordenes?${params.toString()}`)
   }
@@ -668,7 +672,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 return(
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-p-line2 text-sm">
                     <div className="min-w-0 flex-1">
-                      <span className="text-p-ink">{it.d}{it.c>1?` (×${it.c})`:''}</span>
+                      <span className="text-p-ink">
+                        {(it as any).codigo && <span className="font-mono text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                        {it.d}{it.c>1?` (×${it.c})`:''}</span>
                       {alerta&&<p className="text-[10px] text-amber-600 font-semibold">{alerta}</p>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
