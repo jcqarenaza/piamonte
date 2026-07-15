@@ -468,12 +468,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
 
             {/* Búsqueda en lista Pilkington */}
-            {asegSel && (
-              <div>
-                <label className="block text-[11px] font-semibold text-purple-700 uppercase tracking-wider mb-1.5">Buscar vidrio en lista Pilkington</label>
-                <div className="relative">
-                  <Input value={asegQ} onChange={e=>setAsegQ(e.target.value)} placeholder="Descripción, modelo, marca…"/>
-                  {asegHits.length>0&&(
+            <div>
+              <label className="block text-[11px] font-semibold text-purple-700 uppercase tracking-wider mb-1.5">Buscar vidrio en lista Pilkington</label>
+              <div className="relative">
+                <Input value={asegQ} onChange={e=>setAsegQ(e.target.value)} placeholder={asegSel ? "Código Pilkington o descripción…" : "⬆ Seleccioná una aseguradora primero"} disabled={!asegSel}/>
+                {asegHits.length>0&&(
                     <div className="absolute z-20 top-full left-0 right-0 bg-white border border-purple-200 rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
                       {asegHits.map(h=>{
                         const recargo = asegSel.recargo_pct || 0
@@ -499,7 +498,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   )}
                 </div>
               </div>
-            )}
+            </div>
           </>) : (<>
 
           {/* --- MODO NORMAL (Particular/Chapista) --- */}

@@ -88,7 +88,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         const sorted = TIPO_ORDER
           .map(n => (data ?? []).find((t: TipoCliente) => t.nombre === n))
           .filter(Boolean) as TipoCliente[]
-        const resto = (data ?? []).filter((t: TipoCliente) => !TIPO_ORDER.includes(t.nombre))
+        const resto = (data ?? []).filter((t: TipoCliente) => !TIPO_ORDER.includes(t.nombre) && t.nombre !== 'Compañías')
         setTipos([...sorted, ...resto])
       })
   }, [supabase])
