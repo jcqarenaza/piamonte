@@ -592,7 +592,7 @@ export default function ComprasClient() {
     if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
     if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
     // Si afectó stock, revertir
-    const comp = comps.find(c => c.id === id)
+    const comp = comprobantes.find(c => c.id === id)
     if (comp?.afecta_stock) {
       for (const it of comp.items) {
         if (it.articulo_id) {
@@ -815,9 +815,6 @@ export default function ComprasClient() {
                     )}
                     {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
                       <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
-                    )}
-                    {c.estado==='pendiente' && (
-                      <button onClick={()=>anular(c.id)} style={btnRed}>✕ Anular</button>
                     )}
                     {c.estado!=='anulado' && periodoAbierto(c.fecha) && (
                       <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
