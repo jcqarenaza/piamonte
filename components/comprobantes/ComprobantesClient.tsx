@@ -769,15 +769,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFontSize(10); doc.text(`N° 0006-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
     doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
     y=38
-    // Marca de agua — logo grande centrado con baja opacidad
+    // Marca de agua — logo grande centrado en la página con baja opacidad
     const gState = new (doc as any).GState({ opacity: 0.06 })
     doc.saveGraphicsState()
     doc.setGState(gState)
-    try { doc.addImage(LOGO_BASE64, 'PNG', 45, 100, 120, 65) } catch(e){}
-    doc.setFont('helvetica','bold'); doc.setFontSize(38); doc.setTextColor(0, 165, 80)
-    doc.text('EL PIAMONTE', W/2, 200, { align: 'center' })
-    doc.setFontSize(10)
-    doc.text('www.parabrisaselpiamonte.com.ar', W/2, 212, { align: 'center' })
+    try { doc.addImage(LOGO_BASE64, 'PNG', 65, 110, 80, 44) } catch(e){}
+    doc.setFont('helvetica','bold'); doc.setFontSize(32); doc.setTextColor(0, 165, 80)
+    doc.text('EL PIAMONTE', W/2, 175, { align: 'center' })
+    doc.setFontSize(9)
+    doc.text('www.parabrisaselpiamonte.com.ar', W/2, 185, { align: 'center' })
     doc.restoreGraphicsState()
     doc.setTextColor(30,30,30)
     if (c.categoria==='nc') {
@@ -866,9 +866,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text('📞 2302 595969', pad, 292)
+    doc.text('Tel: 2302 595969', pad, 292)
     doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
-    doc.text('Calle 17 N° 1224', W-pad, 292, {align:'right'})
+    doc.text('Calle 17 N. 1224', W-pad, 292, {align:'right'})
 
     return doc.output('blob')
   }
