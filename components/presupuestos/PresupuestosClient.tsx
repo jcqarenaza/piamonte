@@ -22,6 +22,8 @@ const btnWa   = { ...btnSm,background:'#25d366' } as const
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string }
 interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean }
 interface ClienteMin  { id:string; nombre:string; telefono:string|null; tipo_cliente_id:string|null; tipo_nombre?:string; tipo_margen?:number }
+interface Aseguradora { id:string; nombre:string; lista_precio:string; recargo_pct:number }
+interface PrecioAseg  { id:string; codigo:string; descripcion:string; cristal:string; marca:string; modelo:string; precio_siva:number; instalacion_siva:number; total_siva:number }
 
 export default function PresupuestosClient({ userId }: { userId:string }) {
   const router = useRouter()
@@ -38,6 +40,13 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [ivaOn, setIvaOn]     = useState(true)
   const [cotiz, setCotiz]     = useState<{blue:number;mep:number}|null>(null)
   const supabase = createClient()
+
+  // Modo aseguradora
+  const [modoAseg, setModoAseg] = useState(false)
+  const [aseguradoras, setAseguradoras] = useState<Aseguradora[]>([])
+  const [asegSel, setAsegSel]   = useState<Aseguradora|null>(null)
+  const [asegQ, setAsegQ]       = useState('')
+  const [asegHits, setAsegHits] = useState<PrecioAseg[]>([])
 
   // Form estado
   const [cliQ, setCliQ]       = useState('')
@@ -73,16 +82,44 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('cotizaciones').select('blue,mep').order('fecha',{ascending:false}).limit(1).maybeSingle().then(({data})=>{if(data)setCotiz(data)})
+    supabase.from('aseguradoras').select('id,nombre,lista_precio,recargo_pct').eq('activo',true).order('nombre').then(({data})=>setAseguradoras((data??[]).map((a:any)=>({...a,recargo_pct:+a.recargo_pct}))))
   },[supabase])
 
-  // Búsqueda catálogo
+  // Búsqueda catálogo (modo normal)
   useEffect(()=>{
+    if(modoAseg){setCatHits([]);return}
     if(catQ.trim().length<2){setCatHits([]);return}
     buscarCatalogo(supabase, catQ, { incluirStock: false, limit: 12 })
       .then(resultados => setCatHits(resultados.map(r=>({
         id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0, codigo: r.codigo || undefined
       }))))
-  },[catQ,supabase])
+  },[catQ,supabase,modoAseg])
+
+  // Búsqueda precios aseguradora
+  useEffect(()=>{
+    if(!modoAseg || !asegSel){setAsegHits([]);return}
+    if(asegQ.trim().length<2){setAsegHits([]);return}
+    const lista = asegSel.lista_precio
+    const palabras = asegQ.trim().split(/\s+/)
+    let query = supabase.from('precios_aseguradora').select('id,codigo,descripcion,cristal,marca,modelo,precio_siva,instalacion_siva,total_siva').eq('lista', lista)
+    palabras.forEach(p => { query = query.ilike('descripcion', `%${p}%`) })
+    query.limit(15).then(({data})=>setAsegHits((data??[]).map((r:any)=>({...r,precio_siva:+r.precio_siva,instalacion_siva:+r.instalacion_siva,total_siva:+r.total_siva}))))
+  },[asegQ,asegSel,modoAseg,supabase])
+
+  function pickAseg(h: PrecioAseg) {
+    if(!asegSel) return
+    const recargo = asegSel.recargo_pct || 0
+    // Precio exacto de la lista: total_siva × 1.21 × (1 + recargo)
+    const precioFinal = h.total_siva * (1 + IVA_RATE) * (1 + recargo)
+    // Redondear a 2 decimales para coincidir con la lista
+    const precioExacto = Math.round(precioFinal * 100) / 100
+    setItems(prev=>[...prev,{
+      d: h.descripcion, c: 1, p: precioExacto,
+      costo: h.total_siva, esRubro: false,
+      codigo: h.codigo, cristal: h.cristal
+    } as any])
+    setAsegQ(''); setAsegHits([])
+  }
 
   // Búsqueda clientes
   useEffect(()=>{
@@ -139,8 +176,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   const itemsImpresion = items  // todos los ítems van al PDF
-  const neto  = items.reduce((a,it)=>a+it.c*it.p,0)
-  const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
+  // En modo aseguradora el precio ya incluye IVA (y recargo si corresponde)
+  const neto  = modoAseg ? items.reduce((a,it)=>a+it.c*it.p,0) : items.reduce((a,it)=>a+it.c*it.p,0)
+  const iva   = modoAseg ? 0 : (ivaOn ? Math.round(neto*IVA_RATE) : 0)
   const total = neto+iva
 
   // Precio sugerido vs precio real
@@ -192,10 +230,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
         dolar_blue:cotiz?.blue??null, dolar_mep:cotiz?.mep??null, user_id:userId,
         tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
-        margen_aplicado:tipoSel?.margen_pct??null
+        margen_aplicado:tipoSel?.margen_pct??null,
+        es_aseguradora: modoAseg,
+        aseguradora_id: modoAseg ? asegSel?.id ?? null : null,
+        aseguradora_nombre: modoAseg ? asegSel?.nombre ?? null : null,
       })
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
+    setModoAseg(false); setAsegSel(null); setAsegQ('')
     setForm({cli:'',tel:'',veh:'',dias:'7'})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
@@ -334,6 +376,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   {(p as any).tipo_cliente_nombre && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark shrink-0">{(p as any).tipo_cliente_nombre}</span>
                   )}
+                  {(p as any).es_aseguradora && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🏢 {(p as any).aseguradora_nombre || 'Aseguradora'}</span>
+                  )}
                   {venc && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">VENCIDO</span>}
                   <span className="text-xs text-p-ink2 shrink-0">{p.vehiculo}</span>
                   <span className="text-xs text-p-ink2 shrink-0">vence {p.vencimiento.split('-').reverse().join('/')}</span>
@@ -374,6 +419,81 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"}>
         <div className="flex flex-col gap-3">
 
+          {/* Toggle modo: Normal vs Aseguradora */}
+          {!editId && (
+            <div className="flex rounded-xl overflow-hidden border border-p-line">
+              <button onClick={()=>{setModoAseg(false);setItems([]);setAsegSel(null);setAsegQ('')}}
+                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!modoAseg?'bg-p-green text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+                👤 Particular / Chapista
+              </button>
+              <button onClick={()=>{setModoAseg(true);setItems([]);setTipoSel(null);setCatQ('')}}
+                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${modoAseg?'bg-purple-600 text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+                🏢 Aseguradora
+              </button>
+            </div>
+          )}
+
+          {/* --- MODO ASEGURADORA --- */}
+          {modoAseg ? (<>
+            {/* Selector de aseguradora */}
+            <Field label="Compañía aseguradora">
+              <Select value={asegSel?.id??''} onChange={e=>{const a=aseguradoras.find(a=>a.id===e.target.value);setAsegSel(a??null);setItems([]);setAsegQ('')}}>
+                <option value="">Seleccionar aseguradora…</option>
+                {aseguradoras.map(a=><option key={a.id} value={a.id}>{a.nombre}{a.recargo_pct>0?` (+${Math.round(a.recargo_pct*100)}%)`:''}</option>)}
+              </Select>
+            </Field>
+
+            {asegSel && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-xs text-purple-800 font-semibold">
+                Lista: <strong>{asegSel.lista_precio === 'patronal' ? 'Federación Patronal' : 'Común'}</strong>
+                {asegSel.recargo_pct > 0 && <> · Recargo: <strong>{Math.round(asegSel.recargo_pct*100)}%</strong></>}
+                {' '}· Precios con IVA 21% incluido
+              </div>
+            )}
+
+            {/* Datos del asegurado */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nombre asegurado *"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre completo"/></Field>
+              <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
+            </div>
+            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+
+            {/* Búsqueda en lista Pilkington */}
+            {asegSel && (
+              <div>
+                <label className="block text-[11px] font-semibold text-purple-700 uppercase tracking-wider mb-1.5">Buscar vidrio en lista Pilkington</label>
+                <div className="relative">
+                  <Input value={asegQ} onChange={e=>setAsegQ(e.target.value)} placeholder="Descripción, modelo, marca…"/>
+                  {asegHits.length>0&&(
+                    <div className="absolute z-20 top-full left-0 right-0 bg-white border border-purple-200 rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
+                      {asegHits.map(h=>{
+                        const recargo = asegSel.recargo_pct || 0
+                        const precioFinal = Math.round(h.total_siva * (1 + IVA_RATE) * (1 + recargo) * 100) / 100
+                        return(
+                          <button key={h.id} onClick={()=>pickAseg(h)} className="w-full text-left px-3 py-2.5 hover:bg-purple-50 border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-p-ink truncate">{h.descripcion}</p>
+                              <p className="text-[10px] text-p-ink2 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-bold bg-purple-100 text-purple-700 px-1.5 rounded">{h.codigo}</span>
+                                <span>{h.cristal}</span>
+                                <span className="text-p-ink2">s/IVA: {moneyARS(h.total_siva)}</span>
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-mono font-bold text-sm text-purple-700">{moneyARS(precioFinal)}</p>
+                              <p className="text-[10px] text-purple-500">con IVA{recargo>0?' +recargo':''}</p>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>) : (<>
+
+          {/* --- MODO NORMAL (Particular/Chapista) --- */}
           {/* Selección de cliente */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Cliente</label>
@@ -478,8 +598,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               )}
             </div>
           </div>
+          </>)}
 
-          {/* Rubros rápidos */}
+          {/* Rubros rápidos (ambos modos) */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Rubros rápidos</label>
             <div className="grid grid-cols-2 gap-2">
@@ -527,13 +648,24 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   </div>
                 )
               })}
-              <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Sumar IVA 21%
-              </label>
+              {!modoAseg && (
+                <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Sumar IVA 21%
+                </label>
+              )}
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
-                <div className="flex justify-between text-p-ink2"><span>Subtotal neto</span><span className="font-mono">{moneyARS(neto)}</span></div>
-                {ivaOn&&<div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
-                <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
+                {modoAseg ? (
+                  <>
+                    <div className="flex justify-between font-saira font-bold text-purple-700 text-lg"><span>TOTAL (IVA incluido)</span><span>{moneyARS(neto)}</span></div>
+                    {asegSel && <p className="text-[10px] text-purple-500 mt-1">{asegSel.nombre}{asegSel.recargo_pct > 0 ? ` · recargo ${Math.round(asegSel.recargo_pct*100)}% incluido` : ''}</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-p-ink2"><span>Subtotal neto</span><span className="font-mono">{moneyARS(neto)}</span></div>
+                    {ivaOn&&<div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
+                    <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
+                  </>
+                )}
                 {cotiz?.blue&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.blue).toLocaleString('es-AR')} blue</p>}
               </div>
             </div>

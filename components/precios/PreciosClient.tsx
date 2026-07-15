@@ -20,11 +20,11 @@ interface Articulo {
 const PROV_COLOR: Record<string, string> = {
   GAMMA: '#166534', MALATESTA: '#1e40af', SEKURIT: '#5b21b6'
 }
-const TIPO_ORDER = ['Particular', 'Compañías', 'Chapista']
-const TIPO_ICON: Record<string, string> = { Particular: '👤', Compañías: '🏢', Chapista: '🔧' }
+const TIPO_ORDER = ['Particular', 'Chapista']
+const TIPO_ICON: Record<string, string> = { Particular: '👤', Chapista: '🔧' }
 
 const IVA_RATE = 0.21
-const TIPOS_CON_IVA_DISCRIMINADO = ['Compañías', 'Chapista']
+const TIPOS_CON_IVA_DISCRIMINADO = ['Chapista']
 
 function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
   const tarjeta     = Math.round(costo * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
