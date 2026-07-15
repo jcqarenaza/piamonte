@@ -833,12 +833,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setTextColor(30,30,30); doc.setFont('helvetica','normal')
     c.items.forEach((it:any,idx:number)=>{
       if(idx%2===0){ doc.setFillColor(240,250,245); doc.rect(pad,y,W-pad*2,6.5,'F') }
-      let xi=pad
+      const x0=pad
       const codText = (it as any).codigo ? `[${(it as any).codigo}] ` : ''
-      doc.text((codText + String(it.d||'')).slice(0,50),xi+2,y+4.5); xi+=cols[0]
-      doc.text(String(it.c||1),xi-2,y+4.5,{align:'right'}); xi+=cols[1]
-      doc.text(moneyARS(it.p||0),xi-2,y+4.5,{align:'right'}); xi+=cols[2]
-      doc.text(moneyARS((it.c||1)*(it.p||0)),xi-2,y+4.5,{align:'right'})
+      doc.text((codText + String(it.d||'')).slice(0,42),x0+2,y+4.5)
+      doc.text(String(it.c||1),x0+cols[0]+cols[1]-2,y+4.5,{align:'right'})
+      doc.text(moneyARS(it.p||0),x0+cols[0]+cols[1]+cols[2]-2,y+4.5,{align:'right'})
+      doc.text(moneyARS((it.c||1)*(it.p||0)),x0+cols[0]+cols[1]+cols[2]+cols[3]-2,y+4.5,{align:'right'})
       y+=6.5
     })
     y+=4
