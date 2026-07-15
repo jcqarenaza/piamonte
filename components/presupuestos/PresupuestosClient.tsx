@@ -332,7 +332,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(p.iva){ doc.text('IVA 21%:',totX,y); doc.text(fmt(p.iva),W-pad,y,{align:'right'}); y+=6 }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
     doc.text(esAseg ? 'TOTAL (IVA incl.):' : 'TOTAL:',totX,y); doc.text(fmt(p.total),W-pad,y,{align:'right'})
-    if(p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
+    if(!esAseg && p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
       doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`,W-pad,y,{align:'right'}) }
     y+=10
 
@@ -704,7 +704,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
                   </>
                 )}
-                {cotiz?.oficial&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.oficial).toLocaleString('es-AR')} oficial</p>}
+                {!modoAseg && cotiz?.oficial&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.oficial).toLocaleString('es-AR')} oficial</p>}
               </div>
             </div>
           )}
