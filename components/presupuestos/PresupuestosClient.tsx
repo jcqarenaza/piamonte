@@ -41,7 +41,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [tarjConfigs, setTarjConfigs] = useState<any[]>([])
   const [histCli, setHistCli] = useState<any[]>([])
   const [ivaOn, setIvaOn]     = useState(true)
-  const [cotiz, setCotiz]     = useState<{blue:number;mep:number}|null>(null)
+  const [cotiz, setCotiz]     = useState<{blue:number;mep:number;oficial:number}|null>(null)
   const supabase = createClient()
 
   // Modo aseguradora
@@ -84,7 +84,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     supabase.from('presupuestos').select('*').order('created_at',{ascending:false}).then(({data})=>setPresus(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
-    supabase.from('cotizaciones').select('blue,mep').order('fecha',{ascending:false}).limit(1).maybeSingle().then(({data})=>{if(data)setCotiz(data)})
+    supabase.from('cotizaciones').select('blue,mep,oficial').order('fecha',{ascending:false}).limit(1).maybeSingle().then(({data})=>{if(data)setCotiz(data)})
     supabase.from('aseguradoras').select('id,nombre,lista_precio,recargo_pct').eq('activo',true).order('nombre').then(({data})=>setAseguradoras((data??[]).map((a:any)=>({...a,recargo_pct:+a.recargo_pct}))))
   },[supabase])
 
@@ -240,7 +240,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         fecha:todayStr(), vencimiento:venc.toISOString().slice(0,10),
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
         items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
-        dolar_blue:cotiz?.blue??null, dolar_mep:cotiz?.mep??null, user_id:userId,
+        dolar_blue:cotiz?.oficial??null, dolar_mep:cotiz?.mep??null, user_id:userId,
         tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
         margen_aplicado:tipoSel?.margen_pct??null,
         es_aseguradora: modoAseg,
@@ -261,6 +261,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const doc = new jsPDF({ format:'a4', unit:'mm' })
     const W=210, pad=15
     let y=20
+    const esAseg = !!(p as any).es_aseguradora
+    const fmt = (n:number) => esAseg ? moneyARS2(n) : moneyARS(n)
 
     // Header blanco
     doc.setFillColor(255,255,255); doc.rect(0,0,W,28,'F')
@@ -275,13 +277,28 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     y=36
 
     // Datos cliente
-    doc.setTextColor(30,30,30)
-    doc.setFont('helvetica','bold'); doc.setFontSize(10)
-    doc.text(`Cliente: `,pad,y); doc.setFont('helvetica','normal')
-    doc.text(p.cliente||'—',pad+20,y)
-    if(p.vehiculo){ doc.setFont('helvetica','bold'); doc.text('Vehículo: ',pad+90,y); doc.setFont('helvetica','normal'); doc.text(p.vehiculo,pad+110,y) }
-    if((p as any).tipo_cliente_nombre){ y+=6; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Tipo de cliente: ${(p as any).tipo_cliente_nombre}`,pad,y) }
-    y+=10
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold'); doc.setFontSize(10)
+    doc.text('Cliente:',pad,y); doc.setFont('helvetica','normal'); doc.text(p.cliente||'—',pad+22,y)
+    if(p.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:',W-pad-50,y); doc.setFont('helvetica','normal'); doc.text(p.telefono,W-pad-38,y) }
+    y+=6
+    if(p.vehiculo){
+      doc.setFont('helvetica','bold'); doc.text('Vehículo:',pad,y); doc.setFont('helvetica','normal'); doc.text(p.vehiculo,pad+25,y)
+    }
+    if((p as any).patente){
+      doc.setFont('helvetica','bold'); doc.text('Patente:',pad+90,y); doc.setFont('helvetica','normal'); doc.text((p as any).patente,pad+112,y)
+    }
+    if(p.vehiculo || (p as any).patente) y+=6
+
+    // Datos aseguradora
+    if(esAseg && (p as any).aseguradora_nombre){
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(100,50,150)
+      doc.text('Compañía:',pad,y); doc.setFont('helvetica','normal'); doc.text((p as any).aseguradora_nombre,pad+28,y)
+      doc.setTextColor(30,30,30)
+      y+=6
+    }
+
+    if((p as any).tipo_cliente_nombre && !esAseg){ doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Tipo de cliente: ${(p as any).tipo_cliente_nombre}`,pad,y); y+=6 }
+    y+=4
 
     // Tabla
     const cols = [90,20,35,35]
@@ -297,22 +314,22 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       const bg = idx%2===0
       if(bg){ doc.setFillColor(240,250,245); doc.rect(pad,y,W-pad*2,6.5,'F') }
       let xi=pad
-      doc.text(it.d.slice(0,40),xi+2,y+4.5); xi+=cols[0]
+      doc.text(it.d.slice(0,45),xi+2,y+4.5); xi+=cols[0]
       doc.text(String(it.c),xi-2,y+4.5,{align:'right'}); xi+=cols[1]
-      doc.text(moneyARS(it.p),xi-2,y+4.5,{align:'right'}); xi+=cols[2]
-      doc.text(moneyARS(it.c*it.p),xi-2,y+4.5,{align:'right'})
+      doc.text(fmt(it.p),xi-2,y+4.5,{align:'right'}); xi+=cols[2]
+      doc.text(fmt(it.c*it.p),xi-2,y+4.5,{align:'right'})
       y+=6.5
     })
     y+=3
 
     // Totales
     const totX = W-pad-70
-    if(p.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(p.neto),W-pad,y,{align:'right'}); y+=6 }
-    if(p.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(p.iva),W-pad,y,{align:'right'}); y+=6 }
+    if(p.iva){ doc.text('Subtotal neto:',totX,y); doc.text(fmt(p.neto),W-pad,y,{align:'right'}); y+=6 }
+    if(p.iva){ doc.text('IVA 21%:',totX,y); doc.text(fmt(p.iva),W-pad,y,{align:'right'}); y+=6 }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
-    doc.text('TOTAL:',totX,y); doc.text(moneyARS(p.total),W-pad,y,{align:'right'})
-    if(p.dolar_blue){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
-      doc.text(`≈ US$${Math.round(p.total/p.dolar_blue).toLocaleString('es-AR')} (blue)`,W-pad,y,{align:'right'}) }
+    doc.text(esAseg ? 'TOTAL (IVA incl.):' : 'TOTAL:',totX,y); doc.text(fmt(p.total),W-pad,y,{align:'right'})
+    if(p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
+      doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`,W-pad,y,{align:'right'}) }
     y+=10
 
     // Vencimiento
@@ -377,7 +394,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         <div className="flex flex-col gap-4">
           {presus.map(p=>{
             const venc = p.vencimiento<today
-            const usdBlue = p.dolar_blue?`US$${Math.round(p.total/p.dolar_blue).toLocaleString('es-AR')} blue`:''
+            const usdBlue = p.dolar_blue?`US$${Math.round(p.total/p.dolar_blue).toLocaleString('es-AR')} oficial`:''
             return (
               <div key={p.id}
                 onClick={()=>setExpandido(e=>e===p.id?null:p.id)}
@@ -681,7 +698,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
                   </>
                 )}
-                {cotiz?.blue&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.blue).toLocaleString('es-AR')} blue</p>}
+                {cotiz?.oficial&&<p className="font-mono text-xs text-p-dark mt-1 text-right">≈ US${Math.round(total/cotiz.oficial).toLocaleString('es-AR')} oficial</p>}
               </div>
             </div>
           )}
