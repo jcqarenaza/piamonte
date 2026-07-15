@@ -11,6 +11,9 @@ import { moneyARS, todayStr } from '@/lib/utils/format'
 
 const IVA_RATE = 0.21
 
+// Formato con 2 decimales para aseguradoras (debe coincidir exacto con la lista)
+const moneyARS2 = (n:number) => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 // Botones inline
 const btn  = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm= { ...btn,padding:'6px 14px',fontSize:13 } as const
@@ -484,11 +487,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                               <p className="text-[10px] text-p-ink2 flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono font-bold bg-purple-100 text-purple-700 px-1.5 rounded">{h.codigo}</span>
                                 <span>{h.cristal}</span>
-                                <span className="text-p-ink2">s/IVA: {moneyARS(h.total_siva)}</span>
+                                <span className="text-p-ink2">s/IVA: {moneyARS2(h.total_siva)}</span>
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="font-mono font-bold text-sm text-purple-700">{moneyARS(precioFinal)}</p>
+                              <p className="font-mono font-bold text-sm text-purple-700">{moneyARS2(precioFinal)}</p>
                               <p className="text-[10px] text-purple-500">con IVA{recargo>0?' +recargo':''}</p>
                             </div>
                           </button>
@@ -651,7 +654,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     <div className="flex items-center gap-2 shrink-0">
                       <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))}}
                         className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
-                      <span className="font-mono text-p-ink text-xs w-24 text-right">{moneyARS(it.c*it.p)}</span>
+                      <span className="font-mono text-p-ink text-xs w-24 text-right">{modoAseg ? moneyARS2(it.c*it.p) : moneyARS(it.c*it.p)}</span>
                       <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
                     </div>
                   </div>
@@ -665,7 +668,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
                 {modoAseg ? (
                   <>
-                    <div className="flex justify-between font-saira font-bold text-purple-700 text-lg"><span>TOTAL (IVA incluido)</span><span>{moneyARS(neto)}</span></div>
+                    <div className="flex justify-between font-saira font-bold text-purple-700 text-lg"><span>TOTAL (IVA incluido)</span><span>{moneyARS2(neto)}</span></div>
                     {asegSel && <p className="text-[10px] text-purple-500 mt-1">{asegSel.nombre}{asegSel.recargo_pct > 0 ? ` · recargo ${Math.round(asegSel.recargo_pct*100)}% incluido` : ''}</p>}
                   </>
                 ) : (
