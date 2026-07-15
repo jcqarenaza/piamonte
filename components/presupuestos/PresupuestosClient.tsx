@@ -496,7 +496,6 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                       })}
                     </div>
                   )}
-                </div>
               </div>
             </div>
           </>) : (<>
