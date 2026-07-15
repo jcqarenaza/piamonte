@@ -825,7 +825,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
     y+=6
 
-    const cols=[95,20,35,35]
+    const cols=[78,15,42,43]
     doc.setFillColor(0,165,80); doc.rect(pad,y,W-pad*2,7,'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
     let xi=pad; ['Detalle','Cant.','Precio unit.','Subtotal'].forEach((h,i)=>{ doc.text(h,xi+(i>0?cols[i]-2:2),y+5,{align:i>0?'right':'left'}); xi+=cols[i] })
