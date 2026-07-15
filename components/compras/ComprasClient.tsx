@@ -64,6 +64,7 @@ export default function ComprasClient() {
   const [comprobantes, setComprobantes] = useState<Comprobante[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [open, setOpen] = useState(false)
+  const [editId, setEditId] = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -249,6 +250,23 @@ export default function ComprasClient() {
   async function save(esContado: boolean = false, pagoContado?: {forma_pago:string; monto:string; fecha:string}) {
     if (!items.length && total === 0) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
+
+    // Si es edición, hacer update y salir
+    if (editId) {
+      await supabase.from('comprobantes_compra').update({
+        tipo: form.tipo, letra: form.letra||null,
+        punto_venta: form.punto_venta||null, numero: form.numero||null,
+        fecha: form.fecha, proveedor_id: form.proveedor_id||null,
+        proveedor_nombre: prov?.nombre || form.proveedor_nombre || null,
+        items, neto, iva_pct: IVA, iva, total,
+        descuento_pct: descuentoPct||0, descuento_monto: descuentoMonto||0,
+        flete: flete||0, ret_iva: retIva||0, ret_ganancias: retGanancias||0, ret_iibb: retIibb||0,
+        ajuste_redondeo: ajuste||0,
+        notas: form.notas||null,
+      }).eq('id', editId)
+      setEditId(null); setOpen(false); setItems([]); load()
+      return
+    }
 
     // Validar duplicado: mismo proveedor + letra + punto_venta + número
     if (form.tipo==='factura' && form.proveedor_id && form.numero && form.punto_venta) {
@@ -540,6 +558,47 @@ export default function ComprasClient() {
     load()
   }
 
+  // Un comprobante se puede editar/borrar si su fecha está dentro del mes actual o el anterior
+  function periodoAbierto(fecha: string): boolean {
+    const hoy = new Date()
+    const mesActual = hoy.getFullYear() * 12 + hoy.getMonth()
+    const f = new Date(fecha + 'T12:00:00')
+    const mesComp = f.getFullYear() * 12 + f.getMonth()
+    return mesActual - mesComp <= 1
+  }
+
+  function editarComprobante(c: Comprobante) {
+    // Precargar el form con los datos del comprobante
+    setProvSel(proveedores.find(p => p.id === c.proveedor_id) ?? null)
+    setForm({
+      tipo: c.tipo, letra: c.letra || '', pv: c.punto_venta || '', num: c.numero || '',
+      fecha: c.fecha, notas: c.notas || ''
+    })
+    setItems(c.items.map((it: any) => ({
+      d: it.d || '', c: it.c || 1, p: it.p || 0, dto: it.dto ?? null,
+      codigo: it.codigo || '', articulo_id: it.articulo_id || null
+    })))
+    setDescuentoPct(c.descuento_pct ? String(c.descuento_pct) : '')
+    setEditId(c.id)
+    setOpen(true)
+  }
+
+  async function eliminarComprobante(id: string) {
+    if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
+    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
+    // Si afectó stock, revertir
+    const comp = comps.find(c => c.id === id)
+    if (comp?.afecta_stock) {
+      for (const it of comp.items) {
+        if (it.articulo_id) {
+          await supabase.rpc('incrementar_stock', { p_articulo_id: it.articulo_id, p_cantidad: -(it.c || 1) })
+        }
+      }
+    }
+    await supabase.from('comprobantes_compra').delete().eq('id', id)
+    load()
+  }
+
   // Compara lo pagado en la factura contra el costo vigente en el catálogo maestro (todas las
   // equivalencias por proveedor). Si el ítem ya tiene articulo_id, comparamos directo contra
   // sus equivalencias — más preciso que buscar por palabras sueltas en la descripción.
@@ -754,6 +813,12 @@ export default function ComprasClient() {
                     )}
                     {c.estado==='pendiente' && (
                       <button onClick={()=>anular(c.id)} style={btnRed}>✕ Anular</button>
+                    )}
+                    {c.estado!=='anulado' && periodoAbierto(c.fecha) && (
+                      <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
+                    )}
+                    {periodoAbierto(c.fecha) && (
+                      <button onClick={()=>eliminarComprobante(c.id)} style={{...btnSm,background:'#991b1b'}}>🗑 Eliminar</button>
                     )}
                     <button onClick={async ()=>{ 
                       setVerComp(c)
@@ -1053,7 +1118,7 @@ export default function ComprasClient() {
       </Modal>
 
       {/* Modal nuevo comprobante */}
-      <Modal open={open} onClose={()=>setOpen(false)} title="Cargar comprobante de compra" size="xl">
+      <Modal open={open} onClose={()=>{setOpen(false);setEditId(null)}} title={editId ? "Editar comprobante de compra" : "Cargar comprobante de compra"} size="xl">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
           {/* Tipo */}
           <div>
