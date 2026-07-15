@@ -36,13 +36,18 @@ export default function InformesClient() {
   const [pIdx, setPIdx] = useState(0)
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'general'|'rentabilidad'>('general')
+  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'>('general')
   const supabase = createClient()
-  const [blueRate, setBlueRate] = useState<number|null>(null)
+  const [oficialRate, setOficialRate] = useState<number|null>(null)
+
+  // Datos aseguradoras
+  interface AsegStats { os_creadas:number; os_pendientes:number; facturadas:number; fc_importe:number }
+  const [asegData, setAsegData] = useState<Record<string,AsegStats>>({})
+  const [asegLoading, setAsegLoading] = useState(false)
 
   useEffect(() => {
-    supabase.from('cotizaciones').select('blue').order('fecha',{ascending:false}).limit(1).maybeSingle()
-      .then(({data})=>setBlueRate(data?.blue??null))
+    supabase.from('cotizaciones').select('oficial').order('fecha',{ascending:false}).limit(1).maybeSingle()
+      .then(({data})=>setOficialRate(data?.oficial??null))
   }, [supabase])
 
   useEffect(() => {
@@ -53,12 +58,41 @@ export default function InformesClient() {
       .then(({data}) => { setVentas(data??[]); setLoading(false) })
   }, [pIdx, periodos, supabase])
 
+  // Cargar datos aseguradoras cuando cambia período o se selecciona el tab
+  useEffect(() => {
+    if(tab !== 'aseguradoras') return
+    const p = periodos[pIdx]
+    setAsegLoading(true)
+    Promise.all([
+      supabase.from('ordenes_servicio').select('aseguradora,estado')
+        .not('aseguradora','is',null).gte('fecha', p.desde).lte('fecha', p.hasta),
+      supabase.from('comprobantes').select('aseguradora_nombre,total')
+        .not('aseguradora_nombre','is',null).gte('fecha', p.desde).lte('fecha', p.hasta),
+    ]).then(([osRes, compRes]) => {
+      const stats: Record<string,AsegStats> = {}
+      for (const o of (osRes.data??[])) {
+        const k = o.aseguradora
+        if(!stats[k]) stats[k] = { os_creadas:0, os_pendientes:0, facturadas:0, fc_importe:0 }
+        stats[k].os_creadas++
+        if(o.estado === 'pendiente') stats[k].os_pendientes++
+      }
+      for (const c of (compRes.data??[])) {
+        const k = c.aseguradora_nombre
+        if(!stats[k]) stats[k] = { os_creadas:0, os_pendientes:0, facturadas:0, fc_importe:0 }
+        stats[k].facturadas++
+        stats[k].fc_importe += +(c.total||0)
+      }
+      setAsegData(stats)
+      setAsegLoading(false)
+    })
+  }, [tab, pIdx, periodos, supabase])
+
   const periodo = periodos[pIdx]
   const total    = ventas.reduce((a,v)=>a+v.precio, 0)
   const costo    = ventas.filter(v=>!v.pendiente).reduce((a,v)=>a+(v.costo??0), 0)
   const ganancia = total - costo
   const margen   = total > 0 ? Math.round((ganancia/total)*100) : 0
-  const toUsd    = (n: number) => blueRate ? 'USD ' + Math.round(n/blueRate).toLocaleString('es-AR') : null
+  const toUsd    = (n: number) => oficialRate ? 'USD ' + Math.round(n/oficialRate).toLocaleString('es-AR') : null
   const pendientes = ventas.filter(v=>v.pendiente).length
   const ticket   = ventas.length > 0 ? Math.round(total/ventas.length) : 0
 
@@ -85,7 +119,7 @@ export default function InformesClient() {
 
   const tipoEntries = Object.entries(byTipo).sort((a,b)=>b[1].facturado-a[1].facturado)
 
-  const tabBtn = (t:'general'|'rentabilidad', label:string) => (
+  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras', label:string) => (
     <button onClick={()=>setTab(t)}
       style={{background:tab===t?'#00A550':'#fff', color:tab===t?'#fff':'#4A6655',
         border:`1.5px solid ${tab===t?'#00A550':'#C2DDD0'}`,
@@ -122,6 +156,7 @@ export default function InformesClient() {
           <div className="flex gap-2 mb-5">
             {tabBtn('general','📊 General')}
             {tabBtn('rentabilidad','💹 Rentabilidad por tipo')}
+            {tabBtn('aseguradoras','🏢 Aseguradoras')}
           </div>
 
           {tab === 'general' && (
@@ -299,7 +334,81 @@ export default function InformesClient() {
             </div>
           )}
 
-          {ventas.length === 0 && !loading && (
+          {tab === 'aseguradoras' && (
+            <div className="flex flex-col gap-4">
+              {asegLoading ? <p className="text-sm text-p-gray text-center py-10">Cargando datos de aseguradoras…</p> : Object.keys(asegData).length === 0 ? (
+                <div className="bg-white border border-p-line rounded-xl p-8 text-center">
+                  <p className="text-3xl mb-2">🏢</p>
+                  <p className="font-saira font-bold text-p-ink">Sin actividad de aseguradoras</p>
+                  <p className="text-sm text-p-ink2 mt-1">No hay OS ni facturas de compañías en este período.</p>
+                </div>
+              ) : (<>
+                {/* KPIs aseguradoras */}
+                {(() => {
+                  const entries = Object.entries(asegData).sort((a,b)=>b[1].fc_importe-a[1].fc_importe)
+                  const totalOS = entries.reduce((a,e)=>a+e[1].os_creadas,0)
+                  const totalFC = entries.reduce((a,e)=>a+e[1].facturadas,0)
+                  const totalImporte = entries.reduce((a,e)=>a+e[1].fc_importe,0)
+                  const totalPendientes = entries.reduce((a,e)=>a+e[1].os_pendientes,0)
+                  return (<>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <KpiCard label="Compañías activas" value={String(entries.length)} />
+                      <KpiCard label="OS creadas" value={String(totalOS)} sub={totalPendientes>0?`${totalPendientes} pendientes`:undefined} />
+                      <KpiCard label="Facturadas" value={String(totalFC)} accent />
+                      <KpiCard label="Importe facturado" value={moneyARS(totalImporte)} sub={toUsd(totalImporte)??undefined} />
+                    </div>
+
+                    {/* Tabla por compañía */}
+                    <div className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
+                      <div className="px-4 py-2.5 bg-purple-50 border-b border-purple-200">
+                        <p className="font-saira font-bold text-sm text-purple-800">Detalle por compañía — {periodos[pIdx].label.toLowerCase()}</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-p-line2">
+                              <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Compañía</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">OS creadas</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Pendientes</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Facturadas</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Importe</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">USD oficial</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {entries.map(([nombre, s]) => (
+                              <tr key={nombre} className="border-b border-p-line2 last:border-0 hover:bg-purple-50/30">
+                                <td className="px-4 py-3 font-semibold text-p-ink">{nombre}</td>
+                                <td className="px-4 py-3 text-right font-mono">{s.os_creadas}</td>
+                                <td className="px-4 py-3 text-right">
+                                  {s.os_pendientes > 0
+                                    ? <span className="font-mono font-bold text-amber-600">{s.os_pendientes}</span>
+                                    : <span className="text-p-ink2">—</span>}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono font-bold text-p-green">{s.facturadas}</td>
+                                <td className="px-4 py-3 text-right font-mono font-bold text-p-ink">{moneyARS(s.fc_importe)}</td>
+                                <td className="px-4 py-3 text-right font-mono text-p-ink2">{toUsd(s.fc_importe) || '—'}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-purple-50 border-t-2 border-purple-200">
+                              <td className="px-4 py-3 font-saira font-bold text-purple-800">TOTAL</td>
+                              <td className="px-4 py-3 text-right font-saira font-bold">{totalOS}</td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-amber-600">{totalPendientes || '—'}</td>
+                              <td className="px-4 py-3 text-right font-saira font-bold text-p-green">{totalFC}</td>
+                              <td className="px-4 py-3 text-right font-saira font-bold text-p-ink">{moneyARS(totalImporte)}</td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-p-ink">{toUsd(totalImporte) || '—'}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>)
+                })()}
+              </>)}
+            </div>
+          )}
+
+          {ventas.length === 0 && !loading && tab !== 'aseguradoras' && (
             <div className="text-center py-16 text-p-gray">
               <p className="text-4xl mb-2">📊</p>
               <p className="font-saira font-bold text-p-ink">Sin ventas en este período</p>
