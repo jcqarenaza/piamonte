@@ -475,7 +475,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 {asegHits.length>0&&(
                     <div className="absolute z-20 top-full left-0 right-0 bg-white border border-purple-200 rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
                       {asegHits.map(h=>{
-                        const recargo = asegSel.recargo_pct || 0
+                        const recargo = asegSel?.recargo_pct || 0
                         const precioFinal = Math.round(h.total_siva * (1 + IVA_RATE) * (1 + recargo) * 100) / 100
                         return(
                           <button key={h.id} onClick={()=>pickAseg(h)} className="w-full text-left px-3 py-2.5 hover:bg-purple-50 border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
