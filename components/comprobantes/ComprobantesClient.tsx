@@ -918,62 +918,53 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // Dibujar borde inferior redondeado
     y+=1
 
-    // ─── TOTALES EN FILA HORIZONTAL ───
-    y+=4
-    const tc = 5 // columnas de totales
+    // ─── TOTALES EN FILA HORIZONTAL — siempre en posición fija ───
+    const totY = 243
+    const tc = 5
     const tw = rw / tc
-    // Header verde
     doc.setFillColor(0,165,80)
-    rRect(pad, y, rw, 6, 2, 'F')
+    rRect(pad, totY, rw, 6, 2, 'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
     const totHeaders = ['Sub-total','Descuento','IVA 21%','IVA 10.5%','Total']
-    totHeaders.forEach((h,i) => doc.text(h, pad + tw*i + tw/2, y+4.5, {align:'center'}))
-    y+=6
+    totHeaders.forEach((h,i) => doc.text(h, pad + tw*i + tw/2, totY+4.5, {align:'center'}))
 
-    // Valores
-    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215)
-    rRect(pad, y, rw, 7, 0, 'FD')
-    // Esquinas redondeadas abajo
+    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+    rRect(pad, totY+6, rw, 7, 0, 'FD')
     doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     const descMonto = (c as any).descuento_monto || 0
     const iva105 = 0
-    const totValues = [
-      moneyARS(c.neto||0),
-      moneyARS(descMonto),
-      moneyARS(c.iva||0),
-      moneyARS(iva105),
-      moneyARS(c.total||0)
-    ]
+    const totValues = [moneyARS(c.neto||0), moneyARS(descMonto), moneyARS(c.iva||0), moneyARS(iva105), moneyARS(c.total||0)]
     totValues.forEach((v,i) => {
       if (i === tc-1) doc.setFont('helvetica','bold')
-      doc.text(v, pad + tw*i + tw/2, y+5, {align:'center'})
+      else doc.setFont('helvetica','normal')
+      doc.text(v, pad + tw*i + tw/2, totY+11.5, {align:'center'})
     })
-    y+=11
 
-    // ─── FORMA DE PAGO ───
+    // ─── FORMA DE PAGO — posición fija ───
+    const pagoY = 255
     if(c.pagos?.length){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
-      doc.text('Forma de pago:', pad, y)
+      doc.text('Forma de pago:', pad, pagoY)
       doc.setFont('helvetica','normal')
+      let py = pagoY + 4
       c.pagos.forEach((p:Pago)=>{
-        y+=4
-        doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`, pad+3, y)
+        doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`, pad+3, py)
+        py+=4
       })
-      y+=6
     }
 
-    // ─── CAE COMPACTO ───
+    // ─── CAE COMPACTO — posición fija ───
+    const caeY = 268
     if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido) {
       doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
-      rRect(pad, y, rw, 10, 2, 'S')
+      rRect(pad, caeY, rw, 10, 2, 'S')
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
-      doc.text(`CAE: ${c.cae_emitido}`, pad+4, y+6)
+      doc.text(`CAE: ${c.cae_emitido}`, pad+4, caeY+6.5)
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(100,100,100)
-      if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, W-pad-4, y+6, {align:'right'})
-      y+=14
+      if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, W-pad-4, caeY+6.5, {align:'right'})
     }
 
-    // ─── FOOTER ───
+    // ─── FOOTER — siempre en Y=285 ───
     doc.setFillColor(0,165,80)
     doc.rect(0, 285, W, 12, 'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
@@ -1123,10 +1114,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     )}
                     <button onClick={()=>{ setNdComp(c); setNdConcepto(''); setNdMonto(''); setNdIvaOn(true) }}
                       style={{...btnSm,background:'#7c3aed'}}>🧾 Nota de Débito</button>
-                    {c.orden_id && (
-                      <button onClick={()=>router.push(`/ordenes?edit=${c.orden_id}`)}
-                        style={{...btnSm,background:'#6b7280'}}>✏ Editar OS</button>
-                    )}
                     <button onClick={()=>setVerComp(c)} style={btnSm}>👁 Ver detalle</button>
                     <button onClick={()=>descargar(c)} style={btnSm}>⬇ PDF</button>
                     {!c.cae_emitido && (
