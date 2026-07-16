@@ -354,7 +354,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                                   <div className="flex items-center gap-1.5">
                                     {m.haber>0 && <span className="text-[9px] text-p-ink2">{expandedMov===m.id?'▼':'▶'}</span>}
                                     <span>{m.descripcion}</span>
-                                    {cobrosMap[m.id]?.es_a_cuenta && (
+                                    {(cobrosMap[m.id] as any)?.es_a_cuenta && (
                                       <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full ml-1">a cuenta</span>
                                     )}
                                     {m.haber>0 && cobrosMap[m.id] && (
