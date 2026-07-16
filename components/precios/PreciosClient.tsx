@@ -9,7 +9,7 @@ import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } 
 
 interface TipoCliente { id: string; nombre: string; margen_pct: number }
 interface PrecioProveedor {
-  proveedor: string; codigo: string | null; costo_neto: number; lista_nombre: string | null; es_promo: boolean
+  proveedor: string; codigo: string | null; costo_neto: number; lista_nombre: string | null; es_promo: boolean; costo_anterior: number | null
 }
 interface Articulo {
   id: string; sku_interno: string | null; codigo_referencia: string | null
@@ -52,6 +52,7 @@ function dedupPorProveedor(equivalencias: any[]): PrecioProveedor[] {
       porProveedor.set(e.proveedor, {
         proveedor: e.proveedor, codigo: e.codigo_proveedor,
         costo_neto: e.costo_neto, lista_nombre: e.lista_nombre, es_promo: !!e.lista_nombre,
+        costo_anterior: e.costo_anterior ?? null,
       })
     }
   }
@@ -125,7 +126,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       if (meta?.fingerprint === fingerprint) return
 
       const { data } = await supabase.from('articulos_maestro')
-        .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+        .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
         .eq('activo', true)
       if (!cancelado && data) {
         const piezasPlanas = data.flatMap((a: any) =>
@@ -133,7 +134,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
             id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
             descripcion: a.descripcion, pos: a.pos,
             proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
-            lista_nombre: p.lista_nombre, es_promo: p.es_promo,
+            lista_nombre: p.lista_nombre, es_promo: p.es_promo, costo_anterior: p.costo_anterior,
           }))
         )
         precargarCatalogoCompleto(piezasPlanas, fingerprint)
@@ -161,7 +162,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       }
       porArticulo.get(p.id)!.precios.push({
         proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
-        lista_nombre: p.lista_nombre, es_promo: p.es_promo,
+        lista_nombre: p.lista_nombre, es_promo: p.es_promo, costo_anterior: p.costo_anterior ?? null,
       })
     }
     return [...porArticulo.values()]
@@ -194,7 +195,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       if (eqData && eqData.length > 0) {
         const artIds = [...new Set(eqData.map((e:any) => e.articulo_id))]
         const { data: artData } = await supabase.from('articulos_maestro')
-          .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+          .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
           .in('id', artIds).eq('activo', true)
         const resultado: Articulo[] = (artData ?? []).map((a: any) => ({
           id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
@@ -206,7 +207,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     }
 
     let query = supabase.from('articulos_maestro')
-      .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre)')
+      .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
       .eq('activo', true)
       .or(`descripcion.ilike.%${first}%,codigo_referencia.ilike.%${first}%,sku_interno.ilike.%${first}%`)
       .order('descripcion').limit(150)
@@ -315,7 +316,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                         </span>
                         {precio.codigo && <span className="font-mono text-[10px] text-p-ink2">{precio.codigo}</span>}
                         {precio.lista_nombre && <span className="text-[10px] text-p-ink2">{precio.lista_nombre}</span>}
-                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(precio.costo_neto)}</span></span>}
+                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(precio.costo_neto)}</span>
+                          {precio.costo_anterior && precio.costo_anterior !== precio.costo_neto && (() => {
+                            const diff = precio.costo_neto - precio.costo_anterior
+                            const pct = Math.round((diff / precio.costo_anterior) * 100)
+                            return <span className={`ml-1.5 font-mono font-bold ${diff > 0 ? 'text-red-500' : 'text-green-600'}`}>{diff > 0 ? '▲' : '▼'} {pct > 0 ? '+' : ''}{pct}%</span>
+                          })()}
+                        </span>}
                       </div>
 
                       <div className={`grid gap-0 ${tipoSel === 'todos' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
