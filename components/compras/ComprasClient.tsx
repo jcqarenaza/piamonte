@@ -96,7 +96,7 @@ export default function ComprasClient() {
 
   const [form, setForm] = useState({
     tipo:'factura', letra:'A', punto_venta:'0001', numero:'', fecha:todayStr(),
-    proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:false,
+    proveedor_id:'', proveedor_nombre:'', notas:'', afecta_stock:true,
     cae:'', cae_vencimiento:'', remito_vinculado_id:'',
     descuento_pct:'', flete:'', ret_iva:'', ret_ganancias:'', ret_iibb:'',
     forma_pago:'cuenta_corriente' as 'cuenta_corriente'|'contado',
@@ -418,7 +418,7 @@ export default function ComprasClient() {
     // Los costos del catálogo se actualizan solo desde el importador de listas, no desde facturas
 
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
-      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:false,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
+      proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:true,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
       descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'', forma_pago:'cuenta_corriente'})
     setFormPagoContado({ forma_pago:'Efectivo', monto:'', fecha:todayStr() })
     setChequeContado(EMPTY_CHEQUE)
