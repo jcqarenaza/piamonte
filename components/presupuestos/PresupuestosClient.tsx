@@ -219,7 +219,18 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setCliQ(p.cliente||'')
     setCliSugs([])
     setItems(p.items||[])
-    if(p.tipo_cliente_id) setTipoSel(tipos.find((t:any)=>t.id===p.tipo_cliente_id)||null)
+    // Restaurar modo aseguradora
+    if (p.es_aseguradora && p.aseguradora_id) {
+      setModoAseg(true)
+      const a = aseguradoras.find((a:Aseguradora) => a.id === p.aseguradora_id)
+      setAsegSel(a ?? { id: p.aseguradora_id, nombre: p.aseguradora_nombre, lista_precio: 'comun', recargo_pct: 0 })
+      setManoObraIncluida(p.mano_obra_incluida !== false)
+      setTipoSel(null)
+    } else {
+      setModoAseg(false)
+      setAsegSel(null)
+      if(p.tipo_cliente_id) setTipoSel(tipos.find((t:any)=>t.id===p.tipo_cliente_id)||null)
+    }
     setOpen(true)
   }
 
@@ -470,19 +481,17 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"}>
         <div className="flex flex-col gap-3">
 
-          {/* Toggle modo: Normal vs Aseguradora */}
-          {!editId && (
-            <div className="flex rounded-xl overflow-hidden border border-p-line">
-              <button onClick={()=>{setModoAseg(false);setItems([]);setAsegSel(null);setAsegQ('')}}
-                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!modoAseg?'bg-[#0C1810] text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
-                👤 Particular / Chapista
-              </button>
-              <button onClick={()=>{setModoAseg(true);setItems([]);setTipoSel(null);setCatQ('')}}
-                className={`flex-1 py-2.5 text-sm font-bold transition-colors ${modoAseg?'bg-purple-600 text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
-                🏢 Aseguradora
-              </button>
-            </div>
-          )}
+          {/* Toggle modo */}
+          <div className="flex rounded-xl overflow-hidden border border-p-line">
+            <button onClick={()=>{if(editId)return;setModoAseg(false);setItems([]);setAsegSel(null);setAsegQ('')}}
+              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!modoAseg?'bg-[#0C1810] text-white':'bg-white text-p-ink2 hover:bg-p-light'} ${editId?'cursor-default':''}`}>
+              👤 Particular / Chapista
+            </button>
+            <button onClick={()=>{if(editId)return;setModoAseg(true);setItems([]);setTipoSel(null);setCatQ('')}}
+              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${modoAseg?'bg-purple-600 text-white':'bg-white text-p-ink2 hover:bg-p-light'} ${editId?'cursor-default':''}`}>
+              🏢 Aseguradora
+            </button>
+          </div>
 
           {/* --- MODO ASEGURADORA --- */}
           {modoAseg ? (<>
@@ -624,6 +633,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nombre del cliente *"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre completo"/></Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value.toUpperCase()}))} placeholder="ABC 123"/></Field>
           </div>
 
           {/* Búsqueda en catálogo */}
