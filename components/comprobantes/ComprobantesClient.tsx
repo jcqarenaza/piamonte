@@ -830,7 +830,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         }
       }
 
-      const boxH = 38
+      // Calcular altura dinámica según campos disponibles
+      const leftLines = [dirAseg, locAseg, cuitAseg, condIvaAseg, condVta].filter(Boolean).length
+      const rightLines = [(c as any).siniestro, c.vehiculo, (c as any).patente, c.cliente_telefono].filter(Boolean).length
+      const maxLines = Math.max(leftLines, rightLines)
+      const boxH = 12 + maxLines * 4 + 4
       rRect(pad, y, rw, boxH, 3, 'FD')
       // Línea central vertical
       doc.line(W/2, y+1, W/2, y+boxH-1)
@@ -940,9 +944,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.text(v, pad + tw*i + tw/2, totY+11.5, {align:'center'})
     })
 
-    // ─── FORMA DE PAGO — posición fija ───
+    // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
+    const esCuentaCorriente = c.pagos?.every((p:Pago) => p.metodo?.toLowerCase().includes('corriente') || p.metodo?.toLowerCase().includes('cta'))
     const pagoY = 255
-    if(c.pagos?.length){
+    if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)
       doc.setFont('helvetica','normal')
