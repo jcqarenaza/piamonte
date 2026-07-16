@@ -563,7 +563,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   })()}
                   <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
                   <div className="flex-1 min-w-[8px]"/>
-                  <p className="font-saira font-bold text-p-ink shrink-0">{o.total > 0 ? moneyARS(o.total) : <span className="text-p-ink2 text-xs font-normal">Sin precio</span>}</p>
+                  <p className="font-saira font-bold text-p-ink shrink-0">{o.total > 0 ? moneyARS2(o.total) : <span className="text-p-ink2 text-xs font-normal">Sin precio</span>}</p>
                 </div>
 
                 {expandido===o.id && (

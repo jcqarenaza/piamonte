@@ -441,6 +441,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   {(p as any).es_aseguradora && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🏢 {(p as any).aseguradora_nombre || 'Aseguradora'}</span>
                   )}
+                  {(p as any).convertido_os && !((p as any).convertido_comp) && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">🔧 OS</span>
+                  )}
+                  {(p as any).convertido_comp && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">🧾 FC</span>
+                  )}
                   {venc && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">VENCIDO</span>}
                   <span className="text-xs text-p-ink2 shrink-0">{p.vehiculo}</span>
                   <span className="text-xs text-p-ink2 shrink-0">vence {p.vencimiento.split('-').reverse().join('/')}</span>
@@ -454,21 +460,27 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     <p className="text-xs text-p-ink2 mb-2">{p.items.length} ítem(s) · {p.iva?'con IVA':'sin IVA'}</p>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
-                      <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
-                      <button onClick={async()=>{
-                        await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
-                        const params = new URLSearchParams({
-                          cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
-                          items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
-                          pid: p.id,
-                          ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
-                          ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
-                        })
-                        router.push(`/comprobantes?${params.toString()}`)
-                      }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                      {!(p as any).convertido_os && !(p as any).convertido_comp && (
+                        <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
+                      )}
+                      {!(p as any).convertido_comp && (
+                        <button onClick={async()=>{
+                          await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
+                          const params = new URLSearchParams({
+                            cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
+                            items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
+                            pid: p.id,
+                            ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
+                            ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),
+                          })
+                          router.push(`/comprobantes?${params.toString()}`)
+                        }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                      )}
                       <button onClick={()=>compartirWA(p)} style={btnWa}>📱 WA</button>
                       <button onClick={()=>descargarPDF(p)} style={btnSm}>⬇ PDF</button>
-                      <button onClick={()=>del(p.id)} style={btnRed}>Borrar</button>
+                      {!(p as any).convertido_os && !(p as any).convertido_comp && (
+                        <button onClick={()=>del(p.id)} style={btnRed}>Borrar</button>
+                      )}
                     </div>
                   </div>
                 )}
