@@ -10,7 +10,7 @@ const btnSm   = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
 const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
 
-interface Cuenta { id:string; banco:string; tipo:string; nro_cuenta:string|null; alias:string|null; saldo_inicial:number; fecha_saldo_inicial:string; activo:boolean }
+interface Cuenta { id:string; banco:string; tipo:string; nro_cuenta:string|null; alias:string|null; cbu:string|null; saldo_inicial:number; fecha_saldo_inicial:string; activo:boolean }
 interface Movimiento { id:string; cuenta_id:string; fecha:string; tipo:'credito'|'debito'; concepto:string; monto:number; origen_tipo:string|null; conciliado:boolean; nro_extracto:string|null; notas:string|null; cheque_id:string|null; saldo?:number }
 
 const TIPOS_CUENTA = ['Cuenta Corriente','Caja de Ahorro','Cuenta Inversión','Billetera Virtual']
@@ -23,7 +23,7 @@ const ORIG_LABEL: Record<string,string> = {
 }
 
 const emptyMov = { tipo:'credito' as 'credito'|'debito', concepto:'', monto:'', origen_tipo:'deposito_manual', fecha:todayStr(), notas:'', nro_extracto:'' }
-const emptyCuenta = { banco:'Banco de La Pampa', tipo:'Cuenta Corriente', nro_cuenta:'', alias:'', saldo_inicial:'0', fecha_saldo_inicial:todayStr() }
+const emptyCuenta = { banco:'Banco de La Pampa', tipo:'Cuenta Corriente', nro_cuenta:'', alias:'', cbu:'', saldo_inicial:'0', fecha_saldo_inicial:todayStr() }
 
 export default function BancoClient() {
   const [cuentas, setCuentas]   = useState<Cuenta[]>([])
@@ -70,7 +70,7 @@ export default function BancoClient() {
   const sinConciliar = pendConcil.length
 
   async function guardarCuenta() {
-    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, saldo_inicial:+formCuenta.saldo_inicial||0, fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, moneda:'ARS', activo:true, updated_at:new Date().toISOString() }
+    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, cbu:formCuenta.cbu||null, saldo_inicial:+formCuenta.saldo_inicial||0, fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, moneda:'ARS', activo:true, updated_at:new Date().toISOString() }
     if (editCuentaId) await supabase.from('cuentas_banco').update(payload).eq('id',editCuentaId)
     else await supabase.from('cuentas_banco').insert(payload)
     setCuentaModal(false); loadCuentas()
@@ -104,10 +104,11 @@ export default function BancoClient() {
             <button key={c.id} onClick={()=>setSelCuenta(c)}
               style={{background:selCuenta?.id===c.id?'#00A550':'#fff',color:selCuenta?.id===c.id?'#fff':'#374151',border:`1.5px solid ${selCuenta?.id===c.id?'#00A550':'#e5e7eb'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
               🏦 {c.alias||c.banco} {c.tipo==='Cuenta Corriente'?'(CC)':c.tipo==='Caja de Ahorro'?'(CA)':''}
+              {(c.cbu||c.nro_cuenta) && <span className="text-[10px] font-mono text-p-ink2 ml-1">···{(c.cbu||c.nro_cuenta||'').slice(-5)}</span>}
             </button>
           ))}
           <button onClick={()=>{ setEditCuentaId(null); setFormCuenta(emptyCuenta); setCuentaModal(true) }} style={btnGray}>+ Cuenta</button>
-          {selCuenta&&<button onClick={()=>{ setEditCuentaId(selCuenta.id); setFormCuenta({banco:selCuenta.banco,tipo:selCuenta.tipo,nro_cuenta:selCuenta.nro_cuenta||'',alias:selCuenta.alias||'',saldo_inicial:String(selCuenta.saldo_inicial),fecha_saldo_inicial:selCuenta.fecha_saldo_inicial}); setCuentaModal(true) }} style={btnGray}>✏ Editar</button>}
+          {selCuenta&&<button onClick={()=>{ setEditCuentaId(selCuenta.id); setFormCuenta({banco:selCuenta.banco,tipo:selCuenta.tipo,nro_cuenta:selCuenta.nro_cuenta||'',alias:selCuenta.alias||'',cbu:selCuenta.cbu||'',saldo_inicial:String(selCuenta.saldo_inicial),fecha_saldo_inicial:selCuenta.fecha_saldo_inicial}); setCuentaModal(true) }} style={btnGray}>✏ Editar</button>}
         </div>
       </div>
 
@@ -282,6 +283,10 @@ export default function BancoClient() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Saldo inicial ($)"><Input value={formCuenta.saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,saldo_inicial:e.target.value}))} placeholder="0"/></Field>
             <Field label="Fecha saldo inicial"><Input type="date" value={formCuenta.fecha_saldo_inicial} onChange={e=>setFormCuenta(p=>({...p,fecha_saldo_inicial:e.target.value}))}/></Field>
+            <Field label="CBU (22 dígitos)">
+              <Input value={formCuenta.cbu} onChange={e=>setFormCuenta(p=>({...p,cbu:e.target.value.replace(/[^0-9]/g,'').slice(0,22)}))} placeholder="Ej: 0340338708338003525016" maxLength={22}/>
+              {formCuenta.cbu && <p className="text-[11px] text-p-ink2 mt-1">Últimos 5: <span className="font-mono font-bold">{formCuenta.cbu.slice(-5)}</span></p>}
+            </Field>
           </div>
           <p className="text-[11px] text-p-ink2">El saldo inicial es el que tenía la cuenta antes de empezar a cargar movimientos en el sistema.</p>
           <div className="flex justify-end gap-2 pt-1">

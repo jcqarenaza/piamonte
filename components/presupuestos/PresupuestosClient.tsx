@@ -50,6 +50,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [asegSel, setAsegSel]   = useState<Aseguradora|null>(null)
   const [asegQ, setAsegQ]       = useState('')
   const [asegHits, setAsegHits] = useState<PrecioAseg[]>([])
+  const [manoObraIncluida, setManoObraIncluida] = useState(true)
 
   // Flete por proveedor
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
@@ -261,6 +262,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         es_aseguradora: modoAseg,
         aseguradora_id: modoAseg ? asegSel?.id ?? null : null,
         aseguradora_nombre: modoAseg ? asegSel?.nombre ?? null : null,
+        mano_obra_incluida: modoAseg ? manoObraIncluida : null,
       })
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
@@ -345,6 +347,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     doc.text(esAseg ? 'TOTAL (IVA incl.):' : 'TOTAL:',totX,y); doc.text(fmt(p.total),W-pad,y,{align:'right'})
     if(p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
       doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`,W-pad,y,{align:'right'}) }
+    if(esAseg) {
+      y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
+      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, y)
+      doc.setTextColor(30,30,30)
+    }
     y+=10
 
     // Vencimiento
@@ -488,10 +495,16 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             </Field>
 
             {asegSel && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-xs text-purple-800 font-semibold">
-                Lista: <strong>{asegSel.lista_precio === 'patronal' ? 'Federación Patronal' : 'Común'}</strong>
-                {asegSel.recargo_pct > 0 && <> · Recargo: <strong>{Math.round(asegSel.recargo_pct*100)}%</strong></>}
-                {' '}· Precios con IVA 21% incluido
+              <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                <div className="text-xs text-purple-800 font-semibold">
+                  Lista: <strong>{asegSel.lista_precio === 'patronal' ? 'Federación Patronal' : 'Común'}</strong>
+                  {asegSel.recargo_pct > 0 && <> · Recargo: <strong>{Math.round(asegSel.recargo_pct*100)}%</strong></>}
+                  {' '}· Precios con IVA 21% incluido
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-purple-800 cursor-pointer whitespace-nowrap ml-3">
+                  <input type="checkbox" checked={manoObraIncluida} onChange={e=>setManoObraIncluida(e.target.checked)} className="accent-purple-600"/>
+                  Mano de obra incluida
+                </label>
               </div>
             )}
 
@@ -707,7 +720,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 {modoAseg ? (
                   <>
                     <div className="flex justify-between font-saira font-bold text-purple-700 text-lg"><span>TOTAL (IVA incluido)</span><span>{moneyARS2(neto)}</span></div>
-                    {asegSel && <p className="text-[10px] text-purple-500 mt-1">{asegSel.nombre}{asegSel.recargo_pct > 0 ? ` · recargo ${Math.round(asegSel.recargo_pct*100)}% incluido` : ''}</p>}
+                    {asegSel && <p className="text-[10px] text-purple-500 mt-1">{asegSel.nombre}</p>}
+                    <p className="text-[10px] text-purple-400 mt-0.5">{manoObraIncluida ? '✓ Precio incluye mano de obra' : 'No incluye mano de obra'}</p>
                   </>
                 ) : (
                   <>
