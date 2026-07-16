@@ -777,7 +777,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
                   }}
                   className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-p-green"/>
-                    className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                   <span className="font-mono text-xs w-24 text-right">{moneyARS2(it.c*it.p)}</span>
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs ml-1">✕</button>
                 </div>
