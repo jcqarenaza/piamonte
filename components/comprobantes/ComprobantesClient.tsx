@@ -751,120 +751,231 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function generarPDF(c:Comprobante): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({format:'a4',unit:'mm'})
-    const W=210, pad=16
-    let y=20
+    const W=210, pad=14, rw=W-pad*2
+    let y=12
 
-    doc.setFillColor(255,255,255); doc.rect(0,0,W,30,'F')
-    doc.setFillColor(0,165,80); doc.rect(0,28,W,2,'F')
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
-    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
-    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE', pad+50, 11)
-    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
-    doc.setFontSize(7.5); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969', pad+50, 17)
-    doc.text('CUIT: 27-24265717-4 · IVA Responsable Inscripto · Pto. Vta. 0006', pad+50, 22.5)
+    // Helper para rectángulos con esquinas redondeadas
+    const rRect = (x:number,yy:number,w:number,h:number,r:number,style:'F'|'S'|'FD') => {
+      doc.roundedRect(x,yy,w,h,r,r,style)
+    }
+
+    // ─── HEADER ───
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,y-2,28,15) } catch(e){}
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold'); doc.setFontSize(10)
+    doc.text('PARABRISAS EL PIAMONTE', pad+32, y+2)
+    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100); doc.setFontSize(7)
+    doc.text('Calle 102 N.366 - General Pico, La Pampa', pad+32, y+7)
+    doc.text('Tel: 02302-15595969 / 02302-15464733', pad+32, y+11)
+    doc.text('CUIT: 27-24265717-4 - IVA Responsable Inscripto - Pto. Vta. 0006', pad+32, y+15)
+
+    // Tipo comprobante (recuadro)
     const tipoLabel = c.categoria==='nc'
-      ? (c.tipo==='A'?'NOTA DE CRÉDITO A':c.tipo==='B'?'NOTA DE CRÉDITO B':c.tipo==='C'?'NOTA DE CRÉDITO C':'NOTA DE CRÉDITO')
-      : (c.tipo==='A'?'FACTURA A':c.tipo==='B'?'FACTURA B':c.tipo==='C'?'FACTURA C':'COMPROBANTE')
-    doc.setFontSize(13); doc.text(tipoLabel, W-pad, 13, {align:'right'})
-    doc.setFontSize(10); doc.text(`N° 0006-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}`, W-pad, 20, {align:'right'})
-    doc.setFontSize(8); doc.text(c.fecha.split('-').reverse().join('/'), W-pad, 27, {align:'right'})
-    y=38
-    // Marca de agua — logo grande centrado en la página con baja opacidad
-    const gState = new (doc as any).GState({ opacity: 0.06 })
-    doc.saveGraphicsState()
-    doc.setGState(gState)
-    try { doc.addImage(LOGO_BASE64, 'PNG', 65, 110, 80, 44) } catch(e){}
-    doc.setFont('helvetica','bold'); doc.setFontSize(32); doc.setTextColor(0, 165, 80)
-    doc.text('EL PIAMONTE', W/2, 175, { align: 'center' })
-    doc.setFontSize(9)
-    doc.text('www.parabrisaselpiamonte.com.ar', W/2, 185, { align: 'center' })
-    doc.restoreGraphicsState()
-    doc.setTextColor(30,30,30)
+      ? (c.tipo==='A'?'Nota de Credito':'Nota de Credito') : 'Factura'
+    const letraX = W-pad-28
+    doc.setDrawColor(30,30,30); doc.setLineWidth(0.5)
+    rRect(letraX, y-2, 28, 18, 2, 'S')
+    doc.setFontSize(7); doc.setTextColor(100,100,100)
+    doc.text(tipoLabel, letraX+14, y+3, {align:'center'})
+    doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30)
+    doc.text(c.tipo||'X', letraX+14, y+13, {align:'center'})
+
+    // Número y fecha a la derecha del recuadro letra
+    doc.setFontSize(9); doc.setFont('helvetica','bold')
+    doc.text(`N. 0006-${String(c.nro_cbte_afip??c.numero??0).padStart(8,'0')}`, letraX-3, y+4, {align:'right'})
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,100,100)
+    doc.text(c.fecha.split('-').reverse().join('/'), letraX-3, y+10, {align:'right'})
+
+    // Línea verde separadora
+    y+=19
+    doc.setFillColor(0,165,80); doc.rect(pad, y, rw, 1.5, 'F')
+    y+=5
+
+    // NC referencia
     if (c.categoria==='nc') {
       const original = comps.find(x=>x.id===c.comprobante_original_id)
-      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,100,0)
-      doc.text(`Corresponde a Comprobante N° ${original?String(original.nro_cbte_afip ?? original.numero ?? 0).padStart(8,'0'):'—'}${c.motivo_nc?` — ${c.motivo_nc}`:''}`, pad, y)
-      doc.setTextColor(30,30,30)
-      y+=6
+      doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(150,100,0)
+      doc.text(`Corresponde a Comprobante N. ${original?String(original.nro_cbte_afip??original.numero??0).padStart(8,'0'):'—'}${c.motivo_nc?` — ${c.motivo_nc}`:''}`, pad, y)
+      doc.setTextColor(30,30,30); y+=5
     }
 
+    // ─── MARCA DE AGUA ───
+    const gState = new (doc as any).GState({ opacity: 0.05 })
+    doc.saveGraphicsState(); doc.setGState(gState)
+    try { doc.addImage(LOGO_BASE64, 'PNG', 60, 120, 90, 50) } catch(e){}
+    doc.setFont('helvetica','bold'); doc.setFontSize(30); doc.setTextColor(0,165,80)
+    doc.text('EL PIAMONTE', W/2, 190, {align:'center'})
+    doc.setFontSize(8)
+    doc.text('www.parabrisaselpiamonte.com.ar', W/2, 198, {align:'center'})
+    doc.restoreGraphicsState()
+    doc.setTextColor(30,30,30)
+
+    // ─── DATOS CLIENTE (dos columnas si aseguradora, una si particular) ───
     const esAseg = !!c.aseguradora_nombre
-    const filas: [string,string][] = []
-    if (esAseg) {
-      filas.push(['Aseguradora:', c.aseguradora_nombre || ''])
-      if (c.cliente_nombre) filas.push(['Asegurado:', c.cliente_nombre])
-      if ((c as any).siniestro) filas.push(['N° Siniestro:', (c as any).siniestro])
-      // CUIT de la aseguradora — requerido en Factura A para identificar al receptor RI
-      let cuitAseg = c.cliente_cuit || ''
-      if (!cuitAseg && c.aseguradora_id) {
-        const { data: aRow } = await supabase.from('aseguradoras').select('cuit,condicion_iva').eq('id', c.aseguradora_id).maybeSingle()
-        cuitAseg = aRow?.cuit || ''
-        if (cuitAseg) {
-          filas.push(['CUIT:', cuitAseg])
-          filas.push(['Cond. IVA:', aRow?.condicion_iva || 'Responsable Inscripto'])
-        }
-      } else if (cuitAseg) {
-        filas.push(['CUIT:', cuitAseg])
-        filas.push(['Cond. IVA:', 'Responsable Inscripto'])
-      }
-    } else {
-      filas.push(['Cliente:', c.cliente_nombre || 'Consumidor Final'])
-    }
-    if (c.cliente_telefono) filas.push(['Tel:', c.cliente_telefono])
-    if (!esAseg && c.cliente_cuit) { filas.push(['CUIT:', c.cliente_cuit]); filas.push(['Cond. IVA:', tipoFiscalLabel(c.cliente_tipo_fiscal)]) }
-    if (c.vehiculo) filas.push(['Vehículo:', c.vehiculo])
-    if ((c as any).patente) filas.push(['Patente:', (c as any).patente])
+    const condVta = c.pagos?.some((p:Pago)=>p.metodo?.toLowerCase().includes('contado')) ? 'Contado' : 'Cuenta Corriente'
 
-    doc.setTextColor(30,30,30); doc.setFillColor(245,250,247)
-    doc.rect(pad, y-4, W-pad*2, filas.length*6+2, 'F')
-    doc.setFontSize(9)
-    filas.forEach(([label,valor])=>{
-      doc.setFont('helvetica','bold'); doc.text(label, pad+2, y)
-      doc.setFont('helvetica','normal'); doc.text(String(valor), pad+30, y)
-      y+=6
-    })
+    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+    if (esAseg) {
+      // Fetch CUIT/IVA de la aseguradora
+      let cuitAseg = c.cliente_cuit || ''
+      let condIvaAseg = 'Responsable Inscripto'
+      let dirAseg = ''
+      let locAseg = ''
+      if (c.aseguradora_id) {
+        const { data: aRow } = await supabase.from('aseguradoras').select('cuit,condicion_iva,direccion,localidad').eq('id', c.aseguradora_id).maybeSingle()
+        if (aRow) {
+          cuitAseg = cuitAseg || aRow.cuit || ''
+          condIvaAseg = aRow.condicion_iva || condIvaAseg
+          dirAseg = aRow.direccion || ''
+          locAseg = aRow.localidad || ''
+        }
+      }
+
+      const boxH = 38
+      rRect(pad, y, rw, boxH, 3, 'FD')
+      // Línea central vertical
+      doc.line(W/2, y+1, W/2, y+boxH-1)
+
+      // Izquierda: Aseguradora
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(0,165,80)
+      doc.text('ASEGURADORA', pad+3, y+5)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30,30,30)
+      doc.text(c.aseguradora_nombre||'', pad+3, y+10)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80)
+      let ly = y+15
+      if (dirAseg) { doc.text(`Dir: ${dirAseg}`, pad+3, ly); ly+=4 }
+      if (locAseg) { doc.text(`Loc: ${locAseg}`, pad+3, ly); ly+=4 }
+      if (cuitAseg) { doc.text(`CUIT: ${cuitAseg}`, pad+3, ly); ly+=4 }
+      doc.text(`IVA: ${condIvaAseg}`, pad+3, ly); ly+=4
+      doc.text(`Cond. Vta.: ${condVta}`, pad+3, ly)
+
+      // Derecha: Asegurado
+      const rx = W/2+3
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(0,165,80)
+      doc.text('ASEGURADO', rx, y+5)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30,30,30)
+      doc.text(c.cliente_nombre||'', rx, y+10)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80)
+      let ry = y+15
+      if ((c as any).siniestro) { doc.text(`N. siniestro: ${(c as any).siniestro}`, rx, ry); ry+=4 }
+      if (c.vehiculo) { doc.text(`Vehiculo: ${c.vehiculo}`, rx, ry); ry+=4 }
+      if ((c as any).patente) { doc.text(`Patente: ${(c as any).patente}`, rx, ry); ry+=4 }
+      if (c.cliente_telefono) { doc.text(`Tel: ${c.cliente_telefono}`, rx, ry) }
+
+      y += boxH + 4
+    } else {
+      // Particular / Consumidor final
+      const filas: string[] = []
+      filas.push(`Cliente: ${c.cliente_nombre||'Consumidor Final'}`)
+      if (c.cliente_cuit) filas.push(`CUIT: ${c.cliente_cuit} - IVA: ${tipoFiscalLabel(c.cliente_tipo_fiscal)}`)
+      if (c.cliente_telefono) filas.push(`Tel: ${c.cliente_telefono}`)
+      if (c.vehiculo) filas.push(`Vehiculo: ${c.vehiculo}`)
+      if ((c as any).patente) filas.push(`Patente: ${(c as any).patente}`)
+      filas.push(`Cond. Vta.: ${condVta}`)
+
+      const boxH = filas.length * 4.5 + 4
+      rRect(pad, y, rw, boxH, 3, 'FD')
+      doc.setFontSize(8); doc.setTextColor(30,30,30)
+      let cy = y + 5
+      filas.forEach(f => {
+        const parts = f.split(': ')
+        doc.setFont('helvetica','bold'); doc.text(parts[0]+':', pad+3, cy)
+        doc.setFont('helvetica','normal'); doc.text(parts.slice(1).join(': '), pad+28, cy)
+        cy += 4.5
+      })
+      y += boxH + 4
+    }
+
+    // ─── TABLA DE ÍTEMS ───
+    const cols=[68,14,44,44]
+    const colsTotal = cols.reduce((a,b)=>a+b,0)
+    // Header verde con esquinas redondeadas arriba
+    doc.setFillColor(0,165,80)
+    rRect(pad, y, rw, 6, 2, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    const hx = pad
+    doc.text('Cant.', hx+2, y+4.5)
+    doc.text('Descripcion', hx+cols[0]-58, y+4.5)
+    doc.text('Precio unit.', hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+    doc.text('Subtotal', hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
     y+=6
 
-    const cols=[78,15,42,43]
-    doc.setFillColor(0,165,80); doc.rect(pad,y,W-pad*2,7,'F')
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    let xi=pad; ['Detalle','Cant.','Precio unit.','Subtotal'].forEach((h,i)=>{ doc.text(h,xi+(i>0?cols[i]-2:2),y+5,{align:i>0?'right':'left'}); xi+=cols[i] })
-    y+=7
-    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal')
+    // Filas
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    const itemCount = c.items.length
     c.items.forEach((it:any,idx:number)=>{
-      if(idx%2===0){ doc.setFillColor(240,250,245); doc.rect(pad,y,W-pad*2,6.5,'F') }
-      const x0=pad
+      const isLast = idx === itemCount - 1
+      if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,6,'F') }
       const codText = (it as any).codigo ? `[${(it as any).codigo}] ` : ''
-      doc.text((codText + String(it.d||'')).slice(0,42),x0+2,y+4.5)
-      doc.text(String(it.c||1),x0+cols[0]+cols[1]-2,y+4.5,{align:'right'})
-      doc.text(moneyARS(it.p||0),x0+cols[0]+cols[1]+cols[2]-2,y+4.5,{align:'right'})
-      doc.text(moneyARS((it.c||1)*(it.p||0)),x0+cols[0]+cols[1]+cols[2]+cols[3]-2,y+4.5,{align:'right'})
-      y+=6.5
+      doc.text(String(it.c||1), hx+12, y+4.5, {align:'right'})
+      doc.text((codText + String(it.d||'')).slice(0,45), hx+14, y+4.5)
+      doc.setFont('helvetica','normal'); doc.setFontSize(8)
+      doc.text(moneyARS(it.p||0), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+      doc.text(moneyARS((it.c||1)*(it.p||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
+      y+=6
     })
+    // Borde del área de items con esquinas redondeadas abajo
+    doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+    // Dibujar borde inferior redondeado
+    y+=1
+
+    // ─── TOTALES EN FILA HORIZONTAL ───
     y+=4
+    const tc = 5 // columnas de totales
+    const tw = rw / tc
+    // Header verde
+    doc.setFillColor(0,165,80)
+    rRect(pad, y, rw, 6, 2, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
+    const totHeaders = ['Sub-total','Descuento','IVA 21%','IVA 10.5%','Total']
+    totHeaders.forEach((h,i) => doc.text(h, pad + tw*i + tw/2, y+4.5, {align:'center'}))
+    y+=6
 
-    const totX=W-pad-70
-    if(c.iva){ doc.text('Subtotal neto:',totX,y); doc.text(moneyARS(c.neto),W-pad,y,{align:'right'}); y+=6 }
-    if(c.iva){ doc.text('IVA 21%:',totX,y); doc.text(moneyARS(c.iva),W-pad,y,{align:'right'}); y+=6 }
-    doc.setFont('helvetica','bold'); doc.setFontSize(12)
-    doc.text('TOTAL:',totX,y); doc.text(moneyARS(c.total),W-pad,y,{align:'right'})
-    y+=10
+    // Valores
+    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215)
+    rRect(pad, y, rw, 7, 0, 'FD')
+    // Esquinas redondeadas abajo
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    const descMonto = c.descuento_monto || 0
+    const iva105 = 0
+    const totValues = [
+      moneyARS(c.neto||0),
+      moneyARS(descMonto),
+      moneyARS(c.iva||0),
+      moneyARS(iva105),
+      moneyARS(c.total||0)
+    ]
+    totValues.forEach((v,i) => {
+      if (i === tc-1) doc.setFont('helvetica','bold')
+      doc.text(v, pad + tw*i + tw/2, y+5, {align:'center'})
+    })
+    y+=11
 
-    if(c.pagos?.length){ 
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('Forma de pago:',pad,y); y+=5
+    // ─── FORMA DE PAGO ───
+    if(c.pagos?.length){
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
+      doc.text('Forma de pago:', pad, y)
       doc.setFont('helvetica','normal')
-      c.pagos.forEach((p:Pago)=>{ doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`,pad+4,y); y+=5 })
-      y+=4
+      c.pagos.forEach((p:Pago)=>{
+        y+=4
+        doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`, pad+3, y)
+      })
+      y+=6
     }
 
+    // ─── CAE COMPACTO ───
     if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido) {
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30)
-      doc.text(`CAE: ${c.cae_emitido}`, pad, y); y+=5
-      if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, pad, y)
-      y+=8
+      doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+      rRect(pad, y, rw, 10, 2, 'S')
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
+      doc.text(`CAE: ${c.cae_emitido}`, pad+4, y+6)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(100,100,100)
+      if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, W-pad-4, y+6, {align:'right'})
+      y+=14
     }
 
-    doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
+    // ─── FOOTER ───
+    doc.setFillColor(0,165,80)
+    doc.rect(0, 285, W, 12, 'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     doc.text('Tel: 2302 595969', pad, 292)
     doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
