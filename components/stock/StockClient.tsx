@@ -124,8 +124,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const loadPendientes = useCallback(async () => {
     setLoadingPend(true)
     const { data } = await supabase.from('stock').select('*').eq('activo', true).is('articulo_id', null).order('descripcion').limit(200)
-    setPendientes(data ?? [])
+    const pends = data ?? []
+    setPendientes(pends)
     setLoadingPend(false)
+    // Auto-sugerir vinculaciones por código
+    autoSugerirPendientes(pends)
   }, [supabase])
 
   useEffect(() => { if (tab === 'vincular') loadPendientes() }, [tab, loadPendientes])
@@ -317,10 +320,55 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setVincQ(p => ({ ...p, [stockId]: texto }))
     setVincSel(p => { const n = { ...p }; delete n[stockId]; return n })
     if (texto.trim().length < 2) { setVincSugs(p => ({ ...p, [stockId]: [] })); return }
-    const { data } = await supabase.from('articulos_maestro')
-      .select('id,descripcion,codigo_referencia,sku_interno').eq('activo', true)
-      .ilike('descripcion', `%${texto}%`).limit(6)
-    setVincSugs(p => ({ ...p, [stockId]: data ?? [] }))
+    // Buscar por descripción Y por código (Pilkington 9 chars)
+    const esCodigo = /^\d/.test(texto.trim())
+    let data: any[] = []
+    if (esCodigo) {
+      const { data: d } = await supabase.from('articulos_maestro')
+        .select('id,descripcion,codigo_referencia,sku_interno').eq('activo', true)
+        .ilike('codigo_referencia', `${texto.trim()}%`).limit(6)
+      data = d ?? []
+    }
+    if (data.length === 0) {
+      const { data: d } = await supabase.from('articulos_maestro')
+        .select('id,descripcion,codigo_referencia,sku_interno').eq('activo', true)
+        .ilike('descripcion', `%${texto}%`).limit(6)
+      data = d ?? []
+    }
+    setVincSugs(p => ({ ...p, [stockId]: data }))
+  }
+
+  // Auto-sugerir por código al cargar la pestaña
+  async function autoSugerirPendientes(pends: StockItem[]) {
+    const autoSel: Record<string, any> = {}
+    const autoQ: Record<string, string> = {}
+    for (const s of pends) {
+      if (!s.codigo || s.codigo.length < 6) continue
+      const codigoBase = s.codigo.slice(0, 9)
+      const { data } = await supabase.from('articulos_maestro')
+        .select('id,descripcion,codigo_referencia,sku_interno').eq('activo', true)
+        .ilike('codigo_referencia', `${codigoBase}%`).limit(1)
+      if (data && data.length > 0) {
+        autoSel[s.id] = data[0]
+        autoQ[s.id] = data[0].descripcion
+      }
+    }
+    if (Object.keys(autoSel).length > 0) {
+      setVincSel(p => ({ ...p, ...autoSel }))
+      setVincQ(p => ({ ...p, ...autoQ }))
+    }
+  }
+
+  // Vincular en lote todos los auto-sugeridos
+  async function vincularTodosAutoSugeridos() {
+    const ids = pendientes.filter(s => vincSel[s.id]).map(s => s.id)
+    if (ids.length === 0) return
+    if (!confirm(`¿Vincular ${ids.length} artículos automáticamente?`)) return
+    for (const id of ids) {
+      const s = pendientes.find(x => x.id === id)
+      if (!s) continue
+      await confirmarVinculo(s)
+    }
   }
 
   function elegirParaVincular(stockId: string, art: any) {
@@ -374,22 +422,37 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         <div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
             <p className="text-sm text-amber-800">
-              Vinculá cada pieza con su artículo del catálogo maestro — así Compras, Ventas y Stock comparten el mismo costo y el mismo identificador (SKU). Podés cargar el costo en el mismo paso.
+              Vinculá cada pieza con su artículo del catálogo maestro — así Compras, Ventas y Stock comparten el mismo costo y el mismo identificador (SKU). Podés buscar por <strong>código Pilkington</strong> o por descripción.
             </p>
           </div>
-          {loadingPend ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-           pendientes.length === 0 ? <Empty msg="¡Sin pendientes! Todo el stock está vinculado a su artículo." /> : (
+          {loadingPend ? <p className="text-sm text-p-gray text-center py-10">Buscando pendientes y auto-sugiriendo…</p> :
+           pendientes.length === 0 ? <Empty msg="¡Sin pendientes! Todo el stock está vinculado a su artículo." /> : (<>
+            {/* Botón vincular en lote si hay auto-sugeridos */}
+            {(() => {
+              const autoCount = pendientes.filter(s => vincSel[s.id]).length
+              return autoCount > 0 ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3 flex items-center justify-between">
+                  <p className="text-sm text-green-800">✨ <strong>{autoCount}</strong> artículo(s) con sugerencia automática por código Pilkington</p>
+                  <button onClick={vincularTodosAutoSugeridos} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                    ✓ Vincular todos ({autoCount})
+                  </button>
+                </div>
+              ) : null
+            })()}
             <div className="flex flex-col gap-2">
               {pendientes.map(s => (
-                <div key={s.id} className="bg-white border border-p-line rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                <div key={s.id} className={`bg-white border rounded-xl p-3 flex items-center gap-3 flex-wrap ${vincSel[s.id] ? 'border-green-300 bg-green-50/30' : 'border-p-line'}`}>
                   <div className="min-w-[180px]">
                     <p className="font-medium text-sm text-p-ink">{s.descripcion}</p>
                     <p className="text-xs text-p-ink2">{[s.marca, s.codigo ? 'cód '+s.codigo : null, s.cantidad+' u.'].filter(Boolean).join(' · ')}</p>
                   </div>
                   <div className="relative flex-1 min-w-[220px]">
                     <input value={vincQ[s.id] ?? ''} onChange={e => buscarParaVincular(s.id, e.target.value)}
-                      placeholder="Buscar artículo del catálogo…"
-                      className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                      placeholder={s.codigo ? `Buscar por código (${s.codigo}) o descripción…` : "Buscar artículo del catálogo…"}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green ${vincSel[s.id] ? 'border-green-300 bg-green-50' : 'border-p-line'}`}/>
+                    {vincSel[s.id] && (
+                      <p className="text-[10px] text-green-600 font-semibold mt-0.5">✓ {vincSel[s.id].codigo_referencia || vincSel[s.id].sku_interno}</p>
+                    )}
                     {(vincSugs[s.id]?.length ?? 0) > 0 && (
                       <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                         {vincSugs[s.id].map((a:any) => (
@@ -418,7 +481,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                 </div>
               ))}
             </div>
-          )}
+          </>)}
         </div>
       ) : (
       <>
