@@ -935,7 +935,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     rRect(pad, y, rw, 7, 0, 'FD')
     // Esquinas redondeadas abajo
     doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    const descMonto = c.descuento_monto || 0
+    const descMonto = (c as any).descuento_monto || 0
     const iva105 = 0
     const totValues = [
       moneyARS(c.neto||0),
