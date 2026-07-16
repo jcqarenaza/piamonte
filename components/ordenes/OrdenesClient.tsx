@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
+const moneyARS2 = (n:number) => '$' + n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
 
 const IVA_RATE = 0.21
 const btn      = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -374,18 +375,18 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       const maxChars = Math.floor(cols[0]/2.5)
       doc.text(it.d.slice(0,maxChars), xi+2, y+4.5); xi+=cols[0]
       doc.text(String(it.c), xi-2, y+4.5, {align:'right'}); xi+=cols[1]
-      doc.text(moneyARS(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
-      doc.text(moneyARS(it.c*it.p), xi-2, y+4.5, {align:'right'})
+      doc.text(moneyARS2(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
+      doc.text(moneyARS2(it.c*it.p), xi-2, y+4.5, {align:'right'})
       y+=6.5
     })
     y+=4
 
     // ── Totales ──
     const totX = W-pad-70
-    if(o.iva){ doc.text('Subtotal neto:', totX, y); doc.text(moneyARS(o.neto), W-pad, y, {align:'right'}); y+=6 }
-    if(o.iva){ doc.text('IVA 21%:', totX, y); doc.text(moneyARS(o.iva), W-pad, y, {align:'right'}); y+=6 }
+    if(o.iva){ doc.text('Subtotal neto:', totX, y); doc.text(moneyARS2(o.neto), W-pad, y, {align:'right'}); y+=6 }
+    if(o.iva){ doc.text('IVA 21%:', totX, y); doc.text(moneyARS2(o.iva), W-pad, y, {align:'right'}); y+=6 }
     doc.setFont('helvetica','bold'); doc.setFontSize(12)
-    doc.text('TOTAL:', totX, y); doc.text(moneyARS(o.total), W-pad, y, {align:'right'})
+    doc.text('TOTAL:', totX, y); doc.text(moneyARS2(o.total), W-pad, y, {align:'right'})
     y+=10
 
     // Observaciones
@@ -767,9 +768,17 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     {(it as any).codigo && <span className="font-mono text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
                     {it.d}{it.c>1?` ×${it.c}`:''}
                   </span>
-                  <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))}}
+                  <input value={it.p} onChange={e=>{
+                    const v = parseFloat(e.target.value.replace(',','.')) || 0
+                    setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
+                  }}
+                  onBlur={e=>{
+                    const v = parseFloat(String(e.target.value).replace(',','.')) || 0
+                    setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
+                  }}
+                  className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-p-green"/>
                     className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
-                  <span className="font-mono text-xs w-24 text-right">{moneyARS(it.c*it.p)}</span>
+                  <span className="font-mono text-xs w-24 text-right">{moneyARS2(it.c*it.p)}</span>
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs ml-1">✕</button>
                 </div>
               ))}
@@ -784,7 +793,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
                 {ivaOn&&<div className="flex justify-between text-p-ink2"><span>Subtotal</span><span className="font-mono">{moneyARS(neto)}</span></div>}
                 {ivaOn&&<div className="flex justify-between text-p-ink2"><span>IVA 21%</span><span className="font-mono">{moneyARS(iva)}</span></div>}
-                <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS(total)}</span></div>
+                <div className="flex justify-between font-saira font-bold text-p-ink text-lg border-t border-p-line mt-1 pt-1"><span>TOTAL</span><span>{moneyARS2(total)}</span></div>
               </div>
             </div>
           )}
