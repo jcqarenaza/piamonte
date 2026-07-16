@@ -6,6 +6,8 @@ import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const FORMAS = ['Transferencia','Multipay','Cheque','Efectivo','Otro']
+
+interface CuentaBanco { id:string; banco:string; tipo:string; cbu:string|null; nro_cuenta:string|null; alias:string|null }
 const RET_KEYS = [
   { key:'ret_ganancias', label:'Ret. Ganancias' },
   { key:'ret_iva',       label:'Ret. IVA' },
@@ -40,6 +42,10 @@ export default function CuentaCorrienteAseguradorasClient() {
 
   // Modal nuevo cobro
   const [cobroModal, setCobroModal]   = useState(false)
+  const [esACuenta, setEsACuenta]     = useState(false)
+  const [montoACuenta, setMontoACuenta] = useState('')
+  const [cuentasBanco, setCuentasBanco] = useState<CuentaBanco[]>([])
+  const [cuentaSelId, setCuentaSelId] = useState('')
   const [facturasPend, setFacturasPend] = useState<FacturaPendiente[]>([])
   const [factSel, setFactSel]         = useState<Record<string,boolean>>({})
   const [forma, setForma]             = useState('Transferencia')
@@ -70,7 +76,11 @@ export default function CuentaCorrienteAseguradorasClient() {
 
   const supabase = createClient()
 
-  useEffect(() => { loadSaldos() }, [])
+  useEffect(() => {
+    loadSaldos()
+    supabase.from('cuentas_banco').select('id,banco,tipo,cbu,nro_cuenta,alias').eq('activo',true).order('banco')
+      .then(({data})=>setCuentasBanco(data??[]))
+  }, [])
   useEffect(() => { if (tab==='liquidaciones') loadLiquidaciones() }, [tab, mes])
 
   // ── SALDOS ──
@@ -143,27 +153,42 @@ export default function CuentaCorrienteAseguradorasClient() {
   }
 
   async function confirmarCobro() {
-    if (!sel||montoFactSel<=0) return
+    if (!sel) return
+    const montoBase = esACuenta ? +montoACuenta.replace(',','.') : montoFactSel
+    if (montoBase <= 0) return
     setSavingCobro(true)
+    const totalRetLocal = retenciones.reduce((a,r)=>a+toNum(r.monto),0)
+    const neto = montoBase - totalRetLocal
+    const cuentaSel = cuentasBanco.find(c=>c.id===cuentaSelId)
     const { data: cobro } = await supabase.from('cobros_aseguradoras').insert({
       aseguradora_id: sel.aseguradora_id, fecha: fechaCobro,
-      forma_cobro: forma, banco: banco||null, cbu: cbu||null,
+      forma_cobro: forma,
+      banco: cuentaSel?.banco || banco||null,
+      cbu: cuentaSel?.cbu || cbu||null,
       referencia: ref||null, nro_op: nroOp||null,
-      monto_bruto: montoFactSel,
+      monto_bruto: montoBase,
       ret_ganancias: toNum(retenciones.find(r=>r.tipo==='ret_ganancias')?.monto||''),
       ret_iva:       toNum(retenciones.find(r=>r.tipo==='ret_iva')?.monto||''),
       ret_iibb:      toNum(retenciones.find(r=>r.tipo==='ret_iibb')?.monto||''),
       ret_suss:      toNum(retenciones.find(r=>r.tipo==='ret_suss')?.monto||''),
       ret_otras:     toNum(retenciones.find(r=>r.tipo==='ret_otras')?.monto||''),
-      monto_neto: montoNeto,
+      monto_neto: neto,
+      es_a_cuenta: esACuenta,
+      monto_a_cuenta: esACuenta ? montoBase : null,
     }).select('id').single()
     if (!cobro) { setSavingCobro(false); return }
-    const factsSel = facturasPend.filter(f=>factSel[f.id])
-    await supabase.from('cobros_aseguradoras_facturas').insert(factsSel.map(f=>({ cobro_id:cobro.id, comprobante_id:f.id, monto:f.total })))
+    if (!esACuenta) {
+      const factsSel = facturasPend.filter(f=>factSel[f.id])
+      if (factsSel.length > 0)
+        await supabase.from('cobros_aseguradoras_facturas').insert(factsSel.map(f=>({ cobro_id:cobro.id, comprobante_id:f.id, monto:f.total })))
+    }
+    const cuentaLabel = cuentaSel ? ` → ${cuentaSel.banco} ···${(cuentaSel.cbu||cuentaSel.nro_cuenta||'').slice(-5)}` : ''
+    const desc = esACuenta
+      ? `Pago a cuenta — OP ${nroOp||ref||'s/n'}${cuentaLabel}`
+      : `Cobro OP ${nroOp||ref||'s/n'} — ${facturasPend.filter(f=>factSel[f.id]).length} fact.${cuentaLabel}`
     await supabase.from('cuenta_corriente_aseguradoras').insert({
       aseguradora_id: sel.aseguradora_id, fecha: fechaCobro, tipo:'cobro',
-      descripcion: `Cobro OP ${nroOp||ref||'s/n'} — ${factsSel.length} fact.`,
-      debe:0, haber:montoFactSel,
+      descripcion: desc, debe:0, haber:montoBase,
     })
     const retsConMonto = retenciones.filter(r=>toNum(r.monto)>0)
     if (retsConMonto.length) {
@@ -173,6 +198,8 @@ export default function CuentaCorrienteAseguradorasClient() {
       })))
     }
     setCobroModal(false)
+    setEsACuenta(false); setMontoACuenta(''); setCuentaSelId('')
+    setEsACuenta(false); setMontoACuenta('')
     setForma('Transferencia'); setBanco(''); setCbu(''); setRef(''); setNroOp(''); setFechaCobro(todayStr())
     setRetenciones(prev=>prev.map(r=>({...r,monto:'',nro_cert:'',base:''})))
     setSavingCobro(false)
@@ -327,6 +354,9 @@ export default function CuentaCorrienteAseguradorasClient() {
                                   <div className="flex items-center gap-1.5">
                                     {m.haber>0 && <span className="text-[9px] text-p-ink2">{expandedMov===m.id?'▼':'▶'}</span>}
                                     <span>{m.descripcion}</span>
+                                    {cobrosMap[m.id]?.es_a_cuenta && (
+                                      <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full ml-1">a cuenta</span>
+                                    )}
                                     {m.haber>0 && cobrosMap[m.id] && (
                                       <button onClick={e=>{e.stopPropagation();abrirEditCobro(m)}}
                                         className="text-[10px] text-blue-400 hover:text-blue-600 ml-1">✏️</button>
@@ -491,6 +521,27 @@ export default function CuentaCorrienteAseguradorasClient() {
       {/* Modal nuevo cobro */}
       <Modal open={cobroModal} onClose={()=>setCobroModal(false)} title={`Registrar cobro — ${sel?.nombre}`}>
         <div className="flex flex-col gap-4 max-h-[80vh] overflow-y-auto pr-1">
+
+          {/* Toggle A cuenta / Liquidación de facturas */}
+          <div className="flex rounded-xl overflow-hidden border border-p-line">
+            <button onClick={()=>setEsACuenta(false)}
+              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!esACuenta?'bg-[#0C1810] text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+              📋 Liquidación de facturas
+            </button>
+            <button onClick={()=>setEsACuenta(true)}
+              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${esACuenta?'bg-blue-600 text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
+              💰 Pago a cuenta
+            </button>
+          </div>
+
+          {esACuenta ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <p className="text-sm text-blue-800 mb-3">El monto ingresa como crédito en la cuenta corriente sin imputarse a facturas específicas.</p>
+              <Field label="Monto a cuenta ($)">
+                <Input value={montoACuenta} onChange={e=>setMontoACuenta(e.target.value)} placeholder="0,00" className="text-lg font-mono font-bold"/>
+              </Field>
+            </div>
+          ) : (
           <div>
             <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Facturas que cancela este cobro</p>
             {facturasPend.length===0 ? <p className="text-sm text-p-ink2">No hay facturas pendientes.</p> : (
@@ -509,6 +560,7 @@ export default function CuentaCorrienteAseguradorasClient() {
               </div>
             )}
           </div>
+          )}
           <div>
             <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Forma de cobro</p>
             <div className="grid grid-cols-2 gap-3">
@@ -520,8 +572,22 @@ export default function CuentaCorrienteAseguradorasClient() {
               </Field>
               <Field label="N° Orden de Pago"><Input value={nroOp} onChange={e=>setNroOp(e.target.value)} placeholder="Ej: 00220576"/></Field>
               <Field label="Referencia"><Input value={ref} onChange={e=>setRef(e.target.value)} placeholder="N° transferencia…"/></Field>
-              <Field label="Banco"><Input value={banco} onChange={e=>setBanco(e.target.value)} placeholder="Banco Nación"/></Field>
-              <Field label="CBU"><Input value={cbu} onChange={e=>setCbu(e.target.value)} placeholder="22 dígitos"/></Field>
+              {forma === 'Transferencia' && (
+                <Field label="Cuenta destino">
+                  <select value={cuentaSelId} onChange={e=>setCuentaSelId(e.target.value)}
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                    <option value="">Seleccionar cuenta…</option>
+                    {cuentasBanco.map(c=>(
+                      <option key={c.id} value={c.id}>
+                        {c.alias||c.banco} ({c.tipo==='Cuenta Corriente'?'CC':'CA'}) ···{(c.cbu||c.nro_cuenta||'').slice(-5)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {forma !== 'Transferencia' && (
+                <Field label="Banco"><Input value={banco} onChange={e=>setBanco(e.target.value)} placeholder="Banco…"/></Field>
+              )}
             </div>
           </div>
           <div>
