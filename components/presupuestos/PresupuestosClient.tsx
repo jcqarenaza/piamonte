@@ -431,7 +431,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             return (
               <div key={p.id}
                 onClick={()=>setExpandido(e=>e===p.id?null:p.id)}
-                onDoubleClick={()=>openEdit(p)} title="Click para opciones · doble click para editar"
+                onDoubleClick={()=>{ if(!(p as any).convertido_os && !(p as any).convertido_comp) openEdit(p) }} title="Click para opciones · doble click para editar"
                 className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${venc?'opacity-60':''}`}>
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                   <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>{p.cliente||'(sin nombre)'}</p>
@@ -459,7 +459,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
                     <p className="text-xs text-p-ink2 mb-2">{p.items.length} ítem(s) · {p.iva?'con IVA':'sin IVA'}</p>
                     <div className="flex gap-2 flex-wrap">
-                      <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      {!(p as any).convertido_os && !(p as any).convertido_comp && (
+                        <button onClick={()=>openEdit(p)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
+                      )}
                       {!(p as any).convertido_os && !(p as any).convertido_comp && (
                         <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
                       )}
