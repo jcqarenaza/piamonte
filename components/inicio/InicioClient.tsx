@@ -25,7 +25,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
   const [stockBajo, setStockBajo] = useState<any[]>([])
   const [actividad, setActividad] = useState<any[]>([])
   const [chart, setChart]     = useState<{d:string;v:number}[]>([])
-  const [dolar, setDolar]     = useState<{blue:number;fecha:string}|null>(null)
+  const [dolar, setDolar]     = useState<{oficial:number;fecha:string}|null>(null)
   const [loading, setLoading] = useState(true)
   const [saludoStr, setSaludoStr] = useState('')
   const [fechaStr, setFechaStr]   = useState('')
@@ -61,7 +61,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
       // Ventas últimos 7 días para chart
       supabase.from('ventas').select('fecha,precio').gte('fecha', hace7).order('fecha'),
       // Cotización dólar
-      supabase.from('cotizaciones').select('blue,fecha').order('fecha', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('cotizaciones').select('oficial,fecha').order('fecha', { ascending: false }).limit(1).maybeSingle(),
     ]).then(([compHoy, ventasMes, turnosHoy, compMes, turnosData, stockData, actData, chartData, dolarData]) => {
       const facHoy   = (compHoy.data ?? []).reduce((a: number, c: any) => a + (c.precio || 0), 0)
       const facMes   = (compMes.data ?? []).reduce((a: number, c: any) => a + (c.precio || 0), 0)
@@ -111,7 +111,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
           <h1 className="font-saira font-black text-2xl text-p-ink">{saludoStr || `Hola, ${nombre.split(' ')[0]}`}</h1>
           <p className="text-sm text-p-ink2 mt-0.5">
             {fechaStr}
-            {dolar && <span className="ml-3 font-mono text-p-dark font-bold">💵 Blue ${dolar.blue.toLocaleString('es-AR')}</span>}
+            {dolar && <span className="ml-3 font-mono text-p-dark font-bold">💵 Oficial ${dolar.oficial.toLocaleString('es-AR')}</span>}
           </p>
         </div>
         <Link href="/comprobantes?nuevo=1" style={{ background: '#00A550', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, textDecoration: 'none', display: 'inline-block' }}>
