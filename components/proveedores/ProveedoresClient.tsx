@@ -16,7 +16,7 @@ const FORMATOS = [
 ]
 
 interface Lista { id:string; nombre:string; proveedor:string; tipo:string; desc_pct:number; flete_pct:number; iva_pct:number }
-interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string; updated_by?:string; updated_source?:string }
+interface CatRow { proveedor:string; codigo:string|null; descripcion:string; marca:string|null; modelo:string|null; pos:string|null; precio_lista:number; costo_neto:number; disponible:string|null; es_promo:boolean; lista_nombre:string|null; updated_at:string; updated_by?:string; updated_source?:string; costo_anterior?:number|null; precio_lista_anterior?:number|null }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function norm(s:string) {
@@ -372,7 +372,7 @@ export default function ProveedoresClient() {
 
   async function cargarPrecios() {
     setCatLoading(true)
-    let q = supabase.from('catalogo').select('id,codigo,descripcion,precio_lista,costo_neto,pos,marca,updated_at,updated_source')
+    let q = supabase.from('catalogo').select('id,codigo,descripcion,precio_lista,costo_neto,pos,marca,updated_at,updated_source,costo_anterior,precio_lista_anterior')
       .ilike('proveedor', provFiltro).order('descripcion').limit(500)
     if (catQ.trim().length >= 2) {
       const esCode = !/\s/.test(catQ.trim())
@@ -603,7 +603,14 @@ export default function ProveedoresClient() {
                         <button onClick={()=>setEditPrecio(null)} className="text-[10px] text-p-gray cursor-pointer">✕</button>
                       </div>
                     </>) : (<>
-                      <span className="font-mono font-bold text-right text-p-green">{c.costo_neto?`$${Number(c.costo_neto).toLocaleString('es-AR')}`:'—'}</span>
+                      <span className="font-mono font-bold text-right text-p-green">
+                        {c.costo_neto?`$${Number(c.costo_neto).toLocaleString('es-AR')}`:'—'}
+                        {c.costo_anterior && c.costo_anterior !== c.costo_neto && (() => {
+                          const diff = c.costo_neto - c.costo_anterior
+                          const pct = Math.round((diff / c.costo_anterior) * 100)
+                          return <span className={`ml-1 text-[10px] font-bold ${diff > 0 ? 'text-red-500' : 'text-green-600'}`}>{diff > 0 ? '▲' : '▼'}{pct > 0 ? '+' : ''}{pct}%</span>
+                        })()}
+                      </span>
                       <div className="text-right">
                         {(c as any).updated_at && <p className="text-[9px] font-mono text-p-ink2">{new Date((c as any).updated_at).toLocaleDateString('es-AR')}</p>}
                         {(c as any).updated_source && <p className={`text-[9px] font-bold ${(c as any).updated_source==='manual'?'text-amber-600':'text-p-green'}`}>{(c as any).updated_source==='manual'?'✏ manual':'📥 import'}</p>}
