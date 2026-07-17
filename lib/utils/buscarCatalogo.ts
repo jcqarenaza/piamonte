@@ -43,21 +43,17 @@ export async function buscarCatalogo(
 
   // --- Búsqueda por código ---
   if (esCodigoDirecto) {
-    let q = supabase.from('catalogo')
+    let cq = supabase.from('catalogo')
       .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
       .ilike('codigo', `%${query.trim()}%`)
-    if (proveedor) q = q.ilike('proveedor', proveedor)
-    q = q.order('proveedor').limit(limit * 3)
-    const { data: porCodigo } = await q
+    // Filtro proveedor con wildcards para que matchee aunque el nombre difiera en case/formato
+    if (proveedor) cq = cq.ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
+    cq = cq.order('proveedor').limit(limit * 3)
+    const { data: porCodigo } = await cq
 
     if (porCodigo && porCodigo.length > 0) {
-      // Deduplicar por descripción (misma pieza de distintos proveedores)
-      const dedup = new Map<string,ResultadoCatalogo>()
-      for (const c of porCodigo) {
-        const key = (c.descripcion||'').toUpperCase().trim()
-        if (!dedup.has(key)) dedup.set(key, c as ResultadoCatalogo)
-      }
-      const resultados = [...dedup.values()].slice(0, limit)
+      // Para búsqueda por código NO deduplicamos — mostramos todas las variantes (DSLP, DSLI, VSLP, etc.)
+      const resultados = (porCodigo as ResultadoCatalogo[]).slice(0, limit)
 
       // Agregar stock físico si disponible
       if (incluirStock) {
@@ -70,8 +66,7 @@ export async function buscarCatalogo(
           pos: null, marca: null,
           stock_id: s.id, cantidad: s.cantidad, precio_venta: s.precio_venta, articulo_id: s.articulo_id
         }))
-        // Si hay stock con ese código, NO mostrar catálogo (evita duplicados)
-        if (stockItems.length > 0) return stockItems
+        if (stockItems.length > 0) return [...stockItems, ...resultados.filter(r => !stockItems.find(s=>s.codigo===r.codigo))]
         return resultados
       }
       return resultados
@@ -108,7 +103,7 @@ export async function buscarCatalogo(
 
   // Catálogo
   let cQ = supabase.from('catalogo').select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca').limit(150)
-  if (proveedor) cQ = cQ.ilike('proveedor', proveedor)
+  if (proveedor) cQ = cQ.ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
   if (posWord && nonPosWs.length > 0) cQ = cQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
   else if (posWord)                    cQ = cQ.eq('pos', POS_KW[posWord])
   else                                 cQ = cQ.or(`descripcion.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
