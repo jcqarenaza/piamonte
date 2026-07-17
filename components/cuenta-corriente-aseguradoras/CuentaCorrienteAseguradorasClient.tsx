@@ -42,6 +42,9 @@ export default function CuentaCorrienteAseguradorasClient() {
 
   // Modal nuevo cobro
   const [cobroModal, setCobroModal]   = useState(false)
+  const [cobroLibre, setCobroLibre]   = useState(false) // sin aseguradora preseleccionada
+  const [asegLibreId, setAsegLibreId] = useState('')
+  const [comentario, setComentario]   = useState('')
   const [esACuenta, setEsACuenta]     = useState(false)
   const [montoACuenta, setMontoACuenta] = useState('')
   const [cuentasBanco, setCuentasBanco] = useState<CuentaBanco[]>([])
@@ -144,6 +147,21 @@ export default function CuentaCorrienteAseguradorasClient() {
     setCobroModal(true)
   }
 
+  function abrirCobroLibre() {
+    setCobroLibre(true)
+    setAsegLibreId('')
+    setComentario('')
+    setFacturasPend([])
+    setFactSel({})
+    setEsACuenta(true) // por defecto a cuenta ya que las facturas están en otro sistema
+    setMontoACuenta('')
+    setCuentaSelId('')
+    setForma('Transferencia')
+    setFechaCobro(todayStr())
+    setRetenciones(prev=>prev.map(r=>({...r,monto:'',nro_cert:'',base:''})))
+    setCobroModal(true)
+  }
+
   const montoFactSel  = facturasPend.filter(f=>factSel[f.id]).reduce((a,f)=>a+f.total,0)
   const totalRet      = retenciones.reduce((a,r)=>a+toNum(r.monto),0)
   const montoNeto     = montoFactSel - totalRet
@@ -153,7 +171,9 @@ export default function CuentaCorrienteAseguradorasClient() {
   }
 
   async function confirmarCobro() {
-    if (!sel) return
+    const asegId = cobroLibre ? asegLibreId : sel?.aseguradora_id
+    const asegNombre = cobroLibre ? (saldos.find(s=>s.aseguradora_id===asegLibreId)?.nombre || asegLibreId) : sel?.nombre
+    if (!asegId || !asegNombre) return
     const montoBase = esACuenta ? +montoACuenta.replace(',','.') : montoFactSel
     if (montoBase <= 0) return
     setSavingCobro(true)
@@ -161,7 +181,7 @@ export default function CuentaCorrienteAseguradorasClient() {
     const neto = montoBase - totalRetLocal
     const cuentaSel = cuentasBanco.find(c=>c.id===cuentaSelId)
     const { data: cobro } = await supabase.from('cobros_aseguradoras').insert({
-      aseguradora_id: sel.aseguradora_id, fecha: fechaCobro,
+      aseguradora_id: asegId, fecha: fechaCobro,
       forma_cobro: forma,
       banco: cuentaSel?.banco || banco||null,
       cbu: cuentaSel?.cbu || cbu||null,
@@ -172,9 +192,8 @@ export default function CuentaCorrienteAseguradorasClient() {
       ret_iibb:      toNum(retenciones.find(r=>r.tipo==='ret_iibb')?.monto||''),
       ret_suss:      toNum(retenciones.find(r=>r.tipo==='ret_suss')?.monto||''),
       ret_otras:     toNum(retenciones.find(r=>r.tipo==='ret_otras')?.monto||''),
-      monto_neto: neto,
-      es_a_cuenta: esACuenta,
-      monto_a_cuenta: esACuenta ? montoBase : null,
+      monto_neto: neto, es_a_cuenta: esACuenta,
+      monto_a_cuenta: esACuenta ? montoBase : null, notas: comentario||null,
     }).select('id').single()
     if (!cobro) { setSavingCobro(false); return }
     if (!esACuenta) {
@@ -184,22 +203,30 @@ export default function CuentaCorrienteAseguradorasClient() {
     }
     const cuentaLabel = cuentaSel ? ` → ${cuentaSel.banco} ···${(cuentaSel.cbu||cuentaSel.nro_cuenta||'').slice(-5)}` : ''
     const desc = esACuenta
-      ? `Pago a cuenta — OP ${nroOp||ref||'s/n'}${cuentaLabel}`
-      : `Cobro OP ${nroOp||ref||'s/n'} — ${facturasPend.filter(f=>factSel[f.id]).length} fact.${cuentaLabel}`
+      ? `Pago a cuenta — OP ${nroOp||ref||'s/n'}${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
+      : `Cobro OP ${nroOp||ref||'s/n'} — ${facturasPend.filter(f=>factSel[f.id]).length} fact.${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
     await supabase.from('cuenta_corriente_aseguradoras').insert({
-      aseguradora_id: sel.aseguradora_id, fecha: fechaCobro, tipo:'cobro',
+      aseguradora_id: asegId, fecha: fechaCobro, tipo:'cobro',
       descripcion: desc, debe:0, haber:montoBase,
     })
     const retsConMonto = retenciones.filter(r=>toNum(r.monto)>0)
     if (retsConMonto.length) {
       await supabase.from('retenciones_sufridas').insert(retsConMonto.map(r=>({
-        cobro_id: cobro.id, aseguradora_id: sel.aseguradora_id, fecha: fechaCobro,
+        cobro_id: cobro.id, aseguradora_id: asegId, fecha: fechaCobro,
         tipo: r.tipo.replace('ret_',''), nro_certificado: r.nro_cert||null, monto: toNum(r.monto), base_imponible: toNum(r.base)||null,
       })))
     }
+    if (cuentaSelId && montoBase > 0) {
+      await supabase.from('movimientos_banco').insert({
+        cuenta_id: cuentaSelId, fecha: fechaCobro, tipo: 'credito',
+        concepto: `${esACuenta?'Pago a cuenta':'Cobro'} — ${asegNombre} OP ${nroOp||ref||'s/n'}`,
+        monto: montoBase, conciliado: false, origen_tipo: 'cobro_aseguradora',
+        notas: comentario||null,
+      })
+    }
     setCobroModal(false)
+    setCobroLibre(false); setAsegLibreId(''); setComentario('')
     setEsACuenta(false); setMontoACuenta(''); setCuentaSelId('')
-    setEsACuenta(false); setMontoACuenta('')
     setForma('Transferencia'); setBanco(''); setCbu(''); setRef(''); setNroOp(''); setFechaCobro(todayStr())
     setRetenciones(prev=>prev.map(r=>({...r,monto:'',nro_cert:'',base:''})))
     setSavingCobro(false)
@@ -303,12 +330,17 @@ export default function CuentaCorrienteAseguradorasClient() {
       {/* ── TAB SALDOS ── */}
       {tab==='saldos' && (
         <div>
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5 inline-flex items-center gap-4">
-            <div>
-              <p className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">Total pendiente de cobro</p>
-              <p className="font-saira font-bold text-2xl text-red-600">{moneyARS(totalPendiente)}</p>
+          <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 inline-flex items-center gap-4">
+              <div>
+                <p className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">Total pendiente de cobro</p>
+                <p className="font-saira font-bold text-2xl text-red-600">{moneyARS(totalPendiente)}</p>
+              </div>
+              <p className="text-xs text-red-500">{saldos.filter(s=>s.saldo>0).length} compañías con saldo</p>
             </div>
-            <p className="text-xs text-red-500">{saldos.filter(s=>s.saldo>0).length} compañías con saldo</p>
+            <button onClick={abrirCobroLibre} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+              💵 Cargar liquidación
+            </button>
           </div>
 
           <div className="mb-4">
@@ -519,8 +551,19 @@ export default function CuentaCorrienteAseguradorasClient() {
       )}
 
       {/* Modal nuevo cobro */}
-      <Modal open={cobroModal} onClose={()=>setCobroModal(false)} title={`Registrar cobro — ${sel?.nombre}`}>
+      <Modal open={cobroModal} onClose={()=>{setCobroModal(false);setCobroLibre(false)}} title={cobroLibre ? 'Cargar liquidación' : `Registrar cobro — ${sel?.nombre}`}>
         <div className="flex flex-col gap-4 max-h-[80vh] overflow-y-auto pr-1">
+
+          {/* Selector de aseguradora cuando es libre */}
+          {cobroLibre && (
+            <Field label="Compañía aseguradora *">
+              <select value={asegLibreId} onChange={e=>setAsegLibreId(e.target.value)}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="">Seleccionar aseguradora…</option>
+                {saldos.map(s=><option key={s.aseguradora_id} value={s.aseguradora_id}>{s.nombre}</option>)}
+              </select>
+            </Field>
+          )}
 
           {/* Toggle A cuenta / Liquidación de facturas */}
           <div className="flex rounded-xl overflow-hidden border border-p-line">
@@ -590,6 +633,9 @@ export default function CuentaCorrienteAseguradorasClient() {
               )}
             </div>
           </div>
+          <Field label="Referencia / Facturas del otro sistema (opcional)">
+            <Input value={comentario} onChange={e=>setComentario(e.target.value)} placeholder="Ej: FA 0006-00000010 y FA 0006-00000022"/>
+          </Field>
           <div>
             <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Retenciones sufridas</p>
             <div className="flex flex-col gap-2">
