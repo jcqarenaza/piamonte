@@ -26,8 +26,10 @@ const TIPO_ICON: Record<string, string> = { Particular: '👤', Chapista: '🔧'
 const IVA_RATE = 0.21
 const TIPOS_CON_IVA_DISCRIMINADO = ['Chapista']
 
+// El costo_neto ya incluye flete (se aplica al importar las listas)
+// NO volver a sumar flete acá
 function calcPrecios(costo: number, margen: number, flete: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
-  const costoReal = costo * (1 + flete)
+  const costoReal = costo // flete ya incluido en costo_neto
   const tarjeta     = Math.round(costoReal * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
   const transferencia = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct / 100))
   const efectivo    = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))

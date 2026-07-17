@@ -181,9 +181,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
     const margen = tipoSel?.margen_pct ?? 0.45
-    const flete = fleteProv[h.proveedor] || 0
-    const costoReal = h.costo_neto * (1 + flete)
-    const precioSug = Math.round(costoReal * (1 + margen))
+    // costo_neto ya incluye flete — NO volver a sumar
+    const precioSug = Math.round(h.costo_neto * (1 + margen))
     setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false,codigo:h.codigo||undefined} as any])
     setCatQ(''); setCatHits([])
   }
@@ -736,8 +735,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-52 overflow-y-auto mt-1">
                   {catHits.map(h=>{
                     const margen=tipoSel?.margen_pct??0.45
-                    const flete=fleteProv[h.proveedor]||0
-                    const sug=Math.round(h.costo_neto*(1+flete)*(1+margen))
+                    const sug=Math.round(h.costo_neto*(1+margen))
                     return(
                       <button key={h.id} onClick={()=>pickCat(h)} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                         <div>
