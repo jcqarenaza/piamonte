@@ -132,9 +132,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'
-  const neto  = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
-  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro está incluido en el precio
+  // Si el cliente es RI (Factura A), los precios ya incluyen IVA → neto = precio / 1.21
+  // Si es CF/B/C, el total es el precio tal cual (IVA incluido implícito)
   const discriminaIva = !esNegro && fiscal.tipo_fiscal === 'responsable_inscripto'
+  const subtotalItems = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
+  const neto = discriminaIva
+    ? Math.round(subtotalItems / (1 + IVA) * 100) / 100
+    : subtotalItems
+  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro está incluido en el precio
   const iva   = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
     : (discriminaIva ? Math.round(neto*IVA*100) / 100 : 0)
@@ -338,7 +343,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function confirmarND() {
     if (!ndComp || !ndConcepto || ndMontoNum <= 0) return
     setNdLoading(true)
-    const { data: last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const { data: last } = await supabase.from('comprobantes').select('numero').eq('tipo', ndComp.tipo).eq('categoria','nd').order('numero',{ascending:false}).limit(1)
     const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     const itemsNd: ItemVenta[] = [{ d: ndConcepto, c: 1, p: ndNeto }]
@@ -407,7 +412,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function confirmarNC() {
     if (!ncComp || ncItemsSel.length === 0) return
     setNcLoading(true)
-    const { data: last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const { data: last } = await supabase.from('comprobantes').select('numero').eq('tipo', ncComp.tipo).eq('categoria','nc').order('numero',{ascending:false}).limit(1)
     const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     const itemsNc: ItemVenta[] = ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
@@ -533,7 +538,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       alert('Seleccioná la aseguradora del listado de sugerencias')
       return
     }
-    const { data:last } = await supabase.from('comprobantes').select('numero').order('numero',{ascending:false}).limit(1)
+    const { data:last } = await supabase.from('comprobantes').select('numero').eq('tipo', tipoDoc()).eq('categoria','factura').order('numero',{ascending:false}).limit(1)
     const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
@@ -1167,20 +1172,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <Field label="Teléfono (opcional)">
                 <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
               </Field>
-              {/* Opción para facturar como RI aunque sea consumidor final */}
-              <div className="flex items-center gap-2 mt-1">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={fiscal.tipo_fiscal==='responsable_inscripto'}
-                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
-                    className="accent-p-green"/>
-                  <span className="font-semibold text-p-dark">Facturar como Responsable Inscripto (Factura A)</span>
-                </label>
-              </div>
-              {fiscal.tipo_fiscal==='responsable_inscripto' && (
-                <Field label="CUIT *">
-                  <Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/>
-                </Field>
-              )}
             </div>
           )}
 
