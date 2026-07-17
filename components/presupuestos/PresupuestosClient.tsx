@@ -418,21 +418,20 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       doc.setFont('helvetica','bold'); doc.text(p.iva ? fmt(p.iva) : fmt(p.total), pad+tw+tw/2, totY+11.5, {align:'center'})
     }
 
-    // USD oficial — solo si no es aseg y hay cotización
-    const usdY = 256
-    if(!esAseg && p.dolar_mep){
-      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(0,100,60)
-      doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`, W-pad, usdY, {align:'right'})
-    }
-    if(esAseg){
-      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
-      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, usdY)
-      doc.setTextColor(30,30,30)
-    }
-
     // Vencimiento
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120,120,120)
     doc.text(`Valido hasta el ${p.vencimiento.split('-').reverse().join('/')}.`, pad, 265)
+
+    // USD oficial — solo si no es aseg y hay cotización
+    if(!esAseg && p.dolar_mep){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(0,100,60)
+      doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`, W-pad, 272, {align:'right'})
+    }
+    if(esAseg){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
+      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, 272)
+      doc.setTextColor(30,30,30)
+    }
 
     // ─── FOOTER ───
     doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
