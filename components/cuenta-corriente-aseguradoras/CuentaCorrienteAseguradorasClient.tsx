@@ -230,7 +230,7 @@ export default function CuentaCorrienteAseguradorasClient() {
     setForma('Transferencia'); setBanco(''); setCbu(''); setRef(''); setNroOp(''); setFechaCobro(todayStr())
     setRetenciones(prev=>prev.map(r=>({...r,monto:'',nro_cert:'',base:''})))
     setSavingCobro(false)
-    loadSaldos(); loadMovs(sel.aseguradora_id)
+    loadSaldos(); if(sel) loadMovs(sel.aseguradora_id)
   }
 
   async function abrirEditCobro(mov:Mov) {

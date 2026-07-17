@@ -730,8 +730,31 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                       {alerta&&<p className="text-[10px] text-amber-600 font-semibold">{alerta}</p>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <input type="number" value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))}}
-                        className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                      {modoAseg ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-purple-500">c/IVA</span>
+                            <input value={it.p} onChange={e=>{
+                              const v = parseFloat(String(e.target.value).replace(',','.')) || 0
+                              setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))
+                            }}
+                            className="w-28 border border-purple-200 rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-purple-400"/>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-p-ink2">s/IVA</span>
+                            <input value={Math.round(it.p / (1 + IVA_RATE) * 100) / 100}
+                              onChange={e=>{
+                                const neto = parseFloat(String(e.target.value).replace(',','.')) || 0
+                                const conIva = Math.round(neto * (1 + IVA_RATE) * 100) / 100
+                                setItems(prev=>prev.map((x,j)=>j===i?{...x,p:conIva,precioModificado:true}:x))
+                              }}
+                              className="w-28 border border-p-line rounded px-2 py-0.5 text-[10px] font-mono text-right text-p-ink2 focus:outline-none focus:border-p-green"/>
+                          </div>
+                        </div>
+                      ) : (
+                        <input value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))}}
+                          className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
+                      )}
                       <span className="font-mono text-p-ink text-xs w-24 text-right">{modoAseg ? moneyARS2(it.c*it.p) : moneyARS(it.c*it.p)}</span>
                       <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
                     </div>
