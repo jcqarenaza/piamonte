@@ -592,7 +592,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                 {facturasPend.map(f=>(
                   <label key={f.id} className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer text-sm ${factSel[f.id]?'border-p-green bg-green-50':'border-p-line'}`}>
                     <input type="checkbox" checked={!!factSel[f.id]} onChange={()=>setFactSel(p=>({...p,[f.id]:!p[f.id]}))} className="accent-p-green"/>
-                    <span className="font-mono text-xs text-p-ink2">FA-0006-{String(f.nro_cbte_afip??f.numero).padStart(8,'0')}</span>
+                    <span className="font-mono text-xs text-p-ink2">FA-0006-{String(f.numero??f.nro_cbte_afip??'?').padStart(8,'0')}</span>
                     <span className="text-p-ink2 text-xs">{f.fecha.split('-').reverse().join('/')}</span>
                     <span className="ml-auto font-mono font-bold">{moneyARS(f.total)}</span>
                   </label>
