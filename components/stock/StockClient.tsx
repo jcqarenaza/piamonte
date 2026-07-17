@@ -32,7 +32,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [selMovData, setSelMovData] = useState<any[]>([])
   const [loadingSelMov, setLoadingSelMov] = useState(false)
   const [ajusteCantModal, setAjusteCantModal] = useState<any|null>(null)
-  const [ajusteCantForm, setAjusteCantForm] = useState({ tipo: 'entrada', cant: '1', nota: '' })
+  const [ajusteCantForm, setAjusteCantForm] = useState({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false })
   const [savingAjuste, setSavingAjuste] = useState(false)
   const [items, setItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,16 +62,40 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const delta = ajusteCantForm.tipo === 'entrada' ? +ajusteCantForm.cant : -Math.abs(+ajusteCantForm.cant)
     const nueva = ajusteCantModal.cantidad + delta
     await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
+    const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || null
     await supabase.from('ajustes_stock').insert({
       stock_id: ajusteCantModal.id, tipo: ajusteCantForm.tipo,
       cantidad: Math.abs(delta), fecha: new Date().toISOString().slice(0,10),
-      nota: ajusteCantForm.nota || null,
+      nota: notaFinal,
       stock_anterior: ajusteCantModal.cantidad, stock_posterior: nueva,
       descripcion: ajusteCantModal.descripcion,
       user_id: userId || null,
     })
+
+    // Si es salida con pendiente NC → crear ajuste en CC del proveedor
+    if (ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc && ajusteCantModal.articulo_id) {
+      // Buscar proveedor del artículo por equivalencias
+      const { data: eq } = await supabase.from('articulo_equivalencias')
+        .select('proveedor, costo_neto').eq('articulo_id', ajusteCantModal.articulo_id)
+        .gt('costo_neto', 0).order('costo_neto', {ascending:false}).limit(1).maybeSingle()
+      if (eq?.proveedor) {
+        const { data: prov } = await supabase.from('proveedores_compra')
+          .select('id,nombre').ilike('nombre', `%${eq.proveedor}%`).maybeSingle()
+        if (prov) {
+          const montoAjuste = Math.round((eq.costo_neto || ajusteCantModal.costo || 0) * Math.abs(delta))
+          await supabase.from('cuenta_corriente_proveedores').insert({
+            proveedor_id: prov.id, proveedor_nombre: prov.nombre,
+            fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
+            descripcion: `${ajusteCantForm.motivo||'Ajuste'} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
+            debe: 0, haber: montoAjuste,
+            notas: `pendiente_nc — ${notaFinal||''}`.trim(),
+          })
+        }
+      }
+    }
+
     setAjusteCantModal(null)
-    setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '' })
+    setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false })
     setSavingAjuste(false)
     load()
     if (selMov?.id === ajusteCantModal.id) abrirMovimientos({...ajusteCantModal, cantidad: nueva})
@@ -621,7 +645,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   </div>
                   <div className="flex items-center gap-1">
                     {isAdmin && <>
-                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:''})}}
+                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
                     </>}
@@ -708,12 +732,35 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             </div>
             <div className="flex gap-2">
               {(['entrada','salida'] as const).map(t=>(
-                <button key={t} onClick={()=>setAjusteCantForm(p=>({...p,tipo:t}))}
+                <button key={t} onClick={()=>setAjusteCantForm(p=>({...p,tipo:t,motivo:'',pendiente_nc:false}))}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold border ${ajusteCantForm.tipo===t?(t==='entrada'?'bg-green-100 text-green-700 border-green-300':'bg-red-100 text-red-600 border-red-300'):'bg-white text-p-ink2 border-p-line'}`}>
                   {t==='entrada'?'📥 Entrada':'📤 Salida'}
                 </button>
               ))}
             </div>
+            {ajusteCantForm.tipo === 'salida' && (
+              <div className="flex flex-col gap-2">
+                <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Motivo</label>
+                <select value={ajusteCantForm.motivo} onChange={e=>setAjusteCantForm(p=>({...p,motivo:e.target.value,pendiente_nc:['Roto','Devuelto al proveedor'].includes(e.target.value)}))}
+                  className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
+                  <option value="">Seleccionar motivo…</option>
+                  <option value="Roto">🔴 Roto / Dañado</option>
+                  <option value="Devuelto al proveedor">↩ Devuelto al proveedor</option>
+                  <option value="Venta sin sistema">🛒 Venta sin sistema</option>
+                  <option value="Ajuste inventario">📋 Ajuste inventario</option>
+                  <option value="Otro">Otro</option>
+                </select>
+                {['Roto','Devuelto al proveedor'].includes(ajusteCantForm.motivo) && (
+                  <label className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 cursor-pointer">
+                    <input type="checkbox" checked={ajusteCantForm.pendiente_nc} onChange={e=>setAjusteCantForm(p=>({...p,pendiente_nc:e.target.checked}))} className="accent-amber-600"/>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">Pendiente de Nota de Crédito</p>
+                      <p className="text-[10px] text-amber-600">Crea un ajuste en la CC del proveedor hasta recibir la NC</p>
+                    </div>
+                  </label>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Cantidad</label>
               <input type="number" min="1" value={ajusteCantForm.cant} onChange={e=>setAjusteCantForm(p=>({...p,cant:e.target.value}))}
