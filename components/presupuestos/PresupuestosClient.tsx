@@ -808,7 +808,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                         <div className="flex flex-col items-end gap-0.5">
                           <div className="flex items-center gap-1">
                             <span className="text-[9px] text-purple-500">c/IVA</span>
-                            <input value={it.p} onChange={e=>{
+                            <input value={typeof it.p === 'number' ? it.p.toFixed(2) : it.p} onChange={e=>{
                               const v = parseFloat(String(e.target.value).replace(',','.')) || 0
                               setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))
                             }}
@@ -816,7 +816,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[9px] text-p-ink2">s/IVA</span>
-                            <input value={Math.round(it.p / (1 + IVA_RATE) * 100) / 100}
+                            <input value={(Math.round(it.p / (1 + IVA_RATE) * 100) / 100).toFixed(2)}
                               onChange={e=>{
                                 const neto = parseFloat(String(e.target.value).replace(',','.')) || 0
                                 const conIva = Math.round(neto * (1 + IVA_RATE) * 100) / 100
