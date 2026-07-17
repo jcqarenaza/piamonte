@@ -1258,6 +1258,7 @@ export default function ComprasClient() {
             {itemForm.d.trim().length > 0 && (
               <div className="flex gap-2 items-center mb-2 bg-p-light/50 rounded-xl px-3 py-2">
                 <span className="text-sm text-p-ink flex-1 truncate">{itemForm.d}</span>
+                <input value={itemForm.codigo} onChange={e=>setItemForm(p=>({...p,codigo:e.target.value.toUpperCase()}))} placeholder="Código" className="w-28 border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-amber-500" title="Código Pilkington"/>
                 <input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-p-green"/>
                 <input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio" className="w-28 border border-p-line rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green"/>
                 <input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-amber-400" title="Descuento %"/>
@@ -1280,7 +1281,10 @@ export default function ComprasClient() {
               return (
               <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2 text-sm">
                 {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
-                <span className="flex-1 text-p-ink text-sm break-words min-w-0">{it.d}</span>
+                <span className="flex-1 text-p-ink text-sm break-words min-w-0">
+                  {(it as any).codigo && <span className="font-mono text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
+                  {it.d}
+                </span>
                 <div className="shrink-0">
                   <div className="text-[9px] text-p-ink2 text-center mb-0.5">cant.</div>
                   <input type="number" min="1" value={it.c} onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,c:+e.target.value||1}:x))}
