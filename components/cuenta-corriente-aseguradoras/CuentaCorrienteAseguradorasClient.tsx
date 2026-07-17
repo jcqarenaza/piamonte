@@ -174,7 +174,10 @@ export default function CuentaCorrienteAseguradorasClient() {
     const asegId = cobroLibre ? asegLibreId : sel?.aseguradora_id
     const asegNombre = cobroLibre ? (saldos.find(s=>s.aseguradora_id===asegLibreId)?.nombre || asegLibreId) : sel?.nombre
     if (!asegId || !asegNombre) return
-    const montoBase = esACuenta ? +montoACuenta.replace(',','.') : montoFactSel
+    const factsSel = facturasPend.filter(f=>factSel[f.id])
+    // Si no seleccionó facturas → automáticamente a cuenta
+    const esACuentaFinal = factsSel.length === 0
+    const montoBase = esACuentaFinal ? +montoACuenta.replace(',','.') : montoFactSel
     if (montoBase <= 0) return
     setSavingCobro(true)
     const totalRetLocal = retenciones.reduce((a,r)=>a+toNum(r.monto),0)
@@ -192,19 +195,16 @@ export default function CuentaCorrienteAseguradorasClient() {
       ret_iibb:      toNum(retenciones.find(r=>r.tipo==='ret_iibb')?.monto||''),
       ret_suss:      toNum(retenciones.find(r=>r.tipo==='ret_suss')?.monto||''),
       ret_otras:     toNum(retenciones.find(r=>r.tipo==='ret_otras')?.monto||''),
-      monto_neto: neto, es_a_cuenta: esACuenta,
-      monto_a_cuenta: esACuenta ? montoBase : null, notas: comentario||null,
+      monto_neto: neto, es_a_cuenta: esACuentaFinal,
+      monto_a_cuenta: esACuentaFinal ? montoBase : null, notas: comentario||null,
     }).select('id').single()
     if (!cobro) { setSavingCobro(false); return }
-    if (!esACuenta) {
-      const factsSel = facturasPend.filter(f=>factSel[f.id])
-      if (factsSel.length > 0)
-        await supabase.from('cobros_aseguradoras_facturas').insert(factsSel.map(f=>({ cobro_id:cobro.id, comprobante_id:f.id, monto:f.total })))
-    }
+    if (!esACuentaFinal && factsSel.length > 0)
+      await supabase.from('cobros_aseguradoras_facturas').insert(factsSel.map(f=>({ cobro_id:cobro.id, comprobante_id:f.id, monto:f.total })))
     const cuentaLabel = cuentaSel ? ` → ${cuentaSel.banco} ···${(cuentaSel.cbu||cuentaSel.nro_cuenta||'').slice(-5)}` : ''
-    const desc = esACuenta
+    const desc = esACuentaFinal
       ? `Pago a cuenta — OP ${nroOp||ref||'s/n'}${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
-      : `Cobro OP ${nroOp||ref||'s/n'} — ${facturasPend.filter(f=>factSel[f.id]).length} fact.${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
+      : `Cobro OP ${nroOp||ref||'s/n'} — ${factsSel.length} fact.${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
     await supabase.from('cuenta_corriente_aseguradoras').insert({
       aseguradora_id: asegId, fecha: fechaCobro, tipo:'cobro',
       descripcion: desc, debe:0, haber:montoBase,
@@ -219,7 +219,7 @@ export default function CuentaCorrienteAseguradorasClient() {
     if (cuentaSelId && montoBase > 0) {
       await supabase.from('movimientos_banco').insert({
         cuenta_id: cuentaSelId, fecha: fechaCobro, tipo: 'credito',
-        concepto: `${esACuenta?'Pago a cuenta':'Cobro'} — ${asegNombre} OP ${nroOp||ref||'s/n'}`,
+        concepto: `${esACuentaFinal?'Pago a cuenta':'Cobro'} — ${asegNombre} OP ${nroOp||ref||'s/n'}`,
         monto: montoBase, conciliado: false, origen_tipo: 'cobro_aseguradora',
         notas: comentario||null,
       })
@@ -565,29 +565,16 @@ export default function CuentaCorrienteAseguradorasClient() {
             </Field>
           )}
 
-          {/* Toggle A cuenta / Liquidación de facturas */}
-          <div className="flex rounded-xl overflow-hidden border border-p-line">
-            <button onClick={()=>setEsACuenta(false)}
-              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${!esACuenta?'bg-[#0C1810] text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
-              📋 Liquidación de facturas
-            </button>
-            <button onClick={()=>setEsACuenta(true)}
-              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${esACuenta?'bg-blue-600 text-white':'bg-white text-p-ink2 hover:bg-p-light'}`}>
-              💰 Pago a cuenta
-            </button>
-          </div>
-
-          {esACuenta ? (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-sm text-blue-800 mb-3">El monto ingresa como crédito en la cuenta corriente sin imputarse a facturas específicas.</p>
-              <Field label="Monto a cuenta ($)">
-                <Input value={montoACuenta} onChange={e=>setMontoACuenta(e.target.value)} placeholder="0,00" className="text-lg font-mono font-bold"/>
-              </Field>
-            </div>
-          ) : (
+          {/* Facturas pendientes — si no selecciona ninguna queda a cuenta */}
           <div>
-            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Facturas que cancela este cobro</p>
-            {facturasPend.length===0 ? <p className="text-sm text-p-ink2">No hay facturas pendientes.</p> : (
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">
+              Facturas a cancelar <span className="text-p-ink2 font-normal normal-case">(dejá sin tildar para registrar a cuenta)</span>
+            </p>
+            {facturasPend.length===0 ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                💰 Sin facturas pendientes en el sistema — se registrará como pago a cuenta
+              </div>
+            ) : (
               <div className="flex flex-col gap-1">
                 {facturasPend.map(f=>(
                   <label key={f.id} className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer text-sm ${factSel[f.id]?'border-p-green bg-green-50':'border-p-line'}`}>
@@ -597,12 +584,24 @@ export default function CuentaCorrienteAseguradorasClient() {
                     <span className="ml-auto font-mono font-bold">{moneyARS(f.total)}</span>
                   </label>
                 ))}
-                <div className="flex justify-between text-sm font-bold pt-1 border-t border-p-line mt-1">
-                  <span>Total seleccionado</span><span className="font-mono">{moneyARS(montoFactSel)}</span>
-                </div>
+                {montoFactSel > 0 && (
+                  <div className="flex justify-between text-sm font-bold pt-1 border-t border-p-line mt-1">
+                    <span>Total seleccionado</span><span className="font-mono">{moneyARS(montoFactSel)}</span>
+                  </div>
+                )}
+                {facturasPend.filter(f=>factSel[f.id]).length === 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700 mt-1">
+                    💰 Sin facturas seleccionadas — se registrará como pago a cuenta
+                  </div>
+                )}
               </div>
             )}
           </div>
+          {/* Monto — solo cuando no hay facturas seleccionadas */}
+          {facturasPend.filter(f=>factSel[f.id]).length === 0 && (
+            <Field label="Monto ($)">
+              <Input value={montoACuenta} onChange={e=>setMontoACuenta(e.target.value)} placeholder="0,00" className="font-mono font-bold text-lg"/>
+            </Field>
           )}
           <div>
             <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Forma de cobro</p>
