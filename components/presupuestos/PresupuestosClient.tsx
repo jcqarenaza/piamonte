@@ -382,21 +382,30 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   async function compartirWA(p: Presupuesto) {
     const blob = await generarPDF(p)
-    const file = new File([blob], `Presupuesto-${p.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`, {type:'application/pdf'})
+    const nombre = `Presupuesto-${p.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`
+    const file = new File([blob], nombre, {type:'application/pdf'})
 
-    // Mobile: Web Share API
+    // Mobile: Web Share API con PDF adjunto directo
     if(navigator.canShare?.({files:[file]})) {
       await navigator.share({ files:[file], title:'Presupuesto El Piamonte' })
       return
     }
-    // Desktop: descargar PDF + abrir WhatsApp Web
+
+    // Desktop: descargar PDF automáticamente
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href=url
-    a.download=file.name; a.click()
+    const a = document.createElement('a'); a.href=url; a.download=nombre; a.click()
     URL.revokeObjectURL(url)
+
     const tel = (p.telefono??'').replace(/[^0-9]/g,'')
-    const texto = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte. Total: ${moneyARS(p.total)}. Válido hasta el ${p.vencimiento.split('-').reverse().join('/')}.`
-    setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}`,'_blank'),800)
+    const total = (p as any).es_aseguradora ? moneyARS2(p.total) : moneyARS(p.total)
+    const texto = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte.\n\nTotal: ${total}\nVálido hasta: ${p.vencimiento.split('-').reverse().join('/')}\n\nTe adjunto el PDF con el detalle.`
+
+    if (tel) {
+      setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=549${tel.replace(/^0/,'').replace(/^54/,'')}&text=${encodeURIComponent(texto)}`,'_blank'), 800)
+    } else {
+      // Sin teléfono: solo descarga el PDF
+      alert(`PDF descargado como "${nombre}". Adjuntalo en WhatsApp manualmente.`)
+    }
   }
 
   const moneyStr = (n:number) => '$' + Math.round(n).toLocaleString('es-AR')
