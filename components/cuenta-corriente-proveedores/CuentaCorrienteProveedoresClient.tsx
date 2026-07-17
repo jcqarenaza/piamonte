@@ -31,6 +31,14 @@ export default function CuentaCorrienteProveedoresClient() {
   const [opForm, setOpForm]         = useState({ forma_pago:'Transferencia', fecha:'', notas:'' })
   const [chequeOP, setChequeOP]     = useState<ChequeData>(EMPTY_CHEQUE)
   const [guardandoOp, setGuardandoOp] = useState(false)
+  // Cheques propios disponibles para usar en pagos
+  const [chequesDisp, setChequesDisp] = useState<any[]>([])
+  const [chequeSelId, setChequeSelId] = useState('')
+  // Ajuste pendiente de NC
+  const [openAjuste, setOpenAjuste]   = useState(false)
+  const [ajusteForm, setAjusteForm]   = useState({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
+  // NC: reemplazar ajuste pendiente
+  const [ajustesPendNC, setAjustesPendNC] = useState<any[]>([])
   const supabase = createClient()
 
   async function load() {
@@ -53,7 +61,23 @@ export default function CuentaCorrienteProveedoresClient() {
   }
 
   useEffect(()=>{ load() },[supabase])
-  useEffect(()=>{ if(sel) loadMovs(sel.proveedor_nombre) },[sel])
+  useEffect(()=>{
+    if(sel) {
+      loadMovs(sel.proveedor_nombre)
+      // Cargar cheques propios emitidos a este proveedor pendientes de cobro
+      supabase.from('cheques').select('id,numero,banco,formato,modalidad,monto,fecha_cobro')
+        .eq('tipo','propio').eq('contraparte', sel.proveedor_nombre)
+        .in('estado',['emitido','pendiente']).order('fecha_cobro')
+        .then(({data})=>setChequesDisp(data??[]))
+      // Cargar ajustes pendientes de NC para este proveedor
+      supabase.from('cuenta_corriente_proveedores')
+        .select('id,descripcion,haber,fecha,notas')
+        .eq('proveedor_nombre', sel.proveedor_nombre)
+        .eq('tipo','ajuste')
+        .ilike('notas','%pendiente_nc%')
+        .then(({data})=>setAjustesPendNC(data??[]))
+    }
+  },[sel])
 
   async function registrarPago() {
     if(!sel || !formPago.monto) return
@@ -80,7 +104,31 @@ export default function CuentaCorrienteProveedoresClient() {
     loadMovs(sel.proveedor_nombre)
   }
 
-  // Facturas y NC pendientes (no contado, no anuladas, no incluidas todavía en otra Orden de Pago)
+  async function guardarAjuste() {
+    if (!sel || !ajusteForm.monto) return
+    const monto = +ajusteForm.monto
+    await supabase.from('cuenta_corriente_proveedores').insert({
+      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
+      fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
+      descripcion: ajusteForm.descripcion || 'Ajuste / Devolución',
+      debe: 0, haber: monto,
+      notas: ajusteForm.pendiente_nc ? `${ajusteForm.notas ? ajusteForm.notas+' ' : ''}pendiente_nc` : (ajusteForm.notas||null)
+    })
+    setOpenAjuste(false)
+    setAjusteForm({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
+    load(); loadMovs(sel.proveedor_nombre)
+  }
+
+  async function aplicarNcSobreAjuste(ajusteId: string, ncMonto: number) {
+    if (!sel) return
+    // Anular el ajuste pendiente y crear movimiento de NC real
+    await supabase.from('cuenta_corriente_proveedores').update({
+      notas: 'NC aplicada — reemplazado por nota de crédito del proveedor'
+    }).eq('id', ajusteId)
+    // El movimiento de NC ya se registrará cuando se cargue la NC en Compras
+    loadMovs(sel.proveedor_nombre)
+    setAjustesPendNC(prev=>prev.filter(a=>a.id!==ajusteId))
+  }
   async function abrirOrdenPago() {
     if (!sel) return
     const { data } = await supabase.from('comprobantes_compra')
@@ -140,7 +188,25 @@ export default function CuentaCorrienteProveedoresClient() {
       await supabase.from('orden_pago_items').insert(items)
     }
 
-    // Marcar como saldadas las facturas/NC incluidas, para que no se ofrezcan de nuevo.
+    // Registrar cheque: si seleccionó uno existente, actualizarlo; si es nuevo, crearlo
+    if (opForm.forma_pago === 'Cheque' && opIns) {
+      if (chequeSelId) {
+        // Marcar cheque existente como usado en esta OP
+        await supabase.from('cheques').update({
+          notas: `Orden de Pago Nº ${numero}`,
+          comprobante_compra_id: null,
+        }).eq('id', chequeSelId)
+      } else if (chequeOP.numero) {
+        await supabase.from('cheques').insert({
+          tipo:'propio', formato:chequeOP.formato, modalidad:chequeOP.modalidad,
+          numero:chequeOP.numero, banco:chequeOP.banco,
+          fecha_emision: fechaOp, fecha_cobro: chequeOP.modalidad==='al_dia'?fechaOp:chequeOP.fecha_cobro,
+          monto: totalAPagar, contraparte: sel.proveedor_nombre, estado:'emitido',
+          notas: `Orden de Pago Nº ${numero}`,
+        })
+      }
+    }
+    // Marcar como saldadas las facturas/NC incluidas
     const idsIncluidos = [...facturasSel, ...ncSel].map(p => p.id)
     if (idsIncluidos.length) {
       await supabase.from('comprobantes_compra').update({ saldado: true }).in('id', idsIncluidos)
@@ -148,16 +214,7 @@ export default function CuentaCorrienteProveedoresClient() {
 
     setGuardandoOp(false)
     setOpOpen(false)
-    if (opForm.forma_pago === 'Cheque' && chequeOP.numero && opIns) {
-      await supabase.from('cheques').insert({
-        tipo:'propio', formato:chequeOP.formato, modalidad:chequeOP.modalidad,
-        numero:chequeOP.numero, banco:chequeOP.banco,
-        fecha_emision: fechaOp, fecha_cobro: chequeOP.modalidad==='al_dia'?fechaOp:chequeOP.fecha_cobro,
-        monto: totalAPagar, contraparte: sel.proveedor_nombre, estado:'emitido',
-        notas: `Orden de Pago Nº ${numero}`,
-      })
-    }
-    setChequeOP(EMPTY_CHEQUE)
+    setChequeSelId('')
     imprimirOrdenPago({
       numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
       facturas: facturasSel, nc: ncSel,
@@ -349,6 +406,31 @@ export default function CuentaCorrienteProveedoresClient() {
                 </button>
               </div>
             )}
+            {/* Ajuste / Pendiente NC */}
+            <button onClick={()=>setOpenAjuste(true)} style={{...btnSm,background:'#92400e',width:'100%',marginTop:8,textAlign:'center'}}>
+              ⚖ Ajuste / Pendiente de NC
+            </button>
+            {/* Ajustes pendientes de NC */}
+            {ajustesPendNC.length > 0 && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">⏳ Ajustes pendientes de NC</p>
+                {ajustesPendNC.map(a=>(
+                  <div key={a.id} className="flex items-center justify-between py-1.5 border-b border-amber-100 last:border-0 text-xs">
+                    <div>
+                      <p className="font-semibold text-amber-800">{a.descripcion}</p>
+                      <p className="text-amber-600">{a.fecha?.split('-').reverse().join('/')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono font-bold text-green-600">{moneyARS(+a.haber)}</p>
+                      <button onClick={()=>aplicarNcSobreAjuste(a.id, +a.haber)}
+                        className="text-[10px] text-amber-700 underline hover:text-amber-900 mt-0.5">
+                        NC recibida → aplicar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Movimientos */}
@@ -465,7 +547,7 @@ export default function CuentaCorrienteProveedoresClient() {
               </div>
 
               <Field label="Forma de pago">
-                <select value={opForm.forma_pago} onChange={e=>setOpForm(p=>({...p,forma_pago:e.target.value}))}
+                <select value={opForm.forma_pago} onChange={e=>{setOpForm(p=>({...p,forma_pago:e.target.value}));setChequeSelId('')}}
                   className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
                   <option value="Transferencia">Transferencia</option>
                   <option value="Efectivo">Efectivo</option>
@@ -473,7 +555,32 @@ export default function CuentaCorrienteProveedoresClient() {
                   <option value="Cheque">🖊 Cheque</option>
                 </select>
               </Field>
-              {opForm.forma_pago==='Cheque'&&<ChequeFields value={chequeOP} onChange={setChequeOP}/>}
+              {opForm.forma_pago==='Cheque' && (<>
+                {/* Cheques existentes emitidos a este proveedor */}
+                {chequesDisp.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1.5">Cheques emitidos a {sel?.proveedor_nombre}</p>
+                    <div className="flex flex-col gap-1">
+                      {chequesDisp.map(ch=>(
+                        <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequeSelId===ch.id?'border-p-green bg-green-50':'border-p-line'}`}>
+                          <input type="radio" name="cheque_sel" checked={chequeSelId===ch.id}
+                            onChange={()=>setChequeSelId(chequeSelId===ch.id?'':ch.id)} className="accent-p-green"/>
+                          <span className="font-mono text-xs font-bold">{ch.numero}</span>
+                          <span className="text-xs text-p-ink2">{ch.banco}</span>
+                          <span className="text-xs text-p-ink2">{ch.fecha_cobro?.split('-').reverse().join('/')}</span>
+                          <span className="ml-auto font-mono font-bold text-sm">{moneyARS(+ch.monto)}</span>
+                        </label>
+                      ))}
+                      <label className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequeSelId===''?'border-p-green bg-green-50':'border-p-line'}`}>
+                        <input type="radio" name="cheque_sel" checked={chequeSelId==='nuevo'}
+                          onChange={()=>setChequeSelId('nuevo')} className="accent-p-green"/>
+                        <span className="text-sm font-semibold text-p-dark">+ Crear cheque nuevo</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+                {(!chequeSelId || chequeSelId==='nuevo') && <ChequeFields value={chequeOP} onChange={setChequeOP}/>}
+              </>)}
               <Field label="Fecha">
                 <Input type="date" value={opForm.fecha} onChange={e=>setOpForm(p=>({...p,fecha:e.target.value}))}/>
               </Field>
@@ -490,6 +597,32 @@ export default function CuentaCorrienteProveedoresClient() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+      {/* Modal Ajuste / Pendiente NC */}
+      <Modal open={openAjuste} onClose={()=>setOpenAjuste(false)} title={`Ajuste — ${sel?.proveedor_nombre}`}>
+        <div className="flex flex-col gap-3">
+          <Field label="Descripción">
+            <Input value={ajusteForm.descripcion} onChange={e=>setAjusteForm(p=>({...p,descripcion:e.target.value}))} placeholder="Ej: Vidrio roto / devolución…"/>
+          </Field>
+          <Field label="Monto ($)">
+            <Input value={ajusteForm.monto} onChange={e=>setAjusteForm(p=>({...p,monto:e.target.value}))} placeholder="0"/>
+          </Field>
+          <label className="flex items-center gap-2 text-sm cursor-pointer bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+            <input type="checkbox" checked={ajusteForm.pendiente_nc} onChange={e=>setAjusteForm(p=>({...p,pendiente_nc:e.target.checked}))} className="accent-amber-600"/>
+            <div>
+              <p className="font-semibold text-amber-800">Pendiente de Nota de Crédito</p>
+              <p className="text-[11px] text-amber-600">El proveedor va a emitir una NC. Este ajuste queda marcado para reemplazarlo cuando llegue.</p>
+            </div>
+          </label>
+          <Field label="Notas (opcional)">
+            <Input value={ajusteForm.notas} onChange={e=>setAjusteForm(p=>({...p,notas:e.target.value}))} placeholder="Detalle…"/>
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setOpenAjuste(false)} style={btnGray}>Cancelar</button>
+            <button onClick={guardarAjuste} disabled={!ajusteForm.monto}
+              style={{...btn,opacity:!ajusteForm.monto?.5:1}}>✓ Guardar ajuste</button>
+          </div>
         </div>
       </Modal>
     </div>
