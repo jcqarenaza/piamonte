@@ -467,7 +467,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const texto = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte.\n\nTotal: ${total}\nValido hasta: ${p.vencimiento.split('-').reverse().join('/')}\n\nTe adjunto el PDF con el detalle.`
 
     if (tel) {
-      setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=549${tel.replace(/^0/,'').replace(/^54/,'')}& text=${encodeURIComponent(texto)}`,'_blank'), 800)
+      // Formato WhatsApp Argentina: 549 + número sin 0 inicial ni 54 ni 549
+      let num = tel.replace(/^0/,'').replace(/^549/,'').replace(/^54/,'').replace(/^9/,'')
+      setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=549${num}&text=${encodeURIComponent(texto)}`,'_blank'), 800)
     }
   }
 
