@@ -86,6 +86,27 @@ export default function CuentaCorrienteAseguradorasClient() {
   }, [])
   useEffect(() => { if (tab==='liquidaciones') loadLiquidaciones() }, [tab, mes])
 
+  // Cargar facturas pendientes cuando se selecciona aseguradora en modo libre
+  useEffect(() => {
+    if (!cobroLibre || !asegLibreId) { setFacturasPend([]); setFactSel({}); return }
+    supabase.from('cuenta_corriente_aseguradoras').select('comprobante_id,debe,haber').eq('aseguradora_id', asegLibreId)
+      .then(async ({data: movsCc}) => {
+        const saldoPorComp = new Map<string,number>()
+        for (const m of (movsCc??[]) as any[]) {
+          if (!m.comprobante_id) continue
+          saldoPorComp.set(m.comprobante_id, (saldoPorComp.get(m.comprobante_id)||0) + (+m.debe) - (+m.haber))
+        }
+        const ids = [...saldoPorComp.entries()].filter(([,s])=>s>0).map(([id])=>id)
+        if (!ids.length) { setFacturasPend([]); setFactSel({}); return }
+        const { data: comps } = await supabase.from('comprobantes').select('id,numero,fecha,total,nro_cbte_afip').in('id',ids).order('fecha')
+        const pend: FacturaPendiente[] = (comps??[]).map((c:any)=>({...c, total: saldoPorComp.get(c.id)||c.total}))
+        setFacturasPend(pend)
+        const sel2: Record<string,boolean> = {}
+        pend.forEach(f=>sel2[f.id]=true)
+        setFactSel(sel2)
+      })
+  }, [asegLibreId, cobroLibre])
+
   // ── SALDOS ──
   async function loadSaldos() {
     const [{ data: movsData }, { data: asegRows }] = await Promise.all([
