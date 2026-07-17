@@ -193,9 +193,27 @@ export default function ComprasClient() {
     setItemForm(p => ({ ...p, d: texto }))
     setItemArticuloSel(null)
     if (texto.trim().length < 2) { setItemArticuloSugs([]); return }
+
+    // Si parece código Pilkington (6+ dígitos + letras, sin espacios), guardarlo en codigo
+    const esCodigo = /^\d{6}[A-Z0-9]{0,6}$/i.test(texto.trim())
+    if (esCodigo) {
+      const codigoUpper = texto.trim().toUpperCase()
+      setItemForm(p => ({ ...p, codigo: codigoUpper }))
+    }
+
     const provNombre = proveedores.find(p=>p.id===form.proveedor_id)?.nombre || undefined
     const resultados = await buscarCatalogo(supabase, texto, { incluirStock: false, limit: 8, proveedor: provNombre })
     setItemArticuloSugs(resultados)
+
+    // Si es código y no encontró resultados exactos, buscar descripción por código base (9 chars)
+    if (esCodigo && resultados.length === 0 && texto.trim().length >= 6) {
+      const codigoBase = texto.trim().slice(0, 9)
+      const { data } = await supabase.from('catalogo')
+        .select('descripcion,codigo').ilike('codigo', `${codigoBase}%`).limit(1).maybeSingle()
+      if (data?.descripcion) {
+        setItemForm(p => ({ ...p, d: data.descripcion, codigo: texto.trim().toUpperCase() }))
+      }
+    }
   }
 
   function elegirItemArticulo(a: any) {
@@ -206,12 +224,22 @@ export default function ComprasClient() {
     setItemArticuloSugs([])
   }
 
-  function addItem() {
+  async function addItem() {
     const p = parseFloat(itemForm.p.replace(/[^0-9.,]/g,'').replace(',','.'))
     const c = parseInt(itemForm.c)
     if (!itemForm.d || !p || !c) return
     const dto = parseFloat(itemForm.dto) || null
-    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: itemArticuloSel?.id || null, dto, ...(itemForm.codigo?{codigo:itemForm.codigo}:{}) }
+
+    // Si no hay articulo_id del catálogo pero hay código, buscar maestro por código base (9 chars)
+    let articuloId = itemArticuloSel?.id || null
+    if (!articuloId && itemForm.codigo && itemForm.codigo.length >= 6) {
+      const codigoBase = itemForm.codigo.slice(0, 9)
+      const { data: maestro } = await supabase.from('articulos_maestro')
+        .select('id').ilike('codigo_referencia', `${codigoBase}%`).limit(1).maybeSingle()
+      if (maestro) articuloId = maestro.id
+    }
+
+    const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: articuloId, dto, ...(itemForm.codigo?{codigo:itemForm.codigo}:{}) }
     if (editandoItemIdx !== null) {
       setItems(prev => prev.map((it,i) => i===editandoItemIdx ? nuevoItemData : it))
       setEditandoItemIdx(null)
@@ -221,9 +249,7 @@ export default function ComprasClient() {
     setItemForm(p=>({d:'',c:'1',p:'',dto:p.dto,codigo:''}))
     setItemArticuloSel(null)
     setItemArticuloSugs([])
-    // Limpiar overrides cuando se agrega un ítem (los totales calculados cambian)
     setOvSubtotal(''); setOvDescuento(''); setOvIva('')
-    // Auto-focus en el buscador para cargar el siguiente ítem sin usar el mouse
     setTimeout(() => searchRef.current?.focus(), 50)
   }
 
