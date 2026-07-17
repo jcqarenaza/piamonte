@@ -1172,6 +1172,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <Field label="Teléfono (opcional)">
                 <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
               </Field>
+              {/* Opción para facturar como RI aunque sea consumidor final */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
+                <input type="checkbox" checked={fiscal.tipo_fiscal==='responsable_inscripto'}
+                  onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
+                  className="accent-p-green"/>
+                <span className="font-semibold text-p-dark">Facturar como Responsable Inscripto (Factura A)</span>
+              </label>
+              {fiscal.tipo_fiscal==='responsable_inscripto' && (
+                <Field label="CUIT *">
+                  <Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/>
+                </Field>
+              )}
             </div>
           )}
 
