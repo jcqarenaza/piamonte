@@ -287,95 +287,159 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   async function generarPDF(p: Presupuesto): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format:'a4', unit:'mm' })
-    const W=210, pad=15
-    let y=20
+    const W=210, pad=14, rw=W-pad*2
     const esAseg = !!(p as any).es_aseguradora
     const fmt = (n:number) => esAseg ? moneyARS2(n) : moneyARS(n)
+    const rRect = (x:number,yy:number,w:number,h:number,r:number,style:'F'|'S'|'FD') => doc.roundedRect(x,yy,w,h,r,r,style)
+    let y=12
 
-    // Header blanco
-    doc.setFillColor(255,255,255); doc.rect(0,0,W,28,'F')
-    doc.setFillColor(0,165,80); doc.rect(0,26,W,2,'F')
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,44,24) } catch(e){}
-    doc.setTextColor(30,30,30); doc.setFont('helvetica','bold')
-    doc.setFontSize(11); doc.text('PARABRISAS EL PIAMONTE',pad+50,11)
-    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
-    doc.setFontSize(8); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa · 2302 595969',pad+50,19)
-    doc.setFontSize(11); doc.text(`PRESUPUESTO`,W-pad,12,{align:'right'})
-    doc.setFontSize(9); doc.text(p.fecha.split('-').reverse().join('/'),W-pad,19,{align:'right'})
-    y=36
-
-    // Datos cliente
+    // ─── HEADER ───
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,y-2,28,15) } catch(e){}
     doc.setTextColor(30,30,30); doc.setFont('helvetica','bold'); doc.setFontSize(10)
-    doc.text('Cliente:',pad,y); doc.setFont('helvetica','normal'); doc.text(p.cliente||'—',pad+22,y)
-    if(p.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:',W-pad-50,y); doc.setFont('helvetica','normal'); doc.text(p.telefono,W-pad-38,y) }
+    doc.text('PARABRISAS EL PIAMONTE', pad+32, y+2)
+    doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100); doc.setFontSize(7)
+    doc.text('Calle 102 N.366 - General Pico, La Pampa', pad+32, y+7)
+    doc.text('Tel: 02302-15595969 / 02302-15464733', pad+32, y+11)
+    doc.text('CUIT: 27-24265717-4 - IVA Responsable Inscripto', pad+32, y+15)
+    // Badge PRESUPUESTO
+    doc.setDrawColor(30,30,30); doc.setLineWidth(0.5)
+    rRect(W-pad-36, y-2, 36, 18, 2, 'S')
+    doc.setFontSize(7); doc.setTextColor(100,100,100)
+    doc.text('PRESUPUESTO', W-pad-18, y+4, {align:'center'})
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30)
+    doc.text(p.fecha.split('-').reverse().join('/'), W-pad-18, y+12, {align:'center'})
+    y+=19
+
+    // Línea verde
+    doc.setFillColor(0,165,80); doc.rect(pad, y, rw, 1.5, 'F')
+    y+=5
+
+    // Marca de agua
+    const gState = new (doc as any).GState({ opacity: 0.05 })
+    doc.saveGraphicsState(); doc.setGState(gState)
+    try { doc.addImage(LOGO_BASE64, 'PNG', 60, 120, 90, 50) } catch(e){}
+    doc.setFont('helvetica','bold'); doc.setFontSize(30); doc.setTextColor(0,165,80)
+    doc.text('EL PIAMONTE', W/2, 190, {align:'center'})
+    doc.setFontSize(8); doc.text('www.parabrisaselpiamonte.com.ar', W/2, 198, {align:'center'})
+    doc.restoreGraphicsState(); doc.setTextColor(30,30,30)
+
+    // ─── DATOS CLIENTE ───
+    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+
+    if (esAseg && (p as any).aseguradora_nombre) {
+      const leftLines = [(p as any).aseguradora_nombre, (p as any).aseg_cuit, 'Responsable Inscripto', 'Cuenta Corriente'].filter(Boolean).length
+      const rightLines = [p.cliente, (p as any).siniestro||null, p.vehiculo, (p as any).patente, p.telefono].filter(Boolean).length
+      const boxH = 12 + Math.max(leftLines, rightLines) * 4 + 4
+      rRect(pad, y, rw, boxH, 3, 'FD')
+      doc.line(W/2, y+1, W/2, y+boxH-1)
+
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(0,165,80)
+      doc.text('ASEGURADORA', pad+3, y+5)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30,30,30)
+      doc.text((p as any).aseguradora_nombre, pad+3, y+10)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80)
+      let ly = y+15
+      doc.text('IVA: Responsable Inscripto', pad+3, ly); ly+=4
+      doc.text('Cond. Vta.: Cuenta Corriente', pad+3, ly)
+
+      const rx = W/2+3
+      doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(0,165,80)
+      doc.text('ASEGURADO', rx, y+5)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30,30,30)
+      doc.text(p.cliente||'—', rx, y+10)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80)
+      let ry = y+15
+      if(p.vehiculo){ doc.text(`Vehiculo: ${p.vehiculo}`, rx, ry); ry+=4 }
+      if((p as any).patente){ doc.text(`Patente: ${(p as any).patente}`, rx, ry); ry+=4 }
+      if(p.telefono){ doc.text(`Tel: ${p.telefono}`, rx, ry) }
+      y += boxH + 4
+    } else {
+      const filas = [
+        `Cliente: ${p.cliente||'Consumidor Final'}`,
+        ...(p.telefono ? [`Tel: ${p.telefono}`] : []),
+        ...(p.vehiculo ? [`Vehiculo: ${p.vehiculo}`] : []),
+        ...((p as any).patente ? [`Patente: ${(p as any).patente}`] : []),
+        ...((p as any).tipo_cliente_nombre ? [`Tipo: ${(p as any).tipo_cliente_nombre}`] : []),
+      ]
+      const boxH = filas.length * 4.5 + 4
+      rRect(pad, y, rw, boxH, 3, 'FD')
+      let cy = y + 5
+      filas.forEach(f => {
+        const parts = f.split(': ')
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
+        doc.text(parts[0]+':', pad+3, cy)
+        doc.setFont('helvetica','normal'); doc.text(parts.slice(1).join(': '), pad+28, cy)
+        cy += 4.5
+      })
+      y += boxH + 4
+    }
+
+    // ─── TABLA ───
+    const cols=[68,14,44,44]
+    doc.setFillColor(0,165,80)
+    rRect(pad, y, rw, 6, 2, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    const hx = pad
+    doc.text('Detalle', hx+2, y+4.5)
+    doc.text('Cant.', hx+cols[0]+cols[1]-2, y+4.5, {align:'right'})
+    doc.text('Precio unit.', hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+    doc.text('Subtotal', hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
     y+=6
-    if(p.vehiculo){
-      doc.setFont('helvetica','bold'); doc.text('Vehículo:',pad,y); doc.setFont('helvetica','normal'); doc.text(p.vehiculo,pad+25,y)
-    }
-    if((p as any).patente){
-      doc.setFont('helvetica','bold'); doc.text('Patente:',pad+90,y); doc.setFont('helvetica','normal'); doc.text((p as any).patente,pad+112,y)
-    }
-    if(p.vehiculo || (p as any).patente) y+=6
-
-    // Datos aseguradora
-    if(esAseg && (p as any).aseguradora_nombre){
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(100,50,150)
-      doc.text('Compañía:',pad,y); doc.setFont('helvetica','normal'); doc.text((p as any).aseguradora_nombre,pad+28,y)
-      doc.setTextColor(30,30,30)
+    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    p.items.forEach((it:VentaItem, idx:number)=>{
+      if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,6,'F') }
+      doc.text(it.d.slice(0,45), hx+2, y+4.5)
+      doc.text(String(it.c), hx+cols[0]+cols[1]-2, y+4.5, {align:'right'})
+      doc.text(fmt(it.p), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+      doc.text(fmt(it.c*it.p), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
       y+=6
+    })
+
+    // ─── TOTALES — posición fija ───
+    const totY = 243
+    const tc=2, tw=rw/tc
+    doc.setFillColor(0,165,80)
+    rRect(pad, totY, rw, 6, 2, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
+    if(esAseg){
+      doc.text('Total (IVA incluido)', pad+rw/2, totY+4.5, {align:'center'})
+    } else {
+      doc.text('Neto', pad+tw/2, totY+4.5, {align:'center'})
+      doc.text(p.iva ? 'IVA 21%' : 'Total', pad+tw+tw/2, totY+4.5, {align:'center'})
+    }
+    doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
+    rRect(pad, totY+6, rw, 7, 0, 'FD')
+    doc.setTextColor(30,30,30); doc.setFontSize(9)
+    if(esAseg){
+      doc.setFont('helvetica','bold')
+      doc.text(fmt(p.total), pad+rw/2, totY+11.5, {align:'center'})
+    } else {
+      doc.setFont('helvetica','normal'); doc.text(fmt(p.neto||p.total), pad+tw/2, totY+11.5, {align:'center'})
+      doc.setFont('helvetica','bold'); doc.text(p.iva ? fmt(p.iva) : fmt(p.total), pad+tw+tw/2, totY+11.5, {align:'center'})
     }
 
-    if((p as any).tipo_cliente_nombre && !esAseg){ doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Tipo de cliente: ${(p as any).tipo_cliente_nombre}`,pad,y); y+=6 }
-    y+=4
-
-    // Tabla
-    const cols = [90,20,35,35]
-    const headers = ['Detalle','Cant.','Precio unit.','Subtotal']
-    doc.setFillColor(0,165,80); doc.rect(pad,y,W-pad*2,7,'F')
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    let x=pad
-    headers.forEach((h,i)=>{ doc.text(h,x+(i>0?cols[i]-2:2),y+5,{align:i>0?'right':'left'}); x+=cols[i] })
-    y+=7
-
-    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(9)
-    p.items.forEach((it:VentaItem,idx:number)=>{
-      const bg = idx%2===0
-      if(bg){ doc.setFillColor(240,250,245); doc.rect(pad,y,W-pad*2,6.5,'F') }
-      let xi=pad
-      doc.text(it.d.slice(0,45),xi+2,y+4.5); xi+=cols[0]
-      doc.text(String(it.c),xi-2,y+4.5,{align:'right'}); xi+=cols[1]
-      doc.text(fmt(it.p),xi-2,y+4.5,{align:'right'}); xi+=cols[2]
-      doc.text(fmt(it.c*it.p),xi-2,y+4.5,{align:'right'})
-      y+=6.5
-    })
-    y+=3
-
-    // Totales
-    const totX = W-pad-70
-    if(p.iva){ doc.text('Subtotal neto:',totX,y); doc.text(fmt(p.neto),W-pad,y,{align:'right'}); y+=6 }
-    if(p.iva){ doc.text('IVA 21%:',totX,y); doc.text(fmt(p.iva),W-pad,y,{align:'right'}); y+=6 }
-    doc.setFont('helvetica','bold'); doc.setFontSize(12)
-    doc.text(esAseg ? 'TOTAL (IVA incl.):' : 'TOTAL:',totX,y); doc.text(fmt(p.total),W-pad,y,{align:'right'})
-    if(p.dolar_mep){ y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(0,100,60)
-      doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`,W-pad,y,{align:'right'}) }
-    if(esAseg) {
-      y+=5; doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
-      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, y)
+    // USD oficial — solo si no es aseg y hay cotización
+    const usdY = 256
+    if(!esAseg && p.dolar_mep){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(0,100,60)
+      doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`, W-pad, usdY, {align:'right'})
+    }
+    if(esAseg){
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
+      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, usdY)
       doc.setTextColor(30,30,30)
     }
-    y+=10
 
     // Vencimiento
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120,120,120)
-    doc.text(`Válido hasta el ${p.vencimiento.split('-').reverse().join('/')}.`,pad,y)
-    y+=6
+    doc.text(`Valido hasta el ${p.vencimiento.split('-').reverse().join('/')}.`, pad, 265)
 
-    // Footer
-    doc.setFillColor(0,165,80)
-    doc.rect(0,285,W,12,'F')
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(9)
-    doc.text('📞 2302 595969  ·  WhatsApp',pad,292)
-    doc.text('📍 General Pico, La Pampa - Calle 17 N° 1224',W-pad,292,{align:'right'})
+    // ─── FOOTER ───
+    doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    doc.text('Tel: 2302 595969', pad, 292)
+    doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
+    doc.text('Calle 17 N. 1224', W-pad, 292, {align:'right'})
 
     return doc.output('blob')
   }
