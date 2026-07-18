@@ -497,6 +497,7 @@ export default function ComprasClient() {
       const provNombre = prov?.nombre || form.proveedor_nombre || ''
       const provId = prov?.id || form.proveedor_id || null
 
+      // Acreditar en CC del proveedor
       if (provId && total > 0) {
         await supabase.from('cuenta_corriente_proveedores').insert({
           proveedor_id: provId, proveedor_nombre: provNombre,
@@ -505,6 +506,37 @@ export default function ComprasClient() {
           debe: 0, haber: total,
           comprobante_compra_id: comp.id,
         })
+      }
+
+      // Saldar movimientos de stock pendiente_nc del mismo proveedor
+      // Buscar stock_movimientos con pendiente_nc=true vinculados a artículos de este proveedor
+      for (const it of items) {
+        if ((it.d||'').toUpperCase().trim() === 'FLETE') continue
+        const codigo = (it as any).codigo || null
+        const articuloId = (it as any).articulo_id || null
+        if (!codigo && !articuloId) continue
+
+        // Buscar el stock_id
+        let stockId: string | null = null
+        if (codigo) {
+          const { data } = await supabase.from('stock').select('id').eq('codigo', codigo).eq('activo', true).maybeSingle()
+          stockId = data?.id || null
+        }
+        if (!stockId && articuloId) {
+          const { data } = await supabase.from('stock').select('id').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
+          stockId = data?.id || null
+        }
+
+        if (stockId) {
+          // Actualizar movimientos pendiente_nc de este artículo con el número de NC
+          await supabase.from('stock_movimientos')
+            .update({
+              pendiente_nc: false,
+              descripcion: `${it.d||'Roto'} → saldado NC ${numNc} · ${provNombre}`,
+            })
+            .eq('stock_id', stockId)
+            .eq('pendiente_nc', true)
+        }
       }
 
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)

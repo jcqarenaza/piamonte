@@ -73,7 +73,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       tipo: ajusteCantForm.tipo,
       cantidad: Math.abs(delta),
       fecha: new Date().toISOString().slice(0,10),
-      descripcion: esPendienteNC ? `${notaFinal} — ⏳ Pendiente NC proveedor` : notaFinal,
+      descripcion: notaFinal,
+      pendiente_nc: esPendienteNC,
       user_id: userId || null,
     })
 
@@ -787,6 +788,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                         {selMovData.map((m:any)=>{
                           const tieneCompra = !!m.comprobante_compra_id
                           const tieneVenta = !!m.comprobante_venta_id
+                          const esPendienteNC = !!m.pendiente_nc
                           const etiqueta = tieneCompra
                             ? `FC-${String(m.compra_numero||'').padStart(8,'0')} · ${m.compra_proveedor||'Compra'}`
                             : tieneVenta
@@ -795,17 +797,19 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           return (
                           <div key={m.id}
                             onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
-                            className={`grid px-4 py-2 text-xs items-center gap-2 ${tieneVenta||tieneCompra?'cursor-pointer hover:bg-blue-50/30':''}`}
+                            className={`grid px-4 py-2 text-xs items-center gap-2 ${tieneVenta||tieneCompra?'cursor-pointer hover:bg-blue-50/30':esPendienteNC?'bg-amber-50/50':''}`}
                             style={{gridTemplateColumns:'80px 80px 50px 1fr 80px 70px'}}>
                             <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
                             <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
                               {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
                             </span>
                             <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
-                            <span className={`truncate ${tieneCompra?'text-blue-600 font-medium':tieneVenta?'text-green-700 font-medium':'text-p-ink2'}`}>
+                            <span className={`truncate ${tieneCompra?'text-blue-600 font-medium':tieneVenta?'text-green-700 font-medium':esPendienteNC?'text-amber-700 font-medium':'text-p-ink2'}`}>
                               {tieneCompra && <span className="mr-1">🧾</span>}
                               {tieneVenta && <span className="mr-1">🔖</span>}
+                              {esPendienteNC && <span className="mr-1">⏳</span>}
                               {etiqueta}
+                              {esPendienteNC && <span className="ml-1.5 text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Pendiente NC</span>}
                             </span>
                             <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
                             <span className="truncate text-p-ink2 text-[10px]">{m.usuario_nombre||''}</span>
