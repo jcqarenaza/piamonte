@@ -434,7 +434,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     for (const x of ncItemsSel) {
       if (x.it.stock_id && x.cant > 0) {
         const { data: s } = await supabase.from('stock').select('cantidad').eq('id', x.it.stock_id).single()
-        if (s) await supabase.from('stock').update({ cantidad: (s as any).cantidad + x.cant }).eq('id', x.it.stock_id)
+        if (s) {
+          const cantAnterior = (s as any).cantidad
+          await supabase.from('stock').update({ cantidad: cantAnterior + x.cant }).eq('id', x.it.stock_id)
+          await supabase.from('stock_movimientos').insert({
+            stock_id: x.it.stock_id,
+            tipo: 'entrada',
+            cantidad: x.cant,
+            costo_unitario: x.it.costo ?? null,
+            fecha: todayStr(),
+            descripcion: `NC-${String(nextNum).padStart(8,'0')} · ${ncComp.cliente_nombre}${ncComp.aseguradora_nombre ? ' · ' + ncComp.aseguradora_nombre : ''} — devolución`,
+            comprobante_venta_id: (nc as any).id,
+            user_id: userId,
+          })
+        }
       }
     }
 
