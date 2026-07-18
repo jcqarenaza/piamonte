@@ -765,7 +765,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   </div>
                   <div className="flex items-center gap-1">
                     {isAdmin && <>
-                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false})}}
+                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
                     </>}
