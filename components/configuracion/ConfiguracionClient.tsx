@@ -4,38 +4,33 @@ import { createClient } from '@/lib/supabase/client'
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string; activo:boolean }
 interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean; activo:boolean; orden:number }
+interface CategoriaGasto { id:string; nombre:string; color:string; orden:number; activo:boolean }
 
-const btn  = { background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer' } as const
+const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer' } as const
 const btnRed  = { ...btn, background:'#ef4444' } as const
 const btnGray = { ...btn, background:'#6b7280' } as const
-
-const COLORS = ['#2563eb','#d97706','#7c3aed','#dc2626','#059669','#0891b2','#475569']
+const COLORS  = ['#2563eb','#d97706','#7c3aed','#dc2626','#059669','#0891b2','#475569']
 
 function moneyARS(n:number){ return '$'+Math.round(n).toLocaleString('es-AR') }
 
-interface CategoriaGasto { id:string; nombre:string; color:string; orden:number; activo:boolean }
-
 export default function ConfiguracionClient() {
-  const [tipos, setTipos]   = useState<TipoCliente[]>([])
-  const [rubros, setRubros] = useState<RubroPrecio[]>([])
+  const [tipos,      setTipos]      = useState<TipoCliente[]>([])
+  const [rubros,     setRubros]     = useState<RubroPrecio[]>([])
   const [categorias, setCategorias] = useState<CategoriaGasto[]>([])
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast]   = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [toast,      setToast]      = useState('')
   const supabase = createClient()
 
-  // Edición inline de tipos
-  const [tipoEdit, setTipoEdit] = useState<Record<string,{nombre:string;margen_pct:string;color:string}>>({})
-  const [nuevoTipo, setNuevoTipo] = useState({ nombre:'', margen_pct:'', color:COLORS[0] })
+  const [tipoEdit,      setTipoEdit]      = useState<Record<string,{nombre:string;margen_pct:string;color:string}>>({})
+  const [nuevoTipo,     setNuevoTipo]     = useState({ nombre:'', margen_pct:'', color:COLORS[0] })
   const [showNuevoTipo, setShowNuevoTipo] = useState(false)
 
-  // Edición inline de rubros
-  const [rubroEdit, setRubroEdit] = useState<Record<string,{nombre:string;precio_base:string;costo_base:string;visible:boolean}>>({})
-  const [nuevoRubro, setNuevoRubro] = useState({ nombre:'', precio_base:'', costo_base:'', visible:false })
+  const [rubroEdit,      setRubroEdit]      = useState<Record<string,{nombre:string;precio_base:string;costo_base:string;visible:boolean}>>({})
+  const [nuevoRubro,     setNuevoRubro]     = useState({ nombre:'', precio_base:'', costo_base:'', visible:false })
   const [showNuevoRubro, setShowNuevoRubro] = useState(false)
 
-  // Edición inline de categorías de gasto
-  const [catEdit, setCatEdit] = useState<Record<string,{nombre:string;color:string}>>({})
-  const [nuevaCat, setNuevaCat] = useState({ nombre:'', color:COLORS[0] })
+  const [catEdit,      setCatEdit]      = useState<Record<string,{nombre:string;color:string}>>({})
+  const [nuevaCat,     setNuevaCat]     = useState({ nombre:'', color:COLORS[0] })
   const [showNuevaCat, setShowNuevaCat] = useState(false)
 
   useEffect(() => {
@@ -46,7 +41,6 @@ export default function ConfiguracionClient() {
 
   function ok(msg:string){ setToast(msg); setTimeout(()=>setToast(''),2500) }
 
-  // ── Tipos de cliente ──────────────────────────────────────────────────────
   function startEditTipo(t:TipoCliente){
     setTipoEdit(p=>({...p,[t.id]:{nombre:t.nombre,margen_pct:String(Math.round(t.margen_pct*100)),color:t.color}}))
   }
@@ -60,7 +54,7 @@ export default function ConfiguracionClient() {
     setSaving(false); ok('Tipo actualizado ✓')
   }
   async function deleteTipo(id:string){
-    if(!confirm('¿Borrar este tipo? Los clientes que lo tenían quedarán sin tipo asignado.')) return
+    if(!confirm('¿Borrar este tipo?')) return
     await supabase.from('tipos_cliente').delete().eq('id',id)
     setTipos(prev=>prev.filter(t=>t.id!==id)); ok('Tipo eliminado')
   }
@@ -73,7 +67,6 @@ export default function ConfiguracionClient() {
     setSaving(false); ok('Tipo creado ✓')
   }
 
-  // ── Rubros ────────────────────────────────────────────────────────────────
   function startEditRubro(r:RubroPrecio){
     setRubroEdit(p=>({...p,[r.id]:{nombre:r.nombre,precio_base:String(r.precio_base),costo_base:String(r.costo_base||0),visible:r.visible_en_impresion}}))
   }
@@ -103,7 +96,7 @@ export default function ConfiguracionClient() {
 
   return (
     <div className="max-w-2xl flex flex-col gap-8">
-      {/* Toast */}
+
       {toast && (
         <div style={{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',background:'#00A550',color:'#fff',padding:'10px 24px',borderRadius:12,fontWeight:700,fontSize:14,zIndex:100,boxShadow:'0 4px 16px rgba(0,0,0,.2)'}}>
           {toast}
@@ -120,7 +113,6 @@ export default function ConfiguracionClient() {
           <button onClick={()=>setShowNuevoTipo(!showNuevoTipo)} style={btn}>+ Nuevo tipo</button>
         </div>
 
-        {/* Nuevo tipo */}
         {showNuevoTipo && (
           <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex flex-wrap gap-3 items-end">
             <div>
@@ -133,21 +125,17 @@ export default function ConfiguracionClient() {
               <input type="number" value={nuevoTipo.margen_pct} onChange={e=>setNuevoTipo(p=>({...p,margen_pct:e.target.value}))}
                 placeholder="45" className="border border-p-line rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green w-20"/>
             </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-p-ink2 uppercase mb-1">Color</label>
-              <div className="flex gap-1">
-                {COLORS.map(c=>(
-                  <button key={c} onClick={()=>setNuevoTipo(p=>({...p,color:c}))}
-                    style={{width:22,height:22,background:c,borderRadius:4,border:nuevoTipo.color===c?'2px solid #0C1810':'2px solid transparent',cursor:'pointer'}}/>
-                ))}
-              </div>
+            <div className="flex gap-1.5 items-center">
+              {COLORS.map(c=>(
+                <button key={c} onClick={()=>setNuevoTipo(p=>({...p,color:c}))}
+                  style={{width:20,height:20,background:c,borderRadius:4,border:nuevoTipo.color===c?'2px solid #0C1810':'2px solid transparent',cursor:'pointer'}}/>
+              ))}
             </div>
             <button onClick={addTipo} disabled={saving} style={btn}>Guardar</button>
             <button onClick={()=>setShowNuevoTipo(false)} style={btnGray}>Cancelar</button>
           </div>
         )}
 
-        {/* Lista */}
         {tipos.map(t=>{
           const e = tipoEdit[t.id]
           return (
@@ -174,8 +162,7 @@ export default function ConfiguracionClient() {
                 <>
                   <div style={{width:12,height:12,background:t.color,borderRadius:3,flexShrink:0}}/>
                   <p className="font-semibold text-sm text-p-ink flex-1">{t.nombre}</p>
-                  <p className="font-mono text-sm text-p-dark font-bold">{Math.round(t.margen_pct*100)}% margen</p>
-                  <p className="text-xs text-p-ink2">precio = costo × {(1+t.margen_pct).toFixed(2)}</p>
+                  <p className="font-mono text-sm text-p-ink2">{Math.round(t.margen_pct*100)}%</p>
                   <button onClick={()=>startEditTipo(t)} style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
                   <button onClick={()=>deleteTipo(t.id)} style={{...btnRed,padding:'5px 12px',fontSize:12}}>✕</button>
                 </>
@@ -262,52 +249,49 @@ export default function ConfiguracionClient() {
           )
         })}
       </div>
-    </div>
 
-    {/* ── Categorías de Gasto ─────────────────────────────────────────────── */}
-    <div className="bg-white rounded-2xl border border-p-line p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-saira font-bold text-lg text-p-ink">🏷 Categorías de Gasto</p>
-          <p className="text-xs text-p-ink2 mt-0.5">Usadas en Caja e Informes para clasificar los gastos</p>
-        </div>
-        <button onClick={()=>setShowNuevaCat(true)} style={btn}>+ Nueva categoría</button>
-      </div>
-
-      {showNuevaCat && (
-        <div className="flex items-center gap-2 bg-p-light rounded-xl px-3 py-2.5 flex-wrap">
-          <input value={nuevaCat.nombre} onChange={e=>setNuevaCat(p=>({...p,nombre:e.target.value}))}
-            placeholder="Nombre de categoría…"
-            className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green flex-1 min-w-[180px]"/>
-          <div className="flex gap-1.5">
-            {COLORS.map(c=>(
-              <button key={c} onClick={()=>setNuevaCat(p=>({...p,color:c}))}
-                style={{width:22,height:22,borderRadius:'50%',background:c,border:nuevaCat.color===c?'3px solid #111':'2px solid transparent',cursor:'pointer'}}/>
-            ))}
+      {/* ── Categorías de Gasto ── */}
+      <div className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-p-line2 bg-p-light flex items-center justify-between">
+          <div>
+            <p className="font-saira font-bold text-sm text-p-ink">🏷 Categorías de Gasto</p>
+            <p className="text-xs text-p-ink2 mt-0.5">Usadas en Caja e Informes para clasificar los gastos.</p>
           </div>
-          <button onClick={async ()=>{
-            if(!nuevaCat.nombre.trim()) return
-            setSaving(true)
-            const orden = categorias.length + 1
-            await supabase.from('categorias_gasto').insert({nombre:nuevaCat.nombre.trim(),color:nuevaCat.color,orden})
-            const {data}=await supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden')
-            setCategorias(data??[])
-            setNuevaCat({nombre:'',color:COLORS[0]}); setShowNuevaCat(false)
-            setSaving(false); ok('Categoría creada')
-          }} disabled={saving||!nuevaCat.nombre.trim()} style={btn}>Guardar</button>
-          <button onClick={()=>setShowNuevaCat(false)} style={btnGray}>Cancelar</button>
+          <button onClick={()=>setShowNuevaCat(true)} style={btn}>+ Nueva categoría</button>
         </div>
-      )}
 
-      <div className="flex flex-col gap-2">
+        {showNuevaCat && (
+          <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex flex-wrap gap-3 items-end">
+            <input value={nuevaCat.nombre} onChange={e=>setNuevaCat(p=>({...p,nombre:e.target.value}))}
+              placeholder="Nombre de categoría…"
+              className="border border-p-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-p-green w-48"/>
+            <div className="flex gap-1.5 items-center">
+              {COLORS.map(c=>(
+                <button key={c} onClick={()=>setNuevaCat(p=>({...p,color:c}))}
+                  style={{width:22,height:22,borderRadius:'50%',background:c,border:nuevaCat.color===c?'3px solid #111':'2px solid transparent',cursor:'pointer'}}/>
+              ))}
+            </div>
+            <button onClick={async ()=>{
+              if(!nuevaCat.nombre.trim()) return
+              setSaving(true)
+              await supabase.from('categorias_gasto').insert({nombre:nuevaCat.nombre.trim(),color:nuevaCat.color,orden:categorias.length+1})
+              const {data}=await supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden')
+              setCategorias(data??[])
+              setNuevaCat({nombre:'',color:COLORS[0]}); setShowNuevaCat(false)
+              setSaving(false); ok('Categoría creada ✓')
+            }} disabled={saving||!nuevaCat.nombre.trim()} style={btn}>Guardar</button>
+            <button onClick={()=>setShowNuevaCat(false)} style={btnGray}>Cancelar</button>
+          </div>
+        )}
+
         {categorias.map(cat=>{
           const e = catEdit[cat.id]
           return (
-            <div key={cat.id} className="flex items-center gap-3 border border-p-line rounded-xl px-3 py-2.5 flex-wrap">
+            <div key={cat.id} className="flex items-center gap-3 px-4 py-3 border-b border-p-line2 last:border-0 flex-wrap">
               {e ? (
                 <>
                   <input value={e.nombre} onChange={ev=>setCatEdit(p=>({...p,[cat.id]:{...p[cat.id],nombre:ev.target.value}}))}
-                    className="border border-p-line rounded-lg px-2 py-1.5 text-sm flex-1 min-w-[160px] focus:outline-none focus:border-p-green"/>
+                    className="border border-p-line rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[160px] focus:outline-none focus:border-p-green"/>
                   <div className="flex gap-1.5">
                     {COLORS.map(c=>(
                       <button key={c} onClick={()=>setCatEdit(p=>({...p,[cat.id]:{...p[cat.id],color:c}}))}
@@ -317,14 +301,13 @@ export default function ConfiguracionClient() {
                   <button onClick={async ()=>{
                     setSaving(true)
                     await supabase.from('categorias_gasto').update({nombre:e.nombre,color:e.color}).eq('id',cat.id)
-                    // Reclasificar gastos si cambió el nombre
                     if(e.nombre !== cat.nombre) {
                       await supabase.from('gastos').update({categoria:e.nombre}).eq('categoria',cat.nombre)
                     }
                     const {data}=await supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden')
                     setCategorias(data??[])
                     setCatEdit(p=>{const n={...p};delete n[cat.id];return n})
-                    setSaving(false); ok('Categoría actualizada')
+                    setSaving(false); ok('Categoría actualizada ✓')
                   }} disabled={saving} style={btn}>Guardar</button>
                   <button onClick={()=>setCatEdit(p=>{const n={...p};delete n[cat.id];return n})} style={btnGray}>Cancelar</button>
                 </>
@@ -346,7 +329,6 @@ export default function ConfiguracionClient() {
           )
         })}
       </div>
-    </div>
 
     </div>
   )
