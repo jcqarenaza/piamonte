@@ -13,9 +13,12 @@ const COLORS = ['#2563eb','#d97706','#7c3aed','#dc2626','#059669','#0891b2','#47
 
 function moneyARS(n:number){ return '$'+Math.round(n).toLocaleString('es-AR') }
 
+interface CategoriaGasto { id:string; nombre:string; color:string; orden:number; activo:boolean }
+
 export default function ConfiguracionClient() {
   const [tipos, setTipos]   = useState<TipoCliente[]>([])
   const [rubros, setRubros] = useState<RubroPrecio[]>([])
+  const [categorias, setCategorias] = useState<CategoriaGasto[]>([])
   const [saving, setSaving] = useState(false)
   const [toast, setToast]   = useState('')
   const supabase = createClient()
@@ -30,9 +33,15 @@ export default function ConfiguracionClient() {
   const [nuevoRubro, setNuevoRubro] = useState({ nombre:'', precio_base:'', costo_base:'', visible:false })
   const [showNuevoRubro, setShowNuevoRubro] = useState(false)
 
+  // Edición inline de categorías de gasto
+  const [catEdit, setCatEdit] = useState<Record<string,{nombre:string;color:string}>>({})
+  const [nuevaCat, setNuevaCat] = useState({ nombre:'', color:COLORS[0] })
+  const [showNuevaCat, setShowNuevaCat] = useState(false)
+
   useEffect(() => {
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
+    supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden').then(({data})=>setCategorias(data??[]))
   },[supabase])
 
   function ok(msg:string){ setToast(msg); setTimeout(()=>setToast(''),2500) }
@@ -247,6 +256,90 @@ export default function ConfiguracionClient() {
                   </span>
                   <button onClick={()=>startEditRubro(r)} style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
                   <button onClick={()=>deleteRubro(r.id)} style={{...btnRed,padding:'5px 12px',fontSize:12}}>✕</button>
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+
+    {/* ── Categorías de Gasto ─────────────────────────────────────────────── */}
+    <div className="bg-white rounded-2xl border border-p-line p-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-saira font-bold text-lg text-p-ink">🏷 Categorías de Gasto</p>
+          <p className="text-xs text-p-ink2 mt-0.5">Usadas en Caja e Informes para clasificar los gastos</p>
+        </div>
+        <button onClick={()=>setShowNuevaCat(true)} style={btn}>+ Nueva categoría</button>
+      </div>
+
+      {showNuevaCat && (
+        <div className="flex items-center gap-2 bg-p-light rounded-xl px-3 py-2.5 flex-wrap">
+          <input value={nuevaCat.nombre} onChange={e=>setNuevaCat(p=>({...p,nombre:e.target.value}))}
+            placeholder="Nombre de categoría…"
+            className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green flex-1 min-w-[180px]"/>
+          <div className="flex gap-1.5">
+            {COLORS.map(c=>(
+              <button key={c} onClick={()=>setNuevaCat(p=>({...p,color:c}))}
+                style={{width:22,height:22,borderRadius:'50%',background:c,border:nuevaCat.color===c?'3px solid #111':'2px solid transparent',cursor:'pointer'}}/>
+            ))}
+          </div>
+          <button onClick={async ()=>{
+            if(!nuevaCat.nombre.trim()) return
+            setSaving(true)
+            const orden = categorias.length + 1
+            await supabase.from('categorias_gasto').insert({nombre:nuevaCat.nombre.trim(),color:nuevaCat.color,orden})
+            const {data}=await supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden')
+            setCategorias(data??[])
+            setNuevaCat({nombre:'',color:COLORS[0]}); setShowNuevaCat(false)
+            setSaving(false); ok('Categoría creada')
+          }} disabled={saving||!nuevaCat.nombre.trim()} style={btn}>Guardar</button>
+          <button onClick={()=>setShowNuevaCat(false)} style={btnGray}>Cancelar</button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {categorias.map(cat=>{
+          const e = catEdit[cat.id]
+          return (
+            <div key={cat.id} className="flex items-center gap-3 border border-p-line rounded-xl px-3 py-2.5 flex-wrap">
+              {e ? (
+                <>
+                  <input value={e.nombre} onChange={ev=>setCatEdit(p=>({...p,[cat.id]:{...p[cat.id],nombre:ev.target.value}}))}
+                    className="border border-p-line rounded-lg px-2 py-1.5 text-sm flex-1 min-w-[160px] focus:outline-none focus:border-p-green"/>
+                  <div className="flex gap-1.5">
+                    {COLORS.map(c=>(
+                      <button key={c} onClick={()=>setCatEdit(p=>({...p,[cat.id]:{...p[cat.id],color:c}}))}
+                        style={{width:22,height:22,borderRadius:'50%',background:c,border:e.color===c?'3px solid #111':'2px solid transparent',cursor:'pointer'}}/>
+                    ))}
+                  </div>
+                  <button onClick={async ()=>{
+                    setSaving(true)
+                    await supabase.from('categorias_gasto').update({nombre:e.nombre,color:e.color}).eq('id',cat.id)
+                    // Reclasificar gastos si cambió el nombre
+                    if(e.nombre !== cat.nombre) {
+                      await supabase.from('gastos').update({categoria:e.nombre}).eq('categoria',cat.nombre)
+                    }
+                    const {data}=await supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden')
+                    setCategorias(data??[])
+                    setCatEdit(p=>{const n={...p};delete n[cat.id];return n})
+                    setSaving(false); ok('Categoría actualizada')
+                  }} disabled={saving} style={btn}>Guardar</button>
+                  <button onClick={()=>setCatEdit(p=>{const n={...p};delete n[cat.id];return n})} style={btnGray}>Cancelar</button>
+                </>
+              ) : (
+                <>
+                  <span style={{width:14,height:14,borderRadius:'50%',background:cat.color,display:'inline-block',flexShrink:0}}/>
+                  <p className="font-semibold text-sm text-p-ink flex-1">{cat.nombre}</p>
+                  <button onClick={()=>setCatEdit(p=>({...p,[cat.id]:{nombre:cat.nombre,color:cat.color}}))}
+                    style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
+                  <button onClick={async ()=>{
+                    if(!confirm(`¿Desactivar "${cat.nombre}"? Los gastos existentes conservan la categoría.`)) return
+                    await supabase.from('categorias_gasto').update({activo:false}).eq('id',cat.id)
+                    setCategorias(prev=>prev.filter(c=>c.id!==cat.id))
+                    ok('Categoría desactivada')
+                  }} style={{...btnRed,padding:'5px 12px',fontSize:12}}>✕</button>
                 </>
               )}
             </div>

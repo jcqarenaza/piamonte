@@ -44,8 +44,9 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [pagosProveedores, setPagosProveedores] = useState<any[]>([])
   const [gastoOpen, setGastoOpen] = useState(false)
   const [gastoForm, setGastoForm] = useState({ categoria:'', descripcion:'', monto:'', forma_pago:'Efectivo', comprobante:'' })
+  const [categoriasGasto, setCategoriasGasto] = useState<{id:string;nombre:string;color:string}[]>([])
 
-const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad','Impuestos','Mantenimiento','Combustible','Otros']
+const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
 
   const loadVentas = useCallback(async () => {
     setLoading(true)
@@ -82,6 +83,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
 
   useEffect(() => {
     supabase.from("stock").select("id,descripcion,codigo,marca,pos,precio_venta,costo,cantidad").gt("cantidad",0).then(({ data }) => setStockItems((data as unknown as StockItem[]) ?? []))
+    supabase.from("categorias_gasto").select("id,nombre,color").eq("activo",true).order("orden").then(({ data }) => setCategoriasGasto(data ?? []))
   }, [supabase])
 
   // Sugerir stock en modal edición
@@ -553,7 +555,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
           <Field label="Categoría">
             <Select value={gastoForm.categoria} onChange={e=>setGastoForm(p=>({...p,categoria:e.target.value}))}>
               <option value="">Seleccioná una categoría</option>
-              {CATEGORIAS_GASTO.map(cat=><option key={cat}>{cat}</option>)}
+              {categoriasGasto.map(cat=><option key={cat.id} value={cat.nombre}>{cat.nombre}</option>)}
             </Select>
           </Field>
           <Field label="Descripción"><Input value={gastoForm.descripcion} onChange={e=>setGastoForm(p=>({...p,descripcion:e.target.value}))} placeholder="Ej: Sueldo Juan, Alquiler junio…" /></Field>
@@ -561,7 +563,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
             <Field label="Monto"><Input value={gastoForm.monto} onChange={e=>setGastoForm(p=>({...p,monto:e.target.value}))} placeholder="$" /></Field>
             <Field label="Forma de pago">
               <Select value={gastoForm.forma_pago} onChange={e=>setGastoForm(p=>({...p,forma_pago:e.target.value}))}>
-                {PAGOS.map(p=><option key={p}>{p}</option>)}
+                {PAGOS_GASTO.map(p=><option key={p}>{p}</option>)}
               </Select>
             </Field>
           </div>
