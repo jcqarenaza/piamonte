@@ -347,5 +347,7 @@ export default function ConfiguracionClient() {
         })}
       </div>
     </div>
+
+    </div>
   )
 }

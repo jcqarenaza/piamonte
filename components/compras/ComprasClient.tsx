@@ -118,6 +118,7 @@ export default function ComprasClient() {
 
   // Pendientes NC del proveedor seleccionado
   const [pendientesNC, setPendientesNC] = useState<any[]>([])
+  const [pendientesSelNC, setPendientesSelNC] = useState<Record<string,boolean>>({})
 
   const supabase = createClient()
 
@@ -511,35 +512,23 @@ export default function ComprasClient() {
         })
       }
 
-      // Saldar movimientos de stock pendiente_nc del mismo proveedor
-      // Buscar stock_movimientos con pendiente_nc=true vinculados a artículos de este proveedor
-      for (const it of items) {
-        if ((it.d||'').toUpperCase().trim() === 'FLETE') continue
-        const codigo = (it as any).codigo || null
-        const articuloId = (it as any).articulo_id || null
-        if (!codigo && !articuloId) continue
-
-        // Buscar el stock_id
-        let stockId: string | null = null
-        if (codigo) {
-          const { data } = await supabase.from('stock').select('id').eq('codigo', codigo).eq('activo', true).maybeSingle()
-          stockId = data?.id || null
-        }
-        if (!stockId && articuloId) {
-          const { data } = await supabase.from('stock').select('id').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
-          stockId = data?.id || null
-        }
-
-        if (stockId) {
-          // Actualizar movimientos pendiente_nc de este artículo con el número de NC
-          await supabase.from('stock_movimientos')
-            .update({
-              pendiente_nc: false,
-              descripcion: `${it.d||'Roto'} → saldado NC ${numNc} · ${provNombre}`,
-            })
-            .eq('stock_id', stockId)
-            .eq('pendiente_nc', true)
-        }
+      // Saldar solo los ajustes pendiente_nc seleccionados por el usuario
+      const seleccionados = pendientesNC.filter((p:any) => pendientesSelNC[p.id])
+      for (const pendiente of seleccionados) {
+        await supabase.from('ajustes_stock')
+          .update({
+            pendiente_nc: false,
+            nota: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
+          })
+          .eq('id', pendiente.id)
+        // También saldar en stock_movimientos si existe
+        await supabase.from('stock_movimientos')
+          .update({
+            pendiente_nc: false,
+            descripcion: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
+          })
+          .eq('stock_id', pendiente.stock_id)
+          .eq('pendiente_nc', true)
       }
 
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
@@ -555,6 +544,7 @@ export default function ComprasClient() {
     setAjusteManual('')
     setItems([]); setIvaOn(true)
     setItemForm({d:'',c:'1',p:'',dto:'',codigo:''})
+    setPendientesNC([]); setPendientesSelNC({})
     load()
   }
 
@@ -1264,7 +1254,7 @@ export default function ComprasClient() {
                       .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
                       .eq('pendiente_nc', true)
                       .order('fecha', { ascending: true })
-                    setPendientesNC(data ?? [])
+                    setPendientesNC(data ?? []); setPendientesSelNC(Object.fromEntries((data ?? []).map((x:any) => [x.id, true])))
                   } else {
                     setPendientesNC([])
                   }
@@ -1279,18 +1269,24 @@ export default function ComprasClient() {
           {/* Pendientes NC del proveedor */}
           {form.tipo === 'nc' && pendientesNC.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente de este proveedor</p>
+              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente — seleccioná cuáles salda esta NC</p>
               <div className="flex flex-col gap-1.5">
                 {pendientesNC.map((p:any) => (
-                  <div key={p.id} className="flex items-center gap-2 text-xs text-amber-700">
+                  <label key={p.id} className="flex items-center gap-2 text-xs text-amber-700 cursor-pointer hover:bg-amber-100 rounded-lg px-1 py-0.5">
+                    <input type="checkbox"
+                      checked={!!pendientesSelNC[p.id]}
+                      onChange={e=>setPendientesSelNC(prev=>({...prev,[p.id]:e.target.checked}))}
+                      className="accent-amber-600 w-4 h-4 shrink-0"/>
                     <span className="font-mono bg-amber-100 px-1.5 py-0.5 rounded">{(p.stock as any)?.codigo || '—'}</span>
                     <span className="flex-1 truncate">{(p.stock as any)?.descripcion || p.descripcion}</span>
                     <span className="font-bold">×{p.cantidad}</span>
                     <span className="text-amber-500">{p.fecha?.split('-').reverse().join('/')}</span>
-                  </div>
+                  </label>
                 ))}
               </div>
-              <p className="text-[10px] text-amber-600 mt-2">Al guardar la NC, estos pendientes quedarán saldados automáticamente.</p>
+              <p className="text-[10px] text-amber-600 mt-2">
+                {Object.values(pendientesSelNC).filter(Boolean).length} de {pendientesNC.length} seleccionados — al guardar quedarán saldados automáticamente.
+              </p>
             </div>
           )}
           {form.tipo === 'nc' && pendientesNC.length === 0 && form.proveedor_id && (
@@ -1353,7 +1349,7 @@ export default function ComprasClient() {
                       .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
                       .eq('pendiente_nc', true)
                       .order('fecha', { ascending: true })
-                    setPendientesNC(data ?? [])
+                    setPendientesNC(data ?? []); setPendientesSelNC(Object.fromEntries((data ?? []).map((x:any) => [x.id, true])))
                   }
                 }}>
                   <option value="">Seleccionar…</option>
