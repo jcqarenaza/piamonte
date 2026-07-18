@@ -61,20 +61,24 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setSavingAjuste(true)
     const delta = ajusteCantForm.tipo === 'entrada' ? +ajusteCantForm.cant : -Math.abs(+ajusteCantForm.cant)
     const nueva = ajusteCantModal.cantidad + delta
+    const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || 'Ajuste manual'
+    const esPendienteNC = ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc
+
+    // Actualizar cantidad — el trigger detectará el stock_movimientos y no duplicará
     await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
-    const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || null
-    await supabase.from('ajustes_stock').insert({
-      stock_id: ajusteCantModal.id, tipo: ajusteCantForm.tipo,
-      cantidad: Math.abs(delta), fecha: new Date().toISOString().slice(0,10),
-      nota: notaFinal,
-      stock_anterior: ajusteCantModal.cantidad, stock_posterior: nueva,
-      descripcion: ajusteCantModal.descripcion,
+
+    // Registrar en stock_movimientos (fuente de verdad del historial)
+    await supabase.from('stock_movimientos').insert({
+      stock_id: ajusteCantModal.id,
+      tipo: ajusteCantForm.tipo,
+      cantidad: Math.abs(delta),
+      fecha: new Date().toISOString().slice(0,10),
+      descripcion: esPendienteNC ? `${notaFinal} — ⏳ Pendiente NC proveedor` : notaFinal,
       user_id: userId || null,
     })
 
     // Si es salida con pendiente NC → crear ajuste en CC del proveedor
-    if (ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc && ajusteCantModal.articulo_id) {
-      // Buscar proveedor del artículo por equivalencias
+    if (esPendienteNC && ajusteCantModal.articulo_id) {
       const { data: eq } = await supabase.from('articulo_equivalencias')
         .select('proveedor, costo_neto').eq('articulo_id', ajusteCantModal.articulo_id)
         .gt('costo_neto', 0).order('costo_neto', {ascending:false}).limit(1).maybeSingle()
@@ -86,9 +90,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           await supabase.from('cuenta_corriente_proveedores').insert({
             proveedor_id: prov.id, proveedor_nombre: prov.nombre,
             fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
-            descripcion: `${ajusteCantForm.motivo||'Ajuste'} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
+            descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
             debe: 0, haber: montoAjuste,
-            notas: `pendiente_nc — ${notaFinal||''}`.trim(),
+            notas: `pendiente_nc`,
           })
         }
       }
