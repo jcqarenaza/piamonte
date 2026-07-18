@@ -32,8 +32,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [selMovData, setSelMovData] = useState<any[]>([])
   const [loadingSelMov, setLoadingSelMov] = useState(false)
   const [ajusteCantModal, setAjusteCantModal] = useState<any|null>(null)
-  const [ajusteCantForm, setAjusteCantForm] = useState({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false })
+  const [ajusteCantForm, setAjusteCantForm] = useState({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false, proveedor_id: '', proveedor_nombre: '' })
   const [savingAjuste, setSavingAjuste] = useState(false)
+  const [proveedoresLista, setProveedoresLista] = useState<{id:string;nombre:string}[]>([])
   const [items, setItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -78,29 +79,21 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       user_id: userId || null,
     })
 
-    // Si es salida con pendiente NC → crear ajuste en CC del proveedor
-    if (esPendienteNC && ajusteCantModal.articulo_id) {
-      const { data: eq } = await supabase.from('articulo_equivalencias')
-        .select('proveedor, costo_neto').eq('articulo_id', ajusteCantModal.articulo_id)
-        .gt('costo_neto', 0).order('costo_neto', {ascending:false}).limit(1).maybeSingle()
-      if (eq?.proveedor) {
-        const { data: prov } = await supabase.from('proveedores_compra')
-          .select('id,nombre').ilike('nombre', `%${eq.proveedor}%`).maybeSingle()
-        if (prov) {
-          const montoAjuste = Math.round((eq.costo_neto || ajusteCantModal.costo || 0) * Math.abs(delta))
-          await supabase.from('cuenta_corriente_proveedores').insert({
-            proveedor_id: prov.id, proveedor_nombre: prov.nombre,
-            fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
-            descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
-            debe: 0, haber: montoAjuste,
-            notas: `pendiente_nc`,
-          })
-        }
-      }
+    // Si es salida con pendiente NC → crear ajuste en CC del proveedor elegido
+    if (esPendienteNC && ajusteCantForm.proveedor_id) {
+      const montoAjuste = Math.round((ajusteCantModal.costo || 0) * Math.abs(delta))
+      await supabase.from('cuenta_corriente_proveedores').insert({
+        proveedor_id: ajusteCantForm.proveedor_id,
+        proveedor_nombre: ajusteCantForm.proveedor_nombre,
+        fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
+        descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
+        debe: 0, haber: montoAjuste,
+        notas: `pendiente_nc`,
+      })
     }
 
     setAjusteCantModal(null)
-    setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false })
+    setAjusteCantForm({ tipo: 'entrada', cant: '1', nota: '', motivo: '', pendiente_nc: false, proveedor_id: '', proveedor_nombre: '' })
     setSavingAjuste(false)
     load()
     if (selMov?.id === ajusteCantModal.id) abrirMovimientos({...ajusteCantModal, cantidad: nueva})
@@ -212,6 +205,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }, [supabase])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    supabase.from('proveedores_compra').select('id,nombre').eq('activo', true).order('nombre')
+      .then(({ data }) => setProveedoresLista(data ?? []))
+  }, [supabase])
 
   const loadPendientes = useCallback(async () => {
     setLoadingPend(true)
@@ -890,13 +887,31 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   <option value="Otro">Otro</option>
                 </select>
                 {['Roto','Devuelto al proveedor'].includes(ajusteCantForm.motivo) && (
-                  <label className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 cursor-pointer">
-                    <input type="checkbox" checked={ajusteCantForm.pendiente_nc} onChange={e=>setAjusteCantForm(p=>({...p,pendiente_nc:e.target.checked}))} className="accent-amber-600"/>
-                    <div>
-                      <p className="text-sm font-semibold text-amber-800">Pendiente de Nota de Crédito</p>
-                      <p className="text-[10px] text-amber-600">Crea un ajuste en la CC del proveedor hasta recibir la NC</p>
-                    </div>
-                  </label>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 cursor-pointer">
+                      <input type="checkbox" checked={ajusteCantForm.pendiente_nc} onChange={e=>setAjusteCantForm(p=>({...p,pendiente_nc:e.target.checked,proveedor_id:'',proveedor_nombre:''}))} className="accent-amber-600"/>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800">Pendiente de Nota de Crédito</p>
+                        <p className="text-[10px] text-amber-600">Crea un ajuste en la CC del proveedor hasta recibir la NC</p>
+                      </div>
+                    </label>
+                    {ajusteCantForm.pendiente_nc && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Proveedor que debe la NC</label>
+                        <select value={ajusteCantForm.proveedor_id}
+                          onChange={e=>{
+                            const prov = proveedoresLista.find(p=>p.id===e.target.value)
+                            setAjusteCantForm(p=>({...p,proveedor_id:e.target.value,proveedor_nombre:prov?.nombre||''}))
+                          }}
+                          className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
+                          <option value="">Seleccionar proveedor…</option>
+                          {proveedoresLista.map(p=>(
+                            <option key={p.id} value={p.id}>{p.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -917,8 +932,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             </div>
             <div className="flex gap-2">
               <button onClick={()=>setAjusteCantModal(null)} style={{flex:1,background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
-              <button onClick={confirmarAjusteCant} disabled={savingAjuste||!ajusteCantForm.cant}
-                style={{flex:2,background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer',opacity:savingAjuste||!ajusteCantForm.cant?0.5:1}}>
+              <button onClick={confirmarAjusteCant} 
+                disabled={savingAjuste||!ajusteCantForm.cant||(ajusteCantForm.pendiente_nc&&!ajusteCantForm.proveedor_id)}
+                style={{flex:2,background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer',opacity:savingAjuste||!ajusteCantForm.cant||(ajusteCantForm.pendiente_nc&&!ajusteCantForm.proveedor_id)?0.5:1}}>
                 {savingAjuste?'Guardando…':'✓ Confirmar'}
               </button>
             </div>

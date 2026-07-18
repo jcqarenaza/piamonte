@@ -406,10 +406,6 @@ export default function CuentaCorrienteProveedoresClient() {
                 </button>
               </div>
             )}
-            {/* Ajuste / Pendiente NC */}
-            <button onClick={()=>setOpenAjuste(true)} style={{...btnSm,background:'#92400e',width:'100%',marginTop:8,textAlign:'center'}}>
-              ⚖ Ajuste / Pendiente de NC
-            </button>
             {/* Ajustes pendientes de NC */}
             {ajustesPendNC.length > 0 && (
               <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
