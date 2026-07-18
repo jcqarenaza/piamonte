@@ -458,6 +458,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       comprobante_id: (nc as any).id, user_id: userId,
     })
 
+    // Saldar CC: la NC acredita (haber) el total en la cuenta del cliente o aseguradora
+    const ncDesc = `NC-0006-${String(nextNum).padStart(8,'0')} — devolución FA-0006-${String(ncComp.nro_cbte_afip ?? ncComp.numero ?? 0).padStart(8,'0')}`
+    if ((ncComp as any).aseguradora_id) {
+      await supabase.from('cuenta_corriente_aseguradoras').insert({
+        aseguradora_id: (ncComp as any).aseguradora_id,
+        fecha: todayStr(), tipo: 'nc',
+        descripcion: ncDesc,
+        debe: 0, haber: ncTotal,
+        comprobante_id: (nc as any).id, user_id: userId,
+      })
+    } else if ((ncComp as any).cliente_id) {
+      await supabase.from('cuenta_corriente').insert({
+        cliente_id: (ncComp as any).cliente_id,
+        cliente_nombre: ncComp.cliente_nombre,
+        fecha: todayStr(), tipo: 'nc',
+        descripcion: ncDesc,
+        debe: 0, haber: ncTotal,
+        comprobante_id: (nc as any).id, user_id: userId,
+      })
+    }
+
     // Si la factura original vino de una OS, liberarla para poder refacturar
     if (ncComp.orden_id) {
       await supabase.from('ordenes_servicio').update({ convertido_comp: false }).eq('id', ncComp.orden_id)

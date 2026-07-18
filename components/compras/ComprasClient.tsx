@@ -489,6 +489,26 @@ export default function ComprasClient() {
       // Si no afecta stock, igual marcar como procesado
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
     }
+
+    // NC de compra: solo acredita en CC del proveedor — el stock ya fue descontado
+    // cuando se marcó "Roto / Devuelto" en el Ajustar de stock
+    if (comp && form.tipo === 'nc') {
+      const numNc = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
+      const provNombre = prov?.nombre || form.proveedor_nombre || ''
+      const provId = prov?.id || form.proveedor_id || null
+
+      if (provId && total > 0) {
+        await supabase.from('cuenta_corriente_proveedores').insert({
+          proveedor_id: provId, proveedor_nombre: provNombre,
+          fecha: form.fecha || todayStr(), tipo: 'nc',
+          descripcion: `NC ${numNc} — ${provNombre}`,
+          debe: 0, haber: total,
+          comprobante_compra_id: comp.id,
+        })
+      }
+
+      await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
+    }
     // Los costos del catálogo se actualizan solo desde el importador de listas, no desde facturas
 
     setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
