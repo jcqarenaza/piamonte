@@ -780,21 +780,34 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                     : selMovData.length === 0 ? <p className="text-sm text-p-gray text-center py-4">Sin movimientos.</p>
                     : (
                       <div className="divide-y divide-p-line2 max-h-56 overflow-y-auto">
-                        {selMovData.map((m:any)=>(
+                        {selMovData.map((m:any)=>{
+                          const tieneCompra = !!m.comprobante_compra_id
+                          const tieneVenta = !!m.comprobante_venta_id
+                          const etiqueta = tieneCompra
+                            ? `FC-${String(m.compra_numero||'').padStart(8,'0')} · ${m.compra_proveedor||'Compra'}`
+                            : tieneVenta
+                              ? `FC-${String(m.venta_numero||'').padStart(8,'0')}${m.venta_cliente?' · '+m.venta_cliente:m.venta_aseguradora?' · '+m.venta_aseguradora:''}`
+                              : m.nota || m.motivo || '—'
+                          return (
                           <div key={m.id}
-                        onDoubleClick={()=>{ if((m as any).comprobante_venta_id || (m as any).comprobante_compra_id) abrirComprobante((m as any).comprobante_venta_id || (m as any).comprobante_compra_id) }}
-                        className={`grid px-4 py-2 text-xs items-center gap-2 ${(m as any).comprobante_venta_id||(m as any).comprobante_compra_id?'cursor-pointer hover:bg-blue-50/30':''}`}
-                        style={{gridTemplateColumns:'80px 80px 50px 1fr 80px 70px'}}>
-                        <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
-                        <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
-                          {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
-                        </span>
-                        <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
-                        <span className={`truncate ${(m as any).comprobante_compra_id?'text-blue-600':(m as any).comprobante_venta_id?'text-green-700':'text-p-ink2'}`}>{m.nota||m.motivo||'—'}</span>
-                        <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
-                        <span className="truncate text-p-ink2 text-[10px]">{(m as any).usuario_nombre||''}</span>
-                      </div>
-                        ))}
+                            onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
+                            className={`grid px-4 py-2 text-xs items-center gap-2 ${tieneVenta||tieneCompra?'cursor-pointer hover:bg-blue-50/30':''}`}
+                            style={{gridTemplateColumns:'80px 80px 50px 1fr 80px 70px'}}>
+                            <span className="font-mono text-p-ink2">{m.fecha?.split('-').reverse().join('/')}</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded-full text-center ${m.tipo==='entrada'?'bg-green-100 text-green-700':m.tipo==='salida'?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>
+                              {m.tipo==='entrada'?'📥 +'+m.cantidad:m.tipo==='salida'?'📤 -'+m.cantidad:'⚖ '+m.cantidad}
+                            </span>
+                            <span className="text-center font-bold text-p-ink">{m.stock_posterior??'—'}</span>
+                            <span className={`truncate ${tieneCompra?'text-blue-600 font-medium':tieneVenta?'text-green-700 font-medium':'text-p-ink2'}`}>
+                              {tieneCompra && <span className="mr-1">🧾</span>}
+                              {tieneVenta && <span className="mr-1">🔖</span>}
+                              {etiqueta}
+                            </span>
+                            <span className="font-mono text-right text-p-ink2">{m.costo_unitario?moneyARS(m.costo_unitario):'—'}</span>
+                            <span className="truncate text-p-ink2 text-[10px]">{m.usuario_nombre||''}</span>
+                          </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
