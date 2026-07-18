@@ -201,19 +201,20 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
       if (s && s.cantidad > 0) {
         await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
         setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
-        // Actualizar nota del ajuste generado por el trigger con datos de la venta
         const notaVenta = [
-          form.comprobante ? `FC ${form.comprobante}` : null,
+          form.comprobante ? `Comp. ${form.comprobante}` : null,
           form.cliente || null,
           form.pago !== 'Efectivo' ? form.pago : null,
         ].filter(Boolean).join(' · ') || 'Venta de caja'
-        await supabase.from('ajustes_stock')
-          .update({ nota: notaVenta })
-          .eq('stock_id', form.stock_id)
-          .eq('tipo', 'salida')
-          .is('nota', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
+        await supabase.from('stock_movimientos').insert({
+          stock_id: form.stock_id,
+          tipo: 'salida',
+          cantidad: 1,
+          precio_venta_unitario: +form.precio.replace(/[^0-9.]/g, '') || null,
+          fecha: fecha,
+          descripcion: notaVenta,
+          user_id: userId || null,
+        })
       }
     }
     setOpen(false)
@@ -225,7 +226,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     if (!confirm('¿Borrar venta?')) return
     if (v.origen === 'stock' && v.stock_id) {
       const s = stockItems.find(x => x.id === v.stock_id)
-      if (s) await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
+      if (s) { await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id); await supabase.from('stock_movimientos').insert({ stock_id: v.stock_id, tipo: 'entrada', cantidad: 1, fecha: v.fecha || fecha, descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, user_id: userId || null }); }
     }
     await supabase.from('ventas').delete().eq('id', v.id)
     loadVentas()
@@ -287,7 +288,7 @@ const CATEGORIAS_GASTO = ['Sueldos','Alquiler','Servicios','Insumos','Publicidad
     await registrarAuditoria(v.id, 'eliminar', 'venta', JSON.stringify({ descripcion: v.descripcion, precio: v.precio, cliente: v.cliente }), '')
     if (v.origen === 'stock' && v.stock_id) {
       const s = stockItems.find(x => x.id === v.stock_id)
-      if (s) await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
+      if (s) { await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id); await supabase.from('stock_movimientos').insert({ stock_id: v.stock_id, tipo: 'entrada', cantidad: 1, fecha: v.fecha || fecha, descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, user_id: userId || null }); }
     }
     await supabase.from('ventas').delete().eq('id', v.id)
     loadVentas()

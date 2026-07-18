@@ -116,6 +116,9 @@ export default function ComprasClient() {
   const [ovDescuento, setOvDescuento] = useState<string>('')
   const [ovIva, setOvIva] = useState<string>('')
 
+  // Pendientes NC del proveedor seleccionado
+  const [pendientesNC, setPendientesNC] = useState<any[]>([])
+
   const supabase = createClient()
 
   // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
@@ -1254,13 +1257,45 @@ export default function ComprasClient() {
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Tipo</label>
             <div className="flex gap-2 flex-wrap">
               {TIPOS.map(t=>(
-                <button key={t.id} onClick={()=>setForm(p=>({...p,tipo:t.id}))}
+                <button key={t.id} onClick={async ()=>{ 
+                  setForm(p=>({...p,tipo:t.id}))
+                  if (t.id === 'nc' && form.proveedor_id) {
+                    const { data } = await supabase.from('ajustes_stock')
+                      .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
+                      .eq('pendiente_nc', true)
+                      .order('fecha', { ascending: true })
+                    setPendientesNC(data ?? [])
+                  } else {
+                    setPendientesNC([])
+                  }
+                }}
                   style={{background:form.tipo===t.id?TIPO_COLOR[t.id]:'#fff',color:form.tipo===t.id?'#fff':'#4A6655',border:`1.5px solid ${form.tipo===t.id?TIPO_COLOR[t.id]:'#C2DDD0'}`,borderRadius:8,padding:'7px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                   {t.icon} {t.label}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* Pendientes NC del proveedor */}
+          {form.tipo === 'nc' && pendientesNC.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente de este proveedor</p>
+              <div className="flex flex-col gap-1.5">
+                {pendientesNC.map((p:any) => (
+                  <div key={p.id} className="flex items-center gap-2 text-xs text-amber-700">
+                    <span className="font-mono bg-amber-100 px-1.5 py-0.5 rounded">{(p.stock as any)?.codigo || '—'}</span>
+                    <span className="flex-1 truncate">{(p.stock as any)?.descripcion || p.descripcion}</span>
+                    <span className="font-bold">×{p.cantidad}</span>
+                    <span className="text-amber-500">{p.fecha?.split('-').reverse().join('/')}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-amber-600 mt-2">Al guardar la NC, estos pendientes quedarán saldados automáticamente.</p>
+            </div>
+          )}
+          {form.tipo === 'nc' && pendientesNC.length === 0 && form.proveedor_id && (
+            <p className="text-xs text-p-ink2 bg-p-light rounded-lg px-3 py-2">Sin artículos pendientes de NC para este proveedor.</p>
+          )}
 
           {/* Número */}
           {form.tipo !== 'remito' && (
@@ -1311,7 +1346,16 @@ export default function ComprasClient() {
             </Field>
             <Field label="Proveedor">
               <div className="flex gap-2">
-                <Select value={form.proveedor_id} onChange={e=>setForm(p=>({...p,proveedor_id:e.target.value}))}>
+                <Select value={form.proveedor_id} onChange={async e=>{ 
+                  setForm(p=>({...p,proveedor_id:e.target.value}))
+                  if (form.tipo === 'nc' && e.target.value) {
+                    const { data } = await supabase.from('ajustes_stock')
+                      .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
+                      .eq('pendiente_nc', true)
+                      .order('fecha', { ascending: true })
+                    setPendientesNC(data ?? [])
+                  }
+                }}>
                   <option value="">Seleccionar…</option>
                   {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </Select>
