@@ -137,6 +137,69 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [vincCosto, setVincCosto] = useState<Record<string,string>>({})
   const [vincSel, setVincSel] = useState<Record<string,any>>({})
 
+  // ── Ambiguos: artículos migrados con más de un Pilkington posible ──
+  type AmbiguoItem = { stock_id: string; codigo_actual: string; descripcion: string; cantidad: number; opciones: string[] }
+  const [ambiguos, setAmbiguos] = useState<AmbiguoItem[]>([])
+  const [loadingAmbiguos, setLoadingAmbiguos] = useState(false)
+  const [ambigSel, setAmbigSel] = useState<Record<string,string>>({})
+  const [ambigGuardando, setAmbigGuardando] = useState<Record<string,boolean>>({})
+
+  const loadAmbiguos = useCallback(async () => {
+    setLoadingAmbiguos(true)
+    // Traer artículos con código que termina en P y con articulo_id asignado
+    // Para cada uno buscar cuántas opciones P existen en el catálogo con los mismos 6 dígitos base
+    const { data: stockP } = await supabase
+      .from('stock')
+      .select('id, codigo, descripcion, cantidad, articulo_id')
+      .eq('activo', true)
+      .like('codigo', '%P')
+      .not('articulo_id', 'is', null)
+      .gt('cantidad', 0)
+    
+    if (!stockP?.length) { setAmbiguos([]); setLoadingAmbiguos(false); return }
+
+    // Para cada uno buscar alternativas en el catálogo con mismos 6 dígitos y terminando en P
+    const result: AmbiguoItem[] = []
+    for (const s of stockP) {
+      const base6 = s.codigo.slice(0, 6)
+      const { data: opciones } = await supabase
+        .from('articulos_maestro')
+        .select('codigo_referencia')
+        .ilike('codigo_referencia', base6 + '%')
+        .like('codigo_referencia', '%P')
+      if (opciones && opciones.length > 1) {
+        result.push({
+          stock_id: s.id,
+          codigo_actual: s.codigo,
+          descripcion: s.descripcion,
+          cantidad: s.cantidad,
+          opciones: opciones.map((o: any) => o.codigo_referencia).sort()
+        })
+      }
+    }
+    setAmbiguos(result)
+    setLoadingAmbiguos(false)
+  }, [supabase])
+
+  useEffect(() => { if (tab === 'vincular') loadAmbiguos() }, [tab, loadAmbiguos])
+
+  async function confirmarAmbiguo(item: AmbiguoItem) {
+    const nuevoCodigo = ambigSel[item.stock_id]
+    if (!nuevoCodigo) return
+    setAmbigGuardando(p => ({ ...p, [item.stock_id]: true }))
+    // Buscar el articulo_maestro_id del código elegido
+    const { data: am } = await supabase
+      .from('articulos_maestro')
+      .select('id')
+      .eq('codigo_referencia', nuevoCodigo)
+      .single()
+    if (am) {
+      await supabase.from('stock').update({ codigo: nuevoCodigo, articulo_id: am.id, updated_at: new Date().toISOString() }).eq('id', item.stock_id)
+      setAmbiguos(prev => prev.filter(x => x.stock_id !== item.stock_id))
+    }
+    setAmbigGuardando(p => ({ ...p, [item.stock_id]: false }))
+  }
+
   const load = useCallback(async () => {
     const { data } = await supabase.from('stock').select('*').eq('activo', true).order('descripcion')
     setItems(data ?? [])
@@ -449,6 +512,61 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               Vinculá cada pieza con su artículo del catálogo maestro — así Compras, Ventas y Stock comparten el mismo costo y el mismo identificador (SKU). Podés buscar por <strong>código Pilkington</strong> o por descripción.
             </p>
           </div>
+          {/* ── Sección ambiguos: artículos migrados con más de un Pilkington posible ── */}
+          {loadingAmbiguos ? (
+            <p className="text-sm text-p-gray text-center py-4">Buscando artículos con código ambiguo…</p>
+          ) : ambiguos.length > 0 ? (
+            <div className="mb-6">
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3 flex items-center gap-2">
+                <span className="text-lg">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-orange-800">{ambiguos.length} artículo(s) con código Pilkington ambiguo</p>
+                  <p className="text-xs text-orange-700">Fueron migrados automáticamente pero tienen más de una variante posible. Revisá y elegí el código correcto.</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {ambiguos.map(item => (
+                  <div key={item.stock_id} className="bg-white border border-orange-200 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                    <div className="min-w-[200px]">
+                      <p className="font-medium text-sm text-p-ink">{item.descripcion}</p>
+                      <p className="text-xs text-p-ink2">{item.cantidad} u. · actual: <span className="font-mono font-bold text-orange-700">{item.codigo_actual}</span></p>
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="text-xs text-p-ink2 mb-1">Elegir código correcto:</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {item.opciones.map(op => (
+                          <button
+                            key={op}
+                            onClick={() => setAmbigSel(p => ({ ...p, [item.stock_id]: op }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-colors ${
+                              ambigSel[item.stock_id] === op
+                                ? 'bg-p-green text-white border-p-green'
+                                : op === item.codigo_actual
+                                  ? 'bg-orange-100 text-orange-700 border-orange-300'
+                                  : 'bg-white text-p-ink border-p-line hover:border-p-green'
+                            }`}>
+                            {op === item.codigo_actual ? `${op} ← actual` : op}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => confirmarAmbiguo(item)}
+                      disabled={!ambigSel[item.stock_id] || ambigSel[item.stock_id] === item.codigo_actual || ambigGuardando[item.stock_id]}
+                      style={{
+                        background: ambigSel[item.stock_id] && ambigSel[item.stock_id] !== item.codigo_actual ? '#00A550' : '#d1d5db',
+                        color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 12,
+                        cursor: ambigSel[item.stock_id] && ambigSel[item.stock_id] !== item.codigo_actual ? 'pointer' : 'not-allowed'
+                      }}>
+                      {ambigGuardando[item.stock_id] ? '…' : '✓ Confirmar'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* ── Pendientes sin vincular ── */}
           {loadingPend ? <p className="text-sm text-p-gray text-center py-10">Buscando pendientes y auto-sugiriendo…</p> :
            pendientes.length === 0 ? <Empty msg="¡Sin pendientes! Todo el stock está vinculado a su artículo." /> : (<>
             {/* Botón vincular en lote si hay auto-sugeridos */}
