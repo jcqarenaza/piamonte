@@ -409,70 +409,84 @@ export default function ComprasClient() {
     // Registrar movimientos de stock y actualizar cantidades
     if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado) {
       const numFact = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
-      for (const it of items) {
-        if ((it.d||'').toUpperCase().trim() === 'FLETE' || (it as any).codigo === 'FL') continue
-        const codigo = (it as any).codigo || null
-        if (!codigo) continue
+      const itemsActualizados = [...items]
 
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx]
+        if ((it.d||'').toUpperCase().trim() === 'FLETE' || (it as any).codigo === 'FL') continue
+
+        const codigo = (it as any).codigo || null
         const dtoPct = (it.dto ?? descuentoPct) / 100
         const costoUnit = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
-        // Buscar articulo_id por código en equivalencias
-        let articuloId = it.articulo_id || null
+        // Resolver articulo_id: del ítem, o buscando por código en equivalencias
+        let articuloId: string | null = (it as any).articulo_id || null
         if (!articuloId && codigo) {
           const { data: eq } = await supabase.from('articulo_equivalencias')
             .select('articulo_id').eq('codigo_proveedor', codigo).maybeSingle()
           articuloId = eq?.articulo_id || null
         }
 
-        // Buscar fila de stock existente (por código o articulo_id)
+        // Sin código ni articulo_id no podemos identificar el artículo — salteamos
+        if (!codigo && !articuloId) continue
+
+        // Buscar fila de stock: primero por código, luego por articulo_id
         let stockRow: any = null
         if (codigo) {
-          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id').eq('codigo', codigo).eq('activo', true).maybeSingle()
+          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo').eq('codigo', codigo).eq('activo', true).maybeSingle()
           stockRow = data
         }
         if (!stockRow && articuloId) {
-          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
+          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
           stockRow = data
         }
 
         if (stockRow) {
-          // Actualizar cantidad y costo
           await supabase.from('stock').update({
-            cantidad: (stockRow.cantidad || 0) + it.c,
+            cantidad: (stockRow.cantidad || 0) + (it.c || 1),
             costo: costoUnit,
             articulo_id: stockRow.articulo_id || articuloId || null,
           }).eq('id', stockRow.id)
           await supabase.from('stock_movimientos').insert({
-            stock_id: stockRow.id, tipo: 'entrada', cantidad: it.c,
+            stock_id: stockRow.id, tipo: 'entrada', cantidad: it.c || 1,
             costo_unitario: costoUnit, fecha: form.fecha || todayStr(),
             descripcion: `Factura ${numFact} — ${prov?.nombre || ''}`,
             comprobante_compra_id: comp.id,
           })
+          // Guardar stock_id en el item para trazabilidad
+          itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
           // Crear nueva fila de stock
-          // Buscar descripción en catálogo/maestro
           let desc = it.d
           if (codigo) {
             const { data: cat } = await supabase.from('catalogo').select('descripcion').eq('codigo', codigo).limit(1).maybeSingle()
             if (cat?.descripcion) desc = cat.descripcion
           }
+          const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
           const { data: newStock } = await supabase.from('stock').insert({
-            codigo, descripcion: desc, cantidad: it.c,
+            codigo: codigoFinal, descripcion: desc, cantidad: it.c || 1,
             costo: costoUnit, precio_venta: 0,
             articulo_id: articuloId || null, activo: true,
           }).select('id').single()
           if (newStock) {
             await supabase.from('stock_movimientos').insert({
-              stock_id: newStock.id, tipo: 'entrada', cantidad: it.c,
+              stock_id: newStock.id, tipo: 'entrada', cantidad: it.c || 1,
               costo_unitario: costoUnit, fecha: form.fecha || todayStr(),
               descripcion: `Factura ${numFact} — ${prov?.nombre || ''} (alta nueva)`,
               comprobante_compra_id: comp.id,
             })
+            itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
           }
         }
       }
-      // Marcar como procesado
+
+      // Actualizar el JSON de items con los stock_id resueltos y marcar como procesado
+      await supabase.from('comprobantes_compra').update({
+        estado: 'procesado',
+        items: itemsActualizados,
+      }).eq('id', comp.id)
+    } else if (comp) {
+      // Si no afecta stock, igual marcar como procesado
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
     }
     // Los costos del catálogo se actualizan solo desde el importador de listas, no desde facturas
