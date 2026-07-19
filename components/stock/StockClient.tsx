@@ -227,6 +227,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       .then(({ data }) => { if (data?.oficial) setDolarOficial(data.oficial) })
   }, [supabase])
 
+  // Chequeo de consistencia stock vs movimientos
+  const [inconsistencias, setInconsistencias] = useState<any[]>([])
+  const [showInconsistencias, setShowInconsistencias] = useState(false)
+  useEffect(() => {
+    supabase.from('vista_inconsistencias_stock').select('*')
+      .then(({ data }) => setInconsistencias(data ?? []))
+  }, [supabase])
+
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
 
   function normPos(pos: string | null | undefined): string {
@@ -716,6 +724,29 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         <div onClick={()=>setSoloSinCosto(true)} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 mb-3 cursor-pointer hover:bg-orange-100 transition-colors flex items-center justify-between">
           <p className="text-sm text-orange-800">⚠ <strong>{sinCostoCount}</strong> artículos sin costo — no suman al valor</p>
           <span className="text-xs font-bold text-orange-700">Ver →</span>
+        </div>
+      )}
+      {inconsistencias.length > 0 && isAdmin && (
+        <div className="bg-red-50 border border-red-200 rounded-xl mb-3 overflow-hidden">
+          <div onClick={()=>setShowInconsistencias(v=>!v)} className="px-4 py-2.5 cursor-pointer hover:bg-red-100 transition-colors flex items-center justify-between">
+            <p className="text-sm text-red-800">🔍 <strong>{inconsistencias.length}</strong> artículo(s) con stock desincronizado de sus movimientos</p>
+            <span className="text-xs font-bold text-red-700">{showInconsistencias ? 'Ocultar ▲' : 'Ver detalle ▼'}</span>
+          </div>
+          {showInconsistencias && (
+            <div className="border-t border-red-200 max-h-64 overflow-y-auto">
+              {inconsistencias.map((inc:any)=>(
+                <div key={inc.stock_id} className="flex items-center gap-3 px-4 py-2 border-b border-red-100 last:border-0 text-xs">
+                  <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{inc.codigo}</span>
+                  <span className="flex-1 truncate text-red-900">{inc.descripcion}</span>
+                  <span className="text-red-600">stock: <strong>{inc.stock_actual}</strong></span>
+                  <span className="text-red-500">movs: <strong>{inc.total_movimientos}</strong></span>
+                  <span className={`font-bold ${inc.diferencia > 0 ? 'text-amber-600' : 'text-red-700'}`}>
+                    {inc.diferencia > 0 ? '+' : ''}{inc.diferencia}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
