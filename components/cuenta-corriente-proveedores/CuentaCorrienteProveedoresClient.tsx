@@ -64,9 +64,10 @@ export default function CuentaCorrienteProveedoresClient() {
   useEffect(()=>{
     if(sel) {
       loadMovs(sel.proveedor_nombre)
-      // Cargar cheques propios emitidos a este proveedor pendientes de cobro
-      supabase.from('cheques').select('id,numero,banco,formato,modalidad,monto,fecha_cobro')
-        .eq('tipo','propio').eq('contraparte', sel.proveedor_nombre)
+      // Cargar cheques propios emitidos a este proveedor — busca por proveedor_id o por contraparte
+      supabase.from('cheques').select('id,numero,banco,formato,modalidad,monto,fecha_cobro,contraparte')
+        .eq('tipo','propio')
+        .eq('proveedor_id', sel.proveedor_id)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp(data??[]))
       // Cargar ajustes pendientes de NC para este proveedor
@@ -561,9 +562,12 @@ export default function CuentaCorrienteProveedoresClient() {
                         <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequeSelId===ch.id?'border-p-green bg-green-50':'border-p-line'}`}>
                           <input type="radio" name="cheque_sel" checked={chequeSelId===ch.id}
                             onChange={()=>setChequeSelId(chequeSelId===ch.id?'':ch.id)} className="accent-p-green"/>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${ch.formato==='echeq'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>
+                            {ch.formato==='echeq'?'E-Cheq':'Físico'}
+                          </span>
                           <span className="font-mono text-xs font-bold">{ch.numero}</span>
                           <span className="text-xs text-p-ink2">{ch.banco}</span>
-                          <span className="text-xs text-p-ink2">{ch.fecha_cobro?.split('-').reverse().join('/')}</span>
+                          <span className="text-xs text-p-ink2">vto: {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
                           <span className="ml-auto font-mono font-bold text-sm">{moneyARS(+ch.monto)}</span>
                         </label>
                       ))}
