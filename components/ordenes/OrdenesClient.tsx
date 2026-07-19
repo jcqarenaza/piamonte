@@ -517,7 +517,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             className="flex-1 border border-p-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
           {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
-        {esAdmin && <button onClick={()=>setOpen(true)} style={btn}>+ Nueva orden</button>}
+        {esAdmin && <button onClick={()=>{
+          setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
+          setItems([]); setItem({d:'',c:'1',p:''}); setEditId(null)
+          setStockSel(null); setStockQ(''); setFormProd('')
+          setOpen(true)
+        }} style={btn}>+ Nueva orden</button>}
       </div>
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (

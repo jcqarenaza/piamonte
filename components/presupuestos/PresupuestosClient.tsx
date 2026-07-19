@@ -426,9 +426,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(0,100,60)
       doc.text(`≈ US$${Math.round(p.total/p.dolar_mep).toLocaleString('es-AR')} (oficial)`, W-pad, 272, {align:'right'})
     }
-    if(esAseg){
-      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,50,150)
-      doc.text((p as any).mano_obra_incluida !== false ? '✓ Precio incluye mano de obra y colocacion' : 'No incluye mano de obra', pad, 272)
+    // Leyenda MO: solo si incluye — si no incluye, silencio
+    if((p as any).mano_obra_incluida !== false) {
+      doc.setFont('helvetica','italic'); doc.setFontSize(8)
+      doc.setTextColor(esAseg ? 100 : 0, esAseg ? 50 : 100, esAseg ? 150 : 60)
+      doc.text('✓ Precio incluye mano de obra y colocacion', pad, 272)
       doc.setTextColor(30,30,30)
     }
 

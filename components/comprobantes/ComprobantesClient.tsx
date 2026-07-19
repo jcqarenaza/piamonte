@@ -26,9 +26,10 @@ const btnWa    = { ...btnSm,background:'#25d366' } as const
 const METODOS = ['Efectivo','Transferencia','Débito','Crédito Visa','Crédito Master','Crédito Naranja','Crédito AMEX','Cheque','Cuenta corriente']
 const CUOTAS  = [1,2,3,6,9,12,18,24]
 const TIPO_FISCAL = [
-  { id:'consumidor_final', label:'Consumidor Final' },
-  { id:'monotributo',      label:'Monotributista'   },
-  { id:'responsable_inscripto', label:'Responsable Inscripto' },
+  { id:'consumidor_final',      label:'Consumidor Final'     },
+  { id:'monotributo',           label:'Monotributista'       },
+  { id:'responsable_inscripto', label:'Responsable Inscripto'},
+  { id:'exento',                label:'Exento de IVA'        },
 ]
 
 type Modo = 'cf' | 'cliente' | 'aseguradora'
@@ -78,6 +79,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const [showFiscal, setShowFiscal] = useState(false)
   // ivaOn eliminado — el IVA se discrimina automaticamente segun tipo_fiscal del cliente
+  // Exentos: Factura B sin IVA (precio neto = total)
+  const esExento = fiscal.tipo_fiscal === 'exento'
   const [ivaNegroP, setIvaNegroP] = useState(75)
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', patente:'' }
@@ -132,14 +135,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   },[stockQ,supabase])
 
   const esNegro = rol === 'caja'
+  // ivaOn eliminado — el IVA se discrimina automaticamente segun tipo_fiscal del cliente
+  // Exentos: Factura B sin IVA (precio neto = total)
+  const esExento = fiscal.tipo_fiscal === 'exento'
   // Si el cliente es RI (Factura A), los precios ya incluyen IVA → neto = precio / 1.21
-  // Si es CF/B/C, el total es el precio tal cual (IVA incluido implícito)
-  const discriminaIva = !esNegro && fiscal.tipo_fiscal === 'responsable_inscripto'
+  // Si es CF/B/C/exento, el total es el precio tal cual
+  const discriminaIva = !esNegro && !esExento && fiscal.tipo_fiscal === 'responsable_inscripto'
   const subtotalItems = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
   const neto = discriminaIva
     ? Math.round(subtotalItems / (1 + IVA) * 100) / 100
     : subtotalItems
-  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro está incluido en el precio
+  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro/exento = 0
   const iva   = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
     : (discriminaIva ? Math.round(neto*IVA*100) / 100 : 0)
@@ -302,7 +308,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
-    if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final') return 'B'
+    if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final'||fiscal.tipo_fiscal==='exento') return 'B'
     if(fiscal.tipo_fiscal==='responsable_inscripto') return 'A'
     return 'C'
   }

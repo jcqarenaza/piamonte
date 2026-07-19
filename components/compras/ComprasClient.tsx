@@ -875,7 +875,16 @@ export default function ComprasClient() {
         <span className="text-sm text-p-ink2 ml-1">{filtrados.length} comprobantes</span>
         <div className="ml-auto flex gap-2">
           <button onClick={()=>setProvModal(true)} style={btnGray}>+ Proveedor</button>
-          <button onClick={()=>setOpen(true)} style={btn}>+ Cargar comprobante</button>
+          <button onClick={()=>{
+            setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
+              proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:true,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
+              descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'',forma_pago:'cuenta_corriente'})
+            setItems([]); setIvaOn(true); setEditId(null)
+            setItemForm({d:'',c:'1',p:'',dto:'',codigo:''})
+            setDescuentoTocadoAMano(false); setAjusteManual('')
+            setPendientesNC([]); setPendientesSelNC({})
+            setOpen(true)
+          }} style={btn}>+ Cargar comprobante</button>
         </div>
       </div>
 
