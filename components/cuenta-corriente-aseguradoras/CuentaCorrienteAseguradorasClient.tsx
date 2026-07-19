@@ -29,9 +29,26 @@ const btnGray = { ...btnSm, background:'#6b7280' } as const
 function toNum(s:string){ return parseFloat((s||'0').replace(',','.')) || 0 }
 
 export default function CuentaCorrienteAseguradorasClient() {
-  const [tab, setTab] = useState<'saldos'|'liquidaciones'>('saldos')
+  const [tab, setTab] = useState<'saldos'|'liquidaciones'|'pendientes'>('saldos')
 
-  // ── TAB SALDOS ──
+  // ── TAB PENDIENTES DE COBRO ──
+  const [factPendientes, setFactPendientes] = useState<any[]>([])
+  const [loadingPend, setLoadingPend] = useState(false)
+
+  useEffect(() => {
+    if (tab !== 'pendientes') return
+    setLoadingPend(true)
+    supabase.from('comprobantes')
+      .select('id,fecha,nro_cbte_afip,aseguradora_nombre,aseguradora_id,cliente_nombre,total,neto,iva')
+      .not('aseguradora_id', 'is', null)
+      .not('es_negro', 'is', true)
+      .neq('categoria', 'nc')
+      .order('fecha', { ascending: false })
+      .then(({ data }) => {
+        setFactPendientes(data ?? [])
+        setLoadingPend(false)
+      })
+  }, [tab, supabase])
   const [saldos, setSaldos]       = useState<Saldo[]>([])
   const [sel, setSel]             = useState<Saldo|null>(null)
   const [movs, setMovs]           = useState<Mov[]>([])
@@ -346,6 +363,7 @@ export default function CuentaCorrienteAseguradorasClient() {
       <div className="flex border-b border-p-line mb-5">
         <button style={tabStyle('saldos')} onClick={()=>setTab('saldos')}>💳 Saldos pendientes</button>
         <button style={tabStyle('liquidaciones')} onClick={()=>setTab('liquidaciones')}>📋 Liquidaciones cobradas</button>
+        <button style={tabStyle('pendientes')} onClick={()=>setTab('pendientes')}>🧾 Facturas pendientes de cobro</button>
       </div>
 
       {/* ── TAB SALDOS ── */}
@@ -566,6 +584,67 @@ export default function CuentaCorrienteAseguradorasClient() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      )}
+
+      {/* Tab: Facturas pendientes de cobro */}
+      {tab==='pendientes' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-p-ink2">Facturas emitidas a aseguradoras sin cobro registrado</p>
+            <p className="text-sm font-bold text-red-500">
+              Total: {moneyARS(factPendientes.reduce((a,f)=>a+Number(f.total),0))}
+            </p>
+          </div>
+          {loadingPend ? (
+            <p className="text-sm text-p-ink2 text-center py-8">Cargando…</p>
+          ) : factPendientes.length === 0 ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+              <p className="text-green-700 font-bold">✅ Sin facturas pendientes</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-p-line shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-p-dark text-white">
+                    <th className="text-left px-4 py-3 text-xs uppercase">Fecha</th>
+                    <th className="text-left px-3 py-3 text-xs uppercase">N°</th>
+                    <th className="text-left px-3 py-3 text-xs uppercase">Aseguradora</th>
+                    <th className="text-left px-3 py-3 text-xs uppercase">Asegurado</th>
+                    <th className="text-right px-3 py-3 text-xs uppercase">Neto</th>
+                    <th className="text-right px-3 py-3 text-xs uppercase">IVA</th>
+                    <th className="text-right px-3 py-3 text-xs uppercase">Total</th>
+                    <th className="px-3 py-3 text-xs uppercase"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {factPendientes.map((f,i)=>(
+                    <tr key={f.id} className={`border-t border-p-line2 ${i%2===0?'bg-white':'bg-p-light/30'}`}>
+                      <td className="px-4 py-2 font-mono text-xs">{f.fecha?.split('-').reverse().join('/')}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        <span className="bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                          FA-0006-{String(f.nro_cbte_afip||'').padStart(8,'0')}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs font-medium truncate max-w-[120px]">{f.aseguradora_nombre||'—'}</td>
+                      <td className="px-3 py-2 text-xs text-p-ink2 truncate max-w-[120px]">{f.cliente_nombre||'—'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{moneyARS(Number(f.neto)||0)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-p-ink2">{moneyARS(Number(f.iva)||0)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-xs text-red-600">{moneyARS(Number(f.total)||0)}</td>
+                      <td className="px-3 py-2">
+                        <button onClick={()=>{
+                          const s = saldos.find(s=>s.aseguradora_id===f.aseguradora_id)
+                          if(s) { setSel(s); loadMovs(s.aseguradora_id); setTab('saldos') }
+                        }} style={{...btnSm,fontSize:10,padding:'4px 10px'}}>Ver CC</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

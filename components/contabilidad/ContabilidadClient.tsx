@@ -14,8 +14,24 @@ export default function ContabilidadClient() {
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
 
+  function copiarTexto(texto: string) {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(texto).catch(() => copiarFallback(texto))
+    } else {
+      copiarFallback(texto)
+    }
+  }
+  function copiarFallback(texto: string) {
+    const ta = document.createElement('textarea')
+    ta.value = texto
+    ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta); ta.focus(); ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+
   useEffect(() => {
-    async function load() {
+  async function load() {
       setLoading(true)
       const mesStart = mes + '-01'
       const mesEnd   = mes + '-31'
@@ -279,7 +295,7 @@ export default function ContabilidadClient() {
                   const lines = [`RETENCIONES SUFRIDAS — ${MESES[+m-1]} ${y}`]
                   Object.entries(RET_LABELS).forEach(([tipo,label])=>{ if((totRet[tipo]||0)>0) lines.push(`${label}: ${moneyARS(totRet[tipo])}`) })
                   lines.push(`TOTAL: ${moneyARS(totalRetenciones)}`)
-                  navigator.clipboard.writeText(lines.join('\n'))
+                  copiarTexto(lines.join('\n'))
                 }} style={{marginTop:12,background:'#92400e',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%'}}>
                   📋 Copiar resumen retenciones
                 </button>
@@ -354,7 +370,7 @@ export default function ContabilidadClient() {
                     (totRet['ganancias']||0)>0 ? `RET. GANANCIAS: ${moneyARS(totRet['ganancias'])}` : '',
                     (totRet['iibb']||0)>0      ? `RET. IIBB: ${moneyARS(totRet['iibb'])}` : '',
                   ].filter(Boolean)
-                  navigator.clipboard.writeText(lines.join('\n'))
+                  copiarTexto(lines.join('\n'))
                 }} style={{marginTop:12,background:'#92400e',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%'}}>
                   📋 Copiar resumen completo
                 </button>
