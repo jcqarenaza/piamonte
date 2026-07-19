@@ -9,7 +9,7 @@ export default async function Page() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: p } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
-  if (p?.rol !== 'gerencial') return <NoAcceso modulo="Usuarios" />
+  if (!['gerencial','admin'].includes(p?.rol ?? '')) return <NoAcceso modulo="Usuarios" />
   return (
     <div>
       <h1 className="font-saira font-bold text-2xl text-p-ink mb-1">Usuarios</h1>
