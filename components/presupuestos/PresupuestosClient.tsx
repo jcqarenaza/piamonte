@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Presupuesto, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
+import { jsPDF } from 'jspdf'
 
 const IVA_RATE = 0.21
 
@@ -284,7 +285,6 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   // PDF con jsPDF
   async function generarPDF(p: Presupuesto): Promise<Blob> {
-    const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format:'a4', unit:'mm' })
     const W=210, pad=14, rw=W-pad*2
     const esAseg = !!(p as any).es_aseguradora

@@ -168,6 +168,7 @@ export default function ContabilidadClient() {
                     <th className="text-left px-3 py-3 text-xs uppercase">Tipo</th>
                     <th className="text-left px-3 py-3 text-xs uppercase">N°</th>
                     <th className="text-left px-3 py-3 text-xs uppercase">Proveedor</th>
+                    <th className="text-left px-3 py-3 text-xs uppercase">CUIT</th>
                     <th className="text-right px-3 py-3 text-xs uppercase">Neto</th>
                     <th className="text-right px-3 py-3 text-xs uppercase">IVA</th>
                     <th className="text-right px-3 py-3 text-xs uppercase">Total</th>
@@ -180,6 +181,7 @@ export default function ContabilidadClient() {
                       <td className="px-3 py-2"><span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{r.letra||''}{r.punto_venta?`-${r.punto_venta}`:''}</span></td>
                       <td className="px-3 py-2 font-mono text-xs">{r.numero||'—'}</td>
                       <td className="px-3 py-2 text-xs truncate max-w-[140px]">{r.proveedor_nombre||'—'}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{r.proveedor_cuit||'—'}</td>
                       <td className="px-3 py-2 text-right font-mono text-xs">{moneyARS(Number(r.neto)||0)}</td>
                       <td className="px-3 py-2 text-right font-mono text-xs text-p-ink2">{moneyARS(Number(r.iva)||0)}</td>
                       <td className="px-3 py-2 text-right font-mono font-bold text-xs">{moneyARS(Number(r.total)||0)}</td>
@@ -188,7 +190,7 @@ export default function ContabilidadClient() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-p-dark text-white">
-                    <td colSpan={4} className="px-4 py-3 font-bold">TOTALES</td>
+                    <td colSpan={5} className="px-4 py-3 font-bold">TOTALES</td>
                     <td className="px-3 py-3 text-right font-mono font-bold">{moneyARS(totCompras.neto)}</td>
                     <td className="px-3 py-3 text-right font-mono font-bold text-p-green">{moneyARS(totCompras.iva)}</td>
                     <td className="px-3 py-3 text-right font-mono font-bold">{moneyARS(totCompras.total)}</td>
