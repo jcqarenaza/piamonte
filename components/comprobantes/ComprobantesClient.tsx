@@ -78,9 +78,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
 
   const [showFiscal, setShowFiscal] = useState(false)
-  // ivaOn eliminado — el IVA se discrimina automaticamente segun tipo_fiscal del cliente
-  // Exentos: Factura B sin IVA (precio neto = total)
-  const esExento = fiscal.tipo_fiscal === 'exento'
   const [ivaNegroP, setIvaNegroP] = useState(75)
 
   const emptyFiscal = { tipo_fiscal:'consumidor_final', cuit:'', razon_social:'', tipo_cliente_id:'', vehiculo:'', patente:'' }
