@@ -589,8 +589,6 @@ export default function CuentaCorrienteAseguradorasClient() {
         </div>
       )}
 
-      )}
-
       {/* Tab: Facturas pendientes de cobro */}
       {tab==='pendientes' && (
         <div className="flex flex-col gap-4">
