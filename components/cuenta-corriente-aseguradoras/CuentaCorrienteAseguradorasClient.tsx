@@ -35,20 +35,6 @@ export default function CuentaCorrienteAseguradorasClient() {
   const [factPendientes, setFactPendientes] = useState<any[]>([])
   const [loadingPend, setLoadingPend] = useState(false)
 
-  useEffect(() => {
-    if (tab !== 'pendientes') return
-    setLoadingPend(true)
-    supabase.from('comprobantes')
-      .select('id,fecha,nro_cbte_afip,aseguradora_nombre,aseguradora_id,cliente_nombre,total,neto,iva')
-      .not('aseguradora_id', 'is', null)
-      .not('es_negro', 'is', true)
-      .neq('categoria', 'nc')
-      .order('fecha', { ascending: false })
-      .then(({ data }) => {
-        setFactPendientes(data ?? [])
-        setLoadingPend(false)
-      })
-  }, [tab, supabase])
   const [saldos, setSaldos]       = useState<Saldo[]>([])
   const [sel, setSel]             = useState<Saldo|null>(null)
   const [movs, setMovs]           = useState<Mov[]>([])
@@ -95,6 +81,21 @@ export default function CuentaCorrienteAseguradorasClient() {
   const [expandedLiq, setExpandedLiq] = useState<string|null>(null)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    if (tab !== 'pendientes') return
+    setLoadingPend(true)
+    supabase.from('comprobantes')
+      .select('id,fecha,nro_cbte_afip,aseguradora_nombre,aseguradora_id,cliente_nombre,total,neto,iva')
+      .not('aseguradora_id', 'is', null)
+      .not('es_negro', 'is', true)
+      .neq('categoria', 'nc')
+      .order('fecha', { ascending: false })
+      .then(({ data }) => {
+        setFactPendientes(data ?? [])
+        setLoadingPend(false)
+      })
+  }, [tab])
 
   useEffect(() => {
     loadSaldos()
