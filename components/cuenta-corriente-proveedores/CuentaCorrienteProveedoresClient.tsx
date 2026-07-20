@@ -34,6 +34,7 @@ export default function CuentaCorrienteProveedoresClient() {
   // Cheques propios disponibles para usar en pagos
   const [chequesDisp, setChequesDisp] = useState<any[]>([])
   const [chequeSelId, setChequeSelId] = useState('')
+  const [chequeQ, setChequeQ] = useState('')
   // Ajuste pendiente de NC
   const [openAjuste, setOpenAjuste]   = useState(false)
   const [ajusteForm, setAjusteForm]   = useState({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
@@ -215,7 +216,7 @@ export default function CuentaCorrienteProveedoresClient() {
 
     setGuardandoOp(false)
     setOpOpen(false)
-    setChequeSelId('')
+    setChequeSelId(''); setChequeQ('')
     imprimirOrdenPago({
       numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
       facturas: facturasSel, nc: ncSel,
@@ -554,8 +555,16 @@ export default function CuentaCorrienteProveedoresClient() {
                 {chequesDisp.length > 0 && (
                   <div>
                     <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1.5">Cheques emitidos a {sel?.proveedor_nombre}</p>
-                    <div className="flex flex-col gap-1">
-                      {chequesDisp.map(ch=>(
+                    <input
+                      value={chequeQ}
+                      onChange={e=>setChequeQ(e.target.value)}
+                      placeholder="Buscar por número de cheque…"
+                      className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green mb-2"
+                    />
+                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                      {chequesDisp
+                        .filter(ch => !chequeQ || ch.numero?.includes(chequeQ.replace(/\s/g,'')))
+                        .map(ch=>(
                         <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequeSelId===ch.id?'border-p-green bg-green-50':'border-p-line'}`}>
                           <input type="radio" name="cheque_sel" checked={chequeSelId===ch.id}
                             onChange={()=>setChequeSelId(chequeSelId===ch.id?'':ch.id)} className="accent-p-green"/>
@@ -568,12 +577,15 @@ export default function CuentaCorrienteProveedoresClient() {
                           <span className="ml-auto font-mono font-bold text-sm">{moneyARS(+ch.monto)}</span>
                         </label>
                       ))}
-                      <label className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequeSelId===''?'border-p-green bg-green-50':'border-p-line'}`}>
-                        <input type="radio" name="cheque_sel" checked={chequeSelId==='nuevo'}
-                          onChange={()=>setChequeSelId('nuevo')} className="accent-p-green"/>
-                        <span className="text-sm font-semibold text-p-dark">+ Crear cheque nuevo</span>
-                      </label>
+                      {chequeQ && chequesDisp.filter(ch=>ch.numero?.includes(chequeQ.replace(/\s/g,''))).length === 0 && (
+                        <p className="text-xs text-p-ink2 text-center py-2">Sin resultados para "{chequeQ}"</p>
+                      )}
                     </div>
+                    <label className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm mt-1 ${chequeSelId==='nuevo'?'border-p-green bg-green-50':'border-p-line'}`}>
+                      <input type="radio" name="cheque_sel" checked={chequeSelId==='nuevo'}
+                        onChange={()=>setChequeSelId('nuevo')} className="accent-p-green"/>
+                      <span className="text-sm font-semibold text-p-dark">+ Crear cheque nuevo</span>
+                    </label>
                   </div>
                 )}
                 {(!chequeSelId || chequeSelId==='nuevo') && <ChequeFields value={chequeOP} onChange={setChequeOP}/>}
