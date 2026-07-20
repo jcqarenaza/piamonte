@@ -734,8 +734,13 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           </div>
           {showInconsistencias && (
             <div className="border-t border-red-200 max-h-64 overflow-y-auto">
-              {inconsistencias.map((inc:any)=>(
-                <div key={inc.stock_id} className="flex items-center gap-3 px-4 py-2 border-b border-red-100 last:border-0 text-xs">
+              {inconsistencias.map((inc:any)=>{
+                const stockItem = items.find(s=>s.id===inc.stock_id)
+                return (
+                <div key={inc.stock_id}
+                  onDoubleClick={()=>{ if(stockItem) abrirMovimientos(stockItem) }}
+                  className={`flex items-center gap-3 px-4 py-2 border-b border-red-100 last:border-0 text-xs ${stockItem?'cursor-pointer hover:bg-red-100/50':''}`}
+                  title={stockItem?"Doble click para ver movimientos":""}>
                   <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{inc.codigo}</span>
                   <span className="flex-1 truncate text-red-900">{inc.descripcion}</span>
                   <span className="text-red-600">stock: <strong>{inc.stock_actual}</strong></span>
@@ -744,7 +749,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                     {inc.diferencia > 0 ? '+' : ''}{inc.diferencia}
                   </span>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
