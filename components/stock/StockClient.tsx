@@ -735,20 +735,19 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           {showInconsistencias && (
             <div className="border-t border-red-200 max-h-64 overflow-y-auto">
               {inconsistencias.map((inc:any)=>{
-                const stockItem = items.find(s=>s.id===inc.stock_id)
                 return (
                 <div key={inc.stock_id}
                   onDoubleClick={async ()=>{
-                    if (stockItem) {
-                      abrirMovimientos(stockItem)
-                    } else {
-                      // No está en la lista visible — buscarlo directo en la base
-                      const { data } = await supabase.from('stock').select('*').eq('id', inc.stock_id).maybeSingle()
-                      if (data) abrirMovimientos(data)
+                    // Poner el código en el buscador para que aparezca en la lista
+                    setQ(inc.codigo)
+                    // Buscar el artículo y abrir sus movimientos
+                    const { data } = await supabase.from('stock').select('*').eq('id', inc.stock_id).maybeSingle()
+                    if (data) {
+                      setTimeout(() => abrirMovimientos(data), 100)
                     }
                   }}
                   className="flex items-center gap-3 px-4 py-2 border-b border-red-100 last:border-0 text-xs cursor-pointer hover:bg-red-100/50"
-                  title="Doble click para ver movimientos">
+                  title="Doble click para ver en lista y movimientos">
                   <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{inc.codigo}</span>
                   <span className="flex-1 truncate text-red-900">{inc.descripcion}</span>
                   <span className="text-red-600">stock: <strong>{inc.stock_actual}</strong></span>
