@@ -426,20 +426,15 @@ export default function CuentaCorrienteProveedoresClient() {
             {/* Ajustes pendientes de NC */}
             {ajustesPendNC.length > 0 && (
               <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">⏳ Ajustes pendientes de NC</p>
+                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">⏳ Ajustes pendientes de NC</p>
+                <p className="text-[10px] text-amber-600 mb-2">Para saldar: cargá la NC del proveedor en Compras y seleccioná estos pendientes</p>
                 {ajustesPendNC.map(a=>(
                   <div key={a.id} className="flex items-center justify-between py-1.5 border-b border-amber-100 last:border-0 text-xs">
                     <div>
                       <p className="font-semibold text-amber-800">{a.descripcion}</p>
                       <p className="text-amber-600">{a.fecha?.split('-').reverse().join('/')}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-green-600">{moneyARS(+a.haber)}</p>
-                      <button onClick={()=>aplicarNcSobreAjuste(a.id, +a.haber)}
-                        className="text-[10px] text-amber-700 underline hover:text-amber-900 mt-0.5">
-                        NC recibida → aplicar
-                      </button>
-                    </div>
+                    <p className="font-mono font-bold text-green-600">{moneyARS(+a.haber)}</p>
                   </div>
                 ))}
               </div>
