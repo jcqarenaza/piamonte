@@ -122,8 +122,8 @@ export default function ComprasClient() {
 
   const supabase = createClient()
 
-  // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA → +Flete → −Retenciones → ±Ajuste manual
-  // El flete no lleva descuento del proveedor — se excluye de la base de descuento
+  // Cadena de cálculo: Subtotal ítems → Descuento proveedor → +IVA (mercadería+flete) → +Neto flete → −Retenciones → ±Ajuste
+  // El flete no lleva descuento pero SÍ lleva IVA 21%
   const itemsSinFlete = items.filter(it => it.d.trim().toUpperCase() !== 'FLETE')
   const itemsFlete    = items.filter(it => it.d.trim().toUpperCase() === 'FLETE')
   const netoItems = itemsSinFlete.reduce((a,it) => {
@@ -138,23 +138,25 @@ export default function ComprasClient() {
   }, 0)
   const descuentoPct = parseFloat(form.descuento_pct.replace(',','.')) || 0
   const descuentoMonto = Math.round(netoItems * descuentoPct * 100) / 10000
-  const calcSubtotal = netoItems - descuentoMonto + netoFlete
+  const calcSubtotal = netoItems - descuentoMonto  // sin flete — el flete va separado
   const calcDescuento = descuentoMonto
-  const calcIva = ivaOn ? Math.round(calcSubtotal * IVA * 100) / 100 : 0
+  // IVA total = IVA sobre mercadería + IVA sobre flete (ambos 21%)
+  const calcIvaItems = ivaOn ? Math.round(calcSubtotal * IVA * 100) / 100 : 0
+  const calcIvaFlete = ivaOn ? Math.round(netoFlete * IVA * 100) / 100 : 0
+  const calcIva = calcIvaItems + calcIvaFlete
   // Valores finales: override manual si el usuario lo editó, sino el calculado
   const finalSubtotal  = ovSubtotal  !== '' ? parseFloat(ovSubtotal.replace(',','.'))  || calcSubtotal  : calcSubtotal
   const finalDescuento = ovDescuento !== '' ? parseFloat(ovDescuento.replace(',','.')) || calcDescuento : calcDescuento
   const finalIva       = ovIva       !== '' ? parseFloat(ovIva.replace(',','.'))       || calcIva       : calcIva
   const iva = finalIva
-  const flete = parseFloat(form.flete.replace(',','.')) || 0
   const retIva = parseFloat(form.ret_iva.replace(',','.')) || 0
   const retGanancias = parseFloat(form.ret_ganancias.replace(',','.')) || 0
   const retIibb = parseFloat(form.ret_iibb.replace(',','.')) || 0
   const totalRetenciones = retIva + retGanancias + retIibb
   const [ajusteManual, setAjusteManual] = useState('')
   const ajuste = parseFloat(ajusteManual.replace(',','.')) || 0
-  const neto  = finalSubtotal
-  const total = Math.round((finalSubtotal + finalIva + flete - totalRetenciones + ajuste) * 100) / 100
+  const neto  = finalSubtotal + netoFlete  // neto incluye flete sin IVA
+  const total = Math.round((finalSubtotal + netoFlete + finalIva - totalRetenciones + ajuste) * 100) / 100
 
   const loadProveedores = useCallback(async () => {
     const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit,descuento_pct').eq('activo',true).order('nombre')
