@@ -29,8 +29,8 @@ export default function CuentaCorrienteProveedoresClient() {
   const [pendientes, setPendientes] = useState<Pendiente[]>([])
   const [seleccion, setSeleccion]   = useState<Record<string, boolean>>({})
   const [opForm, setOpForm]         = useState({ fecha:'', notas:'' })
-  const [opPagos, setOpPagos]       = useState<{tipo:string;monto:string;chequeSelId:string;chequeNuevo:ChequeData}[]>([
-    {tipo:'Transferencia',monto:'',chequeSelId:'',chequeNuevo:EMPTY_CHEQUE}
+  const [opPagos, setOpPagos]       = useState<{tipo:string;monto:string;chequeSelId:string;chequeQ:string;chequeNuevo:ChequeData}[]>([
+    {tipo:'Transferencia',monto:'',chequeSelId:'',chequeQ:'',chequeNuevo:EMPTY_CHEQUE}
   ])
   const [chequeOP, setChequeOP]     = useState<ChequeData>(EMPTY_CHEQUE)
   const [guardandoOp, setGuardandoOp] = useState(false)
@@ -38,6 +38,7 @@ export default function CuentaCorrienteProveedoresClient() {
   const [chequesDisp, setChequesDisp] = useState<any[]>([])
   const [chequeSelId, setChequeSelId] = useState('')
   const [chequeQ, setChequeQ] = useState('')
+  const [chequesSelIds, setChequesSelIds] = useState<Set<string>>(new Set())
   // Ajuste pendiente de NC
   const [openAjuste, setOpenAjuste]   = useState(false)
   const [ajusteForm, setAjusteForm]   = useState({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
@@ -147,7 +148,8 @@ export default function CuentaCorrienteProveedoresClient() {
     setPendientes(data ?? [])
     setSeleccion({})
     setOpForm({ fecha: new Date().toISOString().slice(0,10), notas:'' })
-    setOpPagos([{tipo:'Transferencia',monto:'',chequeSelId:'',chequeNuevo:EMPTY_CHEQUE}])
+    setOpPagos([{tipo:'Transferencia',monto:'',chequeSelId:'',chequeQ:'',chequeNuevo:EMPTY_CHEQUE}])
+    setChequesSelIds(new Set())
     setChequeSelId(''); setChequeQ('')
     setOpOpen(true)
   }
@@ -170,8 +172,11 @@ export default function CuentaCorrienteProveedoresClient() {
     const { data: numeroData } = await supabase.rpc('next_orden_pago_numero')
     const numero = numeroData as string
 
-    // Descripción de formas de pago para el registro
-    const formasPagoDesc = opPagos.map(p => `${p.tipo}${p.monto ? ' $'+Number(p.monto).toLocaleString('es-AR') : ''}`).join(' + ')
+    // Descripción de formas de pago
+    const chequesSelArr = chequesDisp.filter(ch=>chequesSelIds.has(ch.id))
+    const partesCheques = chequesSelArr.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
+    const partesOtros = opPagos.filter(p=>p.monto).map(p=>`${p.tipo} $${Number(p.monto).toLocaleString('es-AR')}`)
+    const formasPagoDesc = [...partesCheques, ...partesOtros].join(' + ') || 'Sin especificar'
 
     const { data: mov } = await supabase.from('cuenta_corriente_proveedores').insert({
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
@@ -196,15 +201,18 @@ export default function CuentaCorrienteProveedoresClient() {
       await supabase.from('orden_pago_items').insert(items)
     }
 
-    // Registrar cheques de cada forma de pago
+    // Registrar cheques propios seleccionados (checkbox)
+    for (const chequeId of Array.from(chequesSelIds)) {
+      await supabase.from('cheques').update({
+        notas: `Orden de Pago Nº ${numero}`,
+      }).eq('id', chequeId)
+    }
+
+    // Registrar nuevos cheques de "otras formas de pago"
     for (const pago of opPagos) {
-      if (pago.tipo !== 'Cheque') continue
-      const montoPago = parseFloat(pago.monto) || totalAPagar
-      if (pago.chequeSelId && pago.chequeSelId !== 'nuevo') {
-        await supabase.from('cheques').update({
-          notas: `Orden de Pago Nº ${numero}`,
-        }).eq('id', pago.chequeSelId)
-      } else if (pago.chequeNuevo.numero) {
+      if (pago.tipo !== 'Cheque nuevo') continue
+      const montoPago = parseFloat(pago.monto) || 0
+      if (pago.chequeNuevo.numero) {
         await supabase.from('cheques').insert({
           tipo:'propio', formato:pago.chequeNuevo.formato, modalidad:pago.chequeNuevo.modalidad,
           numero:pago.chequeNuevo.numero, banco:pago.chequeNuevo.banco,
@@ -224,8 +232,9 @@ export default function CuentaCorrienteProveedoresClient() {
 
     setGuardandoOp(false)
     setOpOpen(false)
-    setChequeSelId(''); setChequeQ('')
-    setOpPagos([{tipo:'Transferencia',monto:'',chequeSelId:'',chequeNuevo:EMPTY_CHEQUE}])
+    setChequeSelId('')
+    setChequesSelIds(new Set())
+    setOpPagos([{tipo:'Transferencia',monto:'',chequeSelId:'',chequeQ:'',chequeNuevo:EMPTY_CHEQUE}])
     imprimirOrdenPago({
       numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
       facturas: facturasSel, nc: ncSel,
@@ -550,70 +559,84 @@ export default function CuentaCorrienteProveedoresClient() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Formas de pago</p>
-                  <button onClick={()=>setOpPagos(p=>[...p,{tipo:'Transferencia',monto:'',chequeSelId:'',chequeNuevo:EMPTY_CHEQUE}])}
-                    style={{...btnSm,fontSize:11}}>+ Agregar</button>
-                </div>
-                {opPagos.map((pago,pi)=>(
-                  <div key={pi} className="border border-p-line rounded-xl p-3 flex flex-col gap-2 bg-p-light/30">
-                    <div className="flex items-center gap-2">
-                      <select value={pago.tipo} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],tipo:e.target.value,chequeSelId:''};setOpPagos(v)}}
+              <div className="flex flex-col gap-3">
+
+                {/* ── Cheques propios emitidos al proveedor ── */}
+                {chequesDisp.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Cheques emitidos a {sel?.proveedor_nombre}</p>
+                      <span className="text-xs text-p-ink2 font-mono">
+                        {moneyARS(chequesDisp.filter(ch=>chequesSelIds.has(ch.id)).reduce((a,ch)=>a+(+ch.monto),0))}
+                      </span>
+                    </div>
+                    <input value={chequeQ} onChange={e=>setChequeQ(e.target.value)}
+                      placeholder="Buscar por número…"
+                      className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
+                    <div className="flex flex-col gap-1 max-h-52 overflow-y-auto">
+                      {chequesDisp.filter(ch=>!chequeQ||ch.numero?.includes(chequeQ.replace(/\s/g,''))).map(ch=>(
+                        <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequesSelIds.has(ch.id)?'border-p-green bg-green-50':'border-p-line hover:bg-p-light/50'}`}>
+                          <input type="checkbox" checked={chequesSelIds.has(ch.id)}
+                            onChange={()=>{
+                              const next = new Set(chequesSelIds)
+                              next.has(ch.id) ? next.delete(ch.id) : next.add(ch.id)
+                              setChequesSelIds(next)
+                            }} className="accent-p-green w-4 h-4 shrink-0"/>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${ch.formato==='echeq'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>
+                            {ch.formato==='echeq'?'E-Cheq':'Físico'}
+                          </span>
+                          <span className="font-mono font-bold text-xs">{ch.numero}</span>
+                          <span className="text-xs text-p-ink2">{ch.banco}</span>
+                          <span className="text-xs text-p-ink2">vto: {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
+                          <span className="ml-auto font-mono font-bold">{moneyARS(+ch.monto)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Otras formas de pago (transferencia, efectivo, cheque nuevo) ── */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Otras formas de pago</p>
+                    <button onClick={()=>setOpPagos(p=>[...p,{tipo:'Transferencia',monto:'',chequeSelId:'',chequeQ:'',chequeNuevo:EMPTY_CHEQUE}])}
+                      style={{...btnSm,fontSize:11}}>+ Agregar</button>
+                  </div>
+                  {opPagos.map((pago,pi)=>(
+                    <div key={pi} className="flex items-center gap-2">
+                      <select value={pago.tipo} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],tipo:e.target.value};setOpPagos(v)}}
                         className="border border-p-line rounded-lg px-2 py-1.5 text-sm bg-white flex-1 focus:outline-none focus:border-p-green">
                         <option value="Transferencia">Transferencia</option>
                         <option value="Efectivo">Efectivo</option>
-                        <option value="Cheque">🖊 Cheque</option>
+                        <option value="Cheque nuevo">🖊 Cheque nuevo</option>
                       </select>
                       <input value={pago.monto} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],monto:e.target.value};setOpPagos(v)}}
                         placeholder="Monto $" className="border border-p-line rounded-lg px-2 py-1.5 text-sm w-32 font-mono focus:outline-none focus:border-p-green"/>
                       {opPagos.length > 1 && (
                         <button onClick={()=>setOpPagos(p=>p.filter((_,i)=>i!==pi))} className="text-red-400 hover:text-red-600 text-lg font-bold px-1">✕</button>
                       )}
-                    </div>
-                    {pago.tipo==='Cheque' && (
-                      <div className="flex flex-col gap-1.5">
-                        {chequesDisp.length > 0 && (
-                          <>
-                            <input value={chequeQ} onChange={e=>setChequeQ(e.target.value)}
-                              placeholder="Buscar cheque por número…"
-                              className="border border-p-line rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-p-green"/>
-                            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
-                              {chequesDisp.filter(ch=>!chequeQ||ch.numero?.includes(chequeQ.replace(/\s/g,''))).map(ch=>(
-                                <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-2 py-1.5 cursor-pointer text-xs ${pago.chequeSelId===ch.id?'border-p-green bg-green-50':'border-p-line'}`}>
-                                  <input type="radio" checked={pago.chequeSelId===ch.id}
-                                    onChange={()=>{const v=[...opPagos];v[pi]={...v[pi],chequeSelId:pago.chequeSelId===ch.id?'':ch.id,monto:pago.monto||String(ch.monto)};setOpPagos(v)}} className="accent-p-green"/>
-                                  <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full ${ch.formato==='echeq'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>{ch.formato==='echeq'?'E-Cheq':'Físico'}</span>
-                                  <span className="font-mono font-bold">{ch.numero}</span>
-                                  <span className="text-p-ink2">{ch.banco}</span>
-                                  <span className="text-p-ink2">vto: {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
-                                  <span className="ml-auto font-mono font-bold">{moneyARS(+ch.monto)}</span>
-                                </label>
-                              ))}
-                              <label className={`flex items-center gap-2 border rounded-lg px-2 py-1.5 cursor-pointer text-xs ${pago.chequeSelId==='nuevo'?'border-p-green bg-green-50':'border-p-line'}`}>
-                                <input type="radio" checked={pago.chequeSelId==='nuevo'}
-                                  onChange={()=>{const v=[...opPagos];v[pi]={...v[pi],chequeSelId:'nuevo'};setOpPagos(v)}} className="accent-p-green"/>
-                                <span className="font-semibold">+ Crear cheque nuevo</span>
-                              </label>
-                            </div>
-                          </>
-                        )}
-                        {(!pago.chequeSelId||pago.chequeSelId==='nuevo') && (
+                      {pago.tipo==='Cheque nuevo' && (
+                        <div className="w-full mt-1">
                           <ChequeFields value={pago.chequeNuevo} onChange={val=>{const v=[...opPagos];v[pi]={...v[pi],chequeNuevo:val};setOpPagos(v)}}/>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {/* Resumen de pagos vs total */}
-                {opPagos.length > 1 && (
-                  <div className={`flex justify-between text-sm px-1 font-bold ${
-                    Math.abs(opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0) - totalAPagar) < 1 ? 'text-green-600' : 'text-amber-600'
-                  }`}>
-                    <span>Total pagos cargados</span>
-                    <span className="font-mono">{moneyARS(opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0))}</span>
-                  </div>
-                )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Resumen total ── */}
+                {(() => {
+                  const totalCheques = chequesDisp.filter(ch=>chequesSelIds.has(ch.id)).reduce((a,ch)=>a+(+ch.monto),0)
+                  const totalOtros = opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0)
+                  const totalCargado = totalCheques + totalOtros
+                  const diff = Math.abs(totalCargado - totalAPagar)
+                  return (totalCheques > 0 || totalOtros > 0) ? (
+                    <div className={`flex justify-between text-sm px-1 font-bold ${diff < 1 ? 'text-green-600' : 'text-amber-600'}`}>
+                      <span>Total cargado {diff < 1 ? '✓' : `(falta ${moneyARS(totalAPagar - totalCargado)})`}</span>
+                      <span className="font-mono">{moneyARS(totalCargado)}</span>
+                    </div>
+                  ) : null
+                })()}
               </div>
               <Field label="Fecha">
                 <Input type="date" value={opForm.fecha} onChange={e=>setOpForm(p=>({...p,fecha:e.target.value}))}/>
