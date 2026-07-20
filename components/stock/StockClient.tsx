@@ -65,10 +65,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || 'Ajuste manual'
     const esPendienteNC = ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc
 
-    // Actualizar cantidad — el trigger detectará el stock_movimientos y no duplicará
-    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
-
-    // Registrar en stock_movimientos (fuente de verdad del historial)
+    // PRIMERO registrar en stock_movimientos — así el trigger encuentra el registro y no duplica
     await supabase.from('stock_movimientos').insert({
       stock_id: ajusteCantModal.id,
       tipo: ajusteCantForm.tipo,
@@ -78,6 +75,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       pendiente_nc: esPendienteNC,
       user_id: userId || null,
     })
+
+    // DESPUÉS actualizar cantidad — el trigger ya encontrará el movimiento y no duplicará
+    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
 
     // Si es salida con pendiente NC → crear ajuste en CC del proveedor elegido
     if (esPendienteNC && ajusteCantForm.proveedor_id) {
