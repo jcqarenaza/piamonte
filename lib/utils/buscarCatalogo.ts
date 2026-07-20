@@ -46,10 +46,19 @@ export async function buscarCatalogo(
     let cq = supabase.from('catalogo')
       .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
       .ilike('codigo', `%${query.trim()}%`)
-    // Filtro proveedor con wildcards para que matchee aunque el nombre difiera en case/formato
+    // Filtro proveedor
     if (proveedor) cq = cq.ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
     cq = cq.order('proveedor').limit(limit * 3)
-    const { data: porCodigo } = await cq
+    let { data: porCodigo } = await cq
+
+    // Si filtró por proveedor y no encontró nada, buscar sin filtro de proveedor
+    if (proveedor && (!porCodigo || porCodigo.length === 0)) {
+      const { data: sinFiltro } = await supabase.from('catalogo')
+        .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
+        .ilike('codigo', `%${query.trim()}%`)
+        .order('proveedor').limit(limit * 3)
+      porCodigo = sinFiltro
+    }
 
     if (porCodigo && porCodigo.length > 0) {
       // Para búsqueda por código NO deduplicamos — mostramos todas las variantes (DSLP, DSLI, VSLP, etc.)
