@@ -149,6 +149,7 @@ export default function ComprasClient() {
   const finalDescuento = ovDescuento !== '' ? parseFloat(ovDescuento.replace(',','.')) || calcDescuento : calcDescuento
   const finalIva       = ovIva       !== '' ? parseFloat(ovIva.replace(',','.'))       || calcIva       : calcIva
   const iva = finalIva
+  const flete = netoFlete  // el flete viene de los ítems, no del campo form.flete
   const retIva = parseFloat(form.ret_iva.replace(',','.')) || 0
   const retGanancias = parseFloat(form.ret_ganancias.replace(',','.')) || 0
   const retIibb = parseFloat(form.ret_iibb.replace(',','.')) || 0
