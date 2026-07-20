@@ -25,6 +25,8 @@ export default function CuentaCorrienteClient() {
   const [formPago, setFormPago] = useState({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
   const [chequeCobro, setChequeCobro] = useState<ChequeData>(EMPTY_CHEQUE)
   const [loading, setLoading]   = useState(true)
+  const [factsPend, setFactsPend] = useState<any[]>([])
+  const [factsSel, setFactsSel]   = useState<Record<string,boolean>>({})
   const supabase = createClient()
   const router   = useRouter()
 
@@ -49,6 +51,23 @@ export default function CuentaCorrienteClient() {
 
   useEffect(()=>{ load() },[supabase])
   useEffect(()=>{ if(sel) loadMovs(sel.cliente_nombre) },[sel])
+
+  async function abrirCobro() {
+    if (!sel?.cliente_id) return
+    // Cargar facturas del cliente sin cobro completo
+    const { data } = await supabase.from('comprobantes')
+      .select('id,fecha,nro_cbte_afip,numero,total,neto,iva')
+      .eq('cliente_id', sel.cliente_id)
+      .not('es_negro', 'is', true)
+      .neq('categoria', 'nc')
+      .order('fecha', { ascending: true })
+    const todas = data ?? []
+    // Sugerir las pendientes (las que no tienen cobro total en CC)
+    setFactsPend(todas)
+    // Pre-seleccionar todas
+    setFactsSel(Object.fromEntries(todas.map((f:any) => [f.id, true])))
+    setOpenPago(true)
+  }
 
   async function registrarPago() {
     if(!sel || !formPago.monto || +formPago.monto <= 0) return
@@ -270,8 +289,8 @@ export default function CuentaCorrienteClient() {
               <button onClick={()=>setSel(null)} className="text-p-gray text-xl">✕</button>
             </div>
             {sel.saldo_actual > 0 && (
-              <button onClick={()=>setOpenPago(true)} style={{...btn,marginTop:10,width:'100%',textAlign:'center'}}>
-                💵 Registrar pago
+              <button onClick={abrirCobro} style={{...btn,marginTop:10,width:'100%',textAlign:'center'}}>
+                🧾 Registrar cobro
               </button>
             )}
             <button onClick={()=>{
@@ -328,13 +347,41 @@ export default function CuentaCorrienteClient() {
       )}
 
       {/* Modal registrar pago */}
-      <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar pago — ${sel?.cliente_nombre}`}>
+      <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar cobro — ${sel?.cliente_nombre}`}>
         <div className="flex flex-col gap-3">
+
+          {/* Facturas pendientes */}
+          {factsPend.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1.5">Facturas a cobrar</p>
+              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                {factsPend.map((f:any)=>(
+                  <label key={f.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${factsSel[f.id]?'border-p-green bg-green-50':'border-p-line'}`}>
+                    <input type="checkbox" checked={!!factsSel[f.id]}
+                      onChange={e=>setFactsSel(p=>({...p,[f.id]:e.target.checked}))}
+                      className="accent-p-green w-4 h-4 shrink-0"/>
+                    <span className="text-[10px] font-mono bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                      FA-0006-{String(f.nro_cbte_afip||f.numero||'').padStart(8,'0')}
+                    </span>
+                    <span className="text-xs text-p-ink2">{f.fecha?.split('-').reverse().join('/')}</span>
+                    <span className="ml-auto font-mono font-bold text-sm">{moneyARS(Number(f.total)||0)}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-between mt-1.5 px-1 text-xs text-p-ink2">
+                <span>{Object.values(factsSel).filter(Boolean).length} de {factsPend.length} seleccionadas</span>
+                <span className="font-bold text-p-dark">
+                  Total: {moneyARS(factsPend.filter((f:any)=>factsSel[f.id]).reduce((a:number,f:any)=>a+Number(f.total),0))}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
             <p className="text-sm text-red-700">Saldo pendiente</p>
             <p className="font-saira font-bold text-2xl text-red-600">{moneyARS(sel?.saldo_actual||0)}</p>
           </div>
-          <Field label="Monto del pago *">
+          <Field label="Monto del cobro *">
             <Input value={formPago.monto} onChange={e=>setFormPago(p=>({...p,monto:e.target.value}))} placeholder="0"/>
           </Field>
           {formPago.monto && (
@@ -348,7 +395,7 @@ export default function CuentaCorrienteClient() {
           <Field label="Fecha">
             <Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/>
           </Field>
-          <Field label="Forma de pago">
+          <Field label="Forma de cobro">
             <select value={formPago.forma_pago} onChange={e=>setFormPago(p=>({...p,forma_pago:e.target.value}))}
               className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white">
               <option value="Efectivo">Efectivo</option>
@@ -366,7 +413,7 @@ export default function CuentaCorrienteClient() {
             <button onClick={registrarPago}
               disabled={!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequeCobro.numero)}
               style={{...btn,opacity:(!formPago.monto||(formPago.forma_pago==='Cheque'&&!chequeCobro.numero))?.5:1}}>
-              🧾 Registrar pago y emitir recibo
+              🧾 Registrar cobro y emitir recibo
             </button>
           </div>
         </div>
