@@ -398,12 +398,9 @@ export default function CuentaCorrienteProveedoresClient() {
               <button onClick={()=>setSel(null)} className="text-p-gray text-xl">✕</button>
             </div>
             {sel.saldo_actual > 0 && (
-              <div className="flex flex-col gap-2 mt-2.5">
-                <button onClick={()=>setOpenPago(true)} style={{...btn,width:'100%',textAlign:'center'}}>
-                  💵 Registrar pago simple
-                </button>
+              <div className="mt-2.5">
                 <button onClick={abrirOrdenPago} style={{...btnBlue,width:'100%',textAlign:'center',padding:'10px 20px',fontSize:14}}>
-                  🧾 Nueva Orden de Pago (varias facturas + NC)
+                  🧾 Nueva Orden de Pago
                 </button>
               </div>
             )}
