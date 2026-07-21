@@ -113,14 +113,20 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);return}
     const q = stockQ.trim()
-    // Buscar por código exacto primero, luego por descripción
+    // Buscar por código exacto primero, luego por descripción (incluye pendiente_ingreso y stock en 0)
     Promise.all([
-      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).ilike('codigo',`%${q}%`).limit(4),
-      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo').eq('activo',true).gt('cantidad',0).ilike('descripcion',`%${q}%`).limit(4),
+      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo,pendiente_ingreso').eq('activo',true).ilike('codigo',`%${q}%`).limit(5),
+      supabase.from('stock').select('id,descripcion,cantidad,precio_venta,codigo,pendiente_ingreso').eq('activo',true).ilike('descripcion',`%${q}%`).limit(5),
     ]).then(([{data:porCod},{data:porDesc}])=>{
       const todos = [...(porCod??[]),...(porDesc??[])]
       const unicos = todos.filter((s,i)=>todos.findIndex(x=>x.id===s.id)===i)
-      setStockSugs(unicos.slice(0,6))
+      // Ordenar: con stock primero, pendiente ingreso después, sin stock al final
+      unicos.sort((a,b) => {
+        if (a.cantidad > 0 && b.cantidad <= 0) return -1
+        if (b.cantidad > 0 && a.cantidad <= 0) return 1
+        return 0
+      })
+      setStockSugs(unicos.slice(0,8))
     })
   },[stockQ,supabase])
 
@@ -220,8 +226,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const nextNum = (parseInt(String((nuevas?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
 
     if(editId) {
-      // Restaurar el stock de la OS anterior antes de guardar los nuevos ítems
-      await restaurarStockOS(editId)
       const { error: updErr } = await supabase.from('ordenes_servicio').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null,
         patente:form.pat||null, aseguradora:form.aseg||null, siniestro:form.sin||null,
@@ -230,7 +234,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         stock_codigo: stockSel?.codigo||null,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
-      // Stock se descuenta solo al facturar, NO al guardar la OS
       setEditId(null)
     } else {
     await supabase.from('ordenes_servicio').insert({
@@ -250,18 +253,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
     setStockSel(null); setStockQ(''); setFormProd('')
     setLoading(false); load()
-  }
-
-  async function restaurarStockOS(id: string) {
-    // Busca los ítems de la OS y devuelve al stock las unidades que se habían descontado
-    const { data: os } = await supabase.from('ordenes_servicio').select('items').eq('id', id).maybeSingle()
-    if (!os?.items) return
-    for (const it of (os.items as any[])) {
-      if (it.stock_id) {
-        const { data: s } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
-        if (s) await supabase.from('stock').update({ cantidad: (s as any).cantidad + (it.c || 1) }).eq('id', it.stock_id)
-      }
-    }
   }
 
   async function del(id:string) {
@@ -812,7 +803,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             </Select>
           </Field>
           {/* Stock */}
-          <Field label="Artículo de stock (se descuenta al guardar)">
+          <Field label="Artículo de stock (referencia — el stock se descuenta al facturar)">
             <div className="relative">
               <Input value={stockSel?`${stockSel.descripcion} (quedan ${stockSel.cantidad})`:stockQ}
                 onChange={e=>{setStockQ(e.target.value);setStockSel(null)}}
@@ -831,8 +822,16 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         })
                         setStockSel(null); setStockQ('')
                       }}>
-                      <span className="font-mono text-xs text-p-dark mr-2">{s.codigo}</span>{s.descripcion}
-                      <span className="ml-2 text-xs text-p-ink2">({s.cantidad} en stock)</span>
+                      <div className="flex items-center gap-2">
+                        {s.codigo && <span className="font-mono text-[10px] font-bold bg-p-light text-p-dark px-1.5 py-0.5 rounded shrink-0">{s.codigo}</span>}
+                        <span className="flex-1 truncate">{s.descripcion}</span>
+                        {s.pendiente_ingreso
+                          ? <span className="text-[10px] text-amber-600 font-bold shrink-0">⏳ Pend.</span>
+                          : s.cantidad > 0
+                            ? <span className="text-[10px] text-green-600 font-bold shrink-0">{s.cantidad} u.</span>
+                            : <span className="text-[10px] text-red-500 shrink-0">sin stock</span>
+                        }
+                      </div>
                     </button>
                   ))}
                 </div>

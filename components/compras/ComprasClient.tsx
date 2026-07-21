@@ -678,14 +678,6 @@ export default function ComprasClient() {
     load()
   }
 
-  // Un comprobante se puede editar/borrar si su fecha está dentro del mes actual o el anterior
-  function periodoAbierto(fecha: string): boolean {
-    const hoy = new Date()
-    const mesActual = hoy.getFullYear() * 12 + hoy.getMonth()
-    const f = new Date(fecha + 'T12:00:00')
-    const mesComp = f.getFullYear() * 12 + f.getMonth()
-    return mesActual - mesComp <= 1
-  }
 
   function editarComprobante(c: Comprobante) {
     setForm({
@@ -1017,14 +1009,12 @@ export default function ComprasClient() {
                     {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
                       <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
                     )}
-                    {periodoAbierto(c.fecha) && (
-                      {periodoCerrado(c.fecha) ? (
-                        <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg font-semibold">🔒 Período cerrado</span>
-                      ) : (
-                        <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
-                      )}
+                    {periodoCerrado(c.fecha) ? (
+                      <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg font-semibold">🔒 Período cerrado</span>
+                    ) : (
+                      <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
                     )}
-                    {periodoAbierto(c.fecha) && (
+                    {!periodoCerrado(c.fecha) && (
                       <button onClick={()=>eliminarComprobante(c.id)} style={{...btnSm,background:'#991b1b'}}>🗑 Eliminar</button>
                     )}
                     <button onClick={async ()=>{ 
