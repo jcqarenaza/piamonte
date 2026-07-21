@@ -122,7 +122,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setMovLoading(false)
   }
 
-  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
   const [articuloSel, setArticuloSel] = useState<{id:string;descripcion:string;codigo_referencia:string|null}|null>(null)
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [buscandoArticulo, setBuscandoArticulo] = useState(false)
@@ -335,7 +335,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
   function openNuevo() {
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
     setEditId(null)
     setArticuloSel(null)
     setArticuloSugs([])
@@ -360,7 +360,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const pos = art?.pos || cat?.pos || ''
     const anio = art?.anio ? String(art.anio) : ''
 
-    setForm({ desc, cod: codigo, marca, pos, anio, cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+    setForm({ desc, cod: codigo, marca, pos, anio, cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
     setEditId(null)
     setArticuloSel(art ? { id: art.id, descripcion: art.descripcion, codigo_referencia: art.codigo_referencia } : null)
     setArticuloSugs([])
@@ -436,13 +436,13 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           tipo: 'entrada',
           cantidad: +form.cant,
           fecha: new Date().toISOString().slice(0,10),
-          descripcion: 'Alta manual de stock',
+          descripcion: form.leyenda.trim() || 'Alta manual de stock',
           user_id: userId || null,
         })
       }
     }
     setOpen(false)
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
     setEditId(null)
     setArticuloSel(null)
     load()
@@ -1085,6 +1085,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             Costo de venta = costo consumidor final + recargo tarjeta + IVA. Es el valor con el que se valoriza el stock — no el costo neto de lista.
           </p>
           <Field label="Depósito"><Input value={form.dep} onChange={e => setForm(p => ({ ...p, dep: e.target.value }))} placeholder="Principal" /></Field>
+          <Field label="Leyenda del movimiento">
+            <Input value={form.leyenda} onChange={e => setForm(p => ({ ...p, leyenda: e.target.value }))} placeholder="Ej: Planilla 20/07 Vero, Factura Malatesta, etc."/>
+          </Field>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
             <button onClick={save} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>{editId ? 'Guardar cambios' : 'Agregar'}</button>
