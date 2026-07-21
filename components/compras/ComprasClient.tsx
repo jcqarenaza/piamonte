@@ -1808,13 +1808,16 @@ function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: 
 
     const todos = [...(cat || []), ...catExtra]
 
-    // Agrupar por código base (primeros 6 dígitos) para mostrar variantes juntas
+    // Agrupar por código base (primeros 6 dígitos) — mismo artículo, distintos proveedores/variantes
     const grupos: Record<string, any[]> = {}
     for (const c of todos) {
-      // Agrupar por descripción normalizada
-      const key = (c.descripcion || '').toUpperCase().trim().slice(0, 40)
+      // Usar los primeros 6 chars del código como clave, o descripción si no hay código
+      const codigoBase = c.codigo ? c.codigo.replace(/[^0-9]/g,'').slice(0,6) : null
+      const key = codigoBase && codigoBase.length >= 4 
+        ? codigoBase 
+        : (c.descripcion || '').toUpperCase().trim().slice(0, 30)
       if (!grupos[key]) grupos[key] = []
-      // No duplicar mismo proveedor + código
+      // No duplicar mismo proveedor + código exacto
       if (!grupos[key].find((x: any) => x.codigo === c.codigo && x.proveedor === c.proveedor)) {
         grupos[key].push(c)
       }
@@ -1822,7 +1825,8 @@ function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: 
 
     const items = Object.entries(grupos).map(([, variants]) => {
       const sorted = [...variants].sort((a, b) => (a.costo_neto || 0) - (b.costo_neto || 0))
-      return { descripcion: variants[0].descripcion, variants: sorted }
+      // Usar la descripción del más barato como descripción del grupo
+      return { descripcion: sorted[0].descripcion, variants: sorted }
     }).filter(g => g.variants.length > 0).slice(0, 10)
 
     setResultados(items)
@@ -1871,35 +1875,36 @@ function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: 
         <div className="flex flex-col gap-3">
           <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">{resultados.length} artículo(s) encontrado(s)</p>
           {resultados.map((item, i) => (
-            <div key={i} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 bg-p-light/50 border-b border-p-line">
-                <p className="font-saira font-bold text-p-ink text-sm">{item.descripcion}</p>
+              <div key={i} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 bg-p-light/50 border-b border-p-line">
+                  <p className="font-saira font-bold text-p-ink text-sm">{item.descripcion}</p>
+                  <p className="text-[10px] text-p-ink2">{item.variants.length} proveedor{item.variants.length>1?'es':''}</p>
+                </div>
+                <div className="flex flex-col divide-y divide-p-line2">
+                  {item.variants.map((v: any, j: number) => {
+                    const esMasBarato = j === 0 && item.variants.length > 1
+                    const key = `${v.codigo}-${v.proveedor}`
+                    const yaEnPedido = pedido.find(p => p.codigo === v.codigo && p.proveedor === v.proveedor)
+                    return (
+                      <div key={j} className={`flex items-center gap-3 px-4 py-2.5 ${esMasBarato ? 'bg-green-50' : ''}`}>
+                        {esMasBarato && <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shrink-0">✓ Más barato</span>}
+                        <span className="text-[11px] font-bold text-p-ink2 w-24 shrink-0">{v.proveedor}</span>
+                        <span className="font-mono text-xs text-p-ink2 shrink-0">{v.codigo}</span>
+                        <span className="font-mono font-bold text-sm ml-auto shrink-0">${Number(v.costo_neto||0).toLocaleString('es-AR')}</span>
+                        <input type="number" min="1"
+                          value={cantPedido[key]||'1'}
+                          onChange={e=>setCantPedido(p=>({...p,[key]:e.target.value}))}
+                          className="w-14 border border-p-line rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-p-green"/>
+                        <button onClick={()=>agregarAPedido({...v,cantidad:cantPedido[key]||'1'})}
+                          disabled={!!yaEnPedido}
+                          className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 transition-colors ${yaEnPedido?'bg-green-100 text-green-700 cursor-default':'bg-p-green text-white hover:bg-p-green/90'}`}>
+                          {yaEnPedido ? '✓' : '+ Pedir'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="flex flex-col divide-y divide-p-line2">
-                {item.variants.map((v: any, j: number) => {
-                  const esMasBarato = j === 0
-                  const key = `${v.codigo}-${v.proveedor}`
-                  const yaEnPedido = pedido.find(p => p.codigo === v.codigo && p.proveedor === v.proveedor)
-                  return (
-                    <div key={j} className={`flex items-center gap-3 px-4 py-2.5 ${esMasBarato ? 'bg-green-50' : ''}`}>
-                      {esMasBarato && <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shrink-0">✓ Más barato</span>}
-                      <span className="text-[11px] font-bold text-p-ink2 w-24 shrink-0">{v.proveedor}</span>
-                      <span className="font-mono text-xs text-p-ink2 shrink-0">{v.codigo}</span>
-                      <span className="font-mono font-bold text-sm ml-auto shrink-0">${Number(v.costo_neto||0).toLocaleString('es-AR')}</span>
-                      <input type="number" min="1"
-                        value={cantPedido[key]||'1'}
-                        onChange={e=>setCantPedido(p=>({...p,[key]:e.target.value}))}
-                        className="w-14 border border-p-line rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-p-green"/>
-                      <button onClick={()=>agregarAPedido(v)}
-                        disabled={!!yaEnPedido}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 transition-colors ${yaEnPedido?'bg-green-100 text-green-700 cursor-default':'bg-p-green text-white hover:bg-p-green/90'}`}>
-                        {yaEnPedido ? '✓ Agregado' : '+ Pedir'}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           ))}
         </div>
       )}
