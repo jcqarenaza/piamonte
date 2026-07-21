@@ -1107,13 +1107,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               onClick={()=>setExpandido(p=>p===c.id?null:c.id)}
               onDoubleClick={async()=>{ 
                 setVerComp(c)
-                const descs = (c.items||[]).map((it:any)=>it.d).filter(Boolean)
+                const items = c.items || []
+                const map: Record<string,string> = {}
+
+                // Buscar por descripción en catálogo
+                const descs = items.map((it:any)=>it.d).filter(Boolean)
                 if (descs.length) {
                   const { data } = await supabase.from('catalogo').select('codigo,descripcion').in('descripcion', descs).is('lista_nombre', null)
-                  const map: Record<string,string> = {}
                   for (const r of data??[]) if (r.codigo && r.descripcion && !map[r.descripcion]) map[r.descripcion] = r.codigo
-                  setDetailDescMap(map)
                 }
+
+                // Buscar por stock_id (para NC y otros que traigan stock_id en el ítem)
+                const stockIds = items.map((it:any)=>it.stock_id).filter(Boolean)
+                if (stockIds.length) {
+                  const { data } = await supabase.from('stock').select('id,codigo').in('id', stockIds)
+                  for (const r of data??[]) {
+                    // Buscar el ítem con ese stock_id y mapear su descripción al código
+                    const it = items.find((x:any)=>x.stock_id===r.id)
+                    if (it && r.codigo && !map[it.d]) map[it.d] = r.codigo
+                  }
+                }
+
+                setDetailDescMap(map)
               }} title="Click para opciones · doble click para ver el detalle"
               className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
               <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
