@@ -556,8 +556,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
           comprobante_id: c.id, tipoCbte,
-          impTotal: c.total, impNeto: c.neto, impIva: c.iva,
-          docTipo, docNro, ivaAlicuota: c.iva > 0 ? 5 : undefined,
+          // Factura B a CF: el total incluye IVA pero no está discriminado
+          // AFIP requiere neto + iva por separado igualmente
+          impTotal: c.total,
+          impNeto: c.iva > 0 ? c.neto : Math.round(c.total / 1.21 * 100) / 100,
+          impIva:  c.iva > 0 ? c.iva  : Math.round((c.total - c.total / 1.21) * 100) / 100,
+          docTipo, docNro,
+          ivaAlicuota: 5, // siempre mandar alícuota 21% cuando hay neto > 0
           cbteAsoc,
         }
       })
