@@ -713,16 +713,44 @@ export default function ComprasClient() {
 
   async function eliminarComprobante(id: string) {
     if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
-    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
-    // Si afectó stock, revertir
     const comp = comprobantes.find(c => c.id === id)
-    if (comp?.afecta_stock) {
-      for (const it of comp.items) {
-        if (it.articulo_id) {
-          await supabase.rpc('incrementar_stock', { p_articulo_id: it.articulo_id, p_cantidad: -(it.c || 1) })
-        }
+    if (!comp) return
+
+    // Verificar si tiene periodo fiscal cerrado (no dejar eliminar)
+    const fecha = comp.fecha ? new Date(comp.fecha) : null
+    if (fecha) {
+      const hoy = new Date()
+      const diffMeses = (hoy.getFullYear() - fecha.getFullYear()) * 12 + (hoy.getMonth() - fecha.getMonth())
+      if (diffMeses > 2) {
+        alert('No se puede eliminar un comprobante de más de 2 meses de antigüedad. Consultá con el contador.')
+        return
       }
     }
+
+    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
+
+    // Si afectó stock, revertir movimientos
+    if (comp.afecta_stock && comp.estado === 'procesado') {
+      // Buscar movimientos de stock vinculados a este comprobante
+      const { data: movimientos } = await supabase.from('stock_movimientos')
+        .select('id, stock_id, cantidad').eq('comprobante_compra_id', id)
+      if (movimientos && movimientos.length > 0) {
+        for (const mov of movimientos) {
+          // Restar del stock lo que había entrado
+          const { data: s } = await supabase.from('stock').select('cantidad').eq('id', mov.stock_id).maybeSingle()
+          if (s) {
+            await supabase.from('stock').update({ cantidad: Math.max(0, (s.cantidad || 0) - mov.cantidad) }).eq('id', mov.stock_id)
+          }
+        }
+        // Eliminar los movimientos de stock
+        await supabase.from('stock_movimientos').delete().eq('comprobante_compra_id', id)
+      }
+    }
+
+    // Revertir CC del proveedor si generó cargo
+    await supabase.from('cuenta_corriente_proveedores').delete().eq('comprobante_compra_id', id)
+
+    // Eliminar el comprobante
     await supabase.from('comprobantes_compra').delete().eq('id', id)
     load()
   }
@@ -1408,9 +1436,17 @@ export default function ComprasClient() {
 
             {/* Fila de precio/cant/dto para el ítem pendiente + botón agregar */}
             {itemForm.d.trim().length > 0 && (
-              <div className="flex gap-2 items-center mb-2 bg-p-light/50 rounded-xl px-3 py-2">
-                <span className="text-sm text-p-ink flex-1 truncate">{itemForm.d}</span>
-                <input value={itemForm.codigo} onChange={e=>setItemForm(p=>({...p,codigo:e.target.value.toUpperCase()}))} placeholder="Código" className="w-28 border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-amber-500" title="Código Pilkington"/>
+              <div className="flex gap-2 items-center mb-2 bg-p-light/50 rounded-xl px-3 py-2 flex-wrap">
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  {itemArticuloSel && <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded-full shrink-0">✓ Catálogo</span>}
+                  <span className={`text-sm truncate ${itemArticuloSel ? 'text-p-ink font-medium' : 'text-p-ink2'}`}>{itemForm.d}</span>
+                </div>
+                <input value={itemForm.codigo}
+                  onChange={e=>!itemArticuloSel && setItemForm(p=>({...p,codigo:e.target.value.toUpperCase()}))}
+                  readOnly={!!itemArticuloSel}
+                  placeholder="Código"
+                  className={`w-28 border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none ${itemArticuloSel ? 'border-green-200 bg-green-50 text-green-800 cursor-default' : 'border-amber-300 focus:border-amber-500'}`}
+                  title={itemArticuloSel ? 'Código del catálogo — no editable' : 'Código Pilkington'}/>
                 <input type="number" value={itemForm.c} onChange={e=>setItemForm(p=>({...p,c:e.target.value}))} placeholder="Cant" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-p-green"/>
                 <input value={itemForm.p} onChange={e=>setItemForm(p=>({...p,p:e.target.value}))} placeholder="$ precio" className="w-28 border border-p-line rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green"/>
                 <input type="number" value={itemForm.dto} onChange={e=>setItemForm(p=>({...p,dto:e.target.value}))} placeholder="Dto%" className="w-14 border border-p-line rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-amber-400" title="Descuento %"/>
