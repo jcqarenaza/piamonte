@@ -1242,6 +1242,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </div>
             </div>
           )}
+
+          <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">¿A quién se factura?</label>
             <div className="flex gap-2 flex-wrap">
               <button type="button" onClick={()=>cambiarModo('cf')}
