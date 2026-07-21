@@ -129,6 +129,7 @@ export default function RemitosInternosClient() {
                   <div className="flex gap-1 flex-wrap mb-2.5">
                     {(r.items||[]).map((it:any,i:number)=>(
                       <span key={i} className="text-[11px] bg-white border border-p-line text-p-dark px-2 py-0.5 rounded-full">
+                        {it.codigo&&<span className="font-mono font-bold text-p-green mr-1">{it.codigo}</span>}
                         {it.descripcion} ×{it.cantidad}
                       </span>
                     ))}
