@@ -736,31 +736,51 @@ export default function ComprasClient() {
 
     const resultados: any[] = []
     for (const it of c.items) {
-      if ((it.d||'').toUpperCase().trim() === 'FLETE') continue // el flete no se compara
+      if ((it.d||'').toUpperCase().trim() === 'FLETE') continue
       let candidatos: any[] = []
+      const codigoItem = (it as any).codigo || null
 
+      // 1. Buscar por articulo_id en equivalencias
       if (it.articulo_id) {
         const { data } = await supabase.from('articulo_equivalencias')
           .select('proveedor,costo_neto,lista_nombre,codigo_proveedor')
           .eq('articulo_id', it.articulo_id)
         candidatos = data ?? []
-      } else if (((it as any).codigo && (it as any).codigo !== 'FL') || /^[0-9]{6}[A-Z]/i.test((it.d||'').trim())) {
-        // Buscar por código — puede estar en it.codigo o en it.d (facturas GAMMA)
-        const codRaw = (it as any).codigo || it.d.trim()
-        const codigoBase = codRaw.replace(/[^0-9]/g,'').slice(0,6)
+      }
+
+      // 2. Si no encontró por articulo_id (o vino vacío), buscar por código en catálogo
+      if (candidatos.length === 0 && codigoItem) {
+        const { data } = await supabase.from('catalogo')
+          .select('proveedor, costo_neto, precio_lista, codigo')
+          .eq('codigo', codigoItem)
+          .gt('costo_neto', 0).limit(10)
+        if (data && data.length > 0) {
+          const porProv = new Map<string,any>()
+          for (const row of data) {
+            if (!porProv.has(row.proveedor) || row.costo_neto < porProv.get(row.proveedor).costo_neto)
+              porProv.set(row.proveedor, { proveedor: row.proveedor, costo_neto: row.costo_neto, lista_nombre: 'Catálogo', codigo_proveedor: row.codigo })
+          }
+          candidatos = [...porProv.values()]
+        }
+      }
+
+      // 3. Si no, buscar por código base en catálogo (6 primeros dígitos)
+      if (candidatos.length === 0 && codigoItem && /^[0-9]{6}[A-Z]/i.test(codigoItem)) {
+        const codigoBase = codigoItem.replace(/[^0-9]/g,'').slice(0,6)
         const { data } = await supabase.from('catalogo')
           .select('proveedor, costo_neto, precio_lista, codigo')
           .ilike('codigo', `${codigoBase}%`)
           .gt('costo_neto', 0).limit(20)
-        // Convertir al formato de equivalencias
         const porProv = new Map<string,any>()
         for (const row of (data??[])) {
           if (!porProv.has(row.proveedor) || row.costo_neto < porProv.get(row.proveedor).costo_neto)
             porProv.set(row.proveedor, { proveedor: row.proveedor, costo_neto: row.costo_neto, lista_nombre: 'Catálogo', codigo_proveedor: row.codigo })
         }
         candidatos = [...porProv.values()]
-      } else {
-        // Buscar por descripción en catálogo directamente
+      }
+
+      // 4. Buscar por descripción como último recurso
+      if (candidatos.length === 0 && it.d) {
         const { data: catDirect } = await supabase.from('catalogo')
           .select('proveedor, costo_neto, codigo')
           .ilike('descripcion', `%${it.d.slice(0,20).trim()}%`)
@@ -773,7 +793,6 @@ export default function ComprasClient() {
           }
           candidatos = [...porProv.values()]
         } else {
-          // Fallback a maestro
           const palabras = it.d.toUpperCase().split(/\s+/).filter((w:string) => w.length > 2)
           if (palabras.length > 0) {
             const { data } = await supabase.from('articulos_maestro')
@@ -796,10 +815,12 @@ export default function ComprasClient() {
       }
       const lista = [...porProveedor.values()].sort((a,b)=>a.costo_neto - b.costo_neto)
 
-      // El precio del ítem en la factura es el precio de LISTA (antes del descuento)
-      // Lo que realmente pagamos = precio_lista × (1 - descuento_pct/100)
-      const descPct = c.descuento_pct ? +c.descuento_pct / 100 : 0
-      const precioNetoReal = Math.round(it.p * (1 - descPct) * 100) / 100
+      // El precio del ítem: si tiene dto propio lo aplica, sino usa el dto del comprobante
+      // Para Sekurit el precio ya viene como costo_neto (sin descuento adicional)
+      const itemDto = (it as any).dto != null ? +(it as any).dto : null
+      const compDto = c.descuento_pct ? +c.descuento_pct : 0
+      const dtoPct = (itemDto !== null ? itemDto : compDto) / 100
+      const precioNetoReal = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
       const masBarato = lista[0]
       const diferencia = masBarato ? precioNetoReal - masBarato.costo_neto : null
@@ -823,6 +844,7 @@ export default function ComprasClient() {
   )
 
   const [filtroPendSaldar, setFiltroPendSaldar] = useState(false)
+  const [tabCompras, setTabCompras] = useState<'comprobantes'|'pedidos'>('comprobantes')
   const filtradosFinal = filtroPendSaldar
     ? filtrados.filter(c => c.estado === 'pendiente' && !c.es_contado)
     : filtrados
@@ -864,6 +886,22 @@ export default function ComprasClient() {
           <p className="font-saira font-bold text-xl text-purple-600 mt-1">{comprobantes.filter(c=>['nc','nd'].includes(c.tipo)&&c.estado!=='anulado').length}</p>
         </div>
       </div>
+
+      {/* Tabs principales */}
+      <div className="flex gap-1 mb-5 border-b border-p-line">
+        {[{id:'comprobantes',label:'📄 Comprobantes'},{id:'pedidos',label:'📦 Pedidos'}].map(t=>(
+          <button key={t.id} onClick={()=>setTabCompras(t.id as any)}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-colors ${tabCompras===t.id?'bg-white border border-b-white border-p-line -mb-px text-p-green':'text-p-ink2 hover:text-p-ink'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tabCompras === 'pedidos' && (
+        <ModuloPedidos supabase={supabase} proveedores={proveedores}/>
+      )}
+
+      {tabCompras === 'comprobantes' && (<>
 
       {/* Filtros + botón */}
       <div className="flex gap-2 flex-wrap mb-5 items-center">
@@ -1728,6 +1766,172 @@ export default function ComprasClient() {
           </div>
         )}
       </Modal>
+      </>) /* fin tabCompras === 'comprobantes' */}
+    </div>
+  )
+}
+
+// ─── Módulo de Pedidos ────────────────────────────────────────────────────────
+function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: any[] }) {
+  const [q, setQ] = useState('')
+  const [resultados, setResultados] = useState<any[]>([])
+  const [buscando, setBuscando] = useState(false)
+  const [pedido, setPedido] = useState<{articulo_id:string; descripcion:string; codigo:string; proveedor:string; costo:number; cantidad:string}[]>([])
+  const [cantPedido, setCantPedido] = useState<Record<string,string>>({})
+
+  async function buscar() {
+    if (q.trim().length < 2) return
+    setBuscando(true)
+    const esCode = !/\s/.test(q.trim())
+
+    // Buscar en catálogo todos los proveedores para el código/descripción
+    let query = supabase.from('catalogo')
+      .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
+    if (esCode) query = query.ilike('codigo', `%${q.trim()}%`)
+    else query = query.ilike('descripcion', `%${q.trim()}%`)
+    query = query.order('costo_neto').limit(30)
+
+    const { data: cat } = await query
+
+    // Agrupar por descripción normalizada y mostrar precios por proveedor
+    const grupos: Record<string, any[]> = {}
+    for (const c of cat || []) {
+      const key = (c.descripcion || '').toUpperCase().trim()
+      if (!grupos[key]) grupos[key] = []
+      grupos[key].push(c)
+    }
+
+    // Para cada grupo buscar también por articulo_id en equivalencias
+    const items = Object.entries(grupos).map(([desc, variants]) => {
+      const sorted = [...variants].sort((a,b) => (a.costo_neto||0) - (b.costo_neto||0))
+      const masBarato = sorted[0]
+      return { descripcion: variants[0].descripcion, variants: sorted, masBarato }
+    }).slice(0, 10)
+
+    setResultados(items)
+    setBuscando(false)
+  }
+
+  function agregarAPedido(v: any) {
+    const key = `${v.codigo}-${v.proveedor}`
+    if (pedido.find(p => p.codigo === v.codigo && p.proveedor === v.proveedor)) return
+    setPedido(p => [...p, {
+      articulo_id: v.id, descripcion: v.descripcion, codigo: v.codigo,
+      proveedor: v.proveedor, costo: v.costo_neto, cantidad: cantPedido[key] || '1'
+    }])
+  }
+
+  function imprimirPedido() {
+    const lineas = pedido.map(p =>
+      `${p.proveedor.padEnd(12)} | ${p.codigo.padEnd(15)} | ${p.descripcion.slice(0,35).padEnd(35)} | x${p.cantidad} | $${Number(p.costo).toLocaleString('es-AR')}`
+    ).join('\n')
+    const encabezado = `LISTA DE PEDIDOS — ${new Date().toLocaleDateString('es-AR')}\n${'─'.repeat(85)}\n`
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.write(`<pre style="font-family:monospace;font-size:13px;padding:20px">${encabezado}${lineas}</pre>`)
+      w.print()
+    }
+  }
+
+  const proveedoresPedido = [...new Set(pedido.map(p => p.proveedor))]
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Buscador */}
+      <div className="flex gap-2">
+        <input value={q} onChange={e=>setQ(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&buscar()}
+          placeholder="Buscar por código o descripción… ej: 1410031 o Corolla"
+          className="flex-1 border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green shadow-sm"/>
+        <button onClick={buscar} disabled={buscando}
+          className="bg-p-green text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-p-green/90 disabled:opacity-50">
+          {buscando ? 'Buscando…' : '🔍 Buscar'}
+        </button>
+      </div>
+
+      {/* Resultados con comparativa de precios */}
+      {resultados.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">{resultados.length} artículo(s) encontrado(s)</p>
+          {resultados.map((item, i) => (
+            <div key={i} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-2.5 bg-p-light/50 border-b border-p-line">
+                <p className="font-saira font-bold text-p-ink text-sm">{item.descripcion}</p>
+              </div>
+              <div className="flex flex-col divide-y divide-p-line2">
+                {item.variants.map((v: any, j: number) => {
+                  const esMasBarato = j === 0
+                  const key = `${v.codigo}-${v.proveedor}`
+                  const yaEnPedido = pedido.find(p => p.codigo === v.codigo && p.proveedor === v.proveedor)
+                  return (
+                    <div key={j} className={`flex items-center gap-3 px-4 py-2.5 ${esMasBarato ? 'bg-green-50' : ''}`}>
+                      {esMasBarato && <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shrink-0">✓ Más barato</span>}
+                      <span className="text-[11px] font-bold text-p-ink2 w-24 shrink-0">{v.proveedor}</span>
+                      <span className="font-mono text-xs text-p-ink2 shrink-0">{v.codigo}</span>
+                      <span className="font-mono font-bold text-sm ml-auto shrink-0">${Number(v.costo_neto||0).toLocaleString('es-AR')}</span>
+                      <input type="number" min="1"
+                        value={cantPedido[key]||'1'}
+                        onChange={e=>setCantPedido(p=>({...p,[key]:e.target.value}))}
+                        className="w-14 border border-p-line rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-p-green"/>
+                      <button onClick={()=>agregarAPedido(v)}
+                        disabled={!!yaEnPedido}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 transition-colors ${yaEnPedido?'bg-green-100 text-green-700 cursor-default':'bg-p-green text-white hover:bg-p-green/90'}`}>
+                        {yaEnPedido ? '✓ Agregado' : '+ Pedir'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lista de pedido armada */}
+      {pedido.length > 0 && (
+        <div className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-p-light/50 border-b border-p-line">
+            <p className="font-saira font-bold text-p-ink">📋 Lista de pedido ({pedido.length} ítems)</p>
+            <div className="flex gap-2">
+              <button onClick={imprimirPedido}
+                className="text-xs font-bold px-3 py-1.5 border border-p-line rounded-lg hover:bg-p-light">
+                🖨 Imprimir
+              </button>
+              <button onClick={()=>setPedido([])}
+                className="text-xs font-bold px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
+                Limpiar
+              </button>
+            </div>
+          </div>
+          {proveedoresPedido.map(prov => (
+            <div key={prov}>
+              <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider px-4 py-2 bg-p-light/30 border-b border-p-line2">
+                📦 {prov}
+              </p>
+              {pedido.filter(p=>p.proveedor===prov).map((p,i)=>(
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-p-line2 last:border-0 text-sm">
+                  <span className="font-mono text-xs text-p-ink2 w-28 shrink-0">{p.codigo}</span>
+                  <span className="flex-1 text-p-ink truncate">{p.descripcion}</span>
+                  <span className="font-mono text-xs shrink-0">x{p.cantidad}</span>
+                  <span className="font-mono font-bold shrink-0">${Number(p.costo).toLocaleString('es-AR')}</span>
+                  <button onClick={()=>setPedido(prev=>prev.filter(x=>!(x.codigo===p.codigo&&x.proveedor===p.proveedor)))}
+                    className="text-red-400 hover:text-red-600 text-xs ml-1 shrink-0">✕</button>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div className="px-4 py-3 border-t border-p-line flex justify-between items-center bg-p-light/30">
+            <span className="text-sm font-semibold text-p-ink2">Total estimado</span>
+            <span className="font-mono font-bold text-p-ink">
+              ${pedido.reduce((a,p)=>a+(p.costo*(parseInt(p.cantidad)||1)),0).toLocaleString('es-AR')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {resultados.length === 0 && !buscando && q.trim().length > 1 && (
+        <p className="text-sm text-p-ink2 text-center py-8">Sin resultados para "{q}". Probá con otro código o descripción.</p>
+      )}
     </div>
   )
 }
