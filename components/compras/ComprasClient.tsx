@@ -981,6 +981,7 @@ export default function ComprasClient() {
                     <div className="flex flex-wrap gap-1 mb-2.5">
                       {c.items.slice(0,5).map((it,i)=>(
                         <span key={i} className="text-[11px] bg-white border border-p-line text-p-dark px-2 py-0.5 rounded-full">
+                          {(it as any).codigo && <span className="font-mono font-bold text-p-green mr-1">{(it as any).codigo}</span>}
                           {it.articulo_id && '🔗 '}{it.d} ×{it.c}
                         </span>
                       ))}
@@ -1892,17 +1893,23 @@ function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: 
                     const yaEnPedido = pedido.find(p => p.codigo === v.codigo && p.proveedor === v.proveedor)
                     return (
                       <div key={j} className={`flex items-center gap-3 px-4 py-2.5 ${esMasBarato ? 'bg-green-50' : ''}`}>
-                        {esMasBarato && <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shrink-0">✓ Más barato</span>}
+                        {esMasBarato && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:'#00A550',color:'#fff'}}>✓ Más barato</span>}
                         <span className="text-[11px] font-bold text-p-ink2 w-24 shrink-0">{v.proveedor}</span>
                         <span className="font-mono text-xs text-p-ink2 shrink-0">{v.codigo}</span>
                         <span className="font-mono font-bold text-sm ml-auto shrink-0">${Number(v.costo_neto||0).toLocaleString('es-AR')}</span>
                         <input type="number" min="1"
                           value={cantPedido[key]||'1'}
                           onChange={e=>setCantPedido(p=>({...p,[key]:e.target.value}))}
-                          className="w-14 border border-p-line rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:border-p-green"/>
+                          className="w-14 border border-p-line rounded-lg px-2 py-1 text-sm text-center focus:outline-none"/>
                         <button onClick={()=>agregarAPedido({...v,cantidad:cantPedido[key]||'1'})}
                           disabled={!!yaEnPedido}
-                          className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 transition-colors ${yaEnPedido?'bg-green-100 text-green-700 cursor-default':'bg-p-green text-white hover:bg-p-green/90'}`}>
+                          style={{
+                            background: yaEnPedido ? '#dcfce7' : '#00A550',
+                            color: yaEnPedido ? '#15803d' : '#fff',
+                            border: 'none', borderRadius: 8, padding: '6px 12px',
+                            fontWeight: 700, fontSize: 12, cursor: yaEnPedido ? 'default' : 'pointer',
+                            flexShrink: 0
+                          }}>
                           {yaEnPedido ? '✓' : '+ Pedir'}
                         </button>
                       </div>
