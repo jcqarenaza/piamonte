@@ -937,10 +937,17 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             </div>
             <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-3">
               {(verComp.items||[]).map((it:any,i:number)=>(
-                <div key={i} className="flex justify-between text-sm border-b border-p-line2 py-1.5">
-                  <span className="flex-1 truncate">{it.d||it.descripcion}</span>
-                  <span className="text-p-ink2 mx-2">x{it.c||it.cantidad}</span>
-                  <span className="font-mono">{moneyARS((it.p||it.precio_unitario||0)*(it.c||it.cantidad||1))}</span>
+                <div key={i} className="flex justify-between text-sm border-b border-p-line2 py-1.5 gap-2">
+                  <span className="flex-1 min-w-0">
+                    {(it.codigo||(it as any).codigo) && (
+                      <span className="font-mono text-[10px] font-bold bg-p-light text-p-dark px-1.5 py-0.5 rounded mr-1.5">
+                        {it.codigo||(it as any).codigo}
+                      </span>
+                    )}
+                    <span className="truncate">{it.d||it.descripcion}</span>
+                  </span>
+                  <span className="text-p-ink2 shrink-0">x{it.c||it.cantidad}</span>
+                  <span className="font-mono shrink-0">{moneyARS((it.p||it.precio_unitario||0)*(it.c||it.cantidad||1))}</span>
                 </div>
               ))}
               <div className="bg-p-light rounded-xl p-3 text-sm">
