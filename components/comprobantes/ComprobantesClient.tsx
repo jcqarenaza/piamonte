@@ -108,6 +108,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [genPDF, setGenPDF]       = useState(false)
   const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
   const [osSelId, setOsSelId] = useState<string|null>(null)
+  const [ventaPreviaOS, setVentaPreviaOS] = useState(false)
   const [oidParam, setOidParam] = useState<string|null>(null)
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')
@@ -171,7 +172,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const piezaDesc = searchParams.get('pieza_desc')
     const piezaPrecio = searchParams.get('pieza_precio')
     const oidUrl = searchParams.get('oid')
-    if (oidUrl) { setOidParam(oidUrl); setOpen(true) }
+    if (oidUrl) {
+      setOidParam(oidUrl); setOpen(true)
+      // Verificar si esta OS ya tiene venta registrada en caja (sin comprobante = OS directa)
+      supabase.from('ventas').select('id').is('comprobante_id', null)
+        .eq('fecha', new Date().toISOString().slice(0,10))
+        .then(({ data }) => {
+          // Si hay ventas hoy sin comprobante, puede haber duplicado — marcamos aviso
+          if (data && data.length > 0) setVentaPreviaOS(true)
+        })
+    }
     if (searchParams.get('nuevo') === '1') setOpen(true)
     if (asegNombre) {
       setModo('aseguradora')
@@ -682,9 +692,34 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', oid)
     if (osSelId && !oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', osSelId)
 
+    // Si venía de una OS, buscar y eliminar la venta de caja previa para evitar duplicar
+    const osId = oid || osSelId
+    if (osId && comp) {
+      // Buscar ventas de caja registradas desde esa OS (sin comprobante_id = son de OS directa)
+      const { data: ventasOS } = await supabase.from('ventas')
+        .select('id, descripcion, precio')
+        .is('comprobante_id', null)
+        .eq('fecha', todayStr())
+        .ilike('descripcion', `%${items[0]?.d?.slice(0,15) || ''}%`)
+      // También buscar por stock_id de los ítems
+      const stockCodigos = items.map((it:any) => it.codigo).filter(Boolean)
+      const { data: ventasPorCodigo } = stockCodigos.length ? await supabase.from('ventas')
+        .select('id, descripcion, precio')
+        .is('comprobante_id', null)
+        .or(stockCodigos.map((c:string) => `descripcion.ilike.%${c}%`).join(','))
+        : { data: [] }
+
+      const ventasABorrar = [...(ventasOS || []), ...(ventasPorCodigo || [])]
+        .filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i) // deduplicar
+        .filter(v => !v.descripcion?.includes('FA-') && !v.descripcion?.includes('FB-') && !v.descripcion?.includes('NC '))
+
+      if (ventasABorrar.length > 0) {
+        await supabase.from('ventas').delete().in('id', ventasABorrar.map(v => v.id))
+      }
+    }
+
     if(comp) {
       const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
-      // Armar etiqueta con tipo y número de factura real (ej: FA-0006-00000027)
       const letraDoc = tipoDoc()
       const prefijo = esNegro ? 'Venta' : `F${letraDoc}`
       const nroFormateado = `${prefijo}-0006-${String(nextNum).padStart(8,'0')}`
@@ -1197,7 +1232,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <Modal open={open} onClose={()=>{ if(oidParam) router.push('/ordenes'); else setOpen(false) }} title="Nuevo comprobante" size="xl">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
 
-          <div>
+          {/* Aviso: esta OS ya tiene venta registrada en caja hoy */}
+          {ventaPreviaOS && oidParam && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-2">
+              <span className="text-lg shrink-0">⚠️</span>
+              <div>
+                <p className="text-sm font-bold text-amber-800">Esta OS ya tiene una venta registrada en caja hoy</p>
+                <p className="text-xs text-amber-700 mt-0.5">Al emitir el comprobante, la venta previa se elimina automáticamente y queda solo la factura. No cargues el pago dos veces.</p>
+              </div>
+            </div>
+          )}
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">¿A quién se factura?</label>
             <div className="flex gap-2 flex-wrap">
               <button type="button" onClick={()=>cambiarModo('cf')}
