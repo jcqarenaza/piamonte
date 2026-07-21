@@ -1442,7 +1442,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                         }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-p-ink truncate">{s.articulo_id && '🔗 '}{s.descripcion}</p>
-                            <p className="text-[10px] text-p-ink2">Stock: {s.cantidad} u. · Costo: {s.costo?moneyARS(s.costo):'-'}</p>
+                            <p className="text-[10px] text-p-ink2">
+                              {s.codigo && <span className="font-mono font-bold text-p-ink mr-1.5">{s.codigo}</span>}
+                              Stock: {s.cantidad} u. · Costo: {s.costo?moneyARS(s.costo):'-'}
+                            </p>
                           </div>
                           <span className="font-mono font-bold text-sm text-p-dark shrink-0">{s.precio_venta?moneyARS(s.precio_venta):'-'}</span>
                         </button>
