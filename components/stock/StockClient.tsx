@@ -342,10 +342,27 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setOpen(true)
   }
 
-  function openNuevoConCodigo(codigo: string) {
-    setForm({ desc: '', cod: codigo, marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+  async function openNuevoConCodigo(codigo: string) {
+    // Buscar en articulos_maestro por código de referencia
+    const { data: art } = await supabase.from('articulos_maestro')
+      .select('id,descripcion,codigo_referencia,marca,pos,anio')
+      .eq('codigo_referencia', codigo.toUpperCase())
+      .maybeSingle()
+
+    // Si no está en el maestro, buscar en catálogo
+    const { data: cat } = !art ? await supabase.from('catalogo')
+      .select('descripcion,marca,pos')
+      .eq('codigo', codigo.toUpperCase())
+      .limit(1).maybeSingle() : { data: null }
+
+    const desc = art?.descripcion || cat?.descripcion || ''
+    const marca = art?.marca || cat?.marca || ''
+    const pos = art?.pos || cat?.pos || ''
+    const anio = art?.anio ? String(art.anio) : ''
+
+    setForm({ desc, cod: codigo, marca, pos, anio, cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
     setEditId(null)
-    setArticuloSel(null)
+    setArticuloSel(art ? { id: art.id, descripcion: art.descripcion, codigo_referencia: art.codigo_referencia } : null)
     setArticuloSugs([])
     setOpen(true)
   }
