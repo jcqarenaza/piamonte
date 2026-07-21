@@ -1135,7 +1135,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {([
             ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],['nd','Notas de Débito'],
-            ...(rol==='gerencial'||rol==='admin' ? [['negro','⚫ Negro'] as const] : []),
+            ...(rol==='gerencial'||rol==='admin' ? [['negro','🔘 Sin CAE'] as const] : []),
           ] as const).map(([val,label])=>(
             <button key={val} onClick={()=>setFiltroTipo(val)}
               style={{background:filtroTipo===val?'#00A550':'#fff',color:filtroTipo===val?'#fff':'#4A6655',border:`1.5px solid ${filtroTipo===val?'#00A550':'#C2DDD0'}`,borderRadius:10,padding:'6px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -1887,7 +1887,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </div>
             )}
             {(rol==='gerencial'||rol==='admin') && verComp.es_negro && (
-              <div className="rounded-lg p-3 text-sm bg-gray-800 text-white">⚫ Comprobante extra-contable (negro)</div>
+              <div className="rounded-lg p-3 text-sm bg-gray-800 text-white">🔘 Comprobante sin CAE — venta interna</div>
             )}
 
             <div className="flex justify-end gap-2 pt-1">
