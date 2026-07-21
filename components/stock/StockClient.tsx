@@ -823,8 +823,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                     <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
                   </div>
                   <div className="text-right min-w-[80px]">
-                    {precioNeto && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(precioNeto)}</p>}
-                    <p className="text-[10px] text-p-ink2 uppercase">venta s/IVA</p>
+                    {(s as any).pendiente_ingreso ? (
+                      <p className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏳ Pend. ingreso</p>
+                    ) : (
+                      <>
+                        {precioNeto && <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(precioNeto)}</p>}
+                        <p className="text-[10px] text-p-ink2 uppercase">venta s/IVA</p>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     {isAdmin && <>

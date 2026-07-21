@@ -413,7 +413,8 @@ export default function ComprasClient() {
       }
     }
 
-    // Registrar movimientos de stock y actualizar cantidades
+    // Al cargar factura con afecta_stock: crear artículos en stock como "pendiente de ingreso"
+    // La cantidad real se suma cuando confirman la llegada de mercadería (botón Cargar a stock)
     if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado) {
       const numFact = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
       const itemsActualizados = [...items]
@@ -426,7 +427,7 @@ export default function ComprasClient() {
         const dtoPct = (it.dto ?? descuentoPct) / 100
         const costoUnit = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
-        // Resolver articulo_id: del ítem, o buscando por código en equivalencias
+        // Resolver articulo_id
         let articuloId: string | null = (it as any).articulo_id || null
         if (!articuloId && codigo) {
           const { data: eq } = await supabase.from('articulo_equivalencias')
@@ -434,36 +435,29 @@ export default function ComprasClient() {
           articuloId = eq?.articulo_id || null
         }
 
-        // Sin código ni articulo_id no podemos identificar el artículo — salteamos
         if (!codigo && !articuloId) continue
 
-        // Buscar fila de stock: primero por código, luego por articulo_id
+        // Buscar fila de stock existente
         let stockRow: any = null
         if (codigo) {
-          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo').eq('codigo', codigo).eq('activo', true).maybeSingle()
+          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('codigo', codigo).eq('activo', true).maybeSingle()
           stockRow = data
         }
         if (!stockRow && articuloId) {
-          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
+          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
           stockRow = data
         }
 
         if (stockRow) {
+          // Ya existe — actualizar costo y marcar pendiente de ingreso (no suma cantidad todavía)
           await supabase.from('stock').update({
-            cantidad: (stockRow.cantidad || 0) + (it.c || 1),
             costo: costoUnit,
             articulo_id: stockRow.articulo_id || articuloId || null,
+            pendiente_ingreso: true,
           }).eq('id', stockRow.id)
-          await supabase.from('stock_movimientos').insert({
-            stock_id: stockRow.id, tipo: 'entrada', cantidad: it.c || 1,
-            costo_unitario: costoUnit, fecha: form.fecha || todayStr(),
-            descripcion: `Factura ${numFact} — ${prov?.nombre || ''}`,
-            comprobante_compra_id: comp.id,
-          })
-          // Guardar stock_id en el item para trazabilidad
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
-          // Crear nueva fila de stock
+          // Crear nueva fila de stock con cantidad 0 y pendiente_ingreso = true
           let desc = it.d
           if (codigo) {
             const { data: cat } = await supabase.from('catalogo').select('descripcion').eq('codigo', codigo).limit(1).maybeSingle()
@@ -471,29 +465,23 @@ export default function ComprasClient() {
           }
           const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
           const { data: newStock } = await supabase.from('stock').insert({
-            codigo: codigoFinal, descripcion: desc, cantidad: it.c || 1,
+            codigo: codigoFinal, descripcion: desc, cantidad: 0,
             costo: costoUnit, precio_venta: 0,
             articulo_id: articuloId || null, activo: true,
+            pendiente_ingreso: true,
           }).select('id').single()
           if (newStock) {
-            await supabase.from('stock_movimientos').insert({
-              stock_id: newStock.id, tipo: 'entrada', cantidad: it.c || 1,
-              costo_unitario: costoUnit, fecha: form.fecha || todayStr(),
-              descripcion: `Factura ${numFact} — ${prov?.nombre || ''} (alta nueva)`,
-              comprobante_compra_id: comp.id,
-            })
             itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
           }
         }
       }
 
-      // Actualizar el JSON de items con los stock_id resueltos y marcar como procesado
+      // Guardar stock_ids y dejar como pendiente (no procesado — se procesa al confirmar llegada)
       await supabase.from('comprobantes_compra').update({
-        estado: 'procesado',
         items: itemsActualizados,
       }).eq('id', comp.id)
+
     } else if (comp) {
-      // Si no afecta stock, igual marcar como procesado
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
     }
 
@@ -646,25 +634,23 @@ export default function ComprasClient() {
       const item = remitoModal.items[idx]
       if (!map) continue
 
-      await supabase.from('ajustes_stock').insert({
-        fecha, tipo:'entrada',
-        stock_id: map.stock_id,
-        descripcion: item.d,
-        cantidad: map.qty,
-        costo_unitario: map.costo,
-        proveedor: prov?.nombre || remitoModal.proveedor_nombre || null,
-        nota: `${etiqueta} — recepción automática`,
-      })
-
-      // Si el ítem de la factura ya tenía un artículo del catálogo asociado y la fila de stock
-      // destino todavía no estaba vinculada a ninguno, la vinculamos ahora — así Compras
-      // termina de cerrar el círculo del SKU sin que haga falta un paso manual extra en Stock.
-      const { data: st } = await supabase.from('stock').select('cantidad,articulo_id').eq('id', map.stock_id).maybeSingle()
+      const { data: st } = await supabase.from('stock').select('cantidad,articulo_id,pendiente_ingreso').eq('id', map.stock_id).maybeSingle()
       if (st) {
-        const updatePayload: any = { cantidad: (st.cantidad||0) + map.qty }
+        const updatePayload: any = {
+          cantidad: (st.cantidad||0) + map.qty,
+          pendiente_ingreso: false,  // llegó la mercadería
+        }
         if (!st.articulo_id && item.articulo_id) updatePayload.articulo_id = item.articulo_id
         await supabase.from('stock').update(updatePayload).eq('id', map.stock_id)
       }
+
+      // Registrar en stock_movimientos (fuente de verdad)
+      await supabase.from('stock_movimientos').insert({
+        stock_id: map.stock_id, tipo: 'entrada',
+        cantidad: map.qty, costo_unitario: map.costo,
+        fecha, descripcion: `${etiqueta} — recepción mercadería`,
+        comprobante_compra_id: remitoModal.id,
+      })
     }
 
     await supabase.from('comprobantes_compra').update({ estado:'procesado', afecta_stock:true }).eq('id', remitoModal.id)
@@ -835,6 +821,11 @@ export default function ComprasClient() {
     (!filtroEstado || c.estado === filtroEstado)
   )
 
+  const [filtroPendSaldar, setFiltroPendSaldar] = useState(false)
+  const filtradosFinal = filtroPendSaldar
+    ? filtrados.filter(c => c.estado === 'pendiente' && !c.es_contado)
+    : filtrados
+
   const mes = new Date().toISOString().slice(0,7)
   const totalMes = comprobantes.filter(c=>c.fecha.startsWith(mes)&&c.estado!=='anulado'&&c.tipo==='factura')
     .reduce((a,c)=>a+c.total,0)
@@ -887,7 +878,11 @@ export default function ComprasClient() {
           <option value="procesado">Procesado</option>
           <option value="anulado">Anulado</option>
         </select>
-        <span className="text-sm text-p-ink2 ml-1">{filtrados.length} comprobantes</span>
+        <button onClick={()=>setFiltroPendSaldar(v=>!v)}
+          className={`border rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors shadow-sm ${filtroPendSaldar?'bg-amber-500 text-white border-amber-500':'bg-white text-p-ink border-p-line hover:border-amber-400'}`}>
+          💳 Pendientes de saldar
+        </button>
+        <span className="text-sm text-p-ink2 ml-1">{filtradosFinal.length} comprobantes</span>
         <div className="ml-auto flex gap-2">
           <button onClick={()=>setProvModal(true)} style={btnGray}>+ Proveedor</button>
           <button onClick={()=>{
@@ -905,9 +900,9 @@ export default function ComprasClient() {
 
       {/* Listado */}
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-       filtrados.length === 0 ? <Empty msg="Sin comprobantes de compra." /> : (
+       filtradosFinal.length === 0 ? <Empty msg="Sin comprobantes de compra." /> : (
         <div className="flex flex-col gap-2">
-          {filtrados.map(c=>(
+          {filtradosFinal.map(c=>(
             <div key={c.id}
               onClick={()=>setExpandido(p=>p===c.id?null:c.id)}
               onDoubleClick={()=>setVerComp(c)} title="Click para opciones · doble click para ver el detalle"
