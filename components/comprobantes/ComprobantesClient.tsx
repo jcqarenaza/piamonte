@@ -139,15 +139,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // Si el cliente es RI (Factura A), los precios ya incluyen IVA → neto = precio / 1.21
   // Si es CF/B/C/exento, el total es el precio tal cual
   const discriminaIva = !esNegro && !esExento && fiscal.tipo_fiscal === 'responsable_inscripto'
+  const esCFoB = !esNegro && !esExento && !discriminaIva // B o C — IVA incluido en precio
   const subtotalItems = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
+  // Para B/C: el precio ya incluye IVA, calculamos el neto descontando el IVA
   const neto = discriminaIva
     ? Math.round(subtotalItems / (1 + IVA) * 100) / 100
-    : subtotalItems
-  // IVA discriminado solo en Factura A (cliente RI) — en B/C/negro/exento = 0
-  const iva   = esNegro
+    : esCFoB
+      ? Math.round(subtotalItems / (1 + IVA) * 100) / 100  // neto sin IVA para libro IVA
+      : subtotalItems
+  // IVA: discriminado en A (RI), calculado internamente en B/C para libro IVA, 0 en negro/exento
+  const iva = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
-    : (discriminaIva ? Math.round(neto*IVA*100) / 100 : 0)
-  const total = Math.round((neto + iva) * 100) / 100
+    : esExento ? 0
+    : Math.round(neto * IVA * 100) / 100  // tanto A como B/C llevan IVA calculado
+  const total = esCFoB
+    ? subtotalItems  // para B/C el total es el precio original (IVA incluido)
+    : Math.round((neto + iva) * 100) / 100
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
 
