@@ -713,36 +713,21 @@ export default function ComprasClient() {
 
   async function eliminarComprobante(id: string) {
     if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
+    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
     const comp = comprobantes.find(c => c.id === id)
     if (!comp) return
 
-    // Verificar si tiene periodo fiscal cerrado (no dejar eliminar)
-    const fecha = comp.fecha ? new Date(comp.fecha) : null
-    if (fecha) {
-      const hoy = new Date()
-      const diffMeses = (hoy.getFullYear() - fecha.getFullYear()) * 12 + (hoy.getMonth() - fecha.getMonth())
-      if (diffMeses > 2) {
-        alert('No se puede eliminar un comprobante de más de 2 meses de antigüedad. Consultá con el contador.')
-        return
-      }
-    }
-
-    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
-
     // Si afectó stock, revertir movimientos
     if (comp.afecta_stock && comp.estado === 'procesado') {
-      // Buscar movimientos de stock vinculados a este comprobante
       const { data: movimientos } = await supabase.from('stock_movimientos')
         .select('id, stock_id, cantidad').eq('comprobante_compra_id', id)
       if (movimientos && movimientos.length > 0) {
         for (const mov of movimientos) {
-          // Restar del stock lo que había entrado
           const { data: s } = await supabase.from('stock').select('cantidad').eq('id', mov.stock_id).maybeSingle()
           if (s) {
             await supabase.from('stock').update({ cantidad: Math.max(0, (s.cantidad || 0) - mov.cantidad) }).eq('id', mov.stock_id)
           }
         }
-        // Eliminar los movimientos de stock
         await supabase.from('stock_movimientos').delete().eq('comprobante_compra_id', id)
       }
     }
@@ -750,7 +735,6 @@ export default function ComprasClient() {
     // Revertir CC del proveedor si generó cargo
     await supabase.from('cuenta_corriente_proveedores').delete().eq('comprobante_compra_id', id)
 
-    // Eliminar el comprobante
     await supabase.from('comprobantes_compra').delete().eq('id', id)
     load()
   }
@@ -972,6 +956,14 @@ export default function ComprasClient() {
                   <div className="flex gap-2 flex-wrap">
                     {puedeVincular(c) && (
                       <button onClick={()=>abrirVinculacion(c)} style={{...btnSm,background:'#00A550'}}>📦 Cargar a stock</button>
+                    )}
+                    {/* Factura pendiente con afecta_stock=false — permitir activar ingreso al stock */}
+                    {c.tipo==='factura' && c.estado==='pendiente' && !c.afecta_stock && c.items?.length>0 && (
+                      <button onClick={async ()=>{
+                        if (!confirm('¿Activar ingreso al stock para esta factura?')) return
+                        await supabase.from('comprobantes_compra').update({ afecta_stock: true }).eq('id', c.id)
+                        load()
+                      }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>📦 Activar ingreso al stock</button>
                     )}
                     {c.items?.length > 0 && (c.tipo==='factura'||c.tipo==='remito') && (
                       <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
