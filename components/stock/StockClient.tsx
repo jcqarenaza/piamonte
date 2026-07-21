@@ -375,6 +375,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       costo: s.costo ? String(s.costo) : '',
       dep: s.deposito || 'Principal',
       minimo: String(s.stock_minimo ?? 0),
+      leyenda: '',
     })
     setEditId(s.id)
     if ((s as any).articulo_id) {
