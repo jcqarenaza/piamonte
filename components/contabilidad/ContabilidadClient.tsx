@@ -67,6 +67,27 @@ export default function ContabilidadClient() {
   const saldoIva = totVentas.iva - totCompras.iva - retIva
 
   const [y, m] = mes.split('-')
+  const [periodoCerrado, setPeriodoCerrado] = useState(false)
+  const [cerrando, setCerrando] = useState(false)
+
+  useEffect(() => {
+    supabase.from('periodos_fiscales').select('cerrado').eq('periodo', mes).maybeSingle()
+      .then(({ data }) => setPeriodoCerrado(data?.cerrado ?? false))
+  }, [mes])
+
+  async function cerrarMes() {
+    if (!confirm(`¿Cerrar el período ${MESES[+m-1]} ${y}? No se podrán editar ni eliminar comprobantes de compra de este mes.`)) return
+    setCerrando(true)
+    await supabase.from('periodos_fiscales').upsert({ periodo: mes, cerrado: true, cerrado_at: new Date().toISOString() }, { onConflict: 'periodo' })
+    setPeriodoCerrado(true)
+    setCerrando(false)
+  }
+
+  async function reabrirMes() {
+    if (!confirm(`¿Reabrir el período ${MESES[+m-1]} ${y}? Se podrán editar comprobantes nuevamente.`)) return
+    await supabase.from('periodos_fiscales').upsert({ periodo: mes, cerrado: false }, { onConflict: 'periodo' })
+    setPeriodoCerrado(false)
+  }
 
   const tabStyle = (t: string) => ({
     padding:'8px 20px', fontWeight:700, fontSize:13, cursor:'pointer', border:'none',
@@ -85,13 +106,29 @@ export default function ContabilidadClient() {
   return (
     <div>
       {/* Selector mes */}
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
         <button onClick={()=>{const d=new Date(mes+'-15');d.setUTCMonth(d.getUTCMonth()-1);setMes(d.toISOString().slice(0,7))}}
           className="border border-p-line rounded-lg px-3 py-2 hover:bg-p-light">←</button>
         <div className="font-saira font-bold text-lg text-p-ink px-3">{MESES[+m-1]} {y}</div>
         <button onClick={()=>{const d=new Date(mes+'-15');d.setUTCMonth(d.getUTCMonth()+1);setMes(d.toISOString().slice(0,7))}}
           className="border border-p-line rounded-lg px-3 py-2 hover:bg-p-light">→</button>
         <button onClick={()=>setMes(new Date().toISOString().slice(0,7))} className="text-sm text-p-green font-semibold hover:underline">Este mes</button>
+        <div className="ml-auto flex items-center gap-2">
+          {periodoCerrado ? (
+            <>
+              <span className="text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg">🔒 Período cerrado</span>
+              <button onClick={reabrirMes}
+                className="text-xs font-bold border border-p-line px-3 py-1.5 rounded-lg hover:bg-p-light">
+                Reabrir
+              </button>
+            </>
+          ) : (
+            <button onClick={cerrarMes} disabled={cerrando}
+              style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',fontWeight:700,fontSize:12,cursor:'pointer',opacity:cerrando?.7:1}}>
+              {cerrando ? 'Cerrando…' : `🔒 Cerrar ${MESES[+m-1]} ${y}`}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPIs IVA */}

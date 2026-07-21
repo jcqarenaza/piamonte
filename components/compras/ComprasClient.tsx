@@ -71,6 +71,7 @@ export default function ComprasClient() {
   const [expandido, setExpandido] = useState<string|null>(null)
   const [verComp, setVerComp] = useState<Comprobante|null>(null)
   const [ivaOn, setIvaOn] = useState(true)
+  const [periodosCerrados, setPeriodosCerrados] = useState<string[]>([])
 
   // Alta rápida de proveedor
   const [provModal, setProvModal] = useState(false)
@@ -167,10 +168,19 @@ export default function ComprasClient() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('comprobantes_compra')
-      .select('*').order('fecha', {ascending:false}).order('created_at',{ascending:false}).limit(200)
+    const [{ data }, { data: periodos }] = await Promise.all([
+      supabase.from('comprobantes_compra')
+        .select('*').order('fecha', {ascending:false}).order('created_at',{ascending:false}).limit(200),
+      supabase.from('periodos_fiscales').select('periodo').eq('cerrado', true)
+    ])
     setComprobantes(data ?? [])
+    setPeriodosCerrados((periodos ?? []).map((p:any) => p.periodo))
     setLoading(false)
+  }
+
+  function periodoCerrado(fecha: string) {
+    const periodo = fecha?.slice(0, 7) // YYYY-MM
+    return periodosCerrados.includes(periodo)
   }
 
   useEffect(() => {
@@ -699,10 +709,14 @@ export default function ComprasClient() {
   }
 
   async function eliminarComprobante(id: string) {
-    if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
-    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
     const comp = comprobantes.find(c => c.id === id)
     if (!comp) return
+    if (periodoCerrado(comp.fecha)) {
+      alert(`⛔ No se puede eliminar — el período ${comp.fecha?.slice(0,7)} está cerrado fiscalmente.`)
+      return
+    }
+    if (!confirm('¿Eliminar este comprobante de compra? Esta acción no se puede deshacer.')) return
+    if (!confirm('¿Estás seguro? Se elimina permanentemente.')) return
 
     // Si afectó stock, revertir movimientos
     if (comp.afecta_stock && comp.estado === 'procesado') {
@@ -1004,7 +1018,11 @@ export default function ComprasClient() {
                       <button onClick={()=>compararPrecios(c)} style={btnBlue}>📊 Comparar precios</button>
                     )}
                     {periodoAbierto(c.fecha) && (
-                      <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
+                      {periodoCerrado(c.fecha) ? (
+                        <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg font-semibold">🔒 Período cerrado</span>
+                      ) : (
+                        <button onClick={()=>editarComprobante(c)} style={btnSm}>✏ Editar</button>
+                      )}
                     )}
                     {periodoAbierto(c.fecha) && (
                       <button onClick={()=>eliminarComprobante(c.id)} style={{...btnSm,background:'#991b1b'}}>🗑 Eliminar</button>
