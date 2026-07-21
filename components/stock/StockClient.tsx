@@ -283,6 +283,15 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   async function chgCant(id: string, delta: number) {
     const s = items.find(x => x.id === id)!
     const cant = Math.max(0, s.cantidad + delta)
+    // PRIMERO insertar movimiento — así el trigger no duplica
+    await supabase.from('stock_movimientos').insert({
+      stock_id: id,
+      tipo: delta > 0 ? 'entrada' : 'salida',
+      cantidad: Math.abs(delta),
+      fecha: new Date().toISOString().slice(0,10),
+      descripcion: 'Cargar mercadería',
+    })
+    // DESPUÉS actualizar cantidad
     await supabase.from('stock').update({ cantidad: cant, updated_at: new Date().toISOString() }).eq('id', id)
     setItems(prev => prev.map(x => x.id === id ? { ...x, cantidad: cant } : x))
   }

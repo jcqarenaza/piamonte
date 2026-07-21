@@ -201,13 +201,12 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     if (form.origen === 'stock' && form.stock_id && form.descontarStock) {
       const s = stockItems.find(x => x.id === form.stock_id)
       if (s && s.cantidad > 0) {
-        await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
-        setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
         const notaVenta = [
           form.comprobante ? `Comp. ${form.comprobante}` : null,
           form.cliente || null,
           form.pago !== 'Efectivo' ? form.pago : null,
         ].filter(Boolean).join(' · ') || 'Venta de caja'
+        // PRIMERO insertar movimiento — así el trigger no duplica
         await supabase.from('stock_movimientos').insert({
           stock_id: form.stock_id,
           tipo: 'salida',
@@ -217,6 +216,9 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           descripcion: notaVenta,
           user_id: userId || null,
         })
+        // DESPUÉS actualizar cantidad
+        await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
+        setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
       }
     }
     setOpen(false)

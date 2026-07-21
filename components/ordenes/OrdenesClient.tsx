@@ -271,7 +271,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       alert('No se puede borrar una orden que ya tiene comprobante emitido.'); return
     }
     if(!confirm('¿Borrar esta orden?')) return
-    await restaurarStockOS(id)
     await supabase.from('ordenes_servicio').delete().eq('id',id); load()
   }
 

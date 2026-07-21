@@ -456,7 +456,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const { data: s } = await supabase.from('stock').select('cantidad').eq('id', x.it.stock_id).single()
         if (s) {
           const cantAnterior = (s as any).cantidad
-          await supabase.from('stock').update({ cantidad: cantAnterior + x.cant }).eq('id', x.it.stock_id)
+          // PRIMERO insertar movimiento — así el trigger no duplica
           await supabase.from('stock_movimientos').insert({
             stock_id: x.it.stock_id,
             tipo: 'entrada',
@@ -467,6 +467,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             comprobante_venta_id: (nc as any).id,
             user_id: userId,
           })
+          // DESPUÉS actualizar cantidad
+          await supabase.from('stock').update({ cantidad: cantAnterior + x.cant }).eq('id', x.it.stock_id)
         }
       }
     }
@@ -680,12 +682,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         if(it.stock_id && it.c > 0){
           const {data:s} = await supabase.from('stock').select('cantidad,costo').eq('id',it.stock_id).single()
           if(s) {
-            await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
-            // Registrar movimiento de salida
             const notaMov = [
               comp ? `FC-0006-${String((comp as any).nro_cbte_afip || (comp as any).numero || '').padStart(8,'0')}` : null,
               asegSel?.nombre || cliSel?.nombre || null,
             ].filter(Boolean).join(' · ') || it.d
+            // PRIMERO insertar movimiento — así el trigger no duplica
             await supabase.from('stock_movimientos').insert({
               stock_id: it.stock_id, tipo: 'salida',
               cantidad: it.c,
@@ -695,6 +696,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               descripcion: notaMov,
               comprobante_venta_id: compId,
             })
+            // DESPUÉS actualizar cantidad
+            await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
           }
         }
       }
@@ -963,7 +966,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       // Particular / Consumidor final
       const filas: string[] = []
       filas.push(`Cliente: ${c.cliente_nombre||'Consumidor Final'}`)
-      if (c.cliente_cuit) filas.push(`CUIT: ${c.cliente_cuit} - IVA: ${tipoFiscalLabel(c.cliente_tipo_fiscal)}`)
+      if (c.cliente_cuit) filas.push(`${c.cliente_tipo_fiscal==='consumidor_final'||(c.cliente_cuit?.length??0)<=8?'DNI':'CUIT'}: ${c.cliente_cuit} - IVA: ${tipoFiscalLabel(c.cliente_tipo_fiscal)}`)
       if (c.cliente_telefono) filas.push(`Tel: ${c.cliente_telefono}`)
       if (c.vehiculo) filas.push(`Vehiculo: ${c.vehiculo}`)
       if ((c as any).patente) filas.push(`Patente: ${(c as any).patente}`)
@@ -1834,7 +1837,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <div><span className="text-p-ink2">{verComp.aseguradora_nombre?'Asegurado: ':'Cliente: '}</span><span className="font-semibold">{verComp.cliente_nombre || 'Consumidor Final'}</span></div>
               {(verComp as any).siniestro && <div><span className="text-p-ink2">N° Siniestro: </span>{(verComp as any).siniestro}</div>}
               {verComp.cliente_telefono && <div><span className="text-p-ink2">Tel: </span>{verComp.cliente_telefono}</div>}
-              {verComp.cliente_cuit && <div><span className="text-p-ink2">CUIT: </span>{verComp.cliente_cuit}</div>}
+              {verComp.cliente_cuit && <div><span className="text-p-ink2">{verComp.cliente_tipo_fiscal==='consumidor_final'||verComp.cliente_cuit?.length<=8?'DNI: ':'CUIT: '}</span>{verComp.cliente_cuit}</div>}
               {verComp.cliente_tipo_fiscal && <div><span className="text-p-ink2">Cond. IVA: </span>{tipoFiscalLabel(verComp.cliente_tipo_fiscal)}</div>}
               {verComp.vehiculo && <div><span className="text-p-ink2">Vehículo: </span>{verComp.vehiculo}</div>}
               {(verComp as any).patente && <div><span className="text-p-ink2">Patente: </span>{(verComp as any).patente}</div>}
