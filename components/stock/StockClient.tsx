@@ -342,6 +342,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setOpen(true)
   }
 
+  function openNuevoConCodigo(codigo: string) {
+    setForm({ desc: '', cod: codigo, marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0' })
+    setEditId(null)
+    setArticuloSel(null)
+    setArticuloSugs([])
+    setOpen(true)
+  }
+
   function openEditar(s: StockItem) {
     setForm({
       desc: s.descripcion, cod: s.codigo || '', marca: s.marca || '',
@@ -786,7 +794,18 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       <p className="text-xs text-p-ink2 mb-3">{visible.length} ítems · {visible.reduce((a, s) => a + s.cantidad, 0)} u.</p>
 
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-        visible.length === 0 ? <Empty msg="Sin ítems con ese filtro." /> : (
+        visible.length === 0 ? (
+          q ? (
+            <div className="bg-white border border-p-line rounded-xl px-5 py-6 text-center flex flex-col items-center gap-3">
+              <p className="text-p-ink2 text-sm">No hay artículos con <span className="font-mono font-bold text-p-ink">"{q}"</span> en stock.</p>
+              <p className="text-xs text-p-ink2">¿Querés agregarlo?</p>
+              <button onClick={()=> openNuevoConCodigo(q)}
+                style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                + Agregar "{q}" al stock
+              </button>
+            </div>
+          ) : <Empty msg="Sin ítems con ese filtro." />
+        ) : (
           <div className="flex flex-col gap-2">
             {visible.slice(0, 300).map(s => {
               const precioNeto = s.precio_venta ? Math.round(s.precio_venta / 1.21) : null
