@@ -684,8 +684,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     if(comp) {
       const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
+      // Armar etiqueta con tipo y número de factura real (ej: FA-0006-00000027)
+      const letraDoc = tipoDoc()
+      const prefijo = esNegro ? 'Venta' : `F${letraDoc}`
+      const nroFormateado = `${prefijo}-0006-${String(nextNum).padStart(8,'0')}`
       await supabase.from('ventas').insert({
-        fecha:todayStr(), descripcion:`Comprobante ${nextNum} - ${nombreVenta||'CF'}`,
+        fecha:todayStr(), descripcion:`${nroFormateado} - ${nombreVenta||'CF'}`,
         precio:total, costo:null, pendiente:true,
         comprobante_id:(comp as any).id,
         tipo_cliente_id:fiscal.tipo_cliente_id||null,
