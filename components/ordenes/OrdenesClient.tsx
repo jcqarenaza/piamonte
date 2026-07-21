@@ -773,15 +773,18 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     {(it as any).codigo && <span className="font-mono text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mr-1.5">{(it as any).codigo}</span>}
                     {it.d}{it.c>1?` ×${it.c}`:''}
                   </span>
-                  <input value={it.p} onChange={e=>{
-                    const v = parseFloat(e.target.value.replace(',','.')) || 0
-                    setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
-                  }}
-                  onBlur={e=>{
-                    const v = parseFloat(String(e.target.value).replace(',','.')) || 0
-                    setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
-                  }}
-                  className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-p-green"/>
+                  <div className="flex items-center gap-1">
+                    <input value={it.p} onChange={e=>{
+                      const v = parseFloat(e.target.value.replace(',','.')) || 0
+                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
+                    }}
+                    onBlur={e=>{
+                      const v = parseFloat(String(e.target.value).replace(',','.')) || 0
+                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
+                    }}
+                    className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-p-green"/>
+                    {ivaOn && <span className="text-[9px] text-p-ink2 whitespace-nowrap">s/IVA</span>}
+                  </div>
                   <span className="font-mono text-xs w-24 text-right">{moneyARS2(it.c*it.p)}</span>
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs ml-1">✕</button>
                 </div>
