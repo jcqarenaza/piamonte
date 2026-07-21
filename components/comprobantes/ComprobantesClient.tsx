@@ -1134,7 +1134,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,gap:12,flexWrap:'wrap'}}>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {([
-            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['C','Factura C'],['nc','Notas de Crédito'],['nd','Notas de Débito'],
+            ['todos','Todos'],['A','Factura A'],['B','Factura B'],['nc','Notas de Crédito'],['nd','Notas de Débito'],
             ...(rol==='gerencial'||rol==='admin' ? [['negro','🔘 Sin CAE'] as const] : []),
           ] as const).map(([val,label])=>(
             <button key={val} onClick={()=>setFiltroTipo(val)}

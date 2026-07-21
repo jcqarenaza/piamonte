@@ -1784,29 +1784,46 @@ function ModuloPedidos({ supabase, proveedores }: { supabase: any; proveedores: 
     setBuscando(true)
     const esCode = !/\s/.test(q.trim())
 
-    // Buscar en catálogo todos los proveedores para el código/descripción
-    let query = supabase.from('catalogo')
+    let queryBase = supabase.from('catalogo')
       .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
-    if (esCode) query = query.ilike('codigo', `%${q.trim()}%`)
-    else query = query.ilike('descripcion', `%${q.trim()}%`)
-    query = query.order('costo_neto').limit(30)
+      .is('lista_nombre', null)  // solo precios vigentes, no listas viejas
 
-    const { data: cat } = await query
+    // Si es código: buscar tanto por código exacto con sufijo como por código base
+    let qCode = esCode
+      ? queryBase.ilike('codigo', `%${q.trim()}%`)
+      : queryBase.ilike('descripcion', `%${q.trim()}%`)
+    qCode = qCode.gt('costo_neto', 0).order('proveedor').limit(50)
 
-    // Agrupar por descripción normalizada y mostrar precios por proveedor
-    const grupos: Record<string, any[]> = {}
-    for (const c of cat || []) {
-      const key = (c.descripcion || '').toUpperCase().trim()
-      if (!grupos[key]) grupos[key] = []
-      grupos[key].push(c)
+    const { data: cat } = await qCode
+
+    // Si no encontró y es código numérico, intentar búsqueda por descripción también
+    let catExtra: any[] = []
+    if (esCode && (!cat || cat.length === 0)) {
+      const { data } = await supabase.from('catalogo')
+        .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
+        .ilike('descripcion', `%${q.trim()}%`)
+        .gt('costo_neto', 0).is('lista_nombre', null).limit(50)
+      catExtra = data || []
     }
 
-    // Para cada grupo buscar también por articulo_id en equivalencias
-    const items = Object.entries(grupos).map(([desc, variants]) => {
-      const sorted = [...variants].sort((a,b) => (a.costo_neto||0) - (b.costo_neto||0))
-      const masBarato = sorted[0]
-      return { descripcion: variants[0].descripcion, variants: sorted, masBarato }
-    }).slice(0, 10)
+    const todos = [...(cat || []), ...catExtra]
+
+    // Agrupar por código base (primeros 6 dígitos) para mostrar variantes juntas
+    const grupos: Record<string, any[]> = {}
+    for (const c of todos) {
+      // Agrupar por descripción normalizada
+      const key = (c.descripcion || '').toUpperCase().trim().slice(0, 40)
+      if (!grupos[key]) grupos[key] = []
+      // No duplicar mismo proveedor + código
+      if (!grupos[key].find((x: any) => x.codigo === c.codigo && x.proveedor === c.proveedor)) {
+        grupos[key].push(c)
+      }
+    }
+
+    const items = Object.entries(grupos).map(([, variants]) => {
+      const sorted = [...variants].sort((a, b) => (a.costo_neto || 0) - (b.costo_neto || 0))
+      return { descripcion: variants[0].descripcion, variants: sorted }
+    }).filter(g => g.variants.length > 0).slice(0, 10)
 
     setResultados(items)
     setBuscando(false)
