@@ -1186,7 +1186,12 @@ export default function ComprasClient() {
                       r.diferencia < 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
                     }`}>
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <p className="font-semibold text-sm text-p-ink">{r.item.articulo_id && '🔗 '}{r.item.d}</p>
+                        <div>
+                          <p className="font-semibold text-sm text-p-ink">{r.item.articulo_id && '🔗 '}{r.item.d}</p>
+                          {(r.item as any).codigo && (
+                            <span className="font-mono text-[10px] bg-p-light text-p-dark px-1.5 py-0.5 rounded mt-0.5 inline-block">{(r.item as any).codigo}</span>
+                          )}
+                        </div>
                         <span className="font-mono text-sm">
                           Pagado (neto): <strong>{moneyARS2(r.precioNetoReal ?? r.item.p)}</strong>
                           {r.precioNetoReal && r.precioNetoReal !== r.item.p && (
@@ -1216,7 +1221,7 @@ export default function ComprasClient() {
                             <div className="mt-2 pt-2 border-t border-p-line2 flex flex-wrap gap-1.5">
                               {r.candidatos.map((c2:any, j:number) => (
                                 <span key={j} className="text-[11px] bg-white border border-p-line2 px-2 py-0.5 rounded-full">
-                                  {c2.proveedor}: {moneyARS2(c2.costo_neto)}
+                                  {c2.proveedor}{c2.codigo_proveedor ? ` · ${c2.codigo_proveedor}` : ''}: {moneyARS2(c2.costo_neto)}
                                 </span>
                               ))}
                             </div>
