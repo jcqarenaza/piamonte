@@ -297,6 +297,7 @@ export default function ComprasClient() {
         ajuste_redondeo: ajuste||0,
         notas: form.notas||null,
         estado: 'pendiente',
+        afecta_stock: form.afecta_stock,
       }).eq('id', editId)
       setEditId(null); setOpen(false); setItems([]); load()
       return
@@ -1410,8 +1411,9 @@ export default function ComprasClient() {
                     <button key={a.id} type="button" onClick={()=>elegirItemArticulo(a)}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
                       <p className="font-medium text-p-ink">{a.descripcion}</p>
-                      <p className="text-[10px] font-mono text-p-ink2">
-                        {a.codigo && <span className="bg-p-light px-1 rounded mr-1 font-bold">{a.codigo}</span>}
+                      <p className="text-[10px] font-mono text-p-ink2 flex items-center gap-1.5 flex-wrap">
+                        {a.codigo && <span className="bg-p-light px-1 rounded font-bold text-p-dark">PLK: {a.codigo}</span>}
+                        {a.codigo_proveedor && <span className="bg-blue-50 text-blue-700 px-1 rounded font-bold">{form.proveedor_nombre?.split(' ')[0]}: {a.codigo_proveedor}</span>}
                         {a.proveedor && <span className="font-bold">{a.proveedor} · </span>}
                         {a.costo_neto ? moneyARS(a.costo_neto) : ''}
                       </p>

@@ -11,11 +11,11 @@ export interface ResultadoCatalogo {
   id: string
   descripcion: string
   codigo: string | null
+  codigo_proveedor?: string | null  // código del proveedor seleccionado en equivalencias
   proveedor: string | null
   costo_neto: number | null
   pos: string | null
   marca: string | null
-  // Indica si vino del stock físico
   stock_id?: string
   cantidad?: number
   precio_venta?: number
@@ -128,5 +128,30 @@ export async function buscarCatalogo(
   // Filtrar catálogo: no mostrar si el código base (6 chars) ya está en stock
   const codigosEnStock = new Set(stockItems.map(s => (s.codigo||'').slice(0,9).toUpperCase()))
   const catSinDuplicados = catItems.filter(c => !codigosEnStock.has((c.codigo||'').slice(0,9).toUpperCase()))
-  return [...stockItems, ...catSinDuplicados]
+  const todos = [...stockItems, ...catSinDuplicados]
+
+  // Si hay proveedor seleccionado, buscar el código de ese proveedor en equivalencias
+  if (proveedor && todos.length > 0) {
+    const codigosPLK = todos.map(r => r.codigo).filter(Boolean) as string[]
+    const { data: eqs } = await supabase.from('articulo_equivalencias')
+      .select('codigo_proveedor, proveedor, articulo_id')
+      .ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
+    // También buscar por articulo_id de los resultados
+    const articuloIds = todos.map(r => r.articulo_id).filter(Boolean) as string[]
+    const { data: eqsPorId } = articuloIds.length > 0 ? await supabase.from('articulo_equivalencias')
+      .select('codigo_proveedor, proveedor, articulo_id')
+      .ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
+      .in('articulo_id', articuloIds) : { data: [] }
+
+    const allEqs = [...(eqs||[]), ...(eqsPorId||[])]
+    return todos.map(r => {
+      const eq = allEqs.find(e =>
+        (r.articulo_id && e.articulo_id === r.articulo_id) ||
+        (r.codigo && e.codigo_proveedor === r.codigo)
+      )
+      return { ...r, codigo_proveedor: eq?.codigo_proveedor || null }
+    })
+  }
+
+  return todos
 }
