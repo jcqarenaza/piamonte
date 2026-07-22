@@ -103,7 +103,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (selMov?.id === s.id) { setSelMov(null); setSelMovData([]); return }
     setSelMov(s); setLoadingSelMov(true)
     const { data } = await supabase.from('vista_movimientos_stock')
-      .select('*').eq('stock_id', s.id).order('created_at', { ascending: false }).limit(50)
+      .select('*').eq('stock_id', s.id)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(50)
     setSelMovData(data ?? [])
     setLoadingSelMov(false)
   }
