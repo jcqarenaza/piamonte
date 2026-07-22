@@ -8,11 +8,14 @@ export default async function PresupuestoPublicoPage({ params }: { params: Promi
   const { id } = await params
   const supabase = createSupabaseClient(supabaseUrl, supabaseAnon)
 
-  const { data: p } = await supabase
-    .from('presupuestos')
-    .select('id, cliente, total, vencimiento')
-    .eq('id', id)
-    .maybeSingle()
+  // Buscar por número (P-0042 → 42) o por UUID
+  const esNumero = /^P?-?\d+$/i.test(id)
+  const numero = esNumero ? parseInt(id.replace(/[^0-9]/g, '')) : null
+
+  const query = supabase.from('presupuestos').select('id, cliente, total, vencimiento, numero')
+  const { data: p } = await (numero
+    ? query.eq('numero', numero).maybeSingle()
+    : query.eq('id', id).maybeSingle())
 
   if (!p) {
     return (
@@ -38,6 +41,7 @@ export default async function PresupuestoPublicoPage({ params }: { params: Promi
     <div style={{ fontFamily: 'sans-serif', textAlign: 'center', padding: '60px 20px', maxWidth: 400, margin: '0 auto' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
       <h1 style={{ color: '#111827', fontSize: 22, marginBottom: 8 }}>Presupuesto El Piamonte</h1>
+      {p.numero && <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 4 }}>N° {p.numero}</p>}
       {p.cliente && <p style={{ color: '#6b7280', marginBottom: 4 }}>Para: <strong>{p.cliente}</strong></p>}
       <p style={{ color: '#6b7280', marginBottom: 24 }}>
         Vencimiento: <strong>{p.vencimiento.split('-').reverse().join('/')}</strong>

@@ -464,8 +464,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       console.warn('No se pudo subir el PDF a Storage:', e)
     }
 
-    // URL propia — siempre la misma, no expira
-    const linkPDF = `${window.location.origin}/presupuesto/${p.id}`
+    // URL con número correlativo — más limpia para el cliente
+    const nroPresupuesto = (p as any).numero || p.id
+    const linkPDF = `${window.location.origin}/presupuesto/${nroPresupuesto}`
 
     const tel = (p.telefono??'').replace(/[^0-9]/g,'')
     const total = (p as any).es_aseguradora ? moneyARS2(p.total) : moneyARS(p.total)
@@ -521,7 +522,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 onDoubleClick={()=>{ if(!(p as any).convertido_os && !(p as any).convertido_comp) openEdit(p) }} title="Click para opciones · doble click para editar"
                 className={`bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden ${venc?'opacity-60':''}`}>
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
-                  <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>{p.cliente||'(sin nombre)'}</p>
+                  <p className="font-saira font-bold text-p-ink text-sm truncate" style={{maxWidth:200}}>
+                    {(p as any).numero && <span className="text-p-ink2 font-normal text-xs mr-1.5">P-{String((p as any).numero).padStart(4,'0')}</span>}
+                    {p.cliente||'(sin nombre)'}
+                  </p>
                   {(p as any).tipo_cliente_nombre && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-p-light text-p-dark shrink-0">{(p as any).tipo_cliente_nombre}</span>
                   )}
