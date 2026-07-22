@@ -1009,8 +1009,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.text(String(it.c||1), hx+12, y+4.5, {align:'right'})
       doc.text((codText + String(it.d||'')).slice(0,45), hx+14, y+4.5)
       doc.setFont('helvetica','normal'); doc.setFontSize(8)
-      doc.text(moneyARS(it.p||0), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
-      doc.text(moneyARS((it.c||1)*(it.p||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
+      // Factura A: precios sin IVA (el IVA se discrimina en el pie)
+      const precioUnit = c.tipo==='A' ? Math.round((it.p||0) / 1.21 * 100) / 100 : (it.p||0)
+      const precioSubt = c.tipo==='A' ? Math.round((it.c||1) * (it.p||0) / 1.21 * 100) / 100 : (it.c||1)*(it.p||0)
+      doc.text(moneyARS(precioUnit), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+      doc.text(moneyARS(precioSubt), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
       y+=6
     })
     // Borde del área de items con esquinas redondeadas abajo
