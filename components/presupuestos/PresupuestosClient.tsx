@@ -446,29 +446,60 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   async function compartirWA(p: Presupuesto) {
     const blob = await generarPDF(p)
-    const nombre = `Presupuesto-${p.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`
+    const nombre = `presupuesto-${p.id}.pdf`
 
-    // Mobile (Android/iOS): Web Share API con PDF adjunto
+    // Calcular segundos hasta el vencimiento del presupuesto
+    const venc = new Date(p.vencimiento + 'T23:59:59')
+    const ahora = new Date()
+    const segundosValidez = Math.max(3600, Math.floor((venc.getTime() - ahora.getTime()) / 1000))
+
+    // Subir PDF a Supabase Storage
+    let linkPDF = ''
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('presupuestos')
+        .upload(nombre, blob, { contentType: 'application/pdf', upsert: true })
+
+      if (!uploadError) {
+        const { data: signed } = await supabase.storage
+          .from('presupuestos')
+          .createSignedUrl(nombre, segundosValidez)
+        if (signed?.signedUrl) linkPDF = signed.signedUrl
+      }
+    } catch(e) {
+      console.warn('No se pudo subir el PDF a Storage:', e)
+    }
+
+    const tel = (p.telefono??'').replace(/[^0-9]/g,'')
+    const total = (p as any).es_aseguradora ? moneyARS2(p.total) : moneyARS(p.total)
+    const textoBase = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte.\n\nTotal: ${total}\nVálido hasta: ${p.vencimiento.split('-').reverse().join('/')}`
+    const texto = linkPDF
+      ? `${textoBase}\n\n📄 Ver presupuesto: ${linkPDF}`
+      : `${textoBase}\n\nTe adjunto el PDF con el detalle.`
+
+    // Mobile: Web Share API con PDF adjunto
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent)
-    if(isMobile) {
-      const file = new File([blob], nombre, {type:'application/pdf'})
-      if(navigator.canShare?.({files:[file]})) {
-        await navigator.share({ files:[file], title:'Presupuesto El Piamonte' })
+    if (isMobile) {
+      const file = new File([blob], `Presupuesto-${p.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`, {type:'application/pdf'})
+      if (navigator.canShare?.({files:[file]})) {
+        await navigator.share({ files:[file], title:'Presupuesto El Piamonte', text: texto })
+        return
+      }
+      // Si no puede compartir con archivo, abrir WhatsApp con el link
+      if (tel && linkPDF) {
+        let num = tel.replace(/^0/,'').replace(/^549/,'').replace(/^54/,'').replace(/^9/,'')
+        window.open(`https://wa.me/549${num}?text=${encodeURIComponent(texto)}`, '_blank')
         return
       }
     }
 
-    // Desktop: descargar PDF + abrir WhatsApp Web
+    // Desktop: descargar PDF + abrir WhatsApp Web con link
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href=url; a.download=nombre; a.click()
-    URL.revokeObjectURL(url)
-
-    const tel = (p.telefono??'').replace(/[^0-9]/g,'')
-    const total = (p as any).es_aseguradora ? moneyARS2(p.total) : moneyARS(p.total)
-    const texto = `Hola${p.cliente?' '+p.cliente:''}! Te enviamos el presupuesto de Parabrisas El Piamonte.\n\nTotal: ${total}\nValido hasta: ${p.vencimiento.split('-').reverse().join('/')}\n\nTe adjunto el PDF con el detalle.`
+    const a = document.createElement('a'); a.href=url
+    a.download=`Presupuesto-${p.cliente?.replace(/\s/g,'-')??'Piamonte'}.pdf`
+    a.click(); URL.revokeObjectURL(url)
 
     if (tel) {
-      // Formato WhatsApp Argentina: 549 + número sin 0 inicial ni 54 ni 549
       let num = tel.replace(/^0/,'').replace(/^549/,'').replace(/^54/,'').replace(/^9/,'')
       setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=549${num}&text=${encodeURIComponent(texto)}`,'_blank'), 800)
     }
