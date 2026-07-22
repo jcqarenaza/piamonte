@@ -288,8 +288,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const doc = new jsPDF({ format:'a4', unit:'mm' })
     const W=210, pad=14, rw=W-pad*2
     const esAseg = !!(p as any).es_aseguradora
-    // RI: tiene iva Y el total = neto + iva (IVA discriminado)
-    const esRI = !esAseg && !!(p.iva) && Math.abs((p.neto||0) + p.iva - p.total) < 1
+    // Solo "Compañías" discrimina IVA — Particular y Chapista son CF
+    const esRI = !esAseg && (p as any).tipo_cliente_nombre === 'Compañías'
     const fmt = (n:number) => esAseg ? moneyARS2(n) : moneyARS(n)
     const rRect = (x:number,yy:number,w:number,h:number,r:number,style:'F'|'S'|'FD') => doc.roundedRect(x,yy,w,h,r,r,style)
     let y=12
