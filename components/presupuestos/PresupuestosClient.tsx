@@ -288,6 +288,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const doc = new jsPDF({ format:'a4', unit:'mm' })
     const W=210, pad=14, rw=W-pad*2
     const esAseg = !!(p as any).es_aseguradora
+    // RI: tiene iva Y el total = neto + iva (IVA discriminado)
+    const esRI = !esAseg && !!(p.iva) && Math.abs((p.neto||0) + p.iva - p.total) < 1
     const fmt = (n:number) => esAseg ? moneyARS2(n) : moneyARS(n)
     const rRect = (x:number,yy:number,w:number,h:number,r:number,style:'F'|'S'|'FD') => doc.roundedRect(x,yy,w,h,r,r,style)
     let y=12
@@ -402,9 +404,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
     if(esAseg){
       doc.text('Total (IVA incluido)', pad+rw/2, totY+4.5, {align:'center'})
-    } else {
+    } else if(esRI) {
       doc.text('Neto', pad+tw/2, totY+4.5, {align:'center'})
-      doc.text(p.iva ? 'IVA 21%' : 'Total', pad+tw+tw/2, totY+4.5, {align:'center'})
+      doc.text('IVA 21%', pad+tw+tw/2, totY+4.5, {align:'center'})
+    } else {
+      doc.text('Total', pad+rw/2, totY+4.5, {align:'center'})
     }
     doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
     rRect(pad, totY+6, rw, 7, 0, 'FD')
@@ -412,9 +416,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(esAseg){
       doc.setFont('helvetica','bold')
       doc.text(fmt(p.total), pad+rw/2, totY+11.5, {align:'center'})
-    } else {
+    } else if(esRI) {
       doc.setFont('helvetica','normal'); doc.text(fmt(p.neto||p.total), pad+tw/2, totY+11.5, {align:'center'})
-      doc.setFont('helvetica','bold'); doc.text(p.iva ? fmt(p.iva) : fmt(p.total), pad+tw+tw/2, totY+11.5, {align:'center'})
+      doc.setFont('helvetica','bold'); doc.text(fmt(p.iva), pad+tw+tw/2, totY+11.5, {align:'center'})
+    } else {
+      doc.setFont('helvetica','bold')
+      doc.text(fmt(p.total), pad+rw/2, totY+11.5, {align:'center'})
     }
 
     // Vencimiento
