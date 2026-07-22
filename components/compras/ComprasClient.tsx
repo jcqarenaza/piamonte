@@ -564,7 +564,6 @@ export default function ComprasClient() {
             pendiente_nc: false,
           })
         }
-        }
       }
 
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
