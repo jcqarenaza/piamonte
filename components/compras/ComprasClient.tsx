@@ -514,23 +514,45 @@ export default function ComprasClient() {
         })
       }
 
-      // Saldar solo los ajustes pendiente_nc seleccionados por el usuario
+      // Saldar los pendientes según la cantidad real cargada en el ítem
       const seleccionados = pendientesNC.filter((p:any) => pendientesSelNC[p.id])
       for (const pendiente of seleccionados) {
-        await supabase.from('ajustes_stock')
-          .update({
-            pendiente_nc: false,
-            nota: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
-          })
-          .eq('id', pendiente.id)
-        // También saldar en stock_movimientos si existe
-        await supabase.from('stock_movimientos')
-          .update({
-            pendiente_nc: false,
-            descripcion: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
-          })
-          .eq('stock_id', pendiente.stock_id)
-          .eq('pendiente_nc', true)
+        // Buscar el ítem correspondiente en la NC para ver qué cantidad se saldó
+        const itemNC = items.find((it:any) => (it as any)._pendiente_id === pendiente.id)
+        const cantSaldada = itemNC ? itemNC.c : pendiente.cantidad
+        const cantRestante = pendiente.cantidad - cantSaldada
+
+        if (cantRestante <= 0) {
+          // Saldo total — marcar como saldado
+          await supabase.from('ajustes_stock')
+            .update({
+              pendiente_nc: false,
+              nota: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
+            })
+            .eq('id', pendiente.id)
+          await supabase.from('stock_movimientos')
+            .update({
+              pendiente_nc: false,
+              descripcion: `${pendiente.nota||'Roto'} → saldado ${numNc} · ${provNombre}`,
+            })
+            .eq('stock_id', pendiente.stock_id)
+            .eq('pendiente_nc', true)
+        } else {
+          // Saldo parcial — actualizar la cantidad restante
+          await supabase.from('ajustes_stock')
+            .update({
+              cantidad: cantRestante,
+              nota: `${pendiente.nota||'Roto'} → parcial ${cantSaldada}u saldado ${numNc} · ${provNombre} — quedan ${cantRestante}u`,
+            })
+            .eq('id', pendiente.id)
+          await supabase.from('stock_movimientos')
+            .update({
+              cantidad: cantRestante,
+              descripcion: `${pendiente.nota||'Roto'} → parcial ${cantSaldada}u saldado ${numNc} — quedan ${cantRestante}u`,
+            })
+            .eq('stock_id', pendiente.stock_id)
+            .eq('pendiente_nc', true)
+        }
       }
 
       await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
@@ -1351,24 +1373,54 @@ export default function ComprasClient() {
           {/* Pendientes NC del proveedor */}
           {form.tipo === 'nc' && pendientesNC.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente — seleccioná cuáles salda esta NC</p>
+              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente — hacé click para agregar a esta NC</p>
               <div className="flex flex-col gap-1.5">
-                {pendientesNC.map((p:any) => (
-                  <label key={p.id} className="flex items-center gap-2 text-xs text-amber-700 cursor-pointer hover:bg-amber-100 rounded-lg px-1 py-0.5">
-                    <input type="checkbox"
-                      checked={!!pendientesSelNC[p.id]}
-                      onChange={e=>setPendientesSelNC(prev=>({...prev,[p.id]:e.target.checked}))}
-                      className="accent-amber-600 w-4 h-4 shrink-0"/>
-                    <span className="font-mono bg-amber-100 px-1.5 py-0.5 rounded">{(p.stock as any)?.codigo || '—'}</span>
-                    <span className="flex-1 truncate">{(p.stock as any)?.descripcion || p.descripcion}</span>
-                    <span className="font-bold">×{p.cantidad}</span>
-                    <span className="text-amber-500">{p.fecha?.split('-').reverse().join('/')}</span>
-                  </label>
-                ))}
+                {pendientesNC.map((p:any) => {
+                  const yaAgregado = !!pendientesSelNC[p.id]
+                  const codigo = (p.stock as any)?.codigo || '—'
+                  const desc = (p.stock as any)?.descripcion || p.descripcion || '—'
+                  const costo = (p.stock as any)?.costo || 0
+                  return (
+                    <button key={p.id} type="button"
+                      onClick={()=>{
+                        if(yaAgregado) {
+                          // Deseleccionar — sacar del ítem
+                          setPendientesSelNC(prev=>({...prev,[p.id]:false}))
+                          setItems(prev=>prev.filter(it=>(it as any)._pendiente_id !== p.id))
+                        } else {
+                          // Agregar como ítem con precio del costo
+                          setPendientesSelNC(prev=>({...prev,[p.id]:true}))
+                          const precioLista = costo > 0 ? costo / (1 - 0.68) : 0 // invertir descuento Sekurit
+                          setItems(prev=>[...prev,{
+                            d: desc, c: p.cantidad,
+                            p: precioLista > 0 ? precioLista : costo,
+                            codigo, dto: null,
+                            articulo_id: null,
+                            _pendiente_id: p.id,
+                          } as any])
+                        }
+                      }}
+                      className={`w-full flex items-center gap-2 text-xs px-2.5 py-2 rounded-lg border transition-all text-left ${
+                        yaAgregado
+                          ? 'bg-green-100 border-green-300 text-green-800'
+                          : 'bg-white border-amber-200 text-amber-800 hover:bg-amber-100'
+                      }`}>
+                      <span className={`text-[10px] font-bold shrink-0 ${yaAgregado?'text-green-600':'text-amber-600'}`}>
+                        {yaAgregado ? '✓' : '+'}
+                      </span>
+                      <span className="font-mono bg-amber-100 px-1.5 py-0.5 rounded text-[10px] shrink-0">{codigo}</span>
+                      <span className="flex-1 truncate">{desc}</span>
+                      <span className="font-bold shrink-0">×{p.cantidad}</span>
+                      <span className="text-amber-500 shrink-0">{p.fecha?.split('-').reverse().join('/')}</span>
+                    </button>
+                  )
+                })}
               </div>
-              <p className="text-[10px] text-amber-600 mt-2">
-                {Object.values(pendientesSelNC).filter(Boolean).length} de {pendientesNC.length} seleccionados — al guardar quedarán saldados automáticamente.
-              </p>
+              {Object.values(pendientesSelNC).filter(Boolean).length > 0 && (
+                <p className="text-[10px] text-green-700 font-semibold mt-2">
+                  ✓ {Object.values(pendientesSelNC).filter(Boolean).length} artículo(s) agregados — al guardar quedarán saldados automáticamente.
+                </p>
+              )}
             </div>
           )}
           {form.tipo === 'nc' && pendientesNC.length === 0 && form.proveedor_id && (
