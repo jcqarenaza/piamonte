@@ -50,6 +50,7 @@ const GRUPOS = [
       { id:'stock',           href:'/stock',           label:'Stock',           icon:'📦' },
       { id:'depositos',       href:'/depositos',       label:'Depósitos',       icon:'🏭' },
       { id:'remitos-internos', href:'/remitos-internos', label:'Remitos Internos', icon:'🔄' },
+      { id:'remitos-salida',   href:'/remitos-salida',   label:'Remitos Salida',   icon:'📦' },
     ]
   },
   {
