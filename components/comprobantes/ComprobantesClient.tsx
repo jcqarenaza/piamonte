@@ -599,6 +599,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       alert('Seleccioná la aseguradora del listado de sugerencias')
       return
     }
+    const usaCC = pagos.some(p => p.metodo === 'Cuenta corriente')
+    if (usaCC && modo === 'cf') {
+      alert('No se puede facturar en Cuenta Corriente a Consumidor Final. Cambiá a "Cliente" y seleccionalo del listado.')
+      return
+    }
+    // CC sin cliente seleccionado: si hay nombre + CUIT, crear el cliente automáticamente
+    let cliEfectivo = cliSel
+    if (usaCC && modo === 'cliente' && !cliSel?.id) {
+      const nombreCC = cliQ.trim()
+      const cuitCC = fiscal.cuit.trim()
+      if (!nombreCC || !cuitCC) {
+        alert('Para facturar en Cuenta Corriente completá el nombre y CUIT del cliente.')
+        return
+      }
+      const { data: nuevoCliente } = await supabase.from('clientes').insert({
+        nombre: nombreCC,
+        cuit: cuitCC,
+        tipo_fiscal: fiscal.tipo_fiscal || 'responsable_inscripto',
+        tiene_cuenta_corriente: true,
+      }).select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id').single()
+      if (nuevoCliente) { setCli(nuevoCliente); cliEfectivo = nuevoCliente }
+    }
     const { data:last } = await supabase.from('comprobantes').select('numero').eq('tipo', tipoDoc()).eq('categoria','factura').order('numero',{ascending:false}).limit(1)
     const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
@@ -606,9 +628,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
-      cliente_id: modo==='cliente' ? (cliSel?.id||null) : null,
-      cliente_nombre: modo==='cliente' ? (cliSel?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
-      cliente_telefono: modo==='cliente' ? (cliSel?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
+      cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
+      cliente_nombre: modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
+      cliente_telefono: modo==='cliente' ? (cliEfectivo?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
       cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && cfDni ? cfDni : null),
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
@@ -637,9 +659,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp) {
-      if (modo==='cliente' && cliSel?.id) {
+      if (modo==='cliente' && cliEfectivo?.id) {
         await supabase.from('cuenta_corriente').insert({
-          cliente_id: cliSel.id, cliente_nombre: cliSel.nombre, fecha: todayStr(),
+          cliente_id: cliEfectivo.id, cliente_nombre: cliEfectivo.nombre, fecha: todayStr(),
           tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
           debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
         })
@@ -1812,6 +1834,46 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 style={{...btn,background:'#7c3aed',opacity:(ndLoading||!ndConcepto||ndMontoNum<=0)?.5:1}}>
                 {ndLoading ? 'Generando…' : '🧾 Confirmar Nota de Débito'}
               </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal open={!!adjModal} onClose={()=>setAdjModal(null)} title={`Adjuntos — ${adjModal?.cliente_nombre||adjModal?.aseguradora_nombre||''} N°${adjModal?.numero||''}`}>
+        {adjModal && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              {adjuntos.length === 0 && <p className="text-sm text-p-ink2 text-center py-4">Sin adjuntos todavía</p>}
+              {adjuntos.map((a:any) => (
+                <div key={a.id} className="flex items-center gap-3 bg-p-light rounded-xl px-3 py-2">
+                  <span className="text-xs font-bold text-p-ink2 w-28 shrink-0">{a.tipo === 'os_firmada' ? '📋 OS firmada' : '📷 Foto'}</span>
+                  <a href={a.url} target="_blank" rel="noreferrer" className="flex-1 text-sm text-p-green underline truncate">{a.nombre}</a>
+                  {!a._de_os && (
+                    <button onClick={()=>eliminarAdjunto(a.id, a.storage_path)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-p-ink2 uppercase tracking-wide">Subir nuevo</p>
+              <div className="flex gap-2">
+                <label className="flex-1 cursor-pointer">
+                  <span style={{...btnSm, background:'#1d4ed8', display:'block', textAlign:'center'}}>📋 OS firmada</span>
+                  <input type="file" accept="image/*,application/pdf" className="hidden" disabled={uploading} onChange={e=>{ const f=e.target.files?.[0]; if(f) subirArchivo(f,'os_firmada'); e.target.value='' }}/>
+                </label>
+                <label className="flex-1 cursor-pointer">
+                  <span style={{...btnSm, background:'#6b7280', display:'block', textAlign:'center'}}>📷 Foto</span>
+                  <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={e=>{ const f=e.target.files?.[0]; if(f) subirArchivo(f,'foto'); e.target.value='' }}/>
+                </label>
+              </div>
+              {uploading && <p className="text-xs text-p-ink2 text-center">Subiendo…</p>}
+            </div>
+            {adjuntos.length > 0 && (
+              <button onClick={generarPDFCombinado} disabled={genPDF} style={{...btnSm, background:'#00A550'}}>
+                {genPDF ? 'Generando…' : '⬇ Descargar expediente PDF'}
+              </button>
+            )}
+            <div className="flex justify-end">
+              <button onClick={()=>setAdjModal(null)} style={btnGray}>Cerrar</button>
             </div>
           </div>
         )}
