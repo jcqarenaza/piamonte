@@ -536,15 +536,6 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          // Registrar entrada por NC en el historial
-          await supabase.from('stock_movimientos').insert({
-            stock_id: pendiente.stock_id,
-            tipo: 'entrada',
-            cantidad: cantSaldada,
-            fecha: form.fecha || todayStr(),
-            descripcion: `NC ${numNc} · ${provNombre} — devolución/crédito`,
-            comprobante_compra_id: comp.id,
-          })
         } else {
           // Saldo parcial — actualizar cantidad restante
           await supabase.from('ajustes_stock')
@@ -560,15 +551,6 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          // Registrar entrada parcial por NC en el historial
-          await supabase.from('stock_movimientos').insert({
-            stock_id: pendiente.stock_id,
-            tipo: 'entrada',
-            cantidad: cantSaldada,
-            fecha: form.fecha || todayStr(),
-            descripcion: `NC ${numNc} · ${provNombre} — crédito parcial ${cantSaldada}u (quedan ${cantRestante}u pendientes)`,
-            comprobante_compra_id: comp.id,
-          })
         }
       }
 
