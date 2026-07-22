@@ -146,18 +146,22 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
 
     // Header
     doc.setFillColor(0,165,80)
-    doc.rect(pad, 10, pw, 20, 'F')
+    doc.rect(pad, 10, pw, 24, 'F')
     doc.setTextColor(255,255,255)
-    doc.setFont('helvetica','bold'); doc.setFontSize(16)
-    doc.text('REMITO DE SALIDA', pad+5, 22)
-    doc.setFontSize(12)
-    doc.text(`R-${String(r.numero).padStart(4,'0')}`, pad+pw-5, 22, {align:'right'})
-    doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text('Parabrisas El Piamonte · Calle 102 Nro 366 · General Pico, La Pampa · Tel: 2302 595969', pad+5, 28)
-    doc.text(`Fecha: ${r.fecha.split('-').reverse().join('/')}`, pad+pw-5, 28, {align:'right'})
+    doc.setFont('helvetica','bold'); doc.setFontSize(18)
+    doc.text('El Piamonte', pad+5, 21)
+    doc.setFontSize(9); doc.setFont('helvetica','normal')
+    doc.text('Parabrisas · CUIT 27-24265717-4', pad+5, 27)
+    doc.text('Calle 102 Nro 366 · General Pico, La Pampa · Tel: 2302 595969', pad+5, 32)
+    doc.setFont('helvetica','bold'); doc.setFontSize(13)
+    doc.text('REMITO DE SALIDA', pad+pw-5, 21, {align:'right'})
+    doc.setFont('helvetica','normal'); doc.setFontSize(11)
+    doc.text(`R-${String(r.numero).padStart(4,'0')}`, pad+pw-5, 27, {align:'right'})
+    doc.setFontSize(8)
+    doc.text(`Fecha: ${r.fecha.split('-').reverse().join('/')}`, pad+pw-5, 32, {align:'right'})
 
     // Destinatario
-    let y = 36
+    let y = 40
     doc.setTextColor(30,30,30)
     doc.setFillColor(245,250,247); doc.rect(pad, y, pw/2-2, 30, 'F')
     doc.setDrawColor(0,165,80); doc.setLineWidth(0.5); doc.rect(pad, y, pw/2-2, 30, 'S')
@@ -181,7 +185,7 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
     if(r.transportista_dni) doc.text(`DNI: ${r.transportista_dni}`, pad+pw/2+5, y+18)
 
     // Tabla ítems
-    y = 73
+    y = 77
     doc.setFillColor(0,165,80); doc.rect(pad, y, pw, 7, 'F')
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8)
     doc.text('CÓDIGO', pad+3, y+4.5)
