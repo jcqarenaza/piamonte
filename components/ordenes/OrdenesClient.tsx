@@ -24,7 +24,7 @@ function tieneADAS(items: VentaItem[]): boolean {
 
 export default function OrdenesClient({ userId, rol }: { userId: string; rol?: string }) {
   const esVentas = rol === 'ventas'
-  const esAdmin = rol === 'admin'
+  const esAdmin = rol === 'admin' || rol === 'gerencial'
   const [ordenes, setOrdenes]   = useState<OrdenServicio[]>([])
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState<VentaItem[]>([])
