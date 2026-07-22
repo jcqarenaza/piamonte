@@ -1334,7 +1334,9 @@ export default function ComprasClient() {
                       .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
                       .eq('pendiente_nc', true)
                       .order('fecha', { ascending: true })
-                    setPendientesNC(data ?? []); setPendientesSelNC(Object.fromEntries((data ?? []).map((x:any) => [x.id, true])))
+                    setPendientesNC(data ?? [])
+                    // No preseleccionar — dejar que el usuario elija de a uno
+                    setPendientesSelNC({})
                   } else {
                     setPendientesNC([])
                   }
@@ -1648,11 +1650,35 @@ export default function ComprasClient() {
             </div>
           </div>
 
+          {/* Para NC: campo de monto manual si no cargó ítems */}
+          {form.tipo === 'nc' && items.length === 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col gap-2">
+              <p className="text-xs font-bold text-blue-800">Monto de la NC (si no cargás ítems detallados)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Neto s/IVA">
+                  <Input type="number" value={ovSubtotal} onChange={e=>setOvSubtotal(e.target.value)} placeholder="0"/>
+                </Field>
+                <Field label="IVA 21%">
+                  <Input type="number" value={ovIva} onChange={e=>setOvIva(e.target.value)} placeholder="0"/>
+                </Field>
+              </div>
+              {(+ovSubtotal > 0 || +ovIva > 0) && (
+                <div className="flex justify-between text-sm font-bold text-blue-800">
+                  <span>Total NC</span>
+                  <span className="font-mono">{moneyARS((parseFloat(ovSubtotal)||0) + (parseFloat(ovIva)||0))}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Afecta stock — solo para facturas y remitos, no NC */}
+          {form.tipo !== 'nc' && form.tipo !== 'nd' && (
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={form.afecta_stock} onChange={e=>setForm(p=>({...p,afecta_stock:e.target.checked}))} className="accent-p-green"/>
             Este comprobante afecta el stock (carga mercadería al inventario)
           </label>
-          {form.afecta_stock && (
+          )}
+          {form.tipo !== 'nc' && form.tipo !== 'nd' && form.afecta_stock && (
             <p className="text-[11px] text-p-ink2 -mt-1">
               Al guardar, vas a poder vincular cada ítem con su artículo en stock desde el listado.
             </p>
