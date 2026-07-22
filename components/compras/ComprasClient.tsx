@@ -503,16 +503,8 @@ export default function ComprasClient() {
       const provNombre = prov?.nombre || form.proveedor_nombre || ''
       const provId = prov?.id || form.proveedor_id || null
 
-      // Acreditar en CC del proveedor
-      if (provId && total > 0) {
-        await supabase.from('cuenta_corriente_proveedores').insert({
-          proveedor_id: provId, proveedor_nombre: provNombre,
-          fecha: form.fecha || todayStr(), tipo: 'nc',
-          descripcion: `NC ${numNc} — ${provNombre}`,
-          debe: 0, haber: total,
-          comprobante_compra_id: comp.id,
-        })
-      }
+      // CC del proveedor: lo inserta automáticamente el trigger trg_cargo_cc_proveedores
+      // al hacer el INSERT en comprobantes_compra — NO insertar acá para evitar duplicados
 
       // Saldar los pendientes según la cantidad real cargada en el ítem
       const seleccionados = pendientesNC.filter((p:any) => pendientesSelNC[p.id])
