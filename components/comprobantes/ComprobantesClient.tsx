@@ -1071,7 +1071,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     doc.text('Tel: 2302 595969', pad, 292)
     doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
-    doc.text('Calle 17 N. 1224', W-pad, 292, {align:'right'})
+    doc.text('Calle 102 Nro 366', W-pad, 292, {align:'right'})
 
     return doc.output('blob')
   }

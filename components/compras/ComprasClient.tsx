@@ -852,7 +852,7 @@ export default function ComprasClient() {
   const [filtroPendSaldar, setFiltroPendSaldar] = useState(false)
   const [tabCompras, setTabCompras] = useState<'comprobantes'|'pedidos'>('comprobantes')
   const filtradosFinal = filtroPendSaldar
-    ? filtrados.filter(c => c.estado === 'pendiente' && !c.es_contado)
+    ? filtrados.filter(c => !c.saldado && !c.es_contado && c.tipo === 'factura')
     : filtrados
 
   const mes = new Date().toISOString().slice(0,7)
@@ -1625,10 +1625,6 @@ export default function ComprasClient() {
             <div className="border-t border-p-line my-1"/>
 
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Flete">
-                <Input type="number" value={form.flete} onChange={e=>setForm(p=>({...p,flete:e.target.value}))} placeholder="0"/>
-              </Field>
-              <div></div>
               <Field label="Ret. IVA">
                 <Input type="number" value={form.ret_iva} onChange={e=>setForm(p=>({...p,ret_iva:e.target.value}))} placeholder="0"/>
               </Field>

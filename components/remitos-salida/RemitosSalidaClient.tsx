@@ -110,7 +110,7 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
     doc.setFontSize(11)
     doc.text(`R-${String(r.numero).padStart(4,'0')}`, pad+pw-5, 21, {align:'right'})
     doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text('Parabrisas El Piamonte · Calle 17 N.1224 · General Pico, La Pampa · Tel: 2302 595969', pad+5, 26)
+    doc.text('Parabrisas El Piamonte · Calle 102 Nro 366 · General Pico, La Pampa · Tel: 2302 595969', pad+5, 26)
     doc.text(`Fecha: ${r.fecha.split('-').reverse().join('/')}`, pad+pw-5, 26, {align:'right'})
 
     // Destinatario
