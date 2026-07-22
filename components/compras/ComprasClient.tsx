@@ -538,6 +538,7 @@ export default function ComprasClient() {
             fecha: form.fecha || todayStr(),
             descripcion: `NC ${numNc} · ${provNombre}`,
             pendiente_nc: false,
+            comprobante_compra_id: comp.id,
           })
         } else {
           // Saldo parcial — reducir el ajuste y agregar movimiento de NC
@@ -562,6 +563,7 @@ export default function ComprasClient() {
             fecha: form.fecha || todayStr(),
             descripcion: `NC ${numNc} · ${provNombre}`,
             pendiente_nc: false,
+            comprobante_compra_id: comp.id,
           })
         }
       }
