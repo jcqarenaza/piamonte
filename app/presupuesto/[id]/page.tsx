@@ -4,13 +4,14 @@ import { redirect } from 'next/navigation'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://hjzhatercccblhgaukgx.supabase.co'
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqemhhdGVyY2NjYmxoZ2F1a2d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NDQwMjMsImV4cCI6MjA5NjMyMDAyM30.XYoxEnhkvxIB0pAPAT6H3-mn70uxLzwNYqJQIjoKc3o'
 
-export default async function PresupuestoPublicoPage({ params }: { params: { id: string } }) {
+export default async function PresupuestoPublicoPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = createSupabaseClient(supabaseUrl, supabaseAnon)
 
   const { data: p } = await supabase
     .from('presupuestos')
     .select('id, cliente, total, vencimiento')
-    .eq('id', params.id)
+    .eq('id', id)
     .maybeSingle()
 
   if (!p) {
