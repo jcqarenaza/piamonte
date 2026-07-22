@@ -517,13 +517,12 @@ export default function ComprasClient() {
       // Saldar los pendientes según la cantidad real cargada en el ítem
       const seleccionados = pendientesNC.filter((p:any) => pendientesSelNC[p.id])
       for (const pendiente of seleccionados) {
-        // Buscar el ítem correspondiente en la NC para ver qué cantidad se saldó
         const itemNC = items.find((it:any) => (it as any)._pendiente_id === pendiente.id)
         const cantSaldada = itemNC ? itemNC.c : pendiente.cantidad
         const cantRestante = pendiente.cantidad - cantSaldada
 
         if (cantRestante <= 0) {
-          // Saldo total — marcar como saldado
+          // Saldo total
           await supabase.from('ajustes_stock')
             .update({
               pendiente_nc: false,
@@ -537,8 +536,17 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
+          // Registrar entrada por NC en el historial
+          await supabase.from('stock_movimientos').insert({
+            stock_id: pendiente.stock_id,
+            tipo: 'entrada',
+            cantidad: cantSaldada,
+            fecha: form.fecha || todayStr(),
+            descripcion: `NC ${numNc} · ${provNombre} — devolución/crédito`,
+            comprobante_compra_id: comp.id,
+          })
         } else {
-          // Saldo parcial — actualizar la cantidad restante
+          // Saldo parcial — actualizar cantidad restante
           await supabase.from('ajustes_stock')
             .update({
               cantidad: cantRestante,
@@ -552,6 +560,15 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
+          // Registrar entrada parcial por NC en el historial
+          await supabase.from('stock_movimientos').insert({
+            stock_id: pendiente.stock_id,
+            tipo: 'entrada',
+            cantidad: cantSaldada,
+            fecha: form.fecha || todayStr(),
+            descripcion: `NC ${numNc} · ${provNombre} — crédito parcial ${cantSaldada}u (quedan ${cantRestante}u pendientes)`,
+            comprobante_compra_id: comp.id,
+          })
         }
       }
 
