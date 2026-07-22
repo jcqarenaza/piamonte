@@ -1,13 +1,15 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 
-export default async function PresupuestoPublicoPage({ params }: { params: { id: string } }) {
-  const supabase = await createClient()
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://hjzhatercccblhgaukgx.supabase.co'
+const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqemhhdGVyY2NjYmxoZ2F1a2d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NDQwMjMsImV4cCI6MjA5NjMyMDAyM30.XYoxEnhkvxIB0pAPAT6H3-mn70uxLzwNYqJQIjoKc3o'
 
-  // Buscar el presupuesto
+export default async function PresupuestoPublicoPage({ params }: { params: { id: string } }) {
+  const supabase = createSupabaseClient(supabaseUrl, supabaseAnon)
+
   const { data: p } = await supabase
     .from('presupuestos')
-    .select('id, cliente, total, vencimiento, created_at')
+    .select('id, cliente, total, vencimiento')
     .eq('id', params.id)
     .maybeSingle()
 
@@ -20,20 +22,17 @@ export default async function PresupuestoPublicoPage({ params }: { params: { id:
     )
   }
 
-  // Verificar vencimiento
   const venc = new Date(p.vencimiento + 'T23:59:59')
   const vencido = venc < new Date()
 
-  // Generar signed URL del PDF en Storage
   const { data: signed } = await supabase.storage
     .from('presupuestos')
-    .createSignedUrl(`presupuesto-${p.id}.pdf`, 60) // 60 segundos para redirigir
+    .createSignedUrl(`presupuesto-${p.id}.pdf`, 60)
 
   if (signed?.signedUrl && !vencido) {
     redirect(signed.signedUrl)
   }
 
-  // Si está vencido o no hay PDF
   return (
     <div style={{ fontFamily: 'sans-serif', textAlign: 'center', padding: '60px 20px', maxWidth: 400, margin: '0 auto' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
