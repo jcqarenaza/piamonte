@@ -234,7 +234,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [inconsistencias, setInconsistencias] = useState<any[]>([])
   const [showInconsistencias, setShowInconsistencias] = useState(false)
   useEffect(() => {
-    supabase.from('vista_inconsistencias_stock').select('*, stock(pos)')
+    supabase.from('vista_inconsistencias_stock').select('*')
       .then(({ data }) => setInconsistencias(data ?? []))
   }, [supabase])
 
