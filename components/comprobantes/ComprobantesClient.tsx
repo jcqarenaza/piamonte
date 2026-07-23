@@ -595,13 +595,25 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           cae_emitido: data.cae, cae_vencimiento: data.cae_vencimiento || null,
           nro_cbte_afip: data.nro_cbte || null,
         }).eq('id', c.id)
-        // Actualizar descripción en CC aseguradoras con el nro AFIP real
+        // Insertar o actualizar CC aseguradoras con el nro AFIP real
         if (data.nro_cbte && c.aseguradora_id) {
           const nroAfipFmt = String(data.nro_cbte).padStart(8,'0')
           const prefCC = c.categoria==='nc' ? 'NC' : c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : 'FC'
-          await supabase.from('cuenta_corriente_aseguradoras')
-            .update({ descripcion: `${prefCC}-0006-${nroAfipFmt} — ${c.aseguradora_nombre||''}` })
-            .eq('comprobante_id', c.id)
+          const desc = `${prefCC}-0006-${nroAfipFmt} — ${c.aseguradora_nombre||''}`
+          // Si hay pendiente de insertar (factura nueva), insertar; si ya existe, actualizar descripción
+          const { count } = await supabase.from('cuenta_corriente_aseguradoras')
+            .select('id', { count:'exact', head:true }).eq('comprobante_id', c.id)
+          if ((count||0) === 0 && (c as any)._ccAsegPendiente) {
+            await supabase.from('cuenta_corriente_aseguradoras').insert({
+              aseguradora_id: c.aseguradora_id, fecha: todayStr(),
+              tipo: 'factura', descripcion: desc,
+              debe: (c as any)._ccAsegPendiente.monto, haber: 0,
+              comprobante_id: c.id, user_id: userId,
+            })
+          } else {
+            await supabase.from('cuenta_corriente_aseguradoras')
+              .update({ descripcion: desc }).eq('comprobante_id', c.id)
+          }
         }
         // Actualizar descripción en CC clientes con el nro AFIP real
         if (data.nro_cbte && !c.aseguradora_id && (c as any).cliente_id) {
@@ -697,11 +709,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
         })
       } else if (modo==='aseguradora' && asegSel?.id) {
-        await supabase.from('cuenta_corriente_aseguradoras').insert({
-          aseguradora_id: asegSel.id, fecha: todayStr(),
-          tipo: 'factura', descripcion: `FA-0006-${String((comp as any)?.nro_cbte_afip ?? nextNum).padStart(8,'0')} — ${asegSel?.nombre ?? ''}`,
-          debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
-        })
+        // CC aseguradoras se inserta post-CAE para usar el nro_cbte_afip real
+        // Guardamos los datos en el comprobante para usarlos después
+        ;(comp as any)._ccAsegPendiente = { aseguradoraId: asegSel.id, monto: montoCC }
       }
     }
 
