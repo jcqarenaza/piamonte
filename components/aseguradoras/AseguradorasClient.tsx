@@ -41,7 +41,7 @@ interface Aseguradora {
   direccion:string|null; contacto:string|null; telefono:string|null; plazo_pago_dias:number
   activo:boolean; created_at:string
 }
-interface FacturaPendiente { id:string; numero:number|null; fecha:string; total:number; vehiculo:string|null }
+interface FacturaPendiente { id:string; numero:number|null; nro_cbte_afip:number|null; fecha:string; total:number; vehiculo:string|null }
 
 export default function AseguradorasClient() {
   const [aseguradoras, setAseguradoras] = useState<Aseguradora[]>([])
@@ -110,7 +110,7 @@ export default function AseguradorasClient() {
     if (selectedHist?.id === a.id) { setSelectedHist(null); setPendientes([]); return }
     setSelectedHist(a); setLoadingPend(true); setPendientes([])
     const { data } = await supabase.from('comprobantes')
-      .select('id,numero,fecha,total,vehiculo')
+      .select('id,numero,nro_cbte_afip,fecha,total,vehiculo')
       .eq('aseguradora_id', a.id).order('fecha', {ascending:true}).limit(50)
     setPendientes(data ?? [])
     setLoadingPend(false)
@@ -196,7 +196,7 @@ export default function AseguradorasClient() {
                           const est = estadoVencimiento(f.fecha, a.plazo_pago_dias)
                           return (
                             <div key={f.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded-lg" style={{background:est.bg}}>
-                              <span className="font-mono">FA-{String(f.numero||0).padStart(8,'0')}</span>
+                              <span className="font-mono">FA-{String(f.nro_cbte_afip??f.numero??0).padStart(8,'0')}</span>
                               <span className="text-p-ink2 flex-1 text-center truncate px-2">{f.vehiculo||'—'}</span>
                               <span className="font-mono font-bold">{moneyARS(f.total)}</span>
                               <span className="font-bold ml-3" style={{color:est.color}}>{est.label}</span>
