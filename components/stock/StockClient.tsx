@@ -234,7 +234,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [inconsistencias, setInconsistencias] = useState<any[]>([])
   const [showInconsistencias, setShowInconsistencias] = useState(false)
   useEffect(() => {
-    supabase.from('vista_inconsistencias_stock').select('*')
+    supabase.from('vista_inconsistencias_stock').select('*, stock(pos)')
       .then(({ data }) => setInconsistencias(data ?? []))
   }, [supabase])
 
@@ -765,25 +765,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       )}
       {sinVincularCount > 0 && isAdmin && (
         <div onClick={() => setTab('vincular')} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-2 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
-          <p className="text-sm text-amber-800">🔗 <strong>{sinVincularCount}</strong> artículos sin vincular al catálogo</p>
+          <p className="text-sm text-amber-800">🔗 <strong>{filtroFam ? items.filter(s => !(s as any).articulo_id && FAM_MAP[normPos(s.pos)] === filtroFam).length : sinVincularCount}</strong> artículos sin vincular{filtroFam ? ` (${filtroFam})` : ' al catálogo'}</p>
           <span className="text-xs font-bold text-amber-700">Vincular →</span>
         </div>
       )}
       {sinCostoCount > 0 && isAdmin && (
         <div onClick={()=>setSoloSinCosto(true)} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 mb-3 cursor-pointer hover:bg-orange-100 transition-colors flex items-center justify-between">
-          <p className="text-sm text-orange-800">⚠ <strong>{sinCostoCount}</strong> artículos sin costo — no suman al valor</p>
+          <p className="text-sm text-orange-800">⚠ <strong>{filtroFam ? items.filter(s => !s.costo && s.cantidad > 0 && FAM_MAP[normPos(s.pos)] === filtroFam).length : sinCostoCount}</strong> artículos sin costo{filtroFam ? ` (${filtroFam})` : ' — no suman al valor'}</p>
           <span className="text-xs font-bold text-orange-700">Ver →</span>
         </div>
       )}
       {inconsistencias.length > 0 && isAdmin && (
         <div className="bg-red-50 border border-red-200 rounded-xl mb-3 overflow-hidden">
-          <div onClick={()=>setShowInconsistencias(v=>!v)} className="px-4 py-2.5 cursor-pointer hover:bg-red-100 transition-colors flex items-center justify-between">
-            <p className="text-sm text-red-800">🔍 <strong>{inconsistencias.length}</strong> artículo(s) con stock desincronizado de sus movimientos</p>
-            <span className="text-xs font-bold text-red-700">{showInconsistencias ? 'Ocultar ▲' : 'Ver detalle ▼'}</span>
+          <div className="px-4 py-2.5 flex items-center justify-between">
+            <p className="text-sm text-red-800 cursor-pointer hover:underline" onClick={()=>setShowInconsistencias(v=>!v)}>🔍 <strong>{inconsistencias.length}</strong> artículo(s) con stock desincronizado de sus movimientos{filtroFam ? ` — filtrando: ${filtroFam}` : ''}</p>
+            <div className="flex items-center gap-3">
+              {filtroFam && <button onClick={()=>setFiltroFam(null)} className="text-xs text-red-600 hover:underline">limpiar filtro</button>}
+              <span className="text-xs font-bold text-red-700 cursor-pointer" onClick={()=>setShowInconsistencias(v=>!v)}>{showInconsistencias ? 'Ocultar ▲' : 'Ver detalle ▼'}</span>
+            </div>
           </div>
           {showInconsistencias && (
             <div className="border-t border-red-200 max-h-64 overflow-y-auto">
-              {inconsistencias.map((inc:any)=>{
+              {inconsistencias.filter((inc:any) => !filtroFam || FAM_MAP[normPos((inc.stock as any)?.pos || inc.pos || '')] === filtroFam).map((inc:any)=>{
                 return (
                 <div key={inc.stock_id}
                   onDoubleClick={async ()=>{
