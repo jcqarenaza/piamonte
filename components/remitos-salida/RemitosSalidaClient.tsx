@@ -19,6 +19,7 @@ interface Remito {
   destinatario_nombre:string; destinatario_cuit:string|null; destinatario_direccion:string|null; destinatario_condicion_iva:string|null
   transportista_nombre:string|null; transportista_dni:string|null
   items:RemitoItem[]; notas:string|null; estado:string; created_at:string
+  cae:string|null; cae_vencimiento:string|null; nro_remito_afip:number|null
 }
 
 const COND_IVA = ['Consumidor Final','Responsable Inscripto','Monotributista','Exento']
@@ -89,6 +90,34 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
     setItems(r.items || [])
     setOpen(true)
   }
+
+  const [caeLoading, setCaeLoading] = useState<string|null>(null)
+
+  async function emitirCAE(r: Remito) {
+    if (!r.destinatario_cuit) { alert("El remito necesita CUIT del destinatario para emitir CAE."); return }
+    setCaeLoading(r.id)
+    try {
+      const { data, error } = await supabase.functions.invoke("arca-remitir", {
+        body: {
+          remito_id: r.id,
+          destinatario_cuit: r.destinatario_cuit,
+          destinatario_nombre: r.destinatario_nombre,
+          destinatario_direccion: r.destinatario_direccion || undefined,
+          items: r.items.map(it => ({ descripcion: it.d, cantidad: it.c })),
+          transportista_nombre: r.transportista_nombre || undefined,
+        }
+      })
+      if (error || !data?.ok) { alert("Error al emitir CAE: " + (data?.error || error?.message)); return }
+      await supabase.from("remitos_salida").update({
+        cae: data.cae,
+        cae_vencimiento: data.cae_vencimiento || null,
+        nro_remito_afip: data.nro_remito_afip || null
+      }).eq("id", r.id)
+      await load()
+    } catch(e: any) { alert("Error: " + e.message) }
+    setCaeLoading(null)
+  }
+
 
   async function guardar() {
     if(!form.dest_nombre.trim()) { alert('Ingresá el destinatario.'); return }
@@ -259,6 +288,10 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.estado==='facturado'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>
                   {r.estado==='facturado'?'✓ Facturado':'Emitido'}
                 </span>
+                {r.cae
+                  ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">✓ CAE</span>
+                  : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600 shrink-0">Sin CAE</span>
+                }
               </div>
               {expandido===r.id && (
                 <div className="border-t border-p-line px-4 py-3">
@@ -272,9 +305,20 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
                     ))}
                   </div>
                   {r.notas && <p className="text-xs text-p-ink2 italic mb-3">"{r.notas}"</p>}
-                  <div className="flex gap-2">
+                  {r.cae && (
+                    <div className="bg-green-50 rounded-lg px-3 py-2 text-xs text-green-700 mb-3">
+                      ✓ CAE: {r.cae}{r.cae_vencimiento ? ` · Vto. ${r.cae_vencimiento.split('-').reverse().join('/')}` : ''}
+                      {r.nro_remito_afip ? ` · N° ARCA: ${String(r.nro_remito_afip).padStart(8,'0')}` : ''}
+                    </div>
+                  )}
+                  <div className="flex gap-2 flex-wrap">
                     <button onClick={()=>generarPDF(r)} style={btnBlue as any}>📄 Reimprimir</button>
                     <button onClick={()=>abrirEditar(r)} style={btnSm as any}>✏ Editar</button>
+                    {!r.cae && (
+                      <button onClick={()=>emitirCAE(r)} disabled={caeLoading===r.id} style={{...btnSm,background:'#7c3aed'} as any}>
+                        {caeLoading===r.id ? 'Emitiendo…' : '🔐 Emitir CAE'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
