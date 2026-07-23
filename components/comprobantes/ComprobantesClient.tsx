@@ -106,8 +106,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [genPDF, setGenPDF]       = useState(false)
-  const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[]}|null>(null)
+  const [historialCli, setHistorialCli] = useState<{presupuestos:any[];ordenes:any[];remitos:any[]}|null>(null)
   const [osSelId, setOsSelId] = useState<string|null>(null)
+  const [remitoSel, setRemitoSel] = useState<any|null>(null)
+  const [remitoItemsSel, setRemitoItemsSel] = useState<Set<number>>(new Set())
   const [ventaPreviaOS, setVentaPreviaOS] = useState(false)
   const [oidParam, setOidParam] = useState<string|null>(null)
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
@@ -278,16 +280,29 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const { data: pres } = await supabase.from('presupuestos').select('id,fecha,total,items,vehiculo,tipo_cliente_nombre')
       .or(`cliente.ilike.%${c.nombre}%${c.telefono?`,telefono.eq.${c.telefono}`:''}`)
       .eq('convertido_os',false).eq('convertido_comp',false).order('created_at',{ascending:false}).limit(4)
-    setHistorialCli({ presupuestos: pres??[], ordenes: [] })
+    setHistorialCli({ presupuestos: pres??[], ordenes: [], remitos: [] })
   }
 
   async function selectAseguradora(a:AseguradoraMin){
     setAseg(a); setAsegQ(a.nombre); setAsegSugs([])
     setFiscal(p=>({...p, tipo_fiscal:'responsable_inscripto', cuit:a.cuit||'' }))
+    setRemitoSel(null); setRemitoItemsSel(new Set())
     const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora,patente,cliente,siniestro')
       .eq('aseguradora', a.nombre).eq('convertido_comp', false)
       .order('created_at',{ascending:false}).limit(8)
-    setHistorialCli({ presupuestos: [], ordenes: ords??[] })
+    // Traer remitos pendientes si la aseguradora tiene formato arca (Mercantil, Sancor)
+    const { data: asegData } = await supabase.from('aseguradoras').select('formato_factura').eq('id', a.id).maybeSingle()
+    let remitos: any[] = []
+    if (asegData?.formato_factura === 'arca') {
+      const { data: rems } = await supabase.from('remitos_salida')
+        .select('*')
+        .eq('aseguradora_id', a.id)
+        .neq('estado', 'facturado')
+        .order('created_at', {ascending:false})
+        .limit(20)
+      remitos = rems ?? []
+    }
+    setHistorialCli({ presupuestos: [], ordenes: ords??[], remitos })
   }
 
   function cambiarModo(m: Modo) {
@@ -729,6 +744,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', oid)
     if (osSelId && !oid) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', osSelId)
 
+    // Actualizar remito si viene de uno
+    if (remitoSel && comp) {
+      const itemsFacturadosAntes: number[] = remitoSel.items_facturados ?? []
+      const itemsFacturadosNuevos = [...new Set([...itemsFacturadosAntes, ...Array.from(remitoItemsSel)])]
+      const todosFacturados = itemsFacturadosNuevos.length >= (remitoSel.items?.length ?? 0)
+      await supabase.from('remitos_salida').update({
+        items_facturados: itemsFacturadosNuevos,
+        estado: todosFacturados ? 'facturado' : 'parcialmente_facturado',
+        comprobante_id: todosFacturados ? (comp as any).id : remitoSel.comprobante_id,
+      }).eq('id', remitoSel.id)
+    }
+
     // Si venía de una OS, buscar y eliminar la venta de caja previa para evitar duplicar
     const osId = oid || osSelId
     if (osId && comp) {
@@ -781,7 +808,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
     cambiarModo('cf')
     setFiscal(emptyFiscal); setObs('')
-    setClienteAseg(''); setSiniestro(''); setOsSelId(null)
+    setClienteAseg(''); setSiniestro(''); setOsSelId(null); setRemitoSel(null); setRemitoItemsSel(new Set())
     setCfNombre(''); setCfTel(''); setCfDni('')
     const volverAOS = oidParam
     setOidParam(null)
@@ -1452,6 +1479,61 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 }
                 setShowFiscal(false)
               }} style={{...btnSm,alignSelf:'flex-end'}}>Guardar</button>
+            </div>
+          )}
+
+          {historialCli && !oidParam && historialCli.remitos.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-2">🚚 Remitos pendientes de facturar</p>
+              <div className="flex flex-col gap-2">
+                {historialCli.remitos.map((r:any) => {
+                  const itemsFacturados: number[] = r.items_facturados ?? []
+                  const itemsPendientes = (r.items ?? []).filter((_:any, i:number) => !itemsFacturados.includes(i))
+                  const isSelected = remitoSel?.id === r.id
+                  return (
+                    <div key={r.id} className={`bg-white rounded-lg border transition-colors ${isSelected ? 'border-blue-400 shadow-sm' : 'border-blue-100'}`}>
+                      <button type="button" onClick={()=>{
+                        if(isSelected){ setRemitoSel(null); setRemitoItemsSel(new Set()); setItems([]) }
+                        else { setRemitoSel(r); setRemitoItemsSel(new Set(itemsPendientes.map((_:any,i:number)=>(r.items??[]).indexOf(itemsPendientes[i])))) }
+                      }} className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50">
+                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">R-{String(r.numero).padStart(4,'0')}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-p-ink truncate">{r.entregado_a_nombre||r.destinatario_nombre}</p>
+                          <p className="text-[10px] text-p-ink2">{r.entregado_a_dominio||''} · {itemsPendientes.length} ítem(s) pendiente(s)</p>
+                        </div>
+                        <span className="text-[10px] text-p-ink2 shrink-0">{r.fecha?.split('-').reverse().join('/')}</span>
+                        {isSelected && <span className="text-[10px] font-bold text-blue-600 shrink-0">✓ Seleccionado</span>}
+                      </button>
+                      {isSelected && itemsPendientes.length > 0 && (
+                        <div className="border-t border-blue-100 px-3 py-2 flex flex-col gap-1">
+                          <p className="text-[10px] font-bold text-p-ink2 uppercase mb-1">Seleccioná los ítems a facturar:</p>
+                          {(r.items??[]).map((it:any, idx:number) => {
+                            const yaFacturado = itemsFacturados.includes(idx)
+                            const seleccionado = remitoItemsSel.has(idx)
+                            return (
+                              <label key={idx} className={`flex items-center gap-2 text-sm cursor-pointer rounded px-2 py-1 ${yaFacturado?'opacity-40 cursor-not-allowed':'hover:bg-blue-50'}`}>
+                                <input type="checkbox" disabled={yaFacturado} checked={seleccionado}
+                                  onChange={e=>{
+                                    const next = new Set(remitoItemsSel)
+                                    if(e.target.checked) next.add(idx); else next.delete(idx)
+                                    setRemitoItemsSel(next)
+                                    // Cargar ítems seleccionados
+                                    const selItems = (r.items??[]).filter((_:any,i:number)=>next.has(i))
+                                    setItems(selItems.map((si:any)=>({d:si.d,c:si.c,codigo:si.codigo||null,stock_id:si.stock_id,articulo_id:si.articulo_id||null})))
+                                  }}/>
+                                {it.codigo && <span className="font-mono text-[10px] bg-p-light px-1 rounded">{it.codigo}</span>}
+                                <span className="flex-1 truncate">{it.d}</span>
+                                <span className="font-bold shrink-0">×{it.c}</span>
+                                {yaFacturado && <span className="text-[10px] text-green-600 shrink-0">✓ Facturado</span>}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
