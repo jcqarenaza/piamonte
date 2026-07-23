@@ -595,6 +595,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           cae_emitido: data.cae, cae_vencimiento: data.cae_vencimiento || null,
           nro_cbte_afip: data.nro_cbte || null,
         }).eq('id', c.id)
+        // Actualizar descripción en CC aseguradoras con el nro AFIP real
+        if (data.nro_cbte && c.aseguradora_id) {
+          const nroAfipFmt = String(data.nro_cbte).padStart(8,'0')
+          const prefCC = c.categoria==='nc' ? 'NC' : c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : 'FC'
+          await supabase.from('cuenta_corriente_aseguradoras')
+            .update({ descripcion: `${prefCC}-0006-${nroAfipFmt} — ${c.aseguradora_nombre||''}` })
+            .eq('comprobante_id', c.id)
+        }
+        // Actualizar descripción en CC clientes con el nro AFIP real
+        if (data.nro_cbte && !c.aseguradora_id && c.cliente_id) {
+          const nroAfipFmt = String(data.nro_cbte).padStart(8,'0')
+          const prefCC = c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : 'FC'
+          await supabase.from('cuenta_corriente')
+            .update({ descripcion: `${prefCC}-0006-${nroAfipFmt}` })
+            .eq('comprobante_id', c.id)
+        }
         setToast(`✓ CAE obtenido: ${data.cae} (N° AFIP ${String(data.nro_cbte).padStart(8,'0')})`)
       } else {
         setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${data?.error || error?.message || 'error desconocido'}`)
