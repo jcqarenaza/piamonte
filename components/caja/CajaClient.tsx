@@ -508,12 +508,16 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                 <div className="flex-1 min-w-0">
                   {(() => {
                 const m = v.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
+                // Si tiene número AFIP en comprobante, usarlo como título
+                const tituloDesc = v.comprobante && v.cliente
+                  ? `${v.comprobante} - ${v.cliente}`
+                  : v.descripcion
                 return m
                   ? <p className="font-saira font-bold text-p-ink"><span className="font-mono text-xs text-p-ink2 mr-2 bg-p-light px-1.5 py-0.5 rounded">{m[1]}</span>{m[2]}</p>
-                  : <p className="font-saira font-bold text-p-ink">{v.descripcion}</p>
+                  : <p className="font-saira font-bold text-p-ink">{tituloDesc}</p>
               })()}
                   <p className="text-xs text-p-ink2 mt-0.5">
-                    {[v.comprobante ? 'Comp. ' + v.comprobante : null, v.cliente, v.pago, v.origen === 'stock' ? 'de stock' : 'comprada'].filter(Boolean).join(' · ')}
+                    {[v.cliente && !v.comprobante ? v.cliente : null, v.pago, v.origen === 'stock' ? 'de stock' : 'comprada'].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 {/* Costo editable (solo admin) */}
