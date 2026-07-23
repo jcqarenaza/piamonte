@@ -151,7 +151,16 @@ export default function CuentaCorrienteAseguradorasClient() {
       supabase.from('cuenta_corriente_aseguradoras').select('*').eq('aseguradora_id',asegId).order('fecha',{ascending:false}).order('created_at',{ascending:false}),
       supabase.from('cobros_aseguradoras').select('*').eq('aseguradora_id',asegId),
     ])
-    setMovs(movsData??[])
+    // Calcular saldo por comprobante_id para ocultar facturas saldadas
+    const saldoComp = new Map<string,number>()
+    for (const m of (movsData??[]) as any[]) {
+      if (!m.comprobante_id) continue
+      saldoComp.set(m.comprobante_id, (saldoComp.get(m.comprobante_id)||0) + (+m.debe) - (+m.haber))
+    }
+    setMovs((movsData??[]).map((m:any) => ({
+      ...m,
+      _saldo_comp: m.comprobante_id ? (saldoComp.get(m.comprobante_id)??+m.debe) : +m.debe
+    })))
     const map: Record<string,CobroDetalle> = {}
     for (const mov of (movsData??[]) as any[]) {
       if (+mov.haber<=0) continue
@@ -259,7 +268,7 @@ export default function CuentaCorrienteAseguradorasClient() {
       await supabase.from('movimientos_banco').insert({
         cuenta_id: cuentaSelId, fecha: fechaCobro, tipo: 'credito',
         concepto: `${esACuentaFinal?'Pago a cuenta':'Cobro'} — ${asegNombre} OP ${nroOp||ref||'s/n'}`,
-        monto: montoBase, conciliado: false, origen_tipo: 'cobro_aseguradora',
+        monto: neto, conciliado: false, origen_tipo: 'cobro_aseguradora',
         notas: comentario||null,
       })
     }
@@ -416,7 +425,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {movs.map(m=>(
+                          {movs.filter((m:any) => !(m.tipo==='factura' && m._saldo_comp <= 0)).map(m=>(
                             <>
                               <tr key={m.id}
                                 className={`border-b border-p-line2 ${m.haber>0?'cursor-pointer hover:bg-green-50/40':''}`}
