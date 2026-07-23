@@ -1128,8 +1128,184 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return doc.output('blob')
   }
 
+
+  // PDF formato ARCA para Mercantil Andina y Sancor
+  async function generarPDFArca(c:Comprobante): Promise<Blob> {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({format:'a4',unit:'mm'})
+    const W=210, pad=14, rw=W-pad*2
+    let y=10
+
+    // Fetch datos aseguradora
+    let cuitAseg='', dirAseg='', locAseg='', razonSocial=c.aseguradora_nombre||''
+    if (c.aseguradora_id) {
+      const { data: aRow } = await supabase.from('aseguradoras').select('cuit,condicion_iva,direccion,localidad,razon_social').eq('id', c.aseguradora_id).maybeSingle()
+      if (aRow) {
+        cuitAseg = c.cliente_cuit || aRow.cuit || ''
+        dirAseg = aRow.direccion || ''
+        locAseg = aRow.localidad || ''
+        razonSocial = aRow.razon_social || razonSocial
+      }
+    }
+
+    const tipoLabel = c.categoria==='nc' ? 'NOTA DE CREDITO' : 'FACTURA'
+    const codTipo = c.tipo==='A' ? 'COD. 01' : c.tipo==='B' ? 'COD. 06' : 'COD. 11'
+    const nroAfip = String(c.nro_cbte_afip??c.numero??0).padStart(8,'0')
+
+    // ─── ENCABEZADO — 3 columnas: emisor | letra | datos cbte ───
+    const colW = (rw-14)/3
+    // Emisor
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20,20,20)
+    doc.text('KNUTH VERONICA ALEJANDRA', pad, y+6)
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(60,60,60)
+    doc.text('Razón Social: KNUTH VERONICA ALEJANDRA', pad, y+11)
+    doc.text('Domicilio Comercial: Calle 102 366 - General Pico, La Pampa', pad, y+16)
+    doc.text('Condición frente al IVA: IVA Responsable Inscripto', pad, y+21)
+
+    // Recuadro letra central
+    const lx = pad + colW + 4
+    doc.setDrawColor(20,20,20); doc.setLineWidth(0.5)
+    doc.rect(lx, y, 20, 26)
+    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(20,20,20)
+    doc.text(c.tipo||'A', lx+10, y+14, {align:'center'})
+    doc.setFontSize(6.5); doc.setFont('helvetica','normal'); doc.setTextColor(60,60,60)
+    doc.text(codTipo, lx+10, y+22, {align:'center'})
+    doc.setFontSize(8); doc.setFont('helvetica','bold')
+    doc.text(tipoLabel, lx+10, y+6, {align:'center'})
+
+    // Datos comprobante derecha
+    const rx = lx + 24
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(20,20,20)
+    doc.text(`Punto de Venta: 0006`, rx, y+6)
+    doc.text(`Comp. Nro: ${nroAfip}`, rx+45, y+6)
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
+    doc.text(`Fecha de Emisión: ${c.fecha.split('-').reverse().join('/')}`, rx, y+11)
+    doc.text(`CUIT: 27-24265717-4`, rx, y+16)
+    doc.text(`Ingresos Brutos: 1919987`, rx, y+21)
+    doc.text(`Fecha de Inicio de Actividades: 01/09/2007`, rx, y+26)
+    y+=32
+
+    // ─── Línea separadora ───
+    doc.setDrawColor(20,20,20); doc.setLineWidth(0.3)
+    doc.line(pad, y, W-pad, y); y+=5
+
+    // Período y vencimiento
+    const fechaFmt = c.fecha.split('-').reverse().join('/')
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5)
+    doc.text(`Período Facturado Desde: ${fechaFmt}   Hasta: ${fechaFmt}   Fecha de Vto. para el pago: ${fechaFmt}`, pad, y)
+    y+=5
+    doc.line(pad, y, W-pad, y); y+=5
+
+    // ─── RECEPTOR ───
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(20,20,20)
+    doc.text(`CUIT: ${cuitAseg}`, pad, y)
+    doc.setFont('helvetica','normal')
+    doc.text(`Apellido y Nombre / Razón Social: ${razonSocial}`, pad+35, y)
+    y+=5
+    doc.setFont('helvetica','bold')
+    doc.text('Condición frente al IVA:', pad, y)
+    doc.setFont('helvetica','normal')
+    doc.text('IVA Responsable Inscripto', pad+40, y)
+    doc.setFont('helvetica','bold')
+    doc.text('Domicilio Comercial:', pad+90, y)
+    doc.setFont('helvetica','normal')
+    doc.text(dirAseg + (locAseg ? ', '+locAseg : ''), pad+125, y)
+    y+=5
+    doc.setFont('helvetica','bold')
+    doc.text('Condición de venta:', pad, y)
+    doc.setFont('helvetica','normal')
+    doc.text('Cuenta Corriente', pad+35, y)
+    y+=5
+    doc.line(pad, y, W-pad, y); y+=5
+
+    // ─── TABLA ÍTEMS — formato ARCA ───
+    // Headers
+    doc.setFillColor(240,240,240); doc.rect(pad, y, rw, 6, 'F')
+    doc.setDrawColor(150,150,150); doc.setLineWidth(0.2); doc.rect(pad, y, rw, 6, 'S')
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(20,20,20)
+    const cols2 = [14, 58, 14, 16, 24, 12, 20, 12, 22]
+    let cx = pad
+    const headers2 = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alicuota
+IVA','Subtotal c/IVA']
+    headers2.forEach((h,i)=>{
+      doc.text(h, cx+1, y+4)
+      cx+=cols2[i]
+    })
+    y+=6
+
+    // Filas
+    doc.setFont('helvetica','normal'); doc.setFontSize(7)
+    c.items.forEach((it:any, idx:number)=>{
+      if(idx%2===0){ doc.setFillColor(250,250,250); doc.rect(pad,y,rw,8,'F') }
+      doc.setDrawColor(200,200,200); doc.rect(pad, y, rw, 8, 'S')
+      const neto = Math.round((it.p||0)/1.21*100)/100
+      const subtotalSinIva = Math.round((it.c||1)*neto*100)/100
+      const subtotalConIva = Math.round((it.c||1)*(it.p||0)*100)/100
+      cx = pad
+      const vals = [
+        (it as any).codigo||'',
+        (it.d||'').slice(0,35),
+        String(it.c||1)+',00',
+        'unidades',
+        neto.toFixed(2),
+        '0,00',
+        subtotalSinIva.toFixed(2),
+        '21%',
+        subtotalConIva.toFixed(2),
+      ]
+      vals.forEach((v,i)=>{
+        doc.text(v, cx+1, y+5)
+        cx+=cols2[i]
+      })
+      y+=8
+    })
+    doc.setDrawColor(20,20,20); doc.setLineWidth(0.3); doc.line(pad, y, W-pad, y)
+    y+=8
+
+    // ─── TOTALES formato ARCA ───
+    const totX = W-pad-60
+    const impNeto = c.neto||0
+    const impIva21 = c.iva||0
+    const impTotal = c.total||0
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(60,60,60)
+    doc.text('Importe Otros Tributos: $', totX, y); doc.text('0,00', W-pad, y, {align:'right'}); y+=5
+    doc.setFont('helvetica','bold'); doc.setTextColor(20,20,20)
+    doc.text('Importe Neto Gravado: $', totX, y); doc.text(impNeto.toFixed(2), W-pad, y, {align:'right'}); y+=5
+    doc.setFont('helvetica','normal'); doc.setTextColor(60,60,60)
+    const ivaRows = [['IVA 27%: $','0,00'],['IVA 21%: $',impIva21.toFixed(2)],['IVA 10.5%: $','0,00'],['IVA 5%: $','0,00'],['IVA 2.5%: $','0,00'],['IVA 0%: $','0,00'],['Importe Otros Tributos: $','0,00']]
+    ivaRows.forEach(([lbl,val])=>{ doc.text(lbl, totX, y); doc.text(val, W-pad, y, {align:'right'}); y+=4 })
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20,20,20)
+    doc.text('Importe Total: $', totX, y); doc.text(impTotal.toFixed(2), W-pad, y, {align:'right'}); y+=8
+
+    // ─── FOOTER ARCA con CAE ───
+    const footY = Math.max(y+5, 265)
+    doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(20,20,20)
+    doc.text('"PARABRISAS  EL PIAMONTE "', W/2, footY, {align:'center'})
+
+    if (c.cae_emitido) {
+      const caeY2 = footY + 8
+      doc.setDrawColor(20,20,20); doc.setLineWidth(0.3); doc.rect(pad, caeY2, rw, 22)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(20,20,20)
+      doc.text('CAE N°:', pad+2, caeY2+7)
+      doc.setFont('helvetica','normal')
+      doc.text(c.cae_emitido, pad+20, caeY2+7)
+      doc.setFont('helvetica','bold')
+      doc.text('Fecha de Vto. de CAE:', pad+2, caeY2+13)
+      doc.setFont('helvetica','normal')
+      if(c.cae_vencimiento) doc.text(c.cae_vencimiento.split('-').reverse().join('/'), pad+50, caeY2+13)
+      doc.setFont('helvetica','bold')
+      doc.text('Comprobante Autorizado', pad+2, caeY2+19)
+      doc.setFont('helvetica','italic'); doc.setFontSize(6.5); doc.setTextColor(80,80,80)
+      doc.text('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', pad+2, caeY2+22)
+    }
+
+    return doc.output('blob')
+  }
+
   async function compartirWA(c:Comprobante){
-    const blob = await generarPDF(c)
+    const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
+    const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
+    const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
     const file = new File([blob],`Comprobante-${c.numero}.pdf`,{type:'application/pdf'})
     if(navigator.canShare?.({files:[file]})){ await navigator.share({files:[file],title:'Comprobante El Piamonte'}); return }
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
@@ -1139,7 +1315,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function descargar(c:Comprobante){
-    const blob=await generarPDF(c)
+    const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
+    const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
+    const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const prefijo = c.categoria==="nc" ? `NC-${c.tipo}` : c.categoria==="nd" ? `ND-${c.tipo}` : `FAC-${c.tipo}`; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`${prefijo}_0006-${nroAfip}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
