@@ -14,7 +14,7 @@ interface Cuenta { id:string; banco:string; tipo:string; nro_cuenta:string|null;
 interface Movimiento { id:string; cuenta_id:string; fecha:string; tipo:'credito'|'debito'; concepto:string; monto:number; origen_tipo:string|null; conciliado:boolean; nro_extracto:string|null; notas:string|null; cheque_id:string|null; saldo?:number }
 
 const TIPOS_CUENTA = ['Cuenta Corriente','Caja de Ahorro','Cuenta Inversión','Billetera Virtual']
-const BANCOS_ARG = ['Banco de La Pampa','Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco Macro','Banco Credicoop','Banco Patagonia','Brubank','Naranja X','Otro']
+const BANCOS_ARG = ['Banco de La Pampa','Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco Macro','Banco Credicoop','Banco Patagonia','Banco del Sol','ICBC','Brubank','Naranja X','Otro']
 const ORIG_LABEL: Record<string,string> = {
   cheque_tercero:'Cheque tercero', cheque_propio:'Cheque propio',
   tarjeta:'Liquidación tarjeta', transferencia_venta:'Transferencia (venta)',
