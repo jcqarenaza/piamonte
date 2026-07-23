@@ -623,6 +623,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             .update({ descripcion: `${prefCC}-0006-${nroAfipFmt}` })
             .eq('comprobante_id', c.id)
         }
+        // Actualizar el número de comprobante en ventas con el nro AFIP real
+        if (data.nro_cbte) {
+          const nroAfipFmt = `${c.tipo||'A'}-0006-${String(data.nro_cbte).padStart(8,'0')}`
+          await supabase.from('ventas').update({ comprobante: nroAfipFmt }).eq('comprobante_id', c.id)
+        }
         setToast(`✓ CAE obtenido: ${data.cae} (N° AFIP ${String(data.nro_cbte).padStart(8,'0')})`)
       } else {
         setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${data?.error || error?.message || 'error desconocido'}`)
@@ -813,12 +818,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const letraDoc = tipoDoc()
       const prefijo = esNegro ? 'Venta' : `F${letraDoc}`
       const nroFormateado = `${prefijo}-0006-${String(nextNum).padStart(8,'0')}`
+      // Determinar método de pago principal para caja
+      const pagosCCTotal = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+      const pagoPrincipal = pagosCCTotal >= total*0.9 ? 'Cuenta corriente'
+        : pagos.find(p=>p.metodo!=='Cuenta corriente')?.metodo || pagos[0]?.metodo || 'Efectivo'
+      const clienteVenta = modo==='aseguradora' ? (asegSel?.nombre||clienteAseg||null)
+        : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null)
+        : (cfNombre||null)
       await supabase.from('ventas').insert({
         fecha:todayStr(), descripcion:`${nroFormateado} - ${nombreVenta||'CF'}`,
         precio:total, costo:null, pendiente:true,
         comprobante_id:(comp as any).id,
         tipo_cliente_id:fiscal.tipo_cliente_id||null,
         tipo_cliente_nombre:tipoC?.nombre||null,
+        pago: pagoPrincipal,
+        cliente: clienteVenta,
+        origen: 'compra',
         user_id:userId,
       })
     }
