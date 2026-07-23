@@ -1225,8 +1225,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(20,20,20)
     const cols2 = [14, 58, 14, 16, 24, 12, 20, 12, 22]
     let cx = pad
-    const headers2 = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alicuota
-IVA','Subtotal c/IVA']
+    const headers2 = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alicuota IVA','Subtotal c/IVA']
     headers2.forEach((h,i)=>{
       doc.text(h, cx+1, y+4)
       cx+=cols2[i]
