@@ -604,7 +604,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             .eq('comprobante_id', c.id)
         }
         // Actualizar descripción en CC clientes con el nro AFIP real
-        if (data.nro_cbte && !c.aseguradora_id && c.cliente_id) {
+        if (data.nro_cbte && !c.aseguradora_id && (c as any).cliente_id) {
           const nroAfipFmt = String(data.nro_cbte).padStart(8,'0')
           const prefCC = c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : 'FC'
           await supabase.from('cuenta_corriente')
