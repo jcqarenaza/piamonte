@@ -624,7 +624,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                 <Input value={form.cantidad||'1'} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))} placeholder="1" />
               </Field>
             </div>
-            {esCajaRol && form.descripcion && form.precio && (
+            {form.descripcion && form.precio && (
               <button type="button" onClick={()=>{
                 const cant = parseInt((form as any).cantidad||'1')||1
                 const precio = +form.precio.replace(/[^0-9.]/g,'')
@@ -710,7 +710,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
             </Field>
           </div>
           {/* Lista de ítems cargados */}
-          {esCajaRol && itemsCaja.length > 0 && (
+          {itemsCaja.length > 0 && (
             <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1">
               <p className="text-[11px] font-bold text-p-ink2 uppercase mb-1">Ítems cargados</p>
               {itemsCaja.map((it,i) => (
