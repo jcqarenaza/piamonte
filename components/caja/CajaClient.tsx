@@ -593,8 +593,27 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       {/* Modal venta */}
       <Modal open={open} onClose={() => setOpen(false)} title="Registrar venta">
         <div className="flex flex-col gap-3">
-          {/* Buscar en stock */}
-          <Field label="Buscar pieza en mi stock">
+
+          {/* 1. DATOS DEL CLIENTE */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Cliente"><Input value={form.cliente} onChange={e => setForm(p => ({ ...p, cliente: e.target.value }))} placeholder="Nombre" /></Field>
+            <Field label="Forma de pago">
+              <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
+                {PAGOS.map(p => <option key={p}>{p}</option>)}
+              </Select>
+            </Field>
+            {!esCajaRol && <Field label="Tipo de cliente">
+              <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
+                style={{width:'100%',border:'1.5px solid #C2DDD0',borderRadius:10,padding:'9px 12px',fontSize:13,color:'#0C1810',background:'#fff',outline:'none'}}>
+                <option value="">Sin tipo</option>
+                {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </Field>}
+            {!esCajaRol && <Field label="N° comprobante"><Input value={form.comprobante} onChange={e => setForm(p => ({ ...p, comprobante: e.target.value }))} placeholder="Factura / remito" /></Field>}
+          </div>
+
+          {/* 2. BUSCAR EN STOCK */}
+          <Field label="Buscar pieza en stock">
             <div className="relative">
               <Input value={stockQ} onChange={e => setStockQ(e.target.value)} placeholder="Escribí modelo, marca o código…" />
               {stockSug.length > 0 && (
@@ -611,120 +630,108 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
             </div>
           </Field>
 
-          {/* Ítem manual */}
+          {/* 3. ÍTEM MANUAL */}
           <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2">
             <p className="text-[11px] font-bold text-p-ink2 uppercase">Ítem manual</p>
-            <Field label="Descripción"><Input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Pegamento, insumo…" /></Field>
+            <Field label="Descripción"><Input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Pegamento, mano de obra…" /></Field>
             <div className="grid grid-cols-3 gap-2">
               {!esCajaRol && <Field label="Costo"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>}
               <Field label="Precio *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
-              <Field label="Cantidad">
-                <Input value={form.cantidad||'1'} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))} placeholder="1" />
-              </Field>
+              <Field label="Cantidad"><Input value={form.cantidad||'1'} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))} placeholder="1" /></Field>
             </div>
             {form.descripcion && form.precio && (
               <button type="button" onClick={()=>{
-                const cant = parseInt((form as any).cantidad||'1')||1
+                const cant = parseInt(form.cantidad||'1')||1
                 const precio = +form.precio.replace(/[^0-9.]/g,'')
                 if(!precio) return
-                setItemsCaja(prev=>[...prev,{desc:form.descripcion,codigo:'',precio,costo:0,stock_id:null,cantidad:cant}])
+                setItemsCaja(prev=>[...prev,{desc:form.descripcion,codigo:'',precio,costo:+form.costo.replace(/[^0-9.]/g,'')||0,stock_id:null,cantidad:cant}])
                 setForm(p=>({...p,descripcion:'',precio:'',costo:'',cantidad:'1'}))
               }} className="self-end text-xs bg-p-green text-white px-3 py-1.5 rounded-lg font-bold">+ Agregar ítem</button>
             )}
           </div>
 
-          {!esCajaRol && gan() !== null && (() => {
-            const precio = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g,'')
-            const costo  = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g,'')
-            const r = calcRentabilidad(precio, costo)
-            return r ? (
-              <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
-                <p style={{fontWeight:700,color:'#374151',marginBottom:4}}>📊 Rentabilidad real</p>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3}}>
-                  <span style={{color:'#6b7280'}}>Precio neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.precioNeto)}</span>
-                  <span style={{color:'#6b7280'}}>Costo neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.costoNeto)}</span>
-                  <span style={{color:'#6b7280',fontWeight:700}}>Ganancia:</span>
-                  <span style={{fontFamily:'monospace',fontWeight:800,color:r.ganancia>=0?'#00A550':'#ef4444'}}>{moneyARS(r.ganancia)} ({r.margen}%)</span>
-                </div>
-              </div>
-            ) : null
-          })()}
-          {/* Modo aseguradora (Mercantil / Sancor) */}
-          <div className="flex gap-2 mb-1">
-            <button type="button" onClick={()=>{setModoAseg(false);setAsegCaja('');setOsCaja([]);setOsSelCaja(null)}}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${!modoAseg?'bg-p-green text-white border-p-green':'bg-white text-p-ink2 border-p-line'}`}>👤 Cliente</button>
-            <button type="button" onClick={()=>setModoAseg(true)}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${modoAseg?'bg-blue-600 text-white border-blue-600':'bg-white text-p-ink2 border-p-line'}`}>🏢 Aseguradora</button>
-          </div>
-          {modoAseg && (
-            <div className="flex flex-col gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
-              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Seleccioná la aseguradora</p>
-              <div className="flex gap-2">
-                {['Mercantil Andina','Sancor Seguros'].map(a=>(
-                  <button type="button" key={a} onClick={()=>cargarOsCaja(a)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold border ${asegCaja===a?'bg-blue-600 text-white border-blue-600':'bg-white text-blue-700 border-blue-300'}`}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-              {osCaja.length > 0 && (
-                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                  <p className="text-[10px] font-bold text-blue-600 uppercase">OS pendientes de {asegCaja}</p>
-                  {osCaja.map(os=>(
-                    <button type="button" key={os.id} onClick={()=>seleccionarOsCaja(os)}
-                      className={`text-left px-3 py-2 rounded-lg text-xs border ${osSelCaja?.id===os.id?'bg-blue-100 border-blue-400':'bg-white border-blue-200 hover:bg-blue-50'}`}>
-                      <span className="font-bold text-blue-800">OS-{String(os.numero).padStart(4,'0')}</span>
-                      <span className="text-blue-600 ml-2">{os.cliente}</span>
-                      <span className="text-blue-500 ml-2">{os.vehiculo} · {os.patente}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {asegCaja && osCaja.length===0 && <p className="text-xs text-blue-500 text-center py-2">Sin OS pendientes</p>}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Tipo de cliente">
-              <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
-                style={{width:'100%',border:'1.5px solid #C2DDD0',borderRadius:10,padding:'9px 12px',fontSize:13,color:'#0C1810',background:'#fff',outline:'none'}}>
-                <option value="">Sin tipo</option>
-                {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
-              </select>
-            </Field>
-            <Field label="Cliente"><Input value={form.cliente} onChange={e => setForm(p => ({ ...p, cliente: e.target.value }))} placeholder="Nombre" /></Field>
-            <Field label="N° comprobante"><Input value={form.comprobante} onChange={e => setForm(p => ({ ...p, comprobante: e.target.value }))} placeholder="Factura / remito" /></Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3 items-center">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={form.descontarStock}
-                onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked,origen:e.target.checked?'stock':'compra'}))}
-                className="accent-p-green w-4 h-4"/>
-              <span className="text-sm text-p-ink font-medium">Descontar del stock</span>
-            </label>
-            <Field label="Forma de pago">
-              <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
-                {PAGOS.map(p => <option key={p}>{p}</option>)}
-              </Select>
-            </Field>
-          </div>
-          {/* Lista de ítems cargados */}
+          {/* 4. LISTA DE ÍTEMS con precio editable */}
           {itemsCaja.length > 0 && (
-            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1">
-              <p className="text-[11px] font-bold text-p-ink2 uppercase mb-1">Ítems cargados</p>
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2">
+              <p className="text-[11px] font-bold text-p-ink2 uppercase mb-1">Ítems</p>
               {itemsCaja.map((it,i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  {it.codigo && <span className="font-mono text-[10px] bg-white px-1 rounded border">{it.codigo}</span>}
-                  <span className="flex-1 truncate">{it.desc}</span>
-                  <span className="font-mono text-xs">×{it.cantidad}</span>
-                  <span className="font-bold font-mono">{moneyARS(it.precio * it.cantidad)}</span>
-                  <button onClick={()=>setItemsCaja(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
+                <div key={i} className="flex items-center gap-2 bg-white rounded-lg px-2 py-1.5 border border-p-line">
+                  {it.codigo && <span className="font-mono text-[10px] bg-p-light px-1 rounded border shrink-0">{it.codigo}</span>}
+                  <span className="flex-1 truncate text-sm">{it.desc}</span>
+                  <input type="number" value={it.cantidad} min={1}
+                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,cantidad:+e.target.value||1}:x))}
+                    className="w-10 border border-p-line rounded text-center text-xs font-mono px-1 py-0.5"/>
+                  <input type="number" value={it.precio}
+                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:+e.target.value||0}:x))}
+                    className="w-24 border border-p-line rounded text-right text-xs font-mono px-1 py-0.5"/>
+                  <button onClick={()=>setItemsCaja(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
                 </div>
               ))}
               <div className="flex justify-between font-bold pt-1 border-t border-p-line mt-1">
                 <span>Total</span>
-                <span className="font-mono">{moneyARS(itemsCaja.reduce((a,i)=>a+i.precio*i.cantidad,0))}</span>
+                <span className="font-mono">{moneyARS(itemsCaja.reduce((a,it)=>a+it.precio*it.cantidad,0))}</span>
               </div>
             </div>
+          )}
+
+          {/* 5. OPCIONES EXTRA (no caja) */}
+          {!esCajaRol && (
+            <>
+              {/* Modo aseguradora */}
+              <div className="flex gap-2">
+                <button type="button" onClick={()=>{setModoAseg(false);setAsegCaja('');setOsCaja([]);setOsSelCaja(null)}}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${!modoAseg?'bg-p-green text-white border-p-green':'bg-white text-p-ink2 border-p-line'}`}>👤 Cliente</button>
+                <button type="button" onClick={()=>setModoAseg(true)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border ${modoAseg?'bg-blue-600 text-white border-blue-600':'bg-white text-p-ink2 border-p-line'}`}>🏢 Aseguradora</button>
+              </div>
+              {modoAseg && (
+                <div className="flex flex-col gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Seleccioná la aseguradora</p>
+                  <div className="flex gap-2">
+                    {['Mercantil Andina','Sancor Seguros'].map(a=>(
+                      <button type="button" key={a} onClick={()=>cargarOsCaja(a)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold border ${asegCaja===a?'bg-blue-600 text-white border-blue-600':'bg-white text-blue-700 border-blue-300'}`}>{a}</button>
+                    ))}
+                  </div>
+                  {osCaja.length > 0 && (
+                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase">OS pendientes de {asegCaja}</p>
+                      {osCaja.map(os=>(
+                        <button type="button" key={os.id} onClick={()=>seleccionarOsCaja(os)}
+                          className={`text-left px-3 py-2 rounded-lg text-xs border ${osSelCaja?.id===os.id?'bg-blue-100 border-blue-400':'bg-white border-blue-200 hover:bg-blue-50'}`}>
+                          <span className="font-bold text-blue-800">OS-{String(os.numero).padStart(4,'0')}</span>
+                          <span className="text-blue-600 ml-2">{os.cliente}</span>
+                          <span className="text-blue-500 ml-2">{os.vehiculo} · {os.patente}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {asegCaja && osCaja.length===0 && <p className="text-xs text-blue-500 text-center py-2">Sin OS pendientes</p>}
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={form.descontarStock}
+                  onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked,origen:e.target.checked?'stock':'compra'}))}
+                  className="accent-p-green w-4 h-4"/>
+                <span className="text-sm text-p-ink font-medium">Descontar del stock</span>
+              </label>
+              {gan() !== null && (() => {
+                const precio = +form.precio.replace(/,/g,'.').replace(/[^0-9.]/g,'')
+                const costo  = +form.costo.replace(/,/g,'.').replace(/[^0-9.]/g,'')
+                const r = calcRentabilidad(precio, costo)
+                return r ? (
+                  <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:10,padding:'10px 14px',fontSize:12}}>
+                    <p style={{fontWeight:700,color:'#374151',marginBottom:4}}>📊 Rentabilidad real</p>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3}}>
+                      <span style={{color:'#6b7280'}}>Precio neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.precioNeto)}</span>
+                      <span style={{color:'#6b7280'}}>Costo neto:</span><span style={{fontFamily:'monospace',fontWeight:600}}>{moneyARS(r.costoNeto)}</span>
+                      <span style={{color:'#6b7280',fontWeight:700}}>Ganancia:</span>
+                      <span style={{fontFamily:'monospace',fontWeight:800,color:r.ganancia>=0?'#00A550':'#ef4444'}}>{moneyARS(r.ganancia)} ({r.margen}%)</span>
+                    </div>
+                  </div>
+                ) : null
+              })()}
+            </>
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
