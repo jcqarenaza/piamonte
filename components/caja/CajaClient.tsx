@@ -121,10 +121,8 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       if (existe >= 0) { const next = [...prev]; next[existe].cantidad += 1; return next }
       return [...prev, { desc: s.descripcion, codigo: s.codigo||'', precio: s.precio_venta||0, costo: s.costo||0, stock_id: s.id, cantidad: 1 }]
     })
-    setForm(p => ({
-      ...p, descripcion: (s.codigo ? `[${s.codigo}] ` : '') + s.descripcion, costo: s.costo ? String(Math.round(s.costo)) : '',
-      precio: s.precio_venta ? String(Math.round(s.precio_venta)) : '', origen: 'stock', stock_id: s.id
-    }))
+    // Limpiar form — el ítem ya quedó en la lista
+    setForm(p => ({ ...p, descripcion: '', precio: '', costo: '', cantidad: '1', origen: 'stock', stock_id: s.id }))
     setStockQ(''); setStockSug([])
   }
 
