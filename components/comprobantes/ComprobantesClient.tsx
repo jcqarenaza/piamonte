@@ -558,7 +558,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     } else {
       await solicitarCAE(c)
     }
-    setSaving(false)
   }
 
   async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}) {
@@ -865,6 +864,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     router.push('/comprobantes')
     const {data}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false})
     setComps(data??[])
+    setSaving(false)
   }
 
   async function abrirAdjuntos(c: Comprobante) {
