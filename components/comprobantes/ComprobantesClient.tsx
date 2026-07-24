@@ -1706,7 +1706,31 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     <div key={r.id} className={`bg-white rounded-lg border transition-colors ${isSelected ? 'border-blue-400 shadow-sm' : 'border-blue-100'}`}>
                       <button type="button" onClick={()=>{
                         if(isSelected){ setRemitoSel(null); setRemitoItemsSel(new Set()); setItems([]) }
-                        else { setRemitoSel(r); setRemitoItemsSel(new Set(itemsPendientes.map((_:any,i:number)=>(r.items??[]).indexOf(itemsPendientes[i])))) }
+                        else { 
+                          setRemitoSel(r)
+                          const idxsPendientes = new Set(itemsPendientes.map((_:any,i:number)=>(r.items??[]).indexOf(itemsPendientes[i])))
+                          setRemitoItemsSel(idxsPendientes)
+                          // Cargar ítems pendientes con precio
+                          Promise.all(itemsPendientes.map(async (si:any) => {
+                            let precio = si.p || 0
+                            if (!precio && modo === 'aseguradora' && asegSel?.id) {
+                              // Buscar en precios_aseguradora por descripción o código
+                              const { data: pa } = await supabase.from('precios_aseguradora')
+                                .select('precio_siva').eq('aseguradora_id', asegSel.id)
+                                .ilike('descripcion', `%${(si.d||'').split(' ').slice(0,3).join('%')}%`).limit(1).maybeSingle()
+                              precio = pa?.precio_siva || 0
+                            }
+                            if (!precio && si.stock_id) {
+                              const { data: st } = await supabase.from('stock').select('precio_venta').eq('id', si.stock_id).maybeSingle()
+                              precio = st?.precio_venta || 0
+                            }
+                            if (!precio && si.codigo) {
+                              const { data: cat } = await supabase.from('catalogo').select('precio_lista').ilike('codigo', si.codigo).limit(1).maybeSingle()
+                              precio = cat?.precio_lista || 0
+                            }
+                            return { d: si.d, c: si.c, p: precio, codigo: si.codigo||null, stock_id: si.stock_id||null, articulo_id: si.articulo_id||null }
+                          })).then(its => setItems(its))
+                        }
                       }} className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50">
                         <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">R-{String(r.numero).padStart(4,'0')}</span>
                         <div className="flex-1 min-w-0">
@@ -1729,9 +1753,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                                     const next = new Set(remitoItemsSel)
                                     if(e.target.checked) next.add(idx); else next.delete(idx)
                                     setRemitoItemsSel(next)
-                                    // Cargar ítems seleccionados
+                                    // Cargar ítems seleccionados con precio desde aseguradora/stock/catalogo
                                     const selItems = (r.items??[]).filter((_:any,i:number)=>next.has(i))
-                                    setItems(selItems.map((si:any)=>({d:si.d,c:si.c,codigo:si.codigo||null,stock_id:si.stock_id,articulo_id:si.articulo_id||null})))
+                                    const itemsConPrecio = await Promise.all(selItems.map(async (si:any) => {
+                                      let precio = si.p || 0
+                                      if (!precio && modo === 'aseguradora' && asegSel?.id) {
+                                        const { data: pa } = await supabase.from('precios_aseguradora')
+                                          .select('precio_siva').eq('aseguradora_id', asegSel.id)
+                                          .ilike('descripcion', `%${(si.d||'').split(' ').slice(0,3).join('%')}%`).limit(1).maybeSingle()
+                                        precio = pa?.precio_siva || 0
+                                      }
+                                      if (!precio && si.stock_id) {
+                                        const { data: st } = await supabase.from('stock').select('precio_venta').eq('id', si.stock_id).maybeSingle()
+                                        precio = st?.precio_venta || 0
+                                      }
+                                      if (!precio && si.codigo) {
+                                        const { data: cat } = await supabase.from('catalogo').select('precio_lista').ilike('codigo', si.codigo).limit(1).maybeSingle()
+                                        precio = cat?.precio_lista || 0
+                                      }
+                                      return { d: si.d, c: si.c, p: precio, codigo: si.codigo||null, stock_id: si.stock_id||null, articulo_id: si.articulo_id||null }
+                                    }))
+                                    setItems(itemsConPrecio)
                                   }}/>
                                 {it.codigo && <span className="font-mono text-[10px] bg-p-light px-1 rounded">{it.codigo}</span>}
                                 <span className="flex-1 truncate">{it.d}</span>
