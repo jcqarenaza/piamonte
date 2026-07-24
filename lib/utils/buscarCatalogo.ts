@@ -39,7 +39,8 @@ export async function buscarCatalogo(
   const q = query.trim()
   if (q.length < 2) return []
 
-  const esCodigoDirecto = !/\s/.test(q) // sin espacios = posible código
+  const esKeywordPos = POS_KW[q.toUpperCase()] !== undefined
+  const esCodigoDirecto = !/\s/.test(q) && !esKeywordPos // sin espacios y no es keyword = posible código
 
   // --- Búsqueda por código ---
   if (esCodigoDirecto) {
