@@ -34,7 +34,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [reciboVenta, setReciboVenta] = useState<any|null>(null)
   const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number;costo:number;stock_id:string|null;cantidad:number}[]>([])
   const [form, setForm] = useState({
-    descripcion: '', costo: '', precio: '', cliente: '', comprobante: '',
+    descripcion: '', costo: '', precio: '', cantidad: '1', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
     stock_id: null as string | null,
     descontarStock: true,
@@ -232,7 +232,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     }
     setOpen(false)
     setItemsCaja([])
-    setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, descontarStock: true, tipo_id: '', tipo_nombre: '' })
+    setForm({ descripcion: '', costo: '', precio: '', cantidad: '1', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, descontarStock: true, tipo_id: '', tipo_nombre: '' })
     loadVentas()
   }
 
