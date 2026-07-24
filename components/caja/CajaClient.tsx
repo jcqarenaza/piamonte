@@ -30,6 +30,9 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const usdBNA = (n: number) => usdStr(n, 'oficial')
   const isAdmin = perfil.rol === 'admin' || perfil.rol === 'gerencial'
 
+  const esCajaRol = perfil.rol === 'caja'
+  const [reciboVenta, setReciboVenta] = useState<any|null>(null)
+  const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number;costo:number;stock_id:string|null;cantidad:number}[]>([])
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
@@ -55,6 +58,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
 
     // Filtrar por es_caja2 según el rol
     let q = supabase.from('ventas').select('*').eq('fecha', fecha).order('created_at', { ascending: false })
+    if (perfil.rol === 'caja') q = (q as any).eq('user_id', userId)
     if (esCaja) {
       q = q.eq('es_caja2', true)   // Caja solo ve sus ventas (caja2)
     } else if (!esGerencial) {
@@ -112,6 +116,11 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
   }, [stockQ, stockItems])
 
   function pickStock(s: StockItem) {
+    setItemsCaja(prev => {
+      const existe = prev.findIndex(i => i.stock_id === s.id)
+      if (existe >= 0) { const next = [...prev]; next[existe].cantidad += 1; return next }
+      return [...prev, { desc: s.descripcion, codigo: s.codigo||'', precio: s.precio_venta||0, costo: s.costo||0, stock_id: s.id, cantidad: 1 }]
+    })
     setForm(p => ({
       ...p, descripcion: (s.codigo ? `[${s.codigo}] ` : '') + s.descripcion, costo: s.costo ? String(Math.round(s.costo)) : '',
       precio: s.precio_venta ? String(Math.round(s.precio_venta)) : '', origen: 'stock', stock_id: s.id
@@ -222,6 +231,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       }
     }
     setOpen(false)
+    setItemsCaja([])
     setForm({ descripcion: '', costo: '', precio: '', cliente: '', comprobante: '', pago: 'Efectivo', origen: 'compra', stock_id: null, descontarStock: true, tipo_id: '', tipo_nombre: '' })
     loadVentas()
   }
@@ -544,6 +554,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                   {v.pendiente && <p className="text-xs text-amber-500 font-mono">s/costo</p>}
                 </div>
                 <div className="flex flex-col gap-1">
+                  {esCajaRol && <button onClick={() => setReciboVenta(v)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>🖨 Recibo</button>}
                   {isAdmin && !v.comprobante_id && <button onClick={() => abrirEditar(v)} style={{background:'#2563eb',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,cursor:'pointer'}}>✏ Editar</button>}
                   {!v.comprobante_id && <button onClick={() => isAdmin ? delVentaAudit(v) : delVenta(v)} className="text-red-400 hover:text-red-600 text-sm">✕</button>}
                 </div>
@@ -683,12 +694,76 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               </Select>
             </Field>
           </div>
+          {/* Lista de ítems cargados */}
+          {esCajaRol && itemsCaja.length > 0 && (
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1">
+              <p className="text-[11px] font-bold text-p-ink2 uppercase mb-1">Ítems cargados</p>
+              {itemsCaja.map((it,i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  {it.codigo && <span className="font-mono text-[10px] bg-white px-1 rounded border">{it.codigo}</span>}
+                  <span className="flex-1 truncate">{it.desc}</span>
+                  <span className="font-mono text-xs">×{it.cantidad}</span>
+                  <span className="font-bold font-mono">{moneyARS(it.precio * it.cantidad)}</span>
+                  <button onClick={()=>setItemsCaja(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
+                </div>
+              ))}
+              <div className="flex justify-between font-bold pt-1 border-t border-p-line mt-1">
+                <span>Total</span>
+                <span className="font-mono">{moneyARS(itemsCaja.reduce((a,i)=>a+i.precio*i.cantidad,0))}</span>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={() => setOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>
             <button onClick={save} style={{background:"#00A550",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>Registrar</button>
           </div>
         </div>
       </Modal>
+      {/* Modal recibo */}
+      {reciboVenta && (
+        <Modal open={!!reciboVenta} onClose={()=>setReciboVenta(null)} title="Recibo">
+          <div style={{fontFamily:'monospace',fontSize:13,padding:8}}>
+            <div style={{textAlign:'center',marginBottom:12}}>
+              <p style={{fontWeight:700,fontSize:16}}>RECIBO</p>
+              <p style={{fontSize:11,color:'#6b7280'}}>{reciboVenta.fecha?.split('-').reverse().join('/')}</p>
+              {reciboVenta.cliente && <p style={{fontWeight:600,marginTop:4}}>{reciboVenta.cliente}</p>}
+            </div>
+            <table style={{width:'100%',borderCollapse:'collapse',marginBottom:12}}>
+              <thead>
+                <tr style={{borderBottom:'1px solid #e5e7eb'}}>
+                  <th style={{textAlign:'left',padding:'4px 2px',fontSize:11,color:'#6b7280'}}>Código</th>
+                  <th style={{textAlign:'left',padding:'4px 2px',fontSize:11,color:'#6b7280'}}>Descripción</th>
+                  <th style={{textAlign:'right',padding:'4px 2px',fontSize:11,color:'#6b7280'}}>Precio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const m = reciboVenta.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
+                  const cod = m?.[1] || ''
+                  const desc = m?.[2] || reciboVenta.descripcion || ''
+                  return (
+                    <tr style={{borderBottom:'1px solid #f3f4f6'}}>
+                      <td style={{padding:'6px 2px',fontSize:12}}>{cod}</td>
+                      <td style={{padding:'6px 2px',fontSize:12}}>{desc}</td>
+                      <td style={{padding:'6px 2px',fontSize:12,textAlign:'right',fontWeight:700}}>{moneyARS(reciboVenta.precio)}</td>
+                    </tr>
+                  )
+                })()}
+              </tbody>
+            </table>
+            <div style={{borderTop:'2px solid #111',paddingTop:8,display:'flex',justifyContent:'space-between'}}>
+              <span style={{fontWeight:700,fontSize:14}}>TOTAL</span>
+              <span style={{fontWeight:800,fontSize:16}}>{moneyARS(reciboVenta.precio)}</span>
+            </div>
+            {reciboVenta.pago && <p style={{fontSize:11,color:'#6b7280',marginTop:6}}>Forma de pago: {reciboVenta.pago}</p>}
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <button onClick={()=>setReciboVenta(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cerrar</button>
+            <button onClick={()=>window.print()} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>🖨 Imprimir</button>
+          </div>
+        </Modal>
+      )}
+
       {/* Modal edición (solo admin) */}
       {editId && (() => {
         const v = ventas.find(x => x.id === editId)

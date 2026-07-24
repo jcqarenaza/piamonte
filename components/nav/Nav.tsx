@@ -155,8 +155,8 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
   const visibleGrupos = GRUPOS.map(g => ({
     ...g,
     items: g.items.filter(m => {
-      // Rol caja: solo ve Proveedores y Caja
-      if (rol === 'caja' && !['proveedores-compra','caja','comprobantes','arqueo'].includes(m.id)) return false
+      // Rol caja: solo ve Caja
+      if (rol === 'caja' && !['caja'].includes(m.id)) return false
       // Rol ventas: ocultar algunos módulos
       if (rol === 'ventas' && ['proveedores','informes'].includes(m.id)) return false
       if (rol === 'ventas' && ['proveedores-compra','compras','articulos','aseguradoras','rentabilidades-avanzadas','tarjetas','arqueo','contabilidad','cheques','banco','depositos','cuenta-corriente','remitos-internos','busqueda-comprobantes','cuenta-corriente-proveedores'].includes(m.id)) return false
