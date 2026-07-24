@@ -102,6 +102,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // Un ChequeData por cada fila de pago (mismo índice). Solo se usa cuando metodo==='Cheque'.
   const [chequesPago, setChequesPago] = useState<Record<number,ChequeData>>({})
   const [toast, setToast]       = useState('')
+  const [saving, setSaving]     = useState(false)
   const [adjModal, setAdjModal]   = useState<Comprobante|null>(null)
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
