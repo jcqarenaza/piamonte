@@ -612,15 +612,30 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               )}
             </div>
           </Field>
-          <Field label="Pieza / descripción *"><Input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Parabrisas VW Gol" /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Costo">
-              <Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" />
-              {!form.costo && <p className="text-[10px] text-amber-500 mt-0.5">Sin costo → venta queda pendiente</p>}
-            </Field>
-            <Field label="Precio de venta *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
+
+          {/* Ítem manual */}
+          <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2">
+            <p className="text-[11px] font-bold text-p-ink2 uppercase">Ítem manual</p>
+            <Field label="Descripción"><Input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Pegamento, insumo…" /></Field>
+            <div className="grid grid-cols-3 gap-2">
+              {!esCajaRol && <Field label="Costo"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>}
+              <Field label="Precio *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
+              <Field label="Cantidad">
+                <Input value={form.cantidad||'1'} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))} placeholder="1" />
+              </Field>
+            </div>
+            {esCajaRol && form.descripcion && form.precio && (
+              <button type="button" onClick={()=>{
+                const cant = parseInt((form as any).cantidad||'1')||1
+                const precio = +form.precio.replace(/[^0-9.]/g,'')
+                if(!precio) return
+                setItemsCaja(prev=>[...prev,{desc:form.descripcion,codigo:'',precio,costo:0,stock_id:null,cantidad:cant}])
+                setForm(p=>({...p,descripcion:'',precio:'',costo:'',cantidad:'1'}))
+              }} className="self-end text-xs bg-p-green text-white px-3 py-1.5 rounded-lg font-bold">+ Agregar ítem</button>
+            )}
           </div>
-          {gan() !== null && (() => {
+
+          {!esCajaRol && gan() !== null && (() => {
             const precio = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g,'')
             const costo  = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g,'')
             const r = calcRentabilidad(precio, costo)
