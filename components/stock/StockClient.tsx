@@ -116,7 +116,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     let q = supabase.from('stock_movimientos')
       .select(`id, tipo, cantidad, costo_unitario, precio_venta_unitario, fecha, descripcion, created_at,
         stock:stock_id(descripcion, codigo),
-        compra:comprobante_compra_id(numero, proveedor_nombre),
+        compra:comprobante_compra_id(numero, tipo, letra, punto_venta, proveedor_nombre),
         venta:comprobante_venta_id(numero, tipo, cliente_nombre, aseguradora_nombre)`)
       .order('created_at', { ascending: false }).limit(200)
     if (movFiltroTipo !== 'todos') q = q.eq('tipo', movFiltroTipo)
@@ -899,8 +899,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const tieneCompra = !!m.comprobante_compra_id
                           const tieneVenta = !!m.comprobante_venta_id
                           const esPendienteNC = !!m.pendiente_nc
+                          const prefijoCompra = m.compra?.tipo === 'nc' ? 'NC' : m.compra?.tipo === 'nd' ? 'ND' : 'FC'
+                          const letraCompra = m.compra?.letra ? m.compra.letra : 'A'
+                          const pvCompra = m.compra?.punto_venta ? String(m.compra.punto_venta).padStart(4,'0') : '0038'
                           const etiqueta = tieneCompra
-                            ? `FC-${String(m.compra_numero||'').padStart(8,'0')} · ${m.compra_proveedor||'Compra'}`
+                            ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
                             : tieneVenta
                               ? `FC-${String(m.venta_numero||'').padStart(8,'0')}${m.venta_cliente?' · '+m.venta_cliente:m.venta_aseguradora?' · '+m.venta_aseguradora:''}`
                               : m.nota || m.motivo || '—'
