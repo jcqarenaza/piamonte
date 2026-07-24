@@ -1722,11 +1722,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                             }
                             if (!precio && si.stock_id) {
                               const { data: st } = await supabase.from('stock').select('precio_venta').eq('id', si.stock_id).maybeSingle()
-                              precio = st?.precio_venta || 0
+                              precio = Math.round((st?.precio_venta || 0) / 1.21 * 100) / 100
                             }
                             if (!precio && si.codigo) {
                               const { data: cat } = await supabase.from('catalogo').select('precio_lista').ilike('codigo', si.codigo).limit(1).maybeSingle()
-                              precio = cat?.precio_lista || 0
+                              precio = Math.round((cat?.precio_lista || 0) / 1.21 * 100) / 100
                             }
                             return { d: si.d, c: si.c, p: precio, codigo: si.codigo||null, stock_id: si.stock_id||null, articulo_id: si.articulo_id||null }
                           })).then(its => setItems(its))
@@ -1765,11 +1765,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                                       }
                                       if (!precio && si.stock_id) {
                                         const { data: st } = await supabase.from('stock').select('precio_venta').eq('id', si.stock_id).maybeSingle()
-                                        precio = st?.precio_venta || 0
+                                        precio = Math.round((st?.precio_venta || 0) / 1.21 * 100) / 100
                                       }
                                       if (!precio && si.codigo) {
                                         const { data: cat } = await supabase.from('catalogo').select('precio_lista').ilike('codigo', si.codigo).limit(1).maybeSingle()
-                                        precio = cat?.precio_lista || 0
+                                        precio = Math.round((cat?.precio_lista || 0) / 1.21 * 100) / 100
                                       }
                                       return { d: si.d, c: si.c, p: precio, codigo: si.codigo||null, stock_id: si.stock_id||null, articulo_id: si.articulo_id||null }
                                     }))
