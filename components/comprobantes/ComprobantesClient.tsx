@@ -1708,7 +1708,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                         if(isSelected){ setRemitoSel(null); setRemitoItemsSel(new Set()); setItems([]) }
                         else { 
                           setRemitoSel(r)
-                          const idxsPendientes = new Set(itemsPendientes.map((_:any,i:number)=>(r.items??[]).indexOf(itemsPendientes[i])))
+                          const idxsPendientes = new Set<number>(itemsPendientes.map((_:any,i:number)=>(r.items??[]).indexOf(itemsPendientes[i])))
                           setRemitoItemsSel(idxsPendientes)
                           // Cargar ítems pendientes con precio
                           Promise.all(itemsPendientes.map(async (si:any) => {
