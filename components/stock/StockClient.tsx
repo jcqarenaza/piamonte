@@ -905,7 +905,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const etiqueta = tieneCompra
                             ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
                             : tieneVenta
-                              ? `FC-${String(m.venta_numero||'').padStart(8,'0')}${m.venta_cliente?' · '+m.venta_cliente:m.venta_aseguradora?' · '+m.venta_aseguradora:''}`
+                              ? `${(m.venta as any)?.tipo==='nc'?'NC':(m.venta as any)?.tipo==='nd'?'ND':'FA'}-0006-${String((m.venta as any)?.numero||m.venta_numero||'').padStart(8,'0')}${(m.venta as any)?.cliente_nombre?' · '+(m.venta as any)?.cliente_nombre:(m.venta as any)?.aseguradora_nombre?' · '+(m.venta as any)?.aseguradora_nombre:''}`
                               : m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}

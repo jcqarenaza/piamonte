@@ -439,7 +439,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const ncItemsSel = ncComp ? ncComp.items
     .map((it, i) => ({ it, i, cant: ncSel[i]?.cant ?? it.c }))
     .filter((x) => ncSel[x.i]?.on && x.cant > 0) : []
-  const ncNeto = ncItemsSel.reduce((a, x) => a + x.it.p * x.cant, 0)
+  const ncNeto = ncItemsSel.reduce((a, x) => {
+    // Para FA (discrimina IVA): el precio ya incluye IVA → neto = p/1.21
+    // Para FB/NC sin IVA: el precio es el total directamente
+    const tasaNc = ncComp && ncComp.neto > 0 ? ncComp.neto / ncComp.total : (1/1.21)
+    return a + Math.round(x.it.p * x.cant * tasaNc * 100) / 100
+  }, 0)
   const ncIvaRate = ncComp && ncComp.neto > 0 ? ncComp.iva / ncComp.neto : 0
   const ncIva = Math.round(ncNeto * ncIvaRate * 100) / 100
   const ncTotal = Math.round((ncNeto + ncIva) * 100) / 100
