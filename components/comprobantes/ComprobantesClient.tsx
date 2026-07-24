@@ -555,6 +555,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
   }
 
+    } catch(e) { console.error(e) } finally { setSaving(false) }
+  }
+
   async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}) {
     setCaeLoading(c.id)
     try {
@@ -642,6 +645,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function save(){
+    if (saving) return
+    setSaving(true)
+    try {
     if(!puedeGuardar) return
     if (modo==='aseguradora' && !asegSel?.id) {
       alert('Seleccioná la aseguradora del listado de sugerencias')
@@ -2049,8 +2055,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
-            <button type="button" onClick={save} disabled={!puedeGuardar || (usaCC && modo==='cf')} style={{...btn,opacity:(!puedeGuardar || (usaCC && modo==='cf'))?.5:1}}>
-              ✓ Emitir comprobante
+            <button type="button" onClick={save} disabled={!puedeGuardar || (usaCC && modo==='cf') || saving} style={{...btn,opacity:(!puedeGuardar || (usaCC && modo==='cf') || saving)?.5:1}}>
+              {saving ? 'Guardando…' : '✓ Emitir comprobante'}
             </button>
           </div>
         </div>
