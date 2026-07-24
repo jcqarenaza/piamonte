@@ -1749,7 +1749,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                             return (
                               <label key={idx} className={`flex items-center gap-2 text-sm cursor-pointer rounded px-2 py-1 ${yaFacturado?'opacity-40 cursor-not-allowed':'hover:bg-blue-50'}`}>
                                 <input type="checkbox" disabled={yaFacturado} checked={seleccionado}
-                                  onChange={e=>{
+                                  onChange={async e=>{
                                     const next = new Set(remitoItemsSel)
                                     if(e.target.checked) next.add(idx); else next.delete(idx)
                                     setRemitoItemsSel(next)
