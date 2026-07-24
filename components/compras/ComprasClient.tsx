@@ -522,7 +522,7 @@ export default function ComprasClient() {
           await supabase.from('ajustes_stock')
             .delete()
             .eq('id', pendiente.id)
-          // Insertar movimiento de NC en su lugar
+          // Insertar movimiento de NC (siempre, independiente de si existía pendiente_nc)
           await supabase.from('stock_movimientos').insert({
             stock_id: pendiente.stock_id,
             tipo: 'salida',
