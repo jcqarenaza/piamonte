@@ -558,7 +558,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     } else {
       await solicitarCAE(c)
     }
-    } catch(e) { console.error(e) } finally { setSaving(false) }
+    setSaving(false)
   }
 
   async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}) {
@@ -650,8 +650,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function save(){
     if (saving) return
     setSaving(true)
-    try {
-    if(!puedeGuardar) return
+    if(!puedeGuardar) { setSaving(false); return }
     if (modo==='aseguradora' && !asegSel?.id) {
       alert('Seleccioná la aseguradora del listado de sugerencias')
       return
