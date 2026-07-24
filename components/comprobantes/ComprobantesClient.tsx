@@ -558,8 +558,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     } else {
       await solicitarCAE(c)
     }
-  }
-
     } catch(e) { console.error(e) } finally { setSaving(false) }
   }
 
