@@ -425,7 +425,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {movs.filter((m:any) => !(m.tipo==='factura' && m._saldo_comp <= 0)).map(m=>(
+                          {movs.filter((m:any) => m._saldo_comp !== 0).map(m=>(
                             <>
                               <tr key={m.id}
                                 className={`border-b border-p-line2 ${m.haber>0?'cursor-pointer hover:bg-green-50/40':''}`}
