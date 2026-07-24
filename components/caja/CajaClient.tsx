@@ -759,7 +759,37 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <button onClick={()=>setReciboVenta(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cerrar</button>
-            <button onClick={()=>window.print()} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>🖨 Imprimir</button>
+            <button onClick={()=>{
+              const w = window.open('','_blank','width=600,height=400')
+              if(!w) return
+              const rv = reciboVenta
+              const m = rv.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
+              const cod = m?.[1]||''; const desc = m?.[2]||rv.descripcion||''
+              w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo</title><style>
+                body{font-family:monospace;font-size:13px;padding:20px;margin:0}
+                table{width:100%;border-collapse:collapse;margin-bottom:12px}
+                th{text-align:left;padding:4px 2px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb}
+                td{padding:6px 2px;font-size:12px}
+                .right{text-align:right}
+                .total{border-top:2px solid #111;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:8px}
+                .center{text-align:center;margin-bottom:12px}
+                @media print{@page{margin:10mm}}
+              </style></head><body>
+                <div class="center">
+                  <div style="font-weight:700;font-size:16px">RECIBO</div>
+                  <div style="font-size:11px;color:#6b7280">${rv.fecha?.split('-').reverse().join('/')}</div>
+                  ${rv.cliente?`<div style="font-weight:600;margin-top:4px">${rv.cliente}</div>`:''}
+                </div>
+                <table>
+                  <thead><tr><th>Código</th><th>Descripción</th><th class="right">Precio</th></tr></thead>
+                  <tbody><tr><td>${cod}</td><td>${desc}</td><td class="right" style="font-weight:700">${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(rv.precio)}</td></tr></tbody>
+                </table>
+                <div class="total"><span>TOTAL</span><span>${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(rv.precio)}</span></div>
+                ${rv.pago?`<div style="font-size:11px;color:#6b7280;margin-top:6px">Forma de pago: ${rv.pago}</div>`:''}
+                <script>window.onload=()=>{window.print();window.close()}<\/script>
+              </body></html>`)
+              w.document.close()
+            }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>🖨 Imprimir</button>
           </div>
         </Modal>
       )}
