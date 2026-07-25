@@ -1205,7 +1205,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const tt = (doc:any, x:number, y:number, txt:string, opts:{style?:string;size?:number;color?:[number,number,number];w?:number;align?:string}={}) => {
       doc.setFont('helvetica', opts.style||'normal')
       doc.setFontSize(opts.size||7)
-      doc.setTextColor(...(opts.color||[20,20,20]))
+      const col = opts.color||[0,0,0]
+      doc.setTextColor(col[0], col[1], col[2])
       if (opts.align==='right') doc.text(txt, x+(opts.w||0), y, {align:'right'})
       else if (opts.align==='center') doc.text(txt, x+(opts.w||0)/2, y, {align:'center'})
       else doc.text(txt, x, y)
@@ -1227,27 +1228,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.line(98, y, 98, y+bh)
       doc.line(120, y, 120, y+bh)
 
-      // Emisor — zona izquierda
-      tt(doc, pad+2, y+6,  'KNUTH VERONICA ALEJANDRA', {style:'bold', size:10})
-      tt(doc, pad+2, y+12, 'Razón Social: ', {style:'bold', size:7})
-      tt(doc, pad+22, y+12, 'KNUTH VERONICA ALEJANDRA', {size:7})
-      tt(doc, pad+2, y+18, 'Domicilio Comercial: ', {style:'bold', size:7})
-      tt(doc, pad+35, y+18, 'Calle 102 366 - General Pico, La Pampa', {size:7})
-      tt(doc, pad+2, y+24, 'Condición frente al IVA: ', {style:'bold', size:7})
-      tt(doc, pad+42, y+24, 'IVA Responsable Inscripto', {size:7})
+      // Emisor — zona izquierda (pad→98), centrado verticalmente en bh=38
+      tt(doc, pad+2, y+7,  'KNUTH VERONICA ALEJANDRA', {style:'bold', size:9})
+      tt(doc, pad+2, y+14, 'Razón Social:', {style:'bold', size:7})
+      tt(doc, pad+26, y+14, 'KNUTH VERONICA ALEJANDRA', {size:7})
+      tt(doc, pad+2, y+20, 'Domicilio Comercial:', {style:'bold', size:7})
+      tt(doc, pad+34, y+20, 'Calle 102 366 - General Pico, La Pampa', {size:7})
+      tt(doc, pad+2, y+26, 'Condición frente al IVA:', {style:'bold', size:7})
+      tt(doc, pad+40, y+26, 'IVA Responsable Inscripto', {size:7})
 
-      // Centro — letra tipo + código
-      tt(doc, 98, y+16, c.tipo||'A', {style:'bold', size:22, align:'center', w:22})
-      tt(doc, 98, y+30, codTipo, {size:6.5, align:'center', w:22})
+      // Centro — letra tipo + código (98→120)
+      tt(doc, 98, y+17, c.tipo||'A', {style:'bold', size:22, align:'center', w:22})
+      tt(doc, 98, y+31, codTipo, {size:6, align:'center', w:22})
 
-      // Zona derecha
-      tt(doc, 122, y+7,  tipoLabel, {style:'bold', size:15})
-      tt(doc, 122, y+15, 'Punto de Venta:  0006', {style:'bold', size:7.5})
-      tt(doc, 161, y+15, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7.5})
-      tt(doc, 122, y+21, `Fecha de Emisión:  ${fechaFmt}`, {size:7.5})
-      tt(doc, 122, y+27, 'CUIT:  27242657174', {size:7.5})
-      tt(doc, 122, y+32, 'Ingresos Brutos:  1919987', {size:7.5})
-      tt(doc, 122, y+37, 'Fecha de Inicio de Actividades:  01/09/2007', {size:7.5})
+      // Zona derecha (120→203)
+      tt(doc, 122, y+7,  tipoLabel, {style:'bold', size:14})
+      tt(doc, 122, y+14, 'Punto de Venta:  0006', {style:'bold', size:7})
+      tt(doc, 161, y+14, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7})
+      tt(doc, 122, y+20, `Fecha de Emisión:  ${fechaFmt}`, {size:7})
+      tt(doc, 122, y+26, 'CUIT:  27242657174', {size:7})
+      tt(doc, 122, y+31, 'Ingresos Brutos:  1919987', {size:7})
+      tt(doc, 122, y+36, 'Fecha de Inicio de Actividades:  01/09/2007', {size:7})
       y += bh
 
       // ── PERÍODO ──
