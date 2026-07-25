@@ -1229,6 +1229,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.line(120, y, 120, y+bh)
 
       // Emisor — zona izquierda (pad→98), centrado verticalmente en bh=38
+      doc.setTextColor(0,0,0)
       tt(doc, pad+2, y+7,  'KNUTH VERONICA ALEJANDRA', {style:'bold', size:9})
       tt(doc, pad+2, y+14, 'Razón Social:', {style:'bold', size:7})
       tt(doc, pad+26, y+14, 'KNUTH VERONICA ALEJANDRA', {size:7})
@@ -1252,6 +1253,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y += bh
 
       // ── PERÍODO ──
+      doc.setTextColor(0,0,0)
       doc.setLineWidth(0.4)
       doc.rect(pad, y, rw, 8)
       tt(doc, pad+2, y+5.5, 'Período Facturado Desde: ', {style:'bold', size:8})
@@ -1263,6 +1265,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y += 8
 
       // ── RECEPTOR — 3 filas ──
+      doc.setTextColor(0,0,0)
       const recH = 24
       doc.rect(pad, y, rw, recH)
       // línea separadora fila 1/2
@@ -1288,6 +1291,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       y += recH + 4
 
       // ── TABLA DE ÍTEMS ──
+      doc.setTextColor(0,0,0)
       // Anchos columnas: Código|Producto/Servicio|Cantidad|U.medida|Precio Unit.|%Bonif|Subtotal|Alicuota IVA|Subtotal c/IVA
       const cw = [16, 54, 14, 17, 25, 13, 22, 14, 21]
       const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
