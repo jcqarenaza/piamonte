@@ -117,8 +117,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       .select(`id, tipo, cantidad, costo_unitario, precio_venta_unitario, fecha, descripcion, created_at,
         stock:stock_id(descripcion, codigo),
         compra:comprobante_compra_id(numero, tipo, letra, punto_venta, proveedor_nombre),
-        venta:comprobante_venta_id(numero, tipo, cliente_nombre, aseguradora_nombre)`)
-      .order('created_at', { ascending: false }).limit(200)
+        venta:comprobante_venta_id(numero, tipo, categoria, nro_cbte_afip, cliente_nombre, aseguradora_nombre)`)
+      .order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(200)
     if (movFiltroTipo !== 'todos') q = q.eq('tipo', movFiltroTipo)
     const { data } = await q
     setMovs(data ?? [])
@@ -905,7 +905,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const etiqueta = tieneCompra
                             ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
                             : tieneVenta
-                              ? `${(m.venta as any)?.tipo==='nc'?'NC':(m.venta as any)?.tipo==='nd'?'ND':'FA'}-0006-${String((m.venta as any)?.numero||m.venta_numero||'').padStart(8,'0')}${(m.venta as any)?.cliente_nombre?' · '+(m.venta as any)?.cliente_nombre:(m.venta as any)?.aseguradora_nombre?' · '+(m.venta as any)?.aseguradora_nombre:''}`
+                              ? `${(m.venta as any)?.categoria==='nc'?'NC':(m.venta as any)?.categoria==='nd'?'ND':'FA'}-0006-${String((m.venta as any)?.nro_cbte_afip||(m.venta as any)?.numero||'').padStart(8,'0')}${(m.venta as any)?.cliente_nombre?' · '+(m.venta as any)?.cliente_nombre:(m.venta as any)?.aseguradora_nombre?' · '+(m.venta as any)?.aseguradora_nombre:''}`
                               : m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}
