@@ -1282,18 +1282,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       // ── TABLA ── coordenadas exactas de Arca
       const colX = [5.3, 19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
       const colW = [14.1, 61.7, 18.7, 13.8, 22.9, 10.2, 22.9, 12.0, 23.3]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota
-IVA','Subtotal c/IVA']
+      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
       const tY = 97.7
 
       // Header: primero todos los rects grises, después todo el texto
       colX.forEach((x,i) => rectF(x, tY, colW[i], 6.3, 220))
-      heads.forEach((h,i) => {
-        const lines = h.split('
-')
-        if (lines.length>1) { t(colX[i]+0.8, tY+3.5, lines[0], true, 6); t(colX[i]+0.8, tY+5.8, lines[1], true, 6) }
-        else t(colX[i]+0.8, tY+4.5, h, true, 6)
-      })
+      heads.forEach((h,i) => t(colX[i]+0.8, tY+4.5, h, true, 6))
 
       // Filas: primero todos los rects blancos, después todo el texto
       let iy = tY + 6.3
