@@ -662,9 +662,9 @@ export default function ComprasClient() {
     setProcesando(true)
     const prov = proveedores.find(p=>p.id===remitoModal.proveedor_id)
     const fecha = new Date().toISOString().slice(0,10)
-    const etiqueta = remitoModal.tipo === 'remito'
-      ? `Remito ${remitoModal.numero || 'S/N'}`
-      : `Factura ${remitoModal.letra||''} ${remitoModal.punto_venta||''}-${remitoModal.numero||'S/N'}`
+
+    // Construir items actualizados con stock_id del mapping para persistir en el JSONB
+    const itemsActualizados = [...remitoModal.items]
 
     for (const [idxStr, map] of Object.entries(mappings)) {
       const idx = parseInt(idxStr)
@@ -675,22 +675,31 @@ export default function ComprasClient() {
       if (st) {
         const updatePayload: any = {
           cantidad: (st.cantidad||0) + map.qty,
-          pendiente_ingreso: false,  // llegó la mercadería
+          pendiente_ingreso: false,
         }
         if (!st.articulo_id && item.articulo_id) updatePayload.articulo_id = item.articulo_id
         await supabase.from('stock').update(updatePayload).eq('id', map.stock_id)
       }
 
-      // Registrar en stock_movimientos (fuente de verdad)
+      // Registrar en stock_movimientos sin descripcion hardcodeada —
+      // la vista_movimientos_stock la construye automáticamente desde comprobante_compra_id
       await supabase.from('stock_movimientos').insert({
         stock_id: map.stock_id, tipo: 'entrada',
         cantidad: map.qty, costo_unitario: map.costo,
-        fecha, descripcion: `${etiqueta} — recepción mercadería`,
+        fecha,
         comprobante_compra_id: remitoModal.id,
       })
+
+      // Persistir stock_id en el JSONB del comprobante para que quede vinculado
+      itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: map.stock_id } as any
     }
 
-    await supabase.from('comprobantes_compra').update({ estado:'procesado', afecta_stock:true }).eq('id', remitoModal.id)
+    // Guardar items actualizados con stock_id + marcar procesado
+    await supabase.from('comprobantes_compra').update({
+      estado: 'procesado',
+      afecta_stock: true,
+      items: itemsActualizados,
+    }).eq('id', remitoModal.id)
 
     setProcesando(false)
     setRemitoModal(null)
