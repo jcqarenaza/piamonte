@@ -902,16 +902,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const prefijoCompra = m.compra?.tipo === 'nc' ? 'NC' : m.compra?.tipo === 'nd' ? 'ND' : 'FC'
                           const letraCompra = m.compra?.letra ? m.compra.letra : 'A'
                           const pvCompra = m.compra?.punto_venta ? String(m.compra.punto_venta).padStart(4,'0') : '0038'
-                          const ventaAfip = (m.venta as any)?.nro_cbte_afip ?? (m.venta as any)?.numero
-                          const ventaCat = (m.venta as any)?.categoria
-                          const ventaNombre = (m.venta as any)?.cliente_nombre || (m.venta as any)?.aseguradora_nombre || ''
                           const etiqueta = tieneCompra
                             ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
-                            : tieneVenta && ventaAfip
-                              ? `${ventaCat==='nc'?'NC':ventaCat==='nd'?'ND':'FA'}-0006-${String(ventaAfip).padStart(8,'0')}${ventaNombre?' · '+ventaNombre:''}`
-                              : tieneVenta
-                                ? m.descripcion || '—'
-                                : m.nota || m.motivo || m.descripcion || '—'
+                            : m.descripcion || m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}
                             onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
