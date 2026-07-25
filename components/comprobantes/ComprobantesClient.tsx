@@ -1238,6 +1238,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.setLineWidth(0.4)
       doc.rect(97.0, 15.9, 16.6, 14.4)
 
+      // Línea horizontal inferior encabezado (cierra el bloque emisor)
+      doc.line(5.3, 57.5, 205.0, 57.5)
+
       // Emisor — zona izquierda
       doc.setTextColor(0,0,0)
       tt(doc, 7.4, 22.4, 'KNUTH VERONICA ALEJANDRA', {style:'bold', size:9})
@@ -1307,12 +1310,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const tY = 95.0
 
       // Header gris
-      doc.setFillColor(220,220,220)
       doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
-      colX.forEach((x,i) => {
-        doc.rect(x, tY, colW[i], 6.4, 'FD')
-        doc.setTextColor(0,0,0)
-        tt(doc, x+0.8, tY+4.2, heads[i], {style:'bold', size:6})
+      doc.setFillColor(220,220,220)
+      heads.forEach((h,i) => {
+        doc.rect(colX[i], tY, colW[i], 6.4, 'FD')
+      })
+      doc.setTextColor(0,0,0)
+      heads.forEach((h,i) => {
+        tt(doc, colX[i]+0.8, tY+4.2, h, {style:'bold', size:6})
       })
 
       let iy = tY + 6.4
@@ -1328,13 +1333,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           fmtNum(subtotalCiva)
         ]
         const rowH = 10
+        // Dibujar celdas primero
         doc.setFillColor(255,255,255)
+        doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
+        colX.forEach((x,i) => { doc.rect(x, iy, colW[i], rowH, 'FD') })
+        // Luego texto
         doc.setTextColor(0,0,0)
-        colX.forEach((x,i) => {
-          doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
-          doc.rect(x, iy, colW[i], rowH, 'FD')
-          tt(doc, x+0.8, iy+5.5, vals[i], {size:7})
-        })
+        colX.forEach((x,i) => { tt(doc, x+0.8, iy+5.5, vals[i], {size:7}) })
         iy += rowH
       })
 
