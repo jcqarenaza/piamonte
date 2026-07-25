@@ -456,7 +456,8 @@ export default function ComprasClient() {
         }
         if (!stockRow && articuloId) {
           const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
-          stockRow = data
+          // Solo reutilizar si el código es el mismo — si el código es distinto, crear uno nuevo
+          if (data && data.codigo === codigo) stockRow = data
         }
 
         if (stockRow) {
