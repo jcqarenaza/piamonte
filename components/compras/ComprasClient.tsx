@@ -666,7 +666,16 @@ export default function ComprasClient() {
     // Construir items actualizados con stock_id del mapping para persistir en el JSONB
     const itemsActualizados = [...remitoModal.items]
 
-    for (const [idxStr, map] of Object.entries(mappings)) {
+    // Completar mapping con ítems que ya tienen stock_id en el JSONB pero no fueron vinculados manualmente
+    const mappingCompleto: Record<number, {stock_id:string; qty:number; costo:number}|null> = { ...mappings }
+    remitoModal.items.forEach((item: any, idx: number) => {
+      if (mappingCompleto[idx]) return // ya está en el mapping manual
+      const stockId = item.stock_id
+      if (!stockId || item.d?.toUpperCase().trim() === 'FLETE') return
+      mappingCompleto[idx] = { stock_id: stockId, qty: item.c, costo: item.p }
+    })
+
+    for (const [idxStr, map] of Object.entries(mappingCompleto)) {
       const idx = parseInt(idxStr)
       const item = remitoModal.items[idx]
       if (!map) continue
