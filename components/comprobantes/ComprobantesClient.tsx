@@ -1206,30 +1206,30 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const div = document.createElement('div')
       div.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;font-size:9px;color:#000'
       div.innerHTML = `
-        <div style="padding:20px 20px 10px 20px">
+        <div style="padding:15px 15px 8px 15px;font-size:8px">
           <!-- COPIA -->
-          <div style="border:1px solid #000;text-align:center;font-weight:bold;font-size:13px;padding:4px 0;margin-bottom:0;width:60%;margin-left:20%">${copia}</div>
+          <div style="border:1px solid #000;text-align:center;font-weight:bold;font-size:12px;padding:3px 0;width:55%;margin:0 auto 0 auto">${copia}</div>
 
-          <!-- ENCABEZADO -->
-          <table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:0">
-            <tr>
-              <td style="width:46%;padding:6px 6px;border-right:1px solid #000;vertical-align:top">
-                <div style="font-weight:bold;font-size:10px;margin-bottom:6px">KNUTH VERONICA ALEJANDRA</div>
-                <div><span style="font-weight:bold">Razón Social:</span> KNUTH VERONICA ALEJANDRA</div>
-                <div style="margin-top:5px"><span style="font-weight:bold">Domicilio Comercial:</span> Calle 102 366 - General Pico, La Pampa</div>
-                <div style="margin-top:5px"><span style="font-weight:bold">Condición frente al IVA:</span> IVA Responsable Inscripto</div>
+          <!-- ENCABEZADO: emisor | A | factura -->
+          <table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:0;border-top:none">
+            <tr style="vertical-align:top">
+              <td style="width:46%;padding:5px 5px;border-right:1px solid #000;vertical-align:top">
+                <div style="font-weight:bold;font-size:9px;margin-bottom:5px">KNUTH VERONICA ALEJANDRA</div>
+                <div style="margin-bottom:3px"><span style="font-weight:bold">Razón Social:</span> KNUTH VERONICA ALEJANDRA</div>
+                <div style="margin-bottom:3px"><span style="font-weight:bold">Domicilio Comercial:</span> Calle 102 366 - General Pico, La Pampa</div>
+                <div><span style="font-weight:bold">Condición frente al IVA:</span> IVA Responsable Inscripto</div>
               </td>
-              <td style="width:8%;border-right:1px solid #000;text-align:center;vertical-align:middle;padding:4px">
-                <div style="font-weight:bold;font-size:22px;line-height:1">${c.tipo||'A'}</div>
-                <div style="font-size:6px;margin-top:4px">${codTipo}</div>
+              <td style="width:8%;border-right:1px solid #000;text-align:center;vertical-align:middle;padding:4px 2px">
+                <div style="font-weight:bold;font-size:24px;line-height:1.1">${c.tipo||'A'}</div>
+                <div style="font-size:6px;margin-top:3px">${codTipo}</div>
               </td>
-              <td style="width:46%;padding:6px 8px;vertical-align:top">
-                <div style="font-weight:bold;font-size:15px;margin-bottom:4px">${tipoLabel}</div>
-                <div><span style="font-weight:bold">Punto de Venta: 0006</span>&nbsp;&nbsp;&nbsp;<span style="font-weight:bold">Comp. Nro: ${nroAfip}</span></div>
-                <div style="margin-top:3px"><span style="font-weight:bold">Fecha de Emisión:</span> ${fechaFmt}</div>
-                <div style="margin-top:3px"><span style="font-weight:bold">CUIT:</span> 27242657174</div>
-                <div style="margin-top:2px"><span style="font-weight:bold">Ingresos Brutos:</span> 1919987</div>
-                <div style="margin-top:2px"><span style="font-weight:bold">Fecha de Inicio de Actividades:</span> 01/09/2007</div>
+              <td style="width:46%;padding:5px 6px;vertical-align:top">
+                <div style="font-weight:bold;font-size:14px;margin-bottom:4px">${tipoLabel}</div>
+                <div style="margin-bottom:2px"><span style="font-weight:bold">Punto de Venta: 0006</span>&nbsp;&nbsp;&nbsp;<span style="font-weight:bold">Comp. Nro: ${nroAfip}</span></div>
+                <div style="margin-bottom:2px"><span style="font-weight:bold">Fecha de Emisión:</span> ${fechaFmt}</div>
+                <div style="margin-bottom:1px"><span style="font-weight:bold">CUIT:</span> 27242657174</div>
+                <div style="margin-bottom:1px"><span style="font-weight:bold">Ingresos Brutos:</span> 1919987</div>
+                <div><span style="font-weight:bold">Fecha de Inicio de Actividades:</span> 01/09/2007</div>
               </td>
             </tr>
           </table>
