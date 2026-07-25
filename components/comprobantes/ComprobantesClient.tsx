@@ -1289,21 +1289,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       // ── TABLA DE ÍTEMS ──
       // Anchos columnas: Código|Producto/Servicio|Cantidad|U.medida|Precio Unit.|%Bonif|Subtotal|Alicuota IVA|Subtotal c/IVA
       const cw = [16, 54, 14, 17, 25, 13, 22, 14, 21]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota
-IVA','Subtotal c/IVA']
+      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
       doc.setFillColor(220,220,220)
       doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
       doc.rect(pad, y, rw, 8, 'FD')
       let cx = pad
       heads.forEach((h,i)=>{
         if (i>0) { doc.setLineWidth(0.2); doc.line(cx, y, cx, y+8) }
-        const lines = h.split('\n')
-        if (lines.length>1) {
-          tt(doc, cx+1, y+3.5, lines[0], {style:'bold', size:6})
-          tt(doc, cx+1, y+6.5, lines[1], {style:'bold', size:6})
-        } else {
-          tt(doc, cx+1, y+5, h, {style:'bold', size:6})
-        }
+        tt(doc, cx+1, y+5, h, {style:'bold', size:6})
         cx += cw[i]
       })
       y += 8
