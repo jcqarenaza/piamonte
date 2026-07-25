@@ -1350,11 +1350,14 @@ export default function ComprasClient() {
                 <button key={t.id} onClick={async ()=>{ 
                   setForm(p=>({...p,tipo:t.id}))
                   if (t.id === 'nc' && form.proveedor_id) {
-                    const { data } = await supabase.from('ajustes_stock')
-                      .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
-                      .eq('pendiente_nc', true)
-                      .order('fecha', { ascending: true })
-                    setPendientesNC(data ?? [])
+                    if (form.proveedor_id) {
+                      const { data } = await supabase.from('ajustes_stock')
+                        .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
+                        .eq('pendiente_nc', true)
+                        .eq('proveedor_id', form.proveedor_id)
+                        .order('fecha', { ascending: true })
+                      setPendientesNC(data ?? [])
+                    }
                     // No preseleccionar — dejar que el usuario elija de a uno
                     setPendientesSelNC({})
                   } else {
@@ -1480,6 +1483,7 @@ export default function ComprasClient() {
                     const { data } = await supabase.from('ajustes_stock')
                       .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
                       .eq('pendiente_nc', true)
+                      .eq('proveedor_id', e.target.value)
                       .order('fecha', { ascending: true })
                     setPendientesNC(data ?? []); setPendientesSelNC(Object.fromEntries((data ?? []).map((x:any) => [x.id, true])))
                   }

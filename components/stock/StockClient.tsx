@@ -79,9 +79,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     // DESPUÉS actualizar cantidad — el trigger ya encontrará el movimiento y no duplicará
     await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
 
-    // Si es salida con pendiente NC → crear ajuste en CC del proveedor elegido
+    // Si es salida con pendiente NC → registrar en ajustes_stock con proveedor para que ComprasClient lo encuentre
     if (esPendienteNC && ajusteCantForm.proveedor_id) {
       const montoAjuste = Math.round((ajusteCantModal.costo || 0) * Math.abs(delta))
+
+      // Insertar en ajustes_stock con proveedor — es la fuente que usa ComprasClient para listar pendientes NC
+      await supabase.from('ajustes_stock').insert({
+        stock_id: ajusteCantModal.id,
+        tipo: 'salida',
+        cantidad: Math.abs(delta),
+        nota: notaFinal,
+        descripcion: ajusteCantModal.descripcion || '',
+        fecha: new Date().toISOString().slice(0,10),
+        user_id: userId || null,
+        proveedor: ajusteCantForm.proveedor_nombre,
+        proveedor_id: ajusteCantForm.proveedor_id,
+        pendiente_nc: true,
+        costo_unitario: ajusteCantModal.costo || null,
+        stock_anterior: ajusteCantModal.cantidad,
+        stock_posterior: nueva,
+      })
+
+      // Registrar en CC del proveedor
       await supabase.from('cuenta_corriente_proveedores').insert({
         proveedor_id: ajusteCantForm.proveedor_id,
         proveedor_nombre: ajusteCantForm.proveedor_nombre,
