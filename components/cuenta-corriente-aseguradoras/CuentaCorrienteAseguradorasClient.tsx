@@ -85,13 +85,23 @@ export default function CuentaCorrienteAseguradorasClient() {
   useEffect(() => {
     if (tab !== 'pendientes') return
     setLoadingPend(true)
-    supabase.from('comprobantes')
-      .select('id,fecha,nro_cbte_afip,aseguradora_nombre,aseguradora_id,cliente_nombre,total,neto,iva')
-      .not('aseguradora_id', 'is', null)
-      .not('es_negro', 'is', true)
-      .neq('categoria', 'nc')
-      .order('fecha', { ascending: false })
-      .then(({ data }) => {
+    // Traer solo facturas con saldo pendiente en CC (debe > haber por comprobante)
+    supabase.from('cuenta_corriente_aseguradoras')
+      .select('comprobante_id, debe, haber')
+      .not('comprobante_id', 'is', null)
+      .then(async ({ data: movs }) => {
+        const saldoPorComp = new Map<string, number>()
+        for (const m of (movs ?? []) as any[]) {
+          saldoPorComp.set(m.comprobante_id, (saldoPorComp.get(m.comprobante_id) || 0) + (+m.debe) - (+m.haber))
+        }
+        const ids = [...saldoPorComp.entries()].filter(([, s]) => s > 0.01).map(([id]) => id)
+        if (!ids.length) { setFactPendientes([]); setLoadingPend(false); return }
+        const { data } = await supabase.from('comprobantes')
+          .select('id,fecha,nro_cbte_afip,aseguradora_nombre,aseguradora_id,cliente_nombre,total,neto,iva')
+          .in('id', ids)
+          .not('es_negro', 'is', true)
+          .neq('categoria', 'nc')
+          .order('fecha', { ascending: false })
         setFactPendientes(data ?? [])
         setLoadingPend(false)
       })
@@ -253,10 +263,22 @@ export default function CuentaCorrienteAseguradorasClient() {
     const desc = esACuentaFinal
       ? `Pago a cuenta — OP ${nroOp||ref||'s/n'}${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
       : `Cobro OP ${nroOp||ref||'s/n'} — ${factsSel.length} fact.${cuentaLabel}${comentario ? ` · ${comentario}` : ''}`
-    await supabase.from('cuenta_corriente_aseguradoras').insert({
-      aseguradora_id: asegId, fecha: fechaCobro, tipo:'cobro',
-      descripcion: desc, debe:0, haber:montoBase,
-    })
+    // Insertar haber por cada factura cancelada con su comprobante_id para que el saldo por comprobante se cancele correctamente
+    if (!esACuentaFinal && factsSel.length > 0) {
+      await supabase.from('cuenta_corriente_aseguradoras').insert(
+        factsSel.map(f => ({
+          aseguradora_id: asegId, fecha: fechaCobro, tipo: 'cobro',
+          descripcion: desc, debe: 0, haber: f.total,
+          comprobante_id: f.id,
+        }))
+      )
+    } else {
+      // Pago a cuenta — sin comprobante
+      await supabase.from('cuenta_corriente_aseguradoras').insert({
+        aseguradora_id: asegId, fecha: fechaCobro, tipo: 'cobro',
+        descripcion: desc, debe: 0, haber: montoBase,
+      })
+    }
     const retsConMonto = retenciones.filter(r=>toNum(r.monto)>0)
     if (retsConMonto.length) {
       await supabase.from('retenciones_sufridas').insert(retsConMonto.map(r=>({
