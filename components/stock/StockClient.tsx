@@ -905,7 +905,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const etiqueta = tieneCompra
                             ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
                             : tieneVenta
-                              ? `${(m.venta as any)?.categoria==='nc'?'NC':(m.venta as any)?.categoria==='nd'?'ND':'FA'}-0006-${String((m.venta as any)?.nro_cbte_afip||(m.venta as any)?.numero||'').padStart(8,'0')}${(m.venta as any)?.cliente_nombre?' · '+(m.venta as any)?.cliente_nombre:(m.venta as any)?.aseguradora_nombre?' · '+(m.venta as any)?.aseguradora_nombre:''}`
+                              ? `${(m.venta as any)?.categoria==='nc'?'NC':(m.venta as any)?.categoria==='nd'?'ND':'FA'}-0006-${String((m.venta as any)?.nro_cbte_afip ?? (m.venta as any)?.numero ?? '').padStart(8,'0')}${(m.venta as any)?.cliente_nombre?' · '+(m.venta as any)?.cliente_nombre:(m.venta as any)?.aseguradora_nombre?' · '+(m.venta as any)?.aseguradora_nombre:''}`
                               : m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}
