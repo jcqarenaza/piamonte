@@ -37,8 +37,7 @@ export function Modal({ open, onClose, title, children, size = 'md', header, foo
   if (!open) return null
   const maxW = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' }[size]
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
-      onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40">
       <div className={`bg-white w-full ${maxW} rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col`}
         style={{ maxHeight: '92vh' }}>
         {/* Encabezado fijo */}
