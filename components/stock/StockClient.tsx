@@ -178,14 +178,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     
     if (!stockP?.length) { setAmbiguos([]); setLoadingAmbiguos(false); return }
 
-    // Para cada uno buscar alternativas en el catálogo con mismos 6 dígitos y terminando en P
+    // Para cada uno buscar alternativas en el catálogo con mismos 9 caracteres base y terminando en P
     const result: AmbiguoItem[] = []
     for (const s of stockP) {
-      const base6 = s.codigo.slice(0, 6)
+      const base9 = s.codigo.slice(0, 9)
       const { data: opciones } = await supabase
         .from('articulos_maestro')
         .select('codigo_referencia')
-        .ilike('codigo_referencia', base6 + '%')
+        .ilike('codigo_referencia', base9 + '%')
         .like('codigo_referencia', '%P')
       if (opciones && opciones.length > 1) {
         result.push({
