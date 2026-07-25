@@ -336,8 +336,8 @@ export default function ComprasClient() {
       descuento_pct: descuentoPct||0, descuento_monto: descuentoMonto||0,
       flete: flete||0, ret_iva: retIva||0, ret_ganancias: retGanancias||0, ret_iibb: retIibb||0,
       ajuste_redondeo: ajuste||0,
-      cae: form.tipo==='factura' ? (form.cae||null) : null,
-      cae_vencimiento: form.tipo==='factura' ? (form.cae_vencimiento||null) : null,
+      cae: ['factura','nc'].includes(form.tipo) ? (form.cae||null) : null,
+      cae_vencimiento: ['factura','nc'].includes(form.tipo) ? (form.cae_vencimiento||null) : null,
       remito_id: tieneRemitoVinculado ? form.remito_vinculado_id : null,
       estado: 'pendiente', afecta_stock: tieneRemitoVinculado ? false : form.afecta_stock,
       notas: form.notas||null,
@@ -1739,7 +1739,7 @@ export default function ComprasClient() {
           )}
 
           {/* CAE — al final, una vez cargados todos los ítems e importes */}
-          {form.tipo === 'factura' && (
+          {['factura','nc'].includes(form.tipo) && (
             <div className="grid grid-cols-2 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
               <Field label="CAE">
                 <Input value={form.cae} onChange={e=>setForm(p=>({...p,cae:e.target.value}))} placeholder="N° de CAE (opcional)"/>
