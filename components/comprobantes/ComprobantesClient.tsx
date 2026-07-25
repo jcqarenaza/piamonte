@@ -1215,128 +1215,200 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.addPage()
       let y = 8
 
-      // COPIA
-      tt(doc, 0, y+3, copia, {style:'bold', size:12, align:'center', w:W})
-      y += 9
+      // ── COPIA (ORIGINAL / DUPLICADO / TRIPLICADO) ──
+      tt(doc, 0, y+4, copia, {style:'bold', size:14, align:'center', w:W})
+      y += 10
 
-      // ENCABEZADO — rect con 2 divisores verticales
-      const bh = 34
-      doc.setDrawColor(20,20,20); doc.setLineWidth(0.4)
+      // ── ENCABEZADO: rect exterior + divisor vertical central + divisor derecho ──
+      // Zona izquierda: pad→98 | Zona central (letra): 98→120 | Zona derecha: 120→203
+      const bh = 38
+      doc.setDrawColor(0,0,0); doc.setLineWidth(0.5)
       doc.rect(pad, y, rw, bh)
       doc.line(98, y, 98, y+bh)
       doc.line(120, y, 120, y+bh)
 
-      // Emisor (pad→98)
-      tt(doc, pad+2, y+5,  'KNUTH VERONICA ALEJANDRA', {style:'bold', size:9})
-      tt(doc, pad+2, y+11, 'Razón Social: KNUTH VERONICA ALEJANDRA', {size:7})
-      tt(doc, pad+2, y+16, 'Domicilio Comercial: Calle 102 366 - General Pico, La Pampa', {size:7})
-      tt(doc, pad+2, y+21, 'Condición frente al IVA:  IVA Responsable Inscripto', {size:7})
+      // Emisor — zona izquierda
+      tt(doc, pad+2, y+6,  'KNUTH VERONICA ALEJANDRA', {style:'bold', size:10})
+      tt(doc, pad+2, y+12, 'Razón Social: ', {style:'bold', size:7})
+      tt(doc, pad+22, y+12, 'KNUTH VERONICA ALEJANDRA', {size:7})
+      tt(doc, pad+2, y+18, 'Domicilio Comercial: ', {style:'bold', size:7})
+      tt(doc, pad+35, y+18, 'Calle 102 366 - General Pico, La Pampa', {size:7})
+      tt(doc, pad+2, y+24, 'Condición frente al IVA: ', {style:'bold', size:7})
+      tt(doc, pad+42, y+24, 'IVA Responsable Inscripto', {size:7})
 
-      // Recuadro A (98→120)
-      tt(doc, 98, y+15, c.tipo||'A', {style:'bold', size:20, align:'center', w:22})
-      tt(doc, 98, y+28, codTipo, {size:6, color:[60,60,60], align:'center', w:22})
+      // Centro — letra tipo + código
+      tt(doc, 98, y+16, c.tipo||'A', {style:'bold', size:22, align:'center', w:22})
+      tt(doc, 98, y+30, codTipo, {size:6.5, align:'center', w:22})
 
-      // Zona derecha (120→203)
-      tt(doc, 122, y+5,  tipoLabel, {style:'bold', size:14})
-      tt(doc, 122, y+13, `Punto de Venta:  0006`, {style:'bold', size:7})
-      tt(doc, 163, y+13, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7})
-      tt(doc, 122, y+19, `Fecha de Emisión:  ${fechaFmt}`, {size:7})
-      tt(doc, 122, y+24, `CUIT:  27-24265717-4`, {size:7})
-      tt(doc, 122, y+29, `Ingresos Brutos:  1919987`, {size:7})
-      tt(doc, 122, y+33, `Fecha de Inicio de Actividades:  01/09/2007`, {size:7})
+      // Zona derecha
+      tt(doc, 122, y+7,  tipoLabel, {style:'bold', size:15})
+      tt(doc, 122, y+15, 'Punto de Venta:  0006', {style:'bold', size:7.5})
+      tt(doc, 161, y+15, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7.5})
+      tt(doc, 122, y+21, `Fecha de Emisión:  ${fechaFmt}`, {size:7.5})
+      tt(doc, 122, y+27, 'CUIT:  27242657174', {size:7.5})
+      tt(doc, 122, y+32, 'Ingresos Brutos:  1919987', {size:7.5})
+      tt(doc, 122, y+37, 'Fecha de Inicio de Actividades:  01/09/2007', {size:7.5})
       y += bh
 
-      // PERIODO
-      doc.rect(pad, y, rw, 7)
-      tt(doc, pad+2, y+4.5, `Período Facturado Desde:   ${fechaFmt}     Hasta:  ${fechaFmt}`, {style:'bold', size:7.5})
-      tt(doc, 118, y+4.5, `Fecha de Vto. para el pago:   ${fechaFmt}`, {style:'bold', size:7.5})
-      y += 7
+      // ── PERÍODO ──
+      doc.setLineWidth(0.4)
+      doc.rect(pad, y, rw, 8)
+      tt(doc, pad+2, y+5.5, 'Período Facturado Desde: ', {style:'bold', size:8})
+      tt(doc, pad+44, y+5.5, fechaFmt, {size:8})
+      tt(doc, pad+60, y+5.5, '  Hasta:', {style:'bold', size:8})
+      tt(doc, pad+74, y+5.5, fechaFmt, {size:8})
+      tt(doc, 122, y+5.5, 'Fecha de Vto. para el pago: ', {style:'bold', size:8})
+      tt(doc, 163, y+5.5, fechaFmt, {size:8})
+      y += 8
 
-      // RECEPTOR
-      doc.rect(pad, y, rw, 16)
+      // ── RECEPTOR — 3 filas ──
+      const recH = 24
+      doc.rect(pad, y, rw, recH)
+      // línea separadora fila 1/2
       doc.line(pad, y+8, pad+rw, y+8)
-      tt(doc, pad+2,  y+5, 'CUIT:', {style:'bold', size:7.5})
-      tt(doc, pad+12, y+5, cuitAseg.replace(/-/g,''), {size:7.5})
-      tt(doc, pad+50, y+5, 'Apellido y Nombre / Razón Social:', {style:'bold', size:7.5})
-      tt(doc, pad+105, y+5, razonSocial.slice(0,60), {size:7})
-      tt(doc, pad+2,  y+12, 'Condición frente al IVA:', {style:'bold', size:7.5})
-      tt(doc, pad+40, y+12, 'IVA Responsable Inscripto', {size:7.5})
-      tt(doc, pad+74, y+12, 'Domicilio Comercial:', {style:'bold', size:7.5})
-      tt(doc, pad+104, y+12, (dirAseg||'').slice(0,55), {size:7})
-      tt(doc, pad+2,  y+15.5, 'Condición de venta:', {style:'bold', size:7.5})
-      tt(doc, pad+34, y+15.5, 'Cuenta Corriente', {size:7.5})
-      y += 18
+      // línea separadora fila 2/3
+      doc.line(pad, y+16, pad+rw, y+16)
 
-      // TABLA
-      const cw = [15,55,15,17,24,12,20,14,24]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
-      doc.setFillColor(215,215,215); doc.rect(pad, y, rw, 7, 'F')
-      doc.setDrawColor(80,80,80); doc.setLineWidth(0.2); doc.rect(pad, y, rw, 7)
+      // Fila 1: CUIT | Razón Social
+      tt(doc, pad+2,  y+5.5, 'CUIT:', {style:'bold', size:7.5})
+      tt(doc, pad+13, y+5.5, cuitAseg.replace(/-/g,''), {size:7.5})
+      tt(doc, pad+52, y+5.5, 'Apellido y Nombre / Razón Social:', {style:'bold', size:7.5})
+      tt(doc, pad+108, y+5.5, razonSocial.slice(0,55), {size:7})
+
+      // Fila 2: Condición IVA | Domicilio
+      tt(doc, pad+2,  y+13, 'Condición frente al IVA:', {style:'bold', size:7.5})
+      tt(doc, pad+42, y+13, 'IVA Responsable Inscripto', {size:7.5})
+      tt(doc, pad+90, y+13, 'Domicilio Comercial:', {style:'bold', size:7.5})
+      tt(doc, pad+122, y+13, (dirAseg||'').slice(0,45), {size:7})
+
+      // Fila 3: Condición de venta
+      tt(doc, pad+2,  y+21, 'Condición de venta:', {style:'bold', size:7.5})
+      tt(doc, pad+36, y+21, 'Cuenta Corriente', {size:7.5})
+      y += recH + 4
+
+      // ── TABLA DE ÍTEMS ──
+      // Anchos columnas: Código|Producto/Servicio|Cantidad|U.medida|Precio Unit.|%Bonif|Subtotal|Alicuota IVA|Subtotal c/IVA
+      const cw = [16, 54, 14, 17, 25, 13, 22, 14, 21]
+      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota
+IVA','Subtotal c/IVA']
+      doc.setFillColor(220,220,220)
+      doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
+      doc.rect(pad, y, rw, 8, 'FD')
       let cx = pad
       heads.forEach((h,i)=>{
-        if (i>0) doc.line(cx, y, cx, y+7)
-        tt(doc, cx+1, y+4.5, h, {style:'bold', size:6})
+        if (i>0) { doc.setLineWidth(0.2); doc.line(cx, y, cx, y+8) }
+        const lines = h.split('\n')
+        if (lines.length>1) {
+          tt(doc, cx+1, y+3.5, lines[0], {style:'bold', size:6})
+          tt(doc, cx+1, y+6.5, lines[1], {style:'bold', size:6})
+        } else {
+          tt(doc, cx+1, y+5, h, {style:'bold', size:6})
+        }
         cx += cw[i]
       })
-      y += 7
+      y += 8
 
       c.items.forEach((it:any)=>{
-        doc.setFillColor(255,255,255); doc.rect(pad, y, rw, 10, 'F')
-        doc.setDrawColor(80,80,80); doc.rect(pad, y, rw, 10)
+        const desc = it.d||''
+        const lines = doc.splitTextToSize(desc, cw[1]-2)
+        const rowH = Math.max(10, lines.length * 4 + 4)
+        doc.setFillColor(255,255,255)
+        doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
+        doc.rect(pad, y, rw, rowH, 'FD')
         const netoUnit = Math.round((it.p||0)/1.21*100)/100
+        const subtotalCiva = (it.c||1)*(it.p||0)
         const vals = [
-          (it as any).codigo||'', (it.d||'').slice(0,30),
-          `${it.c||1},00`, 'unidades',
-          fmtNum(netoUnit), '0,00', fmtNum(netoUnit), '21%',
-          fmtNum((it.c||1)*(it.p||0))
+          (it as any).codigo||'',
+          desc,
+          `${Number(it.c||1).toFixed(2).replace('.',',')}`,
+          'unidades',
+          fmtNum(netoUnit),
+          '0,00',
+          fmtNum(netoUnit * (it.c||1)),
+          '21%',
+          fmtNum(subtotalCiva)
         ]
         cx = pad
-        vals.forEach((v,i)=>{ if(i>0) doc.line(cx,y,cx,y+10); tt(doc,cx+1,y+6,v,{size:7}); cx+=cw[i] })
-        y += 10
+        vals.forEach((v,i)=>{
+          if (i>0) { doc.setLineWidth(0.2); doc.line(cx, y, cx, y+rowH) }
+          if (i===1) {
+            // descripción puede ser multilinea
+            const dlines = doc.splitTextToSize(v, cw[i]-2)
+            dlines.forEach((dl:string, di:number) => {
+              tt(doc, cx+1, y+5+di*4, dl, {size:7})
+            })
+          } else {
+            tt(doc, cx+1, y+6, v, {size:7})
+          }
+          cx += cw[i]
+        })
+        y += rowH
       })
       y += 4
 
-      // TOTALES — rect sin línea interna
-      const totY = Math.max(y+8, 198)
-      const totW = 95
+      // ── TOTALES ──
+      // Estructura del PDF de Arca:
+      // - Arriba izquierda: "Importe Otros Tributos: $   0,00"
+      // - Bloque derecho: todos los importes alineados a la derecha
+      const totY = Math.max(y + 4, 195)
+      const totW = 100
       const totX = pad + rw - totW
-      doc.setDrawColor(20,20,20); doc.setLineWidth(0.3)
-      doc.rect(totX, totY, totW, 42)
+
+      // Recuadro exterior totales
+      doc.setDrawColor(0,0,0); doc.setLineWidth(0.4)
+      doc.rect(totX, totY, totW, 46)
+
+      // "Importe Otros Tributos: $   0,00" — arriba izquierda dentro del recuadro
+      tt(doc, totX+4, totY+5, 'Importe Otros Tributos: $', {size:7})
+      tt(doc, totX+52, totY+5, '0,00', {size:7})
+
+      // Línea separadora horizontal
+      doc.setLineWidth(0.2)
+      doc.line(totX, totY+8, totX+totW, totY+8)
+
+      // Bloque de importes — alineados a la derecha
       const totRows: [string,string,boolean][] = [
-        ['Importe Otros Tributos: $','0,00',false],
-        ['Importe Neto Gravado: $',fmtNum(c.neto||0),true],
-        ['IVA 27%: $','0,00',false],
-        ['IVA 21%: $',fmtNum(c.iva||0),false],
-        ['IVA 10.5%: $','0,00',false],
-        ['IVA 5%: $','0,00',false],
-        ['IVA 2.5%: $','0,00',false],
-        ['IVA 0%: $','0,00',false],
-        ['Importe Otros Tributos: $','0,00',false],
-        ['Importe Total: $',fmtNum(c.total||0),true],
+        ['Importe Neto Gravado: $', fmtNum(c.neto||0), true],
+        ['IVA 27%: $', '0,00', false],
+        ['IVA 21%: $', fmtNum(c.iva||0), false],
+        ['IVA 10.5%: $', '0,00', false],
+        ['IVA 5%: $', '0,00', false],
+        ['IVA 2.5%: $', '0,00', false],
+        ['IVA 0%: $', '0,00', false],
+        ['Importe Otros Tributos: $', '0,00', false],
+        ['Importe Total: $', fmtNum(c.total||0), true],
       ]
-      let ry = totY + 3
+      let ry = totY + 12
       totRows.forEach(([lbl,val,bold])=>{
-        tt(doc, totX+2, ry, lbl, {style:bold?'bold':'normal', size:bold?8:7})
-        tt(doc, totX+totW-2, ry, val, {style:bold?'bold':'normal', size:bold?8:7, align:'right', w:0})
-        ry += 4
+        tt(doc, totX+4, ry, lbl, {style:bold?'bold':'normal', size:bold?7.5:7})
+        tt(doc, totX+totW-2, ry, val, {style:bold?'bold':'normal', size:bold?7.5:7, align:'right', w:0})
+        ry += 3.8
       })
 
-      // PIE
-      const pieY = 254
-      tt(doc, W/2, pieY, `"PARABRISAS  EL PIAMONTE "`, {style:'italic', size:9, align:'center', w:0})
-      doc.setDrawColor(150,150,150); doc.setLineWidth(0.2)
-      doc.line(pad, pieY+7, W-pad, pieY+7)
+      // ── PIE ──
+      const pieY = 255
+      tt(doc, W/2, pieY, '"PARABRISAS  EL PIAMONTE "', {style:'italic', size:9, align:'center', w:0})
 
-      tt(doc, pad+20, pieY+12, 'ARCA', {style:'bold', size:10, color:[0,80,160]})
-      tt(doc, pad+20, pieY+17, 'AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', {size:5, color:[50,50,50]})
-      tt(doc, W/2, pieY+14, 'Pág. 1/1', {size:8, align:'center', w:0})
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.2)
+      doc.line(pad, pieY+4, W-pad, pieY+4)
+
+      // Logo ARCA texto — izquierda
+      tt(doc, pad+2, pieY+10, 'ARCA', {style:'bold', size:11, color:[0,80,160]})
+      tt(doc, pad+2, pieY+15, 'AGENCIA DE RECAUDACIÓN', {size:5, color:[60,60,60]})
+      tt(doc, pad+2, pieY+18.5, 'Y CONTROL ADUANERO', {size:5, color:[60,60,60]})
+
+      // Pág. 1/1 — centro
+      tt(doc, W/2, pieY+11, 'Pág. 1/1', {size:8, align:'center', w:0})
+
+      // CAE — derecha
       if (c.cae_emitido) {
-        tt(doc, W-pad-80, pieY+11, `CAE N°:  ${c.cae_emitido}`, {style:'bold', size:8})
+        tt(doc, W-pad, pieY+9, `CAE N°:  ${c.cae_emitido}`, {style:'bold', size:8, align:'right', w:0})
         const caeVto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
-        tt(doc, W-pad-80, pieY+17, `Fecha de Vto. de CAE:  ${caeVto}`, {style:'bold', size:8})
+        tt(doc, W-pad, pieY+15, `Fecha de Vto. de CAE:  ${caeVto}`, {style:'bold', size:8, align:'right', w:0})
       }
-      tt(doc, pad+20, pieY+23, 'Comprobante Autorizado', {style:'bold', size:7.5})
-      tt(doc, pad, pieY+29, 'Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', {style:'italic', size:6, color:[80,80,80]})
+
+      tt(doc, pad+2, pieY+23, 'Comprobante Autorizado', {style:'bold', size:7.5})
+      tt(doc, pad+2, pieY+28, 'Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', {style:'italic', size:6, color:[80,80,80]})
     }
 
     const doc = new jsPDF({format:'a4', unit:'mm'})
