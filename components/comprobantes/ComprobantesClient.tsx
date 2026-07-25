@@ -1238,7 +1238,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
       // Zona derecha (120→203)
       tt(doc, 122, y+5,  tipoLabel, {style:'bold', size:14})
-      tt(doc, 122, y+13, `Punto de Venta:  ${String(c.punto_venta||'0006').padStart(4,'0')}`, {style:'bold', size:7})
+      tt(doc, 122, y+13, `Punto de Venta:  0006`, {style:'bold', size:7})
       tt(doc, 163, y+13, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7})
       tt(doc, 122, y+19, `Fecha de Emisión:  ${fechaFmt}`, {size:7})
       tt(doc, 122, y+24, `CUIT:  27-24265717-4`, {size:7})
@@ -1363,7 +1363,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
     const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
     const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); const pv = String(c.punto_venta||'0006').padStart(4,'0'); a.download=`${pv}-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`0006-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
   // Los comprobantes NO se pueden borrar. Una factura genera NC, una NC genera ND.
