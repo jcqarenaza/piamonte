@@ -1352,6 +1352,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if (i > 0) doc.addPage()
       doc.addImage(imgData, 'JPEG', 0, 0, 210, 297)
     }
+    return doc.output('blob')
   }
 
 
