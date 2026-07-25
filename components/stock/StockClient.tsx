@@ -899,12 +899,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const tieneCompra = !!m.comprobante_compra_id
                           const tieneVenta = !!m.comprobante_venta_id
                           const esPendienteNC = !!m.pendiente_nc
-                          const prefijoCompra = m.compra?.tipo === 'nc' ? 'NC' : m.compra?.tipo === 'nd' ? 'ND' : 'FC'
-                          const letraCompra = m.compra?.letra ? m.compra.letra : 'A'
-                          const pvCompra = m.compra?.punto_venta ? String(m.compra.punto_venta).padStart(4,'0') : '0038'
-                          const etiqueta = tieneCompra
-                            ? `${prefijoCompra} ${letraCompra}${pvCompra}-${String(m.compra?.numero||m.compra_numero||'').padStart(8,'0')} · ${m.compra?.proveedor_nombre||m.compra_proveedor||'Compra'}`
-                            : m.descripcion || m.nota || m.motivo || '—'
+                          const etiqueta = m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}
                             onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
