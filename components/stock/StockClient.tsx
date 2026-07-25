@@ -115,7 +115,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setMovLoading(true)
     let q = supabase.from('stock_movimientos')
       .select(`id, tipo, cantidad, costo_unitario, precio_venta_unitario, fecha, descripcion, created_at,
-        stock:stock_id(descripcion, codigo),
+        stock:stock_id(desc_stock:descripcion, codigo),
         compra:comprobante_compra_id(numero, tipo, letra, punto_venta, proveedor_nombre),
         venta:comprobante_venta_id(numero, tipo, categoria, nro_cbte_afip, cliente_nombre, aseguradora_nombre)`)
       .order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(200)
