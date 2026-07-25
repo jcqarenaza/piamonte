@@ -62,6 +62,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [tab, setTab]           = useState<'dashboard'|Tipo>('dashboard')
   const [filtroEstado, setFiltroEstado] = useState<'pendientes'|'todos'|Estado>('pendientes')
   const [filtroRango, setFiltroRango]   = useState<string|null>(null)
+  const [busqueda, setBusqueda]         = useState('')
   const [expandido, setExpandido] = useState<string|null>(null)
   const [open, setOpen]         = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
@@ -182,6 +183,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
 
   // Listado de cada tab (terceros / propios)
   function filtradosTipo(tipo:Tipo) {
+    const q = busqueda.toLowerCase().trim()
     return cheques.filter(c=>{
       if (c.tipo!==tipo) return false
       if (filtroEstado==='pendientes') {
@@ -189,12 +191,21 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       } else if (filtroEstado!=='todos') {
         if (c.estado!==filtroEstado) return false
       }
-      // Filtro de rango (viene del dashboard)
       if (filtroRango) {
         const r = RANGOS.find(r=>r.key===filtroRango)
         if (r && !r.fn(diffDays(hoy,c.fecha_cobro))) return false
       }
+      if (q) {
+        const match = (c.numero||'').toLowerCase().includes(q) ||
+          (c.contraparte||'').toLowerCase().includes(q) ||
+          (c.banco||'').toLowerCase().includes(q)
+        if (!match) return false
+      }
       return true
+    }).sort((a,b)=>{
+      // Propios: orden numérico descendente; terceros: por fecha cobro
+      if (tipo==='propio') return (+b.numero||0)-(+a.numero||0)
+      return a.fecha_cobro.localeCompare(b.fecha_cobro)
     })
   }
 
@@ -358,12 +369,14 @@ export default function ChequesClient({ userId }: { userId?: string }) {
               </button>
             ))}
           </div>
+          <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+            placeholder="Buscar por N°, contraparte o banco…"
+            className="w-full border border-p-line rounded-xl px-4 py-2 text-sm mb-3 focus:outline-none focus:border-p-green"/>
           {loading?<p className="text-sm text-center py-8 text-p-gray">Cargando…</p>:
-           filtradosTipo('tercero').filter(c=>filtroEstado==='pendientes'?['en_cartera','depositado','endosado'].includes(c.estado):filtroEstado==='todos'?true:c.estado===filtroEstado).length===0
+           filtradosTipo('tercero').length===0
             ?<Empty msg="Sin cheques de terceros para este filtro."/>
             :<div className="flex flex-col gap-2">
-              {filtradosTipo('tercero').filter(c=>filtroEstado==='pendientes'?['en_cartera','depositado','endosado'].includes(c.estado):filtroEstado==='todos'?true:c.estado===filtroEstado)
-                .map(c=><ChequeRow key={c.id} c={c}/>)}
+              {filtradosTipo('tercero').map(c=><ChequeRow key={c.id} c={c}/>)}
             </div>}
         </div>
       )}
@@ -388,12 +401,14 @@ export default function ChequesClient({ userId }: { userId?: string }) {
               </button>
             ))}
           </div>
+          <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+            placeholder="Buscar por N°, contraparte o banco…"
+            className="w-full border border-p-line rounded-xl px-4 py-2 text-sm mb-3 focus:outline-none focus:border-p-green"/>
           {loading?<p className="text-sm text-center py-8 text-p-gray">Cargando…</p>:
-           filtradosTipo('propio').filter(c=>filtroEstado==='pendientes'?c.estado==='emitido':filtroEstado==='todos'?true:c.estado===filtroEstado).length===0
+           filtradosTipo('propio').length===0
             ?<Empty msg="Sin cheques propios para este filtro."/>
             :<div className="flex flex-col gap-2">
-              {filtradosTipo('propio').filter(c=>filtroEstado==='pendientes'?c.estado==='emitido':filtroEstado==='todos'?true:c.estado===filtroEstado)
-                .map(c=><ChequeRow key={c.id} c={c}/>)}
+              {filtradosTipo('propio').map(c=><ChequeRow key={c.id} c={c}/>)}
             </div>}
         </div>
       )}

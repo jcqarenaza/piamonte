@@ -520,7 +520,7 @@ export default function CuentaCorrienteProveedoresClient() {
       </Modal>
 
       {/* Modal Orden de Pago: elegir varias facturas + NC para un solo pago */}
-      <Modal open={opOpen} onClose={()=>setOpOpen(false)} title={`Nueva Orden de Pago — ${sel?.proveedor_nombre}`}>
+      <Modal open={opOpen} onClose={()=>setOpOpen(false)} title={`Nueva Orden de Pago — ${sel?.proveedor_nombre}`} size="lg">
         <div className="flex flex-col gap-3">
           {pendientes.length === 0 ? (
             <Empty msg="Este proveedor no tiene facturas ni NC pendientes de aplicar." />
@@ -598,22 +598,22 @@ export default function CuentaCorrienteProveedoresClient() {
                       style={{...btnSm,fontSize:11}}>+ Agregar</button>
                   </div>
                   {opPagos.map((pago,pi)=>(
-                    <div key={pi} className="flex items-center gap-2">
-                      <select value={pago.tipo} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],tipo:e.target.value};setOpPagos(v)}}
-                        className="border border-p-line rounded-lg px-2 py-1.5 text-sm bg-white flex-1 focus:outline-none focus:border-p-green">
-                        <option value="Transferencia">Transferencia</option>
-                        <option value="Efectivo">Efectivo</option>
-                        <option value="Cheque nuevo">🖊 Cheque nuevo</option>
-                      </select>
-                      <input value={pago.monto} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],monto:e.target.value};setOpPagos(v)}}
-                        placeholder="Monto $" className="border border-p-line rounded-lg px-2 py-1.5 text-sm w-32 font-mono focus:outline-none focus:border-p-green"/>
-                      {opPagos.length > 1 && (
-                        <button onClick={()=>setOpPagos(p=>p.filter((_,i)=>i!==pi))} className="text-red-400 hover:text-red-600 text-lg font-bold px-1">✕</button>
-                      )}
+                    <div key={pi} className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <select value={pago.tipo} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],tipo:e.target.value};setOpPagos(v)}}
+                          className="border border-p-line rounded-lg px-2 py-1.5 text-sm bg-white flex-1 focus:outline-none focus:border-p-green">
+                          <option value="Transferencia">Transferencia</option>
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Cheque nuevo">🖊 Cheque nuevo</option>
+                        </select>
+                        <input value={pago.monto} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],monto:e.target.value};setOpPagos(v)}}
+                          placeholder="Monto $" className="border border-p-line rounded-lg px-2 py-1.5 text-sm w-32 font-mono focus:outline-none focus:border-p-green"/>
+                        {opPagos.length > 1 && (
+                          <button onClick={()=>setOpPagos(p=>p.filter((_,i)=>i!==pi))} className="text-red-400 hover:text-red-600 text-lg font-bold px-1">✕</button>
+                        )}
+                      </div>
                       {pago.tipo==='Cheque nuevo' && (
-                        <div className="w-full mt-1">
-                          <ChequeFields value={pago.chequeNuevo} onChange={val=>{const v=[...opPagos];v[pi]={...v[pi],chequeNuevo:val};setOpPagos(v)}}/>
-                        </div>
+                        <ChequeFields value={pago.chequeNuevo} onChange={val=>{const v=[...opPagos];v[pi]={...v[pi],chequeNuevo:val};setOpPagos(v)}}/>
                       )}
                     </div>
                   ))}
