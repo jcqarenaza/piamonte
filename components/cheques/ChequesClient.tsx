@@ -76,16 +76,19 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [cuentasBanco, setCuentasBanco]   = useState<{id:string;alias:string|null;banco:string;tipo:string}[]>([])
   const [impactoCuentaId, setImpactoCuentaId] = useState('')
   const [impactoFecha, setImpactoFecha]   = useState(todayStr())
+  const [proveedores, setProveedores] = useState<{id:string;nombre:string}[]>([])
   const supabase = createClient()
 
   async function load() {
     setLoading(true)
-    const [{ data: chData }, { data: bData }] = await Promise.all([
+    const [{ data: chData }, { data: bData }, { data: provData }] = await Promise.all([
       supabase.from('cheques').select('*').order('fecha_cobro').order('created_at',{ascending:false}),
       supabase.from('bancos_cheque').select('nombre').eq('activo',true).order('nombre'),
+      supabase.from('proveedores_compra').select('id,nombre').eq('activo',true).order('nombre'),
     ])
     setCheques(chData??[])
     if (bData && bData.length > 0) setBancos(bData.map(b=>b.nombre))
+    setProveedores(provData??[])
     setLoading(false)
   }
   useEffect(()=>{ load() },[])
@@ -438,7 +441,24 @@ export default function ChequesClient({ userId }: { userId?: string }) {
           </div>
           <Field label="Monto *"><Input value={form.monto} onChange={e=>setForm(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
           <Field label={form.tipo==='tercero'?'Recibido de':'Emitido a'}>
-            <Input value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Nombre del cliente / proveedor…"/>
+            {form.tipo === 'propio' ? (
+              <select
+                value={proveedores.some(p=>p.nombre===form.contraparte) ? form.contraparte : (form.contraparte ? '__otro__' : '')}
+                onChange={e=>{
+                  if (e.target.value === '__otro__') setForm(p=>({...p,contraparte:''}))
+                  else setForm(p=>({...p,contraparte:e.target.value}))
+                }}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                <option value="">Seleccionar proveedor…</option>
+                {proveedores.map(p=><option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                <option value="__otro__">Otro…</option>
+              </select>
+            ) : (
+              <Input value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Nombre del cliente…"/>
+            )}
+            {form.tipo === 'propio' && !proveedores.some(p=>p.nombre===form.contraparte) && (
+              <Input style={{marginTop:6}} value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Escribí el nombre…"/>
+            )}
           </Field>
           <Field label="Estado">
             <select value={form.estado} onChange={e=>setForm(p=>({...p,estado:e.target.value as Estado}))}
