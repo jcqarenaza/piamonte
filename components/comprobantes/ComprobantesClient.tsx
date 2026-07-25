@@ -1200,6 +1200,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const nroAfip = String(c.nro_cbte_afip??c.numero??0).padStart(8,'0')
     const fechaFmt = c.fecha.split('-').reverse().join('/')
 
+    const fmtNum = (n:number) => n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
+
     const tt = (doc:any, x:number, y:number, txt:string, opts:{style?:string;size?:number;color?:[number,number,number];w?:number;align?:string}={}) => {
       doc.setFont('helvetica', opts.style||'normal')
       doc.setFontSize(opts.size||7)
@@ -1236,7 +1238,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
       // Zona derecha (120→203)
       tt(doc, 122, y+5,  tipoLabel, {style:'bold', size:14})
-      tt(doc, 122, y+13, `Punto de Venta:  0006`, {style:'bold', size:7})
+      tt(doc, 122, y+13, `Punto de Venta:  ${String(c.punto_venta||'0006').padStart(4,'0')}`, {style:'bold', size:7})
       tt(doc, 163, y+13, `Comp. Nro:  ${nroAfip}`, {style:'bold', size:7})
       tt(doc, 122, y+19, `Fecha de Emisión:  ${fechaFmt}`, {size:7})
       tt(doc, 122, y+24, `CUIT:  27-24265717-4`, {size:7})
@@ -1254,13 +1256,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.rect(pad, y, rw, 16)
       doc.line(pad, y+8, pad+rw, y+8)
       tt(doc, pad+2,  y+5, 'CUIT:', {style:'bold', size:7.5})
-      tt(doc, pad+12, y+5, cuitAseg, {size:7.5})
+      tt(doc, pad+12, y+5, cuitAseg.replace(/-/g,''), {size:7.5})
       tt(doc, pad+50, y+5, 'Apellido y Nombre / Razón Social:', {style:'bold', size:7.5})
-      tt(doc, pad+105, y+5, razonSocial.slice(0,55), {size:7})
+      tt(doc, pad+105, y+5, razonSocial.slice(0,60), {size:7})
       tt(doc, pad+2,  y+12, 'Condición frente al IVA:', {style:'bold', size:7.5})
       tt(doc, pad+40, y+12, 'IVA Responsable Inscripto', {size:7.5})
       tt(doc, pad+74, y+12, 'Domicilio Comercial:', {style:'bold', size:7.5})
-      tt(doc, pad+104, y+12, dirAseg.slice(0,55), {size:7})
+      tt(doc, pad+104, y+12, (dirAseg||'').slice(0,55), {size:7})
       tt(doc, pad+2,  y+15.5, 'Condición de venta:', {style:'bold', size:7.5})
       tt(doc, pad+34, y+15.5, 'Cuenta Corriente', {size:7.5})
       y += 18
@@ -1285,8 +1287,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const vals = [
           (it as any).codigo||'', (it.d||'').slice(0,30),
           `${it.c||1},00`, 'unidades',
-          netoUnit.toFixed(2), '0,00', netoUnit.toFixed(2), '21%',
-          ((it.c||1)*(it.p||0)).toFixed(2)
+          fmtNum(netoUnit), '0,00', fmtNum(netoUnit), '21%',
+          fmtNum((it.c||1)*(it.p||0))
         ]
         cx = pad
         vals.forEach((v,i)=>{ if(i>0) doc.line(cx,y,cx,y+10); tt(doc,cx+1,y+6,v,{size:7}); cx+=cw[i] })
@@ -1302,15 +1304,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.rect(totX, totY, totW, 42)
       const totRows: [string,string,boolean][] = [
         ['Importe Otros Tributos: $','0,00',false],
-        ['Importe Neto Gravado: $',(c.neto||0).toFixed(2),true],
+        ['Importe Neto Gravado: $',fmtNum(c.neto||0),true],
         ['IVA 27%: $','0,00',false],
-        ['IVA 21%: $',(c.iva||0).toFixed(2),false],
+        ['IVA 21%: $',fmtNum(c.iva||0),false],
         ['IVA 10.5%: $','0,00',false],
         ['IVA 5%: $','0,00',false],
         ['IVA 2.5%: $','0,00',false],
         ['IVA 0%: $','0,00',false],
         ['Importe Otros Tributos: $','0,00',false],
-        ['Importe Total: $',(c.total||0).toFixed(2),true],
+        ['Importe Total: $',fmtNum(c.total||0),true],
       ]
       let ry = totY + 3
       totRows.forEach(([lbl,val,bold])=>{
@@ -1361,7 +1363,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
     const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
     const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const prefijo = c.categoria==="nc" ? `NC-${c.tipo}` : c.categoria==="nd" ? `ND-${c.tipo}` : `FAC-${c.tipo}`; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`${prefijo}_0006-${nroAfip}.pdf`; a.click(); URL.revokeObjectURL(url)
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); const pv = String(c.punto_venta||'0006').padStart(4,'0'); a.download=`${pv}-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
   // Los comprobantes NO se pueden borrar. Una factura genera NC, una NC genera ND.
