@@ -1354,7 +1354,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
   }
 
-  }
 
   async function compartirWA(c:Comprobante){
     const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
