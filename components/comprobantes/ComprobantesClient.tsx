@@ -1182,7 +1182,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // PDF formato ARCA para Mercantil Andina y Sancor (layout validado)
   async function generarPDFArca(c:Comprobante): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
-    const W=210, pad=7, rw=196
+    const html2canvas = (await import('html2canvas')).default
 
     // Fetch datos aseguradora
     let cuitAseg='', dirAseg='', razonSocial=c.aseguradora_nombre||''
@@ -1195,221 +1195,165 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
     }
 
-    const tipoLabel = c.categoria==='nc' ? 'NOTA DE CREDITO' : 'FACTURA'
+    const tipoLabel = c.categoria==='nc' ? 'NOTA DE CRÉDITO' : 'FACTURA'
     const codTipo = c.tipo==='A' ? 'COD. 01' : c.tipo==='B' ? 'COD. 06' : 'COD. 11'
     const nroAfip = String(c.nro_cbte_afip??c.numero??0).padStart(8,'0')
     const fechaFmt = c.fecha.split('-').reverse().join('/')
-
     const fmtNum = (n:number) => n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
+    const caeVto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
 
-    const tt = (doc:any, x:number, y:number, txt:string, opts:{style?:string;size?:number;color?:[number,number,number];w?:number;align?:string}={}) => {
-      doc.setFont('helvetica', opts.style||'normal')
-      doc.setFontSize(opts.size||7)
-      const col = opts.color||[0,0,0]
-      doc.setTextColor(col[0], col[1], col[2])
-      if (opts.align==='right') doc.text(txt, x+(opts.w||0), y, {align:'right'})
-      else if (opts.align==='center') doc.text(txt, x+(opts.w||0)/2, y, {align:'center'})
-      else doc.text(txt, x, y)
+    const renderPagina = async (copia: string): Promise<HTMLCanvasElement> => {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;font-size:9px;color:#000'
+      div.innerHTML = `
+        <div style="padding:20px 20px 10px 20px">
+          <!-- COPIA -->
+          <div style="border:1px solid #000;text-align:center;font-weight:bold;font-size:13px;padding:4px 0;margin-bottom:0;width:60%;margin-left:20%">${copia}</div>
+
+          <!-- ENCABEZADO -->
+          <table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:0">
+            <tr>
+              <td style="width:46%;padding:6px 6px;border-right:1px solid #000;vertical-align:top">
+                <div style="font-weight:bold;font-size:10px;margin-bottom:6px">KNUTH VERONICA ALEJANDRA</div>
+                <div><span style="font-weight:bold">Razón Social:</span> KNUTH VERONICA ALEJANDRA</div>
+                <div style="margin-top:5px"><span style="font-weight:bold">Domicilio Comercial:</span> Calle 102 366 - General Pico, La Pampa</div>
+                <div style="margin-top:5px"><span style="font-weight:bold">Condición frente al IVA:</span> IVA Responsable Inscripto</div>
+              </td>
+              <td style="width:8%;border-right:1px solid #000;text-align:center;vertical-align:middle;padding:4px">
+                <div style="font-weight:bold;font-size:22px;line-height:1">${c.tipo||'A'}</div>
+                <div style="font-size:6px;margin-top:4px">${codTipo}</div>
+              </td>
+              <td style="width:46%;padding:6px 8px;vertical-align:top">
+                <div style="font-weight:bold;font-size:15px;margin-bottom:4px">${tipoLabel}</div>
+                <div><span style="font-weight:bold">Punto de Venta: 0006</span>&nbsp;&nbsp;&nbsp;<span style="font-weight:bold">Comp. Nro: ${nroAfip}</span></div>
+                <div style="margin-top:3px"><span style="font-weight:bold">Fecha de Emisión:</span> ${fechaFmt}</div>
+                <div style="margin-top:3px"><span style="font-weight:bold">CUIT:</span> 27242657174</div>
+                <div style="margin-top:2px"><span style="font-weight:bold">Ingresos Brutos:</span> 1919987</div>
+                <div style="margin-top:2px"><span style="font-weight:bold">Fecha de Inicio de Actividades:</span> 01/09/2007</div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- PERÍODO -->
+          <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none">
+            <tr>
+              <td style="padding:4px 6px;width:50%;border-right:1px solid #000">
+                <span style="font-weight:bold">Período Facturado Desde:</span> ${fechaFmt} &nbsp;&nbsp; <span style="font-weight:bold">Hasta:</span> ${fechaFmt}
+              </td>
+              <td style="padding:4px 6px">
+                <span style="font-weight:bold">Fecha de Vto. para el pago:</span> ${fechaFmt}
+              </td>
+            </tr>
+          </table>
+
+          <!-- RECEPTOR -->
+          <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none">
+            <tr style="border-bottom:1px solid #000">
+              <td style="padding:3px 6px;width:50%">
+                <span style="font-weight:bold">CUIT:</span> ${cuitAseg.replace(/-/g,'')} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span style="font-weight:bold">Apellido y Nombre / Razón Social:</span> ${razonSocial}
+              </td>
+            </tr>
+            <tr style="border-bottom:1px solid #000">
+              <td style="padding:3px 6px">
+                <span style="font-weight:bold">Condición frente al IVA:</span> IVA Responsable Inscripto &nbsp;&nbsp;&nbsp;&nbsp;
+                <span style="font-weight:bold">Domicilio Comercial:</span> ${dirAseg||''}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:3px 6px">
+                <span style="font-weight:bold">Condición de venta:</span> Cuenta Corriente
+              </td>
+            </tr>
+          </table>
+
+          <!-- TABLA ITEMS -->
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:8px">
+            <thead>
+              <tr style="background:#ddd;font-weight:bold">
+                <td style="border:1px solid #000;padding:2px 3px;width:7%">Código</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:30%">Producto / Servicio</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:8%">Cantidad</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:8%">U. medida</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:12%">Precio Unit.</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:6%">% Bonif</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:11%">Subtotal</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:7%">Alícuota IVA</td>
+                <td style="border:1px solid #000;padding:2px 3px;width:11%">Subtotal c/IVA</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${c.items.map((it:any) => {
+                const netoUnit = Math.round((it.p||0)/1.21*100)/100
+                return `<tr>
+                  <td style="border:1px solid #000;padding:2px 3px">${(it as any).codigo||''}</td>
+                  <td style="border:1px solid #000;padding:2px 3px">${it.d||''}</td>
+                  <td style="border:1px solid #000;padding:2px 3px">${Number(it.c||1).toFixed(2).replace('.',',')}</td>
+                  <td style="border:1px solid #000;padding:2px 3px">unidades</td>
+                  <td style="border:1px solid #000;padding:2px 3px">${fmtNum(netoUnit)}</td>
+                  <td style="border:1px solid #000;padding:2px 3px">0,00</td>
+                  <td style="border:1px solid #000;padding:2px 3px">${fmtNum(netoUnit*(it.c||1))}</td>
+                  <td style="border:1px solid #000;padding:2px 3px">21%</td>
+                  <td style="border:1px solid #000;padding:2px 3px">${fmtNum((it.c||1)*(it.p||0))}</td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+
+          <!-- TOTALES -->
+          <div style="margin-top:60px;display:flex;justify-content:flex-end">
+            <table style="border:1px solid #000;font-size:8px;min-width:380px">
+              <tr>
+                <td style="padding:3px 8px;border-bottom:1px solid #000" colspan="2">
+                  Importe Otros Tributos: $ &nbsp;&nbsp;&nbsp;&nbsp; 0,00
+                </td>
+              </tr>
+              <tr><td style="padding:2px 8px;font-weight:bold">Importe Neto Gravado: $</td><td style="padding:2px 8px;text-align:right;font-weight:bold">${fmtNum(c.neto||0)}</td></tr>
+              <tr><td style="padding:2px 8px">IVA 27%: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr><td style="padding:2px 8px">IVA 21%: $</td><td style="padding:2px 8px;text-align:right">${fmtNum(c.iva||0)}</td></tr>
+              <tr><td style="padding:2px 8px">IVA 10.5%: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr><td style="padding:2px 8px">IVA 5%: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr><td style="padding:2px 8px">IVA 2.5%: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr><td style="padding:2px 8px">IVA 0%: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr><td style="padding:2px 8px">Importe Otros Tributos: $</td><td style="padding:2px 8px;text-align:right">0,00</td></tr>
+              <tr style="border-top:1px solid #000"><td style="padding:3px 8px;font-weight:bold">Importe Total: $</td><td style="padding:3px 8px;text-align:right;font-weight:bold">${fmtNum(c.total||0)}</td></tr>
+            </table>
+          </div>
+
+          <!-- PIE -->
+          <div style="text-align:center;font-style:italic;margin-top:10px;font-size:9px">"PARABRISAS  EL PIAMONTE "</div>
+          <hr style="border:none;border-top:1px solid #aaa;margin:6px 0"/>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="color:#005090;font-weight:bold;font-size:11px">ARCA</div>
+              <div style="font-size:6px;color:#444">AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO</div>
+              <div style="font-weight:bold;font-size:8px;margin-top:4px">Comprobante Autorizado</div>
+              <div style="font-style:italic;font-size:6px;color:#555;margin-top:2px">Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación</div>
+            </div>
+            <div style="text-align:center;font-size:8px">Pág. 1/1</div>
+            <div style="text-align:right;font-size:8px">
+              <div style="font-weight:bold">CAE N°: ${c.cae_emitido||''}</div>
+              <div style="font-weight:bold">Fecha de Vto. de CAE: ${caeVto}</div>
+            </div>
+          </div>
+        </div>
+      `
+      document.body.appendChild(div)
+      const canvas = await html2canvas(div, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      document.body.removeChild(div)
+      return canvas
     }
 
-    const generar = (doc:any, copia:string) => {
-      doc.addPage()
-
-      // Helpers locales para no mezclar colores
-      const stroke = (r=0,g=0,b=0) => doc.setDrawColor(r,g,b)
-      const fill   = (r=255,g=255,b=255) => doc.setFillColor(r,g,b)
-      const ink    = (r=0,g=0,b=0) => doc.setTextColor(r,g,b)
-      const lw     = (w:number) => doc.setLineWidth(w)
-
-      const box  = (x:number,y:number,w:number,h:number,mode='S') => { stroke(0,0,0); doc.rect(x,y,w,h,mode) }
-      const ln   = (x1:number,y1:number,x2:number,y2:number) => { stroke(0,0,0); doc.line(x1,y1,x2,y2) }
-      const txt  = (x:number,y:number,t:string,bold=false,sz=7,align='left') => {
-        ink(0,0,0)
-        doc.setFont('helvetica', bold?'bold':'normal')
-        doc.setFontSize(sz)
-        if (align==='right') doc.text(t,x,y,{align:'right'})
-        else if (align==='center') doc.text(t,x,y,{align:'center'})
-        else doc.text(t,x,y)
-      }
-      const txtR = (x:number,y:number,t:string,bold=false,sz=7) => txt(x,y,t,bold,sz,'right')
-      const txtC = (x:number,y:number,t:string,bold=false,sz=7) => txt(x,y,t,bold,sz,'center')
-
-      // ── COPIA ──────────────────────────────────────────────────────────
-      lw(0.5); box(77.6, 6.7, 55.0, 8.5)
-      txtC(105.1, 13.5, copia, true, 12)
-
-      // ── ENCABEZADO ─────────────────────────────────────────────────────
-      // Líneas horizontales que delimitan el bloque
-      lw(0.5)
-      ln(5.3, 15.9, 205.0, 15.9)   // borde superior
-      ln(5.3, 57.5, 205.0, 57.5)   // borde inferior
-
-      // Divisores verticales
-      ln(5.3,  15.9, 5.3,  57.5)   // borde izquierdo
-      ln(205.0,15.9, 205.0,57.5)   // borde derecho
-      ln(97.0, 15.9, 97.0, 57.5)   // división emisor | letra
-      ln(113.6,15.9, 113.6,57.5)   // división letra | zona derecha
-
-      // Recuadro letra A (97→113.6, 15.9→30.3)
-      lw(0.4)
-      ln(97.0, 30.3, 113.6, 30.3)  // línea horizontal bajo la letra
-
-      // Emisor — zona izquierda
-      txt(7.4,  22.4, 'KNUTH VERONICA ALEJANDRA', true, 9)
-      txt(7.4,  36.5, 'Razón Social:', true, 7)
-      txt(29.6, 36.5, 'KNUTH VERONICA ALEJANDRA', false, 7)
-      txt(7.4,  45.0, 'Domicilio Comercial:', true, 7)
-      txt(40.9, 45.0, 'Calle 102 366 - General Pico, La Pampa', false, 7)
-      txt(7.4,  53.7, 'Condición frente al IVA:', true, 7)
-      txt(46.2, 53.7, 'IVA Responsable Inscripto', false, 7)
-
-      // Letra A — zona central
-      txt(105.3, 27.5, c.tipo||'A', true, 20, 'center')
-      txt(105.3, 33.5, codTipo,     false, 6, 'center')
-
-      // FACTURA — zona derecha
-      txt(120.3, 20.1, tipoLabel,                                    true,  14)
-      txt(120.3, 30.4, 'Punto de Venta:  0006',                      true,  7)
-      txt(162.6, 30.4, `Comp. Nro:  ${nroAfip}`,                     true,  7)
-      txt(120.3, 36.1, `Fecha de Emisión:  ${fechaFmt}`,             false, 7)
-      txt(120.3, 44.2, 'CUIT:  27242657174',                         false, 7)
-      txt(120.3, 48.4, 'Ingresos Brutos:  1919987',                  false, 7)
-      txt(120.3, 52.7, 'Fecha de Inicio de Actividades:  01/09/2007',false, 7)
-
-      // ── PERÍODO ────────────────────────────────────────────────────────
-      lw(0.4)
-      ln(5.3,  57.5, 205.0, 57.5)
-      ln(5.3,  64.5, 205.0, 64.5)
-      ln(5.3,  57.5, 5.3,   64.5)
-      ln(205.0,57.5, 205.0, 64.5)
-      ln(105.3,57.5, 105.3, 64.5)  // divisor vertical período
-
-      txt(7.4,  62.5, 'Período Facturado Desde:', true, 7.5)
-      txt(56.1, 62.5, fechaFmt,                   false,7.5)
-      txt(82.0, 62.5, 'Hasta:',                   true, 7.5)
-      txt(94.0, 62.5, fechaFmt,                   false,7.5)
-      txt(120.3,62.5, 'Fecha de Vto. para el pago:',true,7.5)
-      txt(168.0,62.5, fechaFmt,                   false,7.5)
-
-      // ── RECEPTOR ───────────────────────────────────────────────────────
-      lw(0.4)
-      ln(5.3,  64.5, 205.0, 64.5)
-      ln(5.3,  70.5, 205.0, 70.5)
-      ln(5.3,  76.5, 205.0, 76.5)
-      ln(5.3,  82.5, 205.0, 82.5)
-      ln(5.3,  64.5, 5.3,   82.5)
-      ln(205.0,64.5, 205.0, 82.5)
-
-      // Fila 1: CUIT | Razón Social
-      txt(7.4,  69.0, 'CUIT:', true, 7.5)
-      txt(18.3, 69.0, cuitAseg.replace(/-/g,''), false, 7.5)
-      txt(78.4, 69.0, 'Apellido y Nombre / Razón Social:', true, 7.5)
-      txt(120.0,69.0, razonSocial.slice(0,55), false, 7)
-
-      // Fila 2: Condición IVA | Domicilio
-      txt(7.4,  75.0, 'Condición frente al IVA:', true, 7.5)
-      txt(46.2, 75.0, 'IVA Responsable Inscripto', false, 7.5)
-      txt(96.1, 75.0, 'Domicilio Comercial:', true, 7.5)
-      txt(120.0,75.0, (dirAseg||'').slice(0,50), false, 7)
-
-      // Fila 3: Condición de venta
-      txt(7.4,  81.0, 'Condición de venta:', true, 7.5)
-      txt(39.9, 81.0, 'Cuenta Corriente', false, 7.5)
-
-      // ── TABLA ──────────────────────────────────────────────────────────
-      const colX = [5.3,  19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
-      const colW = [14.1, 61.7, 18.7, 13.8,  22.9,  10.2,  22.9,  12.0,  23.3]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
-      const tY = 88.0
-
-      // Header — fondo gris luego texto
-      lw(0.3)
-      colX.forEach((x,i) => { fill(220,220,220); stroke(0,0,0); doc.rect(x,tY,colW[i],6.4,'FD') })
-      heads.forEach((h,i) => { txt(colX[i]+0.8, tY+4.2, h, true, 6) })
-
-      // Filas
-      let iy = tY + 6.4
-      c.items.forEach((it:any) => {
-        const netoUnit = Math.round((it.p||0)/1.21*100)/100
-        const vals = [
-          (it as any).codigo||'',
-          (it.d||'').slice(0,35),
-          `${Number(it.c||1).toFixed(2).replace('.',',')}`,
-          'unidades',
-          fmtNum(netoUnit), '0,00',
-          fmtNum(netoUnit*(it.c||1)),
-          '21%',
-          fmtNum((it.c||1)*(it.p||0))
-        ]
-        // Primero todos los rects
-        colX.forEach((x,i) => { fill(255,255,255); stroke(0,0,0); lw(0.3); doc.rect(x,iy,colW[i],10,'FD') })
-        // Luego todo el texto
-        vals.forEach((v,i) => { txt(colX[i]+0.8, iy+5.5, v, false, 7) })
-        iy += 10
-      })
-
-      // ── TOTALES ────────────────────────────────────────────────────────
-      const totY = Math.max(iy+10, 183)
-      lw(0.4); stroke(0,0,0)
-      doc.rect(62.0, totY, 143.0, 53.0, 'S')
-      ln(62.0, totY+9, 205.0, totY+9)
-
-      // "Importe Otros Tributos" arriba izquierda
-      txt(66.0, totY+6, 'Importe Otros Tributos: $', false, 7)
-      txt(116.2,totY+6, '0,00', false, 7)
-
-      // Bloque derecho
-      const totRows:[string,string,boolean][] = [
-        ['Importe Neto Gravado: $', fmtNum(c.neto||0), true],
-        ['IVA 27%: $', '0,00', false],
-        ['IVA 21%: $', fmtNum(c.iva||0), false],
-        ['IVA 10.5%: $', '0,00', false],
-        ['IVA 5%: $', '0,00', false],
-        ['IVA 2.5%: $', '0,00', false],
-        ['IVA 0%: $', '0,00', false],
-        ['Importe Otros Tributos: $', '0,00', false],
-        ['Importe Total: $', fmtNum(c.total||0), true],
-      ]
-      let ry = totY+14
-      totRows.forEach(([lbl,val,bold]) => {
-        txt(139.2, ry, lbl, bold, bold?7.5:7)
-        txtR(205.0, ry, val, bold, bold?7.5:7)
-        ry += 4.6
-      })
-
-      // ── PIE ────────────────────────────────────────────────────────────
-      txtC(105.0, 241.0, '"PARABRISAS  EL PIAMONTE "', false, 9)
-      stroke(180,180,180); lw(0.2); ln(5.3, 244.0, 205.0, 244.0)
-
-      // ARCA azul
-      ink(0,80,160); doc.setFont('helvetica','bold'); doc.setFontSize(11)
-      doc.text('ARCA', 40.6, 251.0)
-      ink(60,60,60); doc.setFont('helvetica','normal'); doc.setFontSize(5)
-      doc.text('AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', 40.6, 256.0)
-
-      // Pág 1/1
-      txtC(105.0, 251.0, 'Pág. 1/1', false, 8)
-
-      // CAE derecha
-      if (c.cae_emitido) {
-        txtR(205.0, 252.8, `CAE N°:  ${c.cae_emitido}`, true, 8)
-        const caeVto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
-        txtR(205.0, 257.8, `Fecha de Vto. de CAE:  ${caeVto}`, true, 8)
-      }
-
-      ink(0,0,0)
-      txt(40.6, 264.0, 'Comprobante Autorizado', true, 7.5)
-      ink(80,80,80)
-      doc.setFont('helvetica','italic'); doc.setFontSize(6)
-      doc.text('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', 5.3, 270.9)
+    const doc = new jsPDF({ format: 'a4', unit: 'mm' })
+    const copias = ['ORIGINAL', 'DUPLICADO', 'TRIPLICADO']
+    for (let i = 0; i < copias.length; i++) {
+      const canvas = await renderPagina(copias[i])
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
+      if (i > 0) doc.addPage()
+      doc.addImage(imgData, 'JPEG', 0, 0, 210, 297)
     }
+  }
 
-        const doc = new jsPDF({format:'a4', unit:'mm'})
-    doc.deletePage(1) // jsPDF inicia con 1 página vacía
-    generar(doc, 'ORIGINAL')
-    generar(doc, 'DUPLICADO')
-    generar(doc, 'TRIPLICADO')
-    return doc.output('blob')
   }
 
   async function compartirWA(c:Comprobante){
