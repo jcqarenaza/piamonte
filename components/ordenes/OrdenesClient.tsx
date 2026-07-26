@@ -582,6 +582,34 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
                         }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
                       )}
+                      {o.aseguradora==='Sancor Seguros' && !(o as any).cristal_colocado && (
+                        (() => {
+                          const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
+                          if (stockItems.length === 0) return null
+                          return (
+                            <button onClick={async()=>{
+                              if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
+                              // Descontar stock por cada ítem con stock_id
+                              for (const it of stockItems) {
+                                const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
+                                if (!st) continue
+                                const nueva = (st.cantidad||0) - (it.c||1)
+                                await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
+                                await supabase.from('stock_movimientos').insert({
+                                  stock_id: it.stock_id, tipo: 'salida',
+                                  cantidad: it.c||1, fecha: todayStr(),
+                                  descripcion: `Colocado OS ${o.numero ? 'OS-'+String(o.numero).padStart(4,'0') : 'S/N'} · Sancor · ${o.cliente||''}`,
+                                })
+                              }
+                              await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
+                              load()
+                            }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
+                          )
+                        })()
+                      )}
+                      {o.aseguradora==='Sancor Seguros' && (o as any).cristal_colocado && !(o as any).convertido_comp && (
+                        <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">🔩 Colocado ✓</span>
+                      )}
                       {!(o as any).convertido_comp && (
                         o.aseguradora==='Sancor Seguros' ? (
                           <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
