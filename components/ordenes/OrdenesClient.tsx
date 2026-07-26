@@ -179,6 +179,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente', turno_id: o.turno_id||''
     })
     setFormProd(o.productor_id||'')
+    // Preservar posición del vidrio
+    setPosVidrio(o.posicion_vidrio ? o.posicion_vidrio.split(',') : [])
     // Filtrar ítems que son posiciones de vidrio (creados con el sistema viejo)
     const POSICIONES = ['Parabrisas','Luneta','Puerta Del. Der.','Puerta Del. Izq.','Puerta Tras. Der.','Puerta Tras. Izq.','Custodia Der.','Custodia Izq.','Aleta']
     setItems((o.items||[]).filter((it:any) => !POSICIONES.includes(it.d)))
@@ -565,6 +567,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     ) : null
                   })()}
                   <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
+                  {o.aseguradora && <span className="text-xs text-p-ink2 shrink-0">· {o.aseguradora}</span>}
                   <div className="flex-1 min-w-[8px]"/>
                   <p className="font-saira font-bold text-p-ink shrink-0">{o.total > 0 ? moneyARS2(o.total) : <span className="text-p-ink2 text-xs font-normal">{o.aseguradora ? 'Precio aseguradora' : 'Sin precio'}</span>}</p>
                 </div>
