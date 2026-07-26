@@ -56,6 +56,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])
   // Factura manual (Sancor)
   const [factManualModal, setFactManualModal] = useState<any|null>(null)
+  const [sancorModal, setSancorModal] = useState(false)
+  const [sancorOS, setSancorOS] = useState<any[]>([])
+  const [sancorSel, setSancorSel] = useState<Record<string,boolean>>({})
+  const [sancorTotales, setSancorTotales] = useState<Record<string,number>>({})
+  const [sancorForm, setSancorForm] = useState({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
+  const [sancorLoading, setSancorLoading] = useState(false)
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
   // Turno desde OS
   const [turnoModal, setTurnoModal] = useState<any|null>(null)
@@ -209,6 +215,24 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         })
     }
     setOpen(true)
+  }
+
+  async function abrirSancor() {
+    const { data } = await supabase.from('ordenes_servicio')
+      .select('*')
+      .eq('aseguradora', 'Sancor Seguros')
+      .eq('cristal_colocado', true)
+      .neq('convertido_comp', true)
+      .order('fecha', { ascending: true })
+    const os = data || []
+    setSancorOS(os)
+    const sel: Record<string,boolean> = {}
+    const tots: Record<string,number> = {}
+    os.forEach((o:any) => { sel[o.id] = true; tots[o.id] = o.total || 0 })
+    setSancorSel(sel)
+    setSancorTotales(tots)
+    setSancorForm({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
+    setSancorModal(true)
   }
 
   async function save() {
@@ -517,12 +541,18 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             className="flex-1 border border-p-line rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
           {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
-        {esAdmin && <button onClick={()=>{
-          setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
-          setItems([]); setItem({d:'',c:'1',p:''}); setEditId(null)
-          setStockSel(null); setStockQ(''); setFormProd('')
-          setOpen(true)
-        }} style={btn}>+ Nueva orden</button>}
+        {esAdmin && <>
+          <button onClick={abrirSancor}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-saira font-bold text-sm px-4 py-2 rounded-xl transition-colors">
+            🏢 Factura Sancor
+          </button>
+          <button onClick={()=>{
+            setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
+            setItems([]); setItem({d:'',c:'1',p:''}); setEditId(null)
+            setStockSel(null); setStockQ(''); setFormProd('')
+            setOpen(true)
+          }} style={btn}>+ Nueva orden</button>
+        </>}
       </div>
 
       {ordenesFiltradas.length===0 ? <Empty msg="Sin órdenes todavía." /> : (
@@ -945,6 +975,94 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               setFactManualModal(null); load()
             }} style={{...btn,background:'#7c3aed'}}>✓ Registrar factura</button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal Factura Sancor */}
+      <Modal open={sancorModal} onClose={()=>setSancorModal(false)} title="Factura Sancor Seguros" size="lg">
+        <div className="flex flex-col gap-4">
+          {sancorOS.length === 0 ? (
+            <p className="text-sm text-p-ink2 text-center py-6">No hay OS de Sancor con cristal colocado pendientes de facturar.</p>
+          ) : (
+            <>
+              <p className="text-xs text-p-ink2">Seleccioná las OS a incluir en esta factura. Podés editar el importe de cada una.</p>
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {sancorOS.map((o:any) => (
+                  <div key={o.id} className={`flex items-center gap-3 p-2.5 rounded-xl border ${sancorSel[o.id]?'border-purple-300 bg-purple-50':'border-p-line bg-white'}`}>
+                    <input type="checkbox" checked={!!sancorSel[o.id]}
+                      onChange={e=>setSancorSel(p=>({...p,[o.id]:e.target.checked}))}
+                      className="w-4 h-4 accent-purple-600"/>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-p-ink truncate">OS-{String(o.numero).padStart(4,'0')} · {o.cliente}</p>
+                      <p className="text-xs text-p-ink2">{o.vehiculo} · {o.fecha.split('-').reverse().join('/')}</p>
+                    </div>
+                    <input
+                      type="text"
+                      value={sancorTotales[o.id]?.toLocaleString('es-AR')||''}
+                      onChange={e=>{
+                        const v = parseFloat(e.target.value.replace(/\./g,'').replace(',','.'))
+                        setSancorTotales(p=>({...p,[o.id]:isNaN(v)?0:v}))
+                      }}
+                      className="w-28 border border-p-line rounded-lg px-2 py-1 text-sm font-mono text-right focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex justify-between items-center">
+                <span className="text-sm font-semibold text-purple-800">Total seleccionado:</span>
+                <span className="font-mono font-bold text-purple-800">
+                  {moneyARS(Object.entries(sancorSel).filter(([,v])=>v).reduce((acc,[id])=>acc+(sancorTotales[id]||0),0))}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Punto de venta"><Input value={sancorForm.pv} onChange={e=>setSancorForm(p=>({...p,pv:e.target.value}))} placeholder="00001"/></Field>
+                <Field label="N° Factura"><Input value={sancorForm.nro} onChange={e=>setSancorForm(p=>({...p,nro:e.target.value}))} placeholder="00000001"/></Field>
+              </div>
+              <Field label="CAE"><Input value={sancorForm.cae} onChange={e=>setSancorForm(p=>({...p,cae:e.target.value}))} placeholder="00000000000000"/></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Fecha factura"><Input type="date" value={sancorForm.fecha} onChange={e=>setSancorForm(p=>({...p,fecha:e.target.value}))}/></Field>
+                <Field label="Vencimiento CAE"><Input type="date" value={sancorForm.vto} onChange={e=>setSancorForm(p=>({...p,vto:e.target.value}))}/></Field>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={()=>setSancorModal(false)} style={btnGray}>Cancelar</button>
+                <button disabled={sancorLoading||!sancorForm.cae||!sancorForm.nro} onClick={async()=>{
+                  const selIds = Object.entries(sancorSel).filter(([,v])=>v).map(([id])=>id)
+                  if (!selIds.length) { alert('Seleccioná al menos una OS'); return }
+                  if (!sancorForm.cae||!sancorForm.nro) { alert('Completá CAE y N° Factura'); return }
+                  setSancorLoading(true)
+                  const total = selIds.reduce((acc,id)=>acc+(sancorTotales[id]||0),0)
+                  const neto = Math.round(total/1.21*100)/100
+                  const iva = Math.round((total-neto)*100)/100
+                  const desc = `FCE Sancor ${sancorForm.pv}-${sancorForm.nro} · ${selIds.length} OS`
+
+                  // Registrar en CC aseguradoras
+                  await supabase.from('cuenta_corriente_aseguradoras').insert({
+                    aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
+                    fecha: sancorForm.fecha, tipo: 'factura',
+                    descripcion: desc, debe: total, haber: 0,
+                  })
+
+                  // Marcar cada OS como facturada
+                  for (const id of selIds) {
+                    await supabase.from('ordenes_servicio').update({
+                      convertido_comp: true, estado: 'facturada',
+                      factura_manual_cae: sancorForm.cae,
+                      factura_manual_nro: sancorForm.nro,
+                      factura_manual_pv: sancorForm.pv,
+                      factura_manual_fecha: sancorForm.fecha,
+                      factura_manual_vto: sancorForm.vto||null,
+                    }).eq('id', id)
+                  }
+
+                  setSancorLoading(false)
+                  setSancorModal(false)
+                  load()
+                }} style={{...btn,background:'#7c3aed',opacity:sancorLoading?0.6:1}}>
+                  {sancorLoading?'Registrando…':'✓ Registrar factura'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
