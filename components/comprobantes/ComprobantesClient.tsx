@@ -1260,8 +1260,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       t(120.3, 48.4, 'Ingresos Brutos:  1919987', false, 7)
       t(120.3, 52.7, 'Fecha de Inicio de Actividades:  01/09/2007', false, 7)
 
-      // Línea inferior encabezado
+      // Líneas encabezado
       ln(5.3, 57.5, 205.0, 57.5, 0.4)
+      ln(5.3, 15.7, 5.3, 57.5, 0.4)
+      ln(205.0, 15.7, 205.0, 57.5, 0.4)
 
       // ── PERÍODO ──
       t(7.4, 60.5, 'Período Facturado Desde:', true, 7.5); t(56.1, 60.5, fechaFmt, false, 7.5)
@@ -1314,8 +1316,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
 
       // ── TOTALES ── coordenadas exactas de Arca
-      // Rect exterior totales
-      rectS(5.2, 237.8, 199.9, 9.2, 0.4)
+      // Rect exterior del bloque de totales (incluyendo Importe Otros Tributos arriba)
+      rectS(5.3, 183.5, 199.7, 57.5, 0.4)
+      ln(5.3, 192.0, 205.0, 192.0, 0.3)
       t(66.0, 188.0, 'Importe Otros Tributos: $', false, 7); t(116.2, 188.0, '0,00', false, 7)
 
       const totRows:[string,number,string,boolean][] = [
@@ -1336,7 +1339,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
 
       // ── PIE ──
-      t(78.8, 240.9, '"PARABRISAS  EL PIAMONTE "', false, 9)
+      tC(105.0, 240.9, '"PARABRISAS  EL PIAMONTE "', false, 9)
 
       doc.setTextColor(0,80,160); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('ARCA', 40.6, 251.0)
       doc.setTextColor(60,60,60); doc.setFont('helvetica','normal'); doc.setFontSize(5)
