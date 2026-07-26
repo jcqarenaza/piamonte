@@ -1229,8 +1229,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
 
       // ── COPIA ──
-      rectS(77.6, 6.7, 55.0, 8.5, 0.5)
-      tC(105.1, 13.5, copia, true, 12)
+      tC(105.1, 12.0, copia, true, 13)
+      ln(5.3, 14.5, 205.0, 14.5, 0.5)
 
       // ── ENCABEZADO ──
       // Solo línea horizontal superior (no hay rect exterior en Arca)
@@ -1315,10 +1315,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         iy += rowH
       })
 
-      // ── TOTALES ── coordenadas exactas de Arca
-      // Rect exterior del bloque de totales (incluyendo Importe Otros Tributos arriba)
-      rectS(5.3, 183.5, 199.7, 57.5, 0.4)
+      // Observación: nombre asegurado
+      if (c.cliente_nombre) {
+        tC(105.0, iy+6, c.cliente_nombre.toUpperCase(), false, 8)
+        iy += 10
+      }
+
+      // ── TOTALES ── solo líneas horizontales como en Arca
+      ln(5.3, 183.5, 205.0, 183.5, 0.4)
       ln(5.3, 192.0, 205.0, 192.0, 0.3)
+      ln(5.3, 241.5, 205.0, 241.5, 0.4)
       t(66.0, 188.0, 'Importe Otros Tributos: $', false, 7); t(116.2, 188.0, '0,00', false, 7)
 
       const totRows:[string,number,string,boolean][] = [
