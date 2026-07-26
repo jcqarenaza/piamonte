@@ -182,6 +182,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     // Filtrar ítems que son posiciones de vidrio (creados con el sistema viejo)
     const POSICIONES = ['Parabrisas','Luneta','Puerta Del. Der.','Puerta Del. Izq.','Puerta Tras. Der.','Puerta Tras. Izq.','Custodia Der.','Custodia Izq.','Aleta']
     setItems((o.items||[]).filter((it:any) => !POSICIONES.includes(it.d)))
+    // Preservar el artículo de stock vinculado
+    const stockItem = (o.items||[]).find((it:any) => it.stock_id && it.codigo)
+    if (stockItem) {
+      setStockSel({ id: stockItem.stock_id, codigo: stockItem.codigo, descripcion: stockItem.d, precio_venta: stockItem.p, costo: stockItem.costo })
+      setStockQ(stockItem.codigo || '')
+    }
     // Si tiene comprobante vinculado, completar datos que puedan faltar en la OS con los del comprobante
     if (o.convertido_comp) {
       supabase.from('comprobantes').select('cliente_nombre,cliente_telefono,vehiculo,patente,siniestro,aseguradora_nombre')
