@@ -101,7 +101,7 @@ export default function CuentaCorrienteAseguradorasClient() {
           .in('id', ids)
           .not('es_negro', 'is', true)
           .neq('categoria', 'nc')
-          .order('fecha', { ascending: false })
+          .order('fecha', { ascending: true })
         setFactPendientes(data ?? [])
         setLoadingPend(false)
       })
