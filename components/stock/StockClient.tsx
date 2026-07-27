@@ -1121,7 +1121,20 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             ) : null}
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Código proveedor"><Input value={form.cod} onChange={e => setForm(p => ({ ...p, cod: e.target.value }))} /></Field>
+            <Field label="Código proveedor">
+              <Input value={form.cod} onChange={async e => {
+                const cod = e.target.value.toUpperCase()
+                setForm(p => ({ ...p, cod }))
+                // Buscar en maestro por código exacto
+                if (cod.length >= 6) {
+                  const { data } = await supabase.from('articulos_maestro').select('*').eq('codigo_referencia', cod).maybeSingle()
+                  if (data) setArticuloSel(data)
+                }
+              }} placeholder="Ej: 421830VSLP" />
+              {articuloSel?.codigo_referencia === form.cod.toUpperCase() && (
+                <p className="text-[11px] text-p-green font-semibold mt-1">✓ Código encontrado en catálogo: {articuloSel.descripcion}</p>
+              )}
+            </Field>
             <Field label="Marca / modelo"><Input value={form.marca} onChange={e => setForm(p => ({ ...p, marca: e.target.value }))} placeholder="VW Gol" /></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
