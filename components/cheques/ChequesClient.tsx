@@ -148,6 +148,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
 
   async function confirmarImpacto() {
     if (!impactoCheque) return
+    if (!impactoCuentaId) { alert('Seleccioná una cuenta bancaria'); return }
     await cambiarEstado(impactoCheque.id, impactoEstado)
     if (impactoCuentaId) {
       const esTercero = impactoCheque.tipo === 'tercero'
@@ -541,7 +542,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
               <Field label="¿En qué cuenta impacta?">
                 <select value={impactoCuentaId} onChange={e=>setImpactoCuentaId(e.target.value)}
                   className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
-                  <option value="">Sin impacto bancario (solo cambiar estado)</option>
+                  <option value="" disabled>Seleccioná una cuenta…</option>
                   {cuentasBanco.map(c=><option key={c.id} value={c.id}>🏦 {c.alias||c.banco} ({c.tipo==='Cuenta Corriente'?'CC':'CA'})</option>)}
                 </select>
               </Field>
@@ -551,7 +552,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
             </Field>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={()=>setImpactoModal(false)} style={btnGray}>Cancelar</button>
-              <button onClick={confirmarImpacto} style={btn}>✓ Confirmar</button>
+              <button onClick={confirmarImpacto} style={{...btn,opacity:!impactoCuentaId?0.5:1}} disabled={!impactoCuentaId}>✓ Confirmar</button>
             </div>
           </div>
         )}
