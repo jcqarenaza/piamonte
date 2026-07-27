@@ -62,6 +62,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [sancorTotales, setSancorTotales] = useState<Record<string,number>>({})
   const [sancorForm, setSancorForm] = useState({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
   const [sancorLoading, setSancorLoading] = useState(false)
+  const [sancorTextos, setSancorTextos] = useState<Record<string,string>>({})
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
   // Turno desde OS
   const [turnoModal, setTurnoModal] = useState<any|null>(null)
@@ -231,6 +232,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     os.forEach((o:any) => { sel[o.id] = true; tots[o.id] = o.total || 0 })
     setSancorSel(sel)
     setSancorTotales(tots)
+    const txts: Record<string,string> = {}
+    os.forEach((o:any) => { txts[o.id] = String(o.total||0).replace('.',',') })
+    setSancorTextos(txts)
     setSancorForm({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
     setSancorModal(true)
   }
@@ -998,10 +1002,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     </div>
                     <input
                       type="text"
-                      value={sancorTotales[o.id]?.toLocaleString('es-AR')||''}
+                      value={sancorTextos[o.id]??''}
                       onChange={e=>{
-                        const v = parseFloat(e.target.value.replace(/\./g,'').replace(',','.'))
-                        setSancorTotales(p=>({...p,[o.id]:isNaN(v)?0:v}))
+                        const txt = e.target.value
+                        setSancorTextos(p=>({...p,[o.id]:txt}))
+                        const v = parseFloat(txt.replace(/\./g,'').replace(',','.'))
+                        if (!isNaN(v)) setSancorTotales(p=>({...p,[o.id]:v}))
                       }}
                       className="w-28 border border-p-line rounded-lg px-2 py-1 text-sm font-mono text-right focus:outline-none focus:border-purple-400"
                     />
