@@ -55,6 +55,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [costoEdit, setCostoEdit] = useState<Record<string, string>>({})
   const [editId, setEditId] = useState<string|null>(null)
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
+  const [abreviaturas, setAbreviaturas] = useState<Record<string,string>>({})
   const supabase = createClient()
 
   async function confirmarAjusteCant() {
@@ -221,6 +222,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
   const load = useCallback(async () => {
+    const { data: abrData } = await supabase.from('abreviaturas_descripcion').select('abreviatura,expansion')
+    if (abrData) {
+      const map: Record<string,string> = {}
+      abrData.forEach((a:any) => { map[a.abreviatura.toUpperCase()] = a.expansion })
+      setAbreviaturas(map)
+    }
     const { data } = await supabase.from('stock').select('*').eq('activo', true).order('descripcion')
     setItems(data ?? [])
     setLoading(false)
@@ -298,7 +305,19 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   let visible = items
   if (depFilter) visible = visible.filter(s => (s.deposito || 'Principal') === depFilter)
-  if (q) visible = visible.filter(s => (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase().includes(q.toUpperCase()))
+  if (q) {
+    const qUp = q.toUpperCase()
+    visible = visible.filter(s => {
+      const base = (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase()
+      if (base.includes(qUp)) return true
+      // Expandir abreviaturas en la descripción del artículo
+      let expandida = base
+      Object.entries(abreviaturas).forEach(([abr, exp]) => {
+        expandida = expandida.replace(new RegExp(abr.replace(/[.*+?^${}()|[\]\]/g, '\\$&'), 'g'), exp.toUpperCase())
+      })
+      return expandida.includes(qUp)
+    })
+  }
   if (soloSinCosto) visible = visible.filter(s => !s.costo && s.cantidad > 0)
   if (filtroFam) visible = visible.filter(s => FAM_MAP[normPos(s.pos)] === filtroFam)
 
