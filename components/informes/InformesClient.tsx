@@ -144,7 +144,7 @@ export default function InformesClient() {
 
   const tipoEntries = Object.entries(byTipo).sort((a,b)=>b[1].facturado-a[1].facturado)
 
-  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras', label:string) => (
+  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado', label:string) => (
     <button onClick={()=>setTab(t)}
       style={{background:tab===t?'#00A550':'#fff', color:tab===t?'#fff':'#4A6655',
         border:`1.5px solid ${tab===t?'#00A550':'#C2DDD0'}`,
