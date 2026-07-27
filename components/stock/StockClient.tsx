@@ -313,7 +313,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       // Expandir abreviaturas en la descripción del artículo
       let expandida = base
       Object.entries(abreviaturas).forEach(([abr, exp]) => {
-        expandida = expandida.replace(new RegExp(abr.replace(/[.*+?^${}()|[\]\]/g, '\\$&'), 'g'), exp.toUpperCase())
+        expandida = expandida.split(abr).join(exp.toUpperCase())
       })
       return expandida.includes(qUp)
     })
