@@ -289,7 +289,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const arr = items.filter(s => FAM_MAP[normPos(s.pos)] === fam)
     const totalU = arr.reduce((a, s) => a + s.cantidad, 0)
     const valCosto = arr.filter(s => s.costo).reduce((a, s) => a + (s.costo ?? 0) * s.cantidad, 0)
-    const sinCosto = arr.filter(s => !s.costo && s.cantidad > 0).reduce((a, s) => a + s.cantidad, 0)
+    const sinCosto = arr.filter(s => !s.costo && s.cantidad > 0).length
     return { fam, items: arr.length, totalU, valCosto, sinCosto }
   })
   const valTotalVenta = items.filter(s => s.precio_venta).reduce((a, s) => a + (s.precio_venta ?? 0) * s.cantidad, 0)
