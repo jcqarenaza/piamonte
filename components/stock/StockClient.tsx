@@ -307,15 +307,16 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   if (depFilter) visible = visible.filter(s => (s.deposito || 'Principal') === depFilter)
   if (q) {
     const qUp = q.toUpperCase()
+    const palabras = qUp.split(/\s+/).filter(Boolean)
     visible = visible.filter(s => {
       const base = (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase()
-      if (base.includes(qUp)) return true
       // Expandir abreviaturas en la descripción del artículo
       let expandida = base
       Object.entries(abreviaturas).forEach(([abr, exp]) => {
         expandida = expandida.split(abr).join(exp.toUpperCase())
       })
-      return expandida.includes(qUp)
+      // Todas las palabras deben estar presentes (no necesariamente juntas)
+      return palabras.every(p => base.includes(p) || expandida.includes(p))
     })
   }
   if (soloSinCosto) visible = visible.filter(s => !s.costo && s.cantidad > 0)
