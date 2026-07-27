@@ -347,7 +347,7 @@ export default function ArticulosClient() {
 
       <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
         <div className="flex gap-2 items-center flex-wrap">
-          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por descripción, SKU o código Pilkington…" />
+          <Input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por descripción, SKU o código de referencia…" />
           {tab === 'todos' && (
             <select value={filtroFaltante} onChange={e=>setFiltroFaltante(e.target.value)}
               className="border border-p-line rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-p-green">
@@ -377,7 +377,7 @@ export default function ArticulosClient() {
                     <p className="font-saira font-bold text-p-ink text-base">{a.descripcion}</p>
                     <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a.sku_interno}</span>
                     {a.codigo_referencia
-                      ? <span className="text-[10px] font-mono bg-green-50 text-green-700 px-2 py-0.5 rounded-full">✓ Pilkington: {a.codigo_referencia}</span>
+                      ? <span className="text-[10px] font-mono bg-green-50 text-green-700 px-2 py-0.5 rounded-full">✓ {a.marca && !['PILKINGTON','PLK',''].includes(a.marca.toUpperCase()) ? a.marca : 'Pilkington'}: {a.codigo_referencia}</span>
                       : <span className="text-[10px] text-amber-600 px-2 py-0.5 rounded-full border border-dashed border-amber-300">Sin código de fábrica</span>}
                     {a.pos && <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{a.pos}</span>}
                     {tab === 'pendientes' && (
@@ -449,7 +449,7 @@ export default function ArticulosClient() {
           <Field label="Descripción correcta *">
             <Input value={editForm.descripcion} onChange={e=>setEditForm(p=>({...p,descripcion:e.target.value}))} placeholder="Descripción prolija del artículo"/>
           </Field>
-          <Field label="Código de referencia (fábrica / Pilkington)">
+          <Field label="Código de referencia (fábrica / Pilkington / proveedor)">
             <Input value={editForm.codigo_referencia} onChange={e=>setEditForm(p=>({...p,codigo_referencia:e.target.value}))} placeholder="Código grabado en el vidrio (opcional)"/>
           </Field>
           <div className="grid grid-cols-2 gap-3">
