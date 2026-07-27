@@ -36,9 +36,17 @@ export default function InformesClient() {
   const [pIdx, setPIdx] = useState(0)
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'>('general')
+  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
+
+  // Tab Resultado
+  interface GastoRow { id:string; fecha:string; categoria:string; descripcion:string; monto:number; forma_pago:string|null }
+  interface CompraRow { id:string; fecha:string; proveedor_nombre:string; total:number; tipo:string }
+  const [gastos, setGastos] = useState<GastoRow[]>([])
+  const [compras, setCompras] = useState<CompraRow[]>([])
+  const [resLoading, setResLoading] = useState(false)
+  const [drillCat, setDrillCat] = useState<string|null>(null)
 
   // Datos aseguradoras
   interface AsegStats { os_creadas:number; os_pendientes:number; facturadas:number; fc_importe:number }
@@ -57,6 +65,23 @@ export default function InformesClient() {
       .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false})
       .then(({data}) => { setVentas(data??[]); setLoading(false) })
   }, [pIdx, periodos, supabase])
+
+  // Cargar datos resultado cuando cambia período o se selecciona el tab
+  useEffect(() => {
+    if(tab !== 'resultado') return
+    const p = periodos[pIdx]
+    setResLoading(true)
+    Promise.all([
+      supabase.from('gastos').select('id,fecha,categoria,descripcion,monto,forma_pago')
+        .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false}),
+      supabase.from('comprobantes_compra').select('id,fecha,proveedor_nombre,total,tipo')
+        .eq('tipo','factura').gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false}),
+    ]).then(([gRes, cRes]) => {
+      setGastos(gRes.data??[])
+      setCompras(cRes.data??[])
+      setResLoading(false)
+    })
+  }, [tab, pIdx, periodos, supabase])
 
   // Cargar datos aseguradoras cuando cambia período o se selecciona el tab
   useEffect(() => {
@@ -157,6 +182,7 @@ export default function InformesClient() {
             {tabBtn('general','📊 General')}
             {tabBtn('rentabilidad','💹 Rentabilidad por tipo')}
             {tabBtn('aseguradoras','🏢 Aseguradoras')}
+            {tabBtn('resultado','📋 Resultado')}
           </div>
 
           {tab === 'general' && (
@@ -332,6 +358,120 @@ export default function InformesClient() {
                 </>
               )}
             </div>
+          )}
+
+          {tab === 'resultado' && (
+            resLoading ? <p className="text-sm text-center py-8 text-p-gray">Cargando…</p> : (() => {
+              // Ingresos: ventas del período
+              const totalIngresos = ventas.reduce((a,v)=>a+v.precio, 0)
+
+              // Egresos: gastos agrupados por categoría + compras
+              const gastosPorCat = gastos.reduce((acc,g) => {
+                const cat = g.categoria || 'Sin categoría'
+                if (!acc[cat]) acc[cat] = []
+                acc[cat].push(g)
+                return acc
+              }, {} as Record<string, GastoRow[]>)
+
+              const totalGastos = gastos.reduce((a,g)=>a+g.monto, 0)
+              const totalCompras = compras.reduce((a,c)=>a+(+c.total||0), 0)
+              const totalEgresos = totalGastos + totalCompras
+              const resultado = totalIngresos - totalEgresos
+
+              return (
+                <div className="flex flex-col gap-4">
+                  {/* KPIs */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <KpiCard label="Ingresos" value={moneyARS(totalIngresos)} accent/>
+                    <KpiCard label="Egresos" value={moneyARS(totalEgresos)}/>
+                    <KpiCard label="Compras" value={moneyARS(totalCompras)}/>
+                    <KpiCard label={resultado>=0?"Resultado":"Déficit"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0}/>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* INGRESOS */}
+                    <div className="bg-white border border-p-line rounded-2xl p-4">
+                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📈 Ingresos — {moneyARS(totalIngresos)}</p>
+                      {ventas.length === 0 ? <p className="text-xs text-p-ink2">Sin ventas en el período</p> : (
+                        <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+                          {ventas.map((v,i) => (
+                            <div key={i} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                              <div>
+                                <p className="text-xs text-p-ink truncate max-w-[200px]">{v.descripcion}</p>
+                                <p className="text-[10px] text-p-ink2">{v.fecha.split('-').reverse().join('/')}</p>
+                              </div>
+                              <span className="font-mono text-xs font-semibold text-p-dark">{moneyARS(v.precio)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* EGRESOS */}
+                    <div className="bg-white border border-p-line rounded-2xl p-4">
+                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📉 Gastos — {moneyARS(totalGastos)}</p>
+                      {Object.keys(gastosPorCat).length === 0 ? <p className="text-xs text-p-ink2">Sin gastos en el período</p> : (
+                        <div className="flex flex-col gap-1">
+                          {Object.entries(gastosPorCat).sort((a,b)=>
+                            b[1].reduce((s,g)=>s+g.monto,0)-a[1].reduce((s,g)=>s+g.monto,0)
+                          ).map(([cat, gs]) => {
+                            const subtotal = gs.reduce((s,g)=>s+g.monto,0)
+                            const isOpen = drillCat === cat
+                            return (
+                              <div key={cat}>
+                                <div
+                                  className="flex justify-between items-center py-1.5 border-b border-p-line cursor-pointer hover:bg-p-light px-1 rounded"
+                                  onDoubleClick={()=>setDrillCat(isOpen ? null : cat)}
+                                  onClick={()=>setDrillCat(isOpen ? null : cat)}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-p-ink2">{isOpen?'▼':'▶'}</span>
+                                    <span className="text-xs font-semibold text-p-ink">{cat}</span>
+                                    <span className="text-[10px] text-p-ink2">({gs.length})</span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-red-600">{moneyARS(subtotal)}</span>
+                                </div>
+                                {isOpen && (
+                                  <div className="ml-4 flex flex-col gap-0.5 py-1">
+                                    {gs.map(g=>(
+                                      <div key={g.id} className="flex justify-between items-center py-0.5">
+                                        <div>
+                                          <p className="text-[11px] text-p-ink">{g.descripcion}</p>
+                                          <p className="text-[10px] text-p-ink2">{g.fecha.split('-').reverse().join('/')} · {g.forma_pago||''}</p>
+                                        </div>
+                                        <span className="font-mono text-[11px] text-red-500">{moneyARS(g.monto)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* COMPRAS */}
+                  <div className="bg-white border border-p-line rounded-2xl p-4">
+                    <p className="font-saira font-bold text-sm text-p-ink mb-3">🛒 Compras — {moneyARS(totalCompras)}</p>
+                    {compras.length === 0 ? <p className="text-xs text-p-ink2">Sin compras en el período</p> : (
+                      <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                        {compras.map(c=>(
+                          <div key={c.id} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                            <div>
+                              <p className="text-xs text-p-ink">{c.proveedor_nombre}</p>
+                              <p className="text-[10px] text-p-ink2">{c.fecha.split('-').reverse().join('/')}</p>
+                            </div>
+                            <span className="font-mono text-xs font-semibold text-red-600">{moneyARS(+c.total||0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()
           )}
 
           {tab === 'aseguradoras' && (
