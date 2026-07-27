@@ -78,6 +78,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [impactoCuentaId, setImpactoCuentaId] = useState('')
   const [impactoFecha, setImpactoFecha]   = useState(todayStr())
   const [proveedores, setProveedores] = useState<{id:string;nombre:string}[]>([])
+  const [contraparteOtro, setContraparteOtro] = useState(false)
   const supabase = createClient()
 
   async function load() {
@@ -108,7 +109,7 @@ export default function ChequesClient({ userId }: { userId?: string }) {
 
   function abrirNuevo(tipo?: Tipo) {
     setEditId(null)
-    setForm({...emptyForm, tipo:tipo||'tercero', estado:tipo==='propio'?'emitido':'en_cartera'})
+    setForm({...emptyForm, tipo:tipo||'tercero', estado:tipo==='propio'?'emitido':'en_cartera'}); setContraparteOtro(false)
     setOpen(true)
   }
   function abrirEditar(c:Cheque) {
@@ -457,22 +458,24 @@ export default function ChequesClient({ userId }: { userId?: string }) {
           <Field label="Monto *"><Input value={form.monto} onChange={e=>setForm(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
           <Field label={form.tipo==='tercero'?'Recibido de':'Emitido a'}>
             {form.tipo === 'propio' ? (
-              <select
-                value={proveedores.some(p=>p.nombre===form.contraparte) ? form.contraparte : (form.contraparte ? '__otro__' : '')}
-                onChange={e=>{
-                  if (e.target.value === '__otro__') setForm(p=>({...p,contraparte:''}))
-                  else setForm(p=>({...p,contraparte:e.target.value}))
-                }}
-                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
-                <option value="">Seleccionar proveedor…</option>
-                {proveedores.map(p=><option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                <option value="__otro__">Otro…</option>
-              </select>
+              <>
+                <select
+                  value={contraparteOtro ? '__otro__' : (form.contraparte || '')}
+                  onChange={e=>{
+                    if (e.target.value === '__otro__') { setContraparteOtro(true); setForm(p=>({...p,contraparte:''})) }
+                    else { setContraparteOtro(false); setForm(p=>({...p,contraparte:e.target.value})) }
+                  }}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                  <option value="">Seleccionar proveedor…</option>
+                  {proveedores.map(p=><option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                  <option value="__otro__">Otro…</option>
+                </select>
+                {contraparteOtro && (
+                  <Input style={{marginTop:6}} value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Escribí el nombre del proveedor…"/>
+                )}
+              </>
             ) : (
               <Input value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Nombre del cliente…"/>
-            )}
-            {form.tipo === 'propio' && !proveedores.some(p=>p.nombre===form.contraparte) && (
-              <Input style={{marginTop:6}} value={form.contraparte} onChange={e=>setForm(p=>({...p,contraparte:e.target.value}))} placeholder="Escribí el nombre…"/>
             )}
           </Field>
           <Field label="Estado">
