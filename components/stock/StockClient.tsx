@@ -56,6 +56,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [editId, setEditId] = useState<string|null>(null)
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const [abreviaturas, setAbreviaturas] = useState<Record<string,string>>({})
+  const [conteoMode, setConteoMode] = useState(false)
+  const [conteos, setConteos] = useState<Record<string,number>>({})
   const supabase = createClient()
 
   async function confirmarAjusteCant() {
@@ -585,6 +587,71 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (nuevo) elegirParaVincular(s.id, nuevo)
   }
 
+
+  async function generarConteo() {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ format: 'a4', unit: 'mm' })
+    const fams = filtroFam ? [filtroFam] : FAMS
+    let firstPage = true
+    fams.forEach(fam => {
+      const arts = items.filter(s => FAM_MAP[normPos(s.pos)] === fam && s.activo && s.cantidad >= 0)
+      if (!arts.length) return
+      if (!firstPage) doc.addPage()
+      firstPage = false
+      doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0,0,0)
+      doc.text(`Conteo de Stock — ${fam}`, 10, 15)
+      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
+      doc.text(new Date().toLocaleDateString('es-AR'), 10, 21)
+      const cols = [10, 50, 120, 145, 165, 190]
+      const headers = ['Código','Descripción','Cant. sistema','Conteo','Diferencia','Obs.']
+      doc.setFillColor(220,220,220); doc.rect(10, 25, 190, 7, 'FD')
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(0,0,0)
+      headers.forEach((h,i) => doc.text(h, cols[i]+1, 30.5))
+      let y = 32
+      arts.forEach((s,idx) => {
+        if (y > 275) { doc.addPage(); y = 20 }
+        if (idx % 2 === 0) { doc.setFillColor(248,248,248); doc.rect(10, y, 190, 8, 'F') }
+        doc.setDrawColor(200,200,200); doc.setLineWidth(0.2); doc.line(10, y+8, 200, y+8)
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
+        doc.text((s.codigo||'').slice(0,15), cols[0]+1, y+5.5)
+        doc.text((s.descripcion||'').slice(0,38), cols[1]+1, y+5.5)
+        doc.text(String(s.cantidad), cols[2]+1, y+5.5)
+        doc.setDrawColor(0,0,0); doc.setLineWidth(0.3)
+        doc.rect(cols[3], y+1, 18, 6, 'S')
+        doc.rect(cols[4], y+1, 23, 6, 'S')
+        doc.rect(cols[5], y+1, 10, 6, 'S')
+        y += 8
+      })
+      doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(100,100,100)
+      doc.text(`Total: ${arts.length} artículos`, 10, y+5)
+    })
+    doc.save('conteo-stock.pdf')
+  }
+
+  async function generarEtiqueta(s: typeof items[0]) {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ format: [80, 80], unit: 'mm' })
+    const code = s.codigo||'000000'
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0)
+    doc.text(code, 40, 10, { align: 'center' })
+    // Barcode simple con líneas
+    const barY = 14; const barH = 28; let bx = 5
+    doc.setFillColor(0,0,0)
+    for (let i=0; i<code.length; i++) {
+      const w = (code.charCodeAt(i) % 3) * 0.4 + 0.8
+      doc.rect(bx, barY, w, barH, 'F')
+      bx += w + ((code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2)
+      if (bx > 74) break
+    }
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
+    doc.text((s.descripcion||'').slice(0,50), 40, 48, { align: 'center', maxWidth: 70 })
+    if (s.marca) {
+      doc.setFontSize(6); doc.setTextColor(100,100,100)
+      doc.text(s.marca, 40, 56, { align: 'center' })
+    }
+    doc.save(`etiqueta-${code}.pdf`)
+  }
+
   return (
     <div>
       {/* Tabs */}
@@ -872,6 +939,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📥 Cargar mercadería
         </button>
+        {isAdmin && <button onClick={generarConteo}
+          style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          📋 Conteo
+        </button>}
+        {isAdmin && <button onClick={()=>setConteoMode(!conteoMode)}
+          style={{background:conteoMode?'#dc2626':'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          {conteoMode ? '✕ Salir conteo' : '📊 Ajuste masivo'}
+        </button>}
       </div>
 
       <p className="text-xs text-p-ink2 mb-3">{visible.length} ítems · {visible.reduce((a, s) => a + s.cantidad, 0)} u.</p>
@@ -917,9 +992,18 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   </div>
                   <div className="flex items-center gap-1">
                     {isAdmin && <>
-                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
-                        className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
-                      <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
+                      {conteoMode ? (<>
+                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)-1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'salida',cantidad:1,fecha:todayStr(),descripcion:'Ajuste conteo -1'});load()}}
+                          className="w-7 h-7 border border-red-200 rounded-lg text-sm text-red-500 hover:bg-red-50 font-bold">-1</button>
+                        <span className="font-mono text-sm font-bold w-8 text-center">{conteos[s.id]??s.cantidad}</span>
+                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)+1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'entrada',cantidad:1,fecha:todayStr(),descripcion:'Ajuste conteo +1'});load()}}
+                          className="w-7 h-7 border border-green-200 rounded-lg text-sm text-green-600 hover:bg-green-50 font-bold">+1</button>
+                      </>) : (<>
+                        <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
+                          className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
+                        <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
+                        <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-200 rounded-lg text-sm text-purple-500 hover:bg-purple-50" title="Imprimir etiqueta">🏷</button>
+                      </>)}
                     </>}
                     <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
                   </div>
