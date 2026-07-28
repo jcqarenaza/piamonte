@@ -58,6 +58,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [abreviaturas, setAbreviaturas] = useState<Record<string,string>>({})
   const [conteoMode, setConteoMode] = useState(false)
   const [conteos, setConteos] = useState<Record<string,number>>({})
+  const [ajusteMasivoOpen, setAjusteMasivoOpen] = useState(false)
+  const [ajusteMasivoQ, setAjusteMasivoQ] = useState('')
+  const [ajusteMasivoSug, setAjusteMasivoSug] = useState<typeof items>([])
+  const [ajusteMasivoSel, setAjusteMasivoSel] = useState<typeof items[0]|null>(null)
+  const [ajusteMasivoDelta, setAjusteMasivoDelta] = useState(0)
+  const [ajusteMasivoNota, setAjusteMasivoNota] = useState('')
+  const [ajusteMasivoLoading, setAjusteMasivoLoading] = useState(false)
+  const [ajusteMasivoHistorial, setAjusteMasivoHistorial] = useState<{codigo:string;desc:string;delta:number;nota:string}[]>([])
   const supabase = createClient()
 
   async function confirmarAjusteCant() {
@@ -311,7 +319,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const qUp = q.toUpperCase()
     const palabras = qUp.split(/\s+/).filter(Boolean)
     visible = visible.filter(s => {
-      const base = (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '')).toUpperCase()
+      const base = (s.descripcion + ' ' + (s.marca ?? '') + ' ' + (s.codigo ?? '') + ' ' + (s.pos ?? '')).toUpperCase()
       // Expandir abreviaturas en la descripción del artículo
       let expandida = base
       Object.entries(abreviaturas).forEach(([abr, exp]) => {
@@ -587,6 +595,34 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (nuevo) elegirParaVincular(s.id, nuevo)
   }
 
+
+  async function confirmarAjusteMasivo() {
+    if (!ajusteMasivoSel || ajusteMasivoDelta === 0 || !ajusteMasivoNota.trim()) return
+    setAjusteMasivoLoading(true)
+    const nueva = (ajusteMasivoSel.cantidad||0) + ajusteMasivoDelta
+    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteMasivoSel.id)
+    await supabase.from('stock_movimientos').insert({
+      stock_id: ajusteMasivoSel.id,
+      tipo: ajusteMasivoDelta > 0 ? 'entrada' : 'salida',
+      cantidad: Math.abs(ajusteMasivoDelta),
+      fecha: new Date().toISOString().slice(0,10),
+      descripcion: ajusteMasivoNota.trim(),
+    })
+    setAjusteMasivoHistorial(p=>[{
+      codigo: ajusteMasivoSel.codigo||'',
+      desc: ajusteMasivoSel.descripcion||'',
+      delta: ajusteMasivoDelta,
+      nota: ajusteMasivoNota,
+    },...p])
+    // Actualizar en memoria
+    setItems(prev => prev.map(s => s.id===ajusteMasivoSel!.id ? {...s, cantidad: nueva} : s))
+    // Limpiar para siguiente
+    setAjusteMasivoSel(null)
+    setAjusteMasivoQ('')
+    setAjusteMasivoDelta(0)
+    setAjusteMasivoNota('')
+    setAjusteMasivoLoading(false)
+  }
 
   async function generarConteo() {
     const { jsPDF } = await import('jspdf')
@@ -943,9 +979,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📋 Conteo
         </button>}
-        {isAdmin && <button onClick={()=>setConteoMode(!conteoMode)}
-          style={{background:conteoMode?'#dc2626':'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-          {conteoMode ? '✕ Salir conteo' : '📊 Ajuste masivo'}
+        {isAdmin && <button onClick={()=>{setAjusteMasivoOpen(true);setAjusteMasivoHistorial([]);setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0);setAjusteMasivoNota('')}}
+          style={{background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          📊 Ajuste masivo
         </button>}
       </div>
 
@@ -992,18 +1028,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   </div>
                   <div className="flex items-center gap-1">
                     {isAdmin && <>
-                      {conteoMode ? (<>
-                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)-1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'salida',cantidad:1,fecha:new Date().toISOString().slice(0,10),descripcion:'Ajuste conteo -1'});load()}}
-                          className="w-7 h-7 border border-red-200 rounded-lg text-sm text-red-500 hover:bg-red-50 font-bold">-1</button>
-                        <span className="font-mono text-sm font-bold w-8 text-center">{conteos[s.id]??s.cantidad}</span>
-                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)+1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'entrada',cantidad:1,fecha:new Date().toISOString().slice(0,10),descripcion:'Ajuste conteo +1'});load()}}
-                          className="w-7 h-7 border border-green-200 rounded-lg text-sm text-green-600 hover:bg-green-50 font-bold">+1</button>
-                      </>) : (<>
-                        <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
-                          className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
-                        <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                        <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-200 rounded-lg text-sm text-purple-500 hover:bg-purple-50" title="Imprimir etiqueta">🏷</button>
-                      </>)}
+                      <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
+                        className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
+                      <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
+                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-200 rounded-lg text-sm text-purple-500 hover:bg-purple-50" title="Imprimir etiqueta">🏷</button>
                     </>}
                     <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
                   </div>
@@ -1180,6 +1208,81 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           </div>
         </div>
       )}
+
+      {/* Modal Ajuste Masivo */}
+      <Modal open={ajusteMasivoOpen} onClose={()=>setAjusteMasivoOpen(false)} title="📊 Ajuste masivo de stock">
+        <div className="flex flex-col gap-3">
+          {/* Buscador */}
+          <div className="relative">
+            <Input value={ajusteMasivoQ} onChange={e=>{
+              const q=e.target.value.toUpperCase(); setAjusteMasivoQ(e.target.value)
+              if (q.length>=1) {
+                setAjusteMasivoSug(items.filter(s=>(s.codigo||'').toUpperCase().startsWith(q)).slice(0,10))
+              } else setAjusteMasivoSug([])
+            }} placeholder="Escribí el código…"/>
+            {ajusteMasivoSug.length>0 && !ajusteMasivoSel && (
+              <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                {ajusteMasivoSug.map(s=>(
+                  <button key={s.id} type="button" onClick={()=>{setAjusteMasivoSel(s);setAjusteMasivoQ(s.descripcion||'');setAjusteMasivoSug([]);setAjusteMasivoDelta(0)}}
+                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
+                    <p className="font-medium text-p-ink">{s.descripcion}</p>
+                    <p className="text-[10px] font-mono text-p-ink2">{s.codigo} · stock: {s.cantidad}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Artículo seleccionado */}
+          {ajusteMasivoSel && (
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-semibold text-p-ink">{ajusteMasivoSel.descripcion}</p>
+                  <p className="text-xs font-mono text-p-ink2">{ajusteMasivoSel.codigo}</p>
+                </div>
+                <button onClick={()=>{setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0)}} className="text-p-gray hover:text-p-ink text-lg">✕</button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-p-ink2">Stock actual: <strong className="font-mono">{ajusteMasivoSel.cantidad}</strong></span>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button onClick={()=>setAjusteMasivoDelta(d=>d-1)} className="w-8 h-8 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 font-bold text-lg">−</button>
+                  <span className={`font-mono font-bold text-lg w-10 text-center ${ajusteMasivoDelta>0?'text-green-600':ajusteMasivoDelta<0?'text-red-600':'text-p-ink2'}`}>
+                    {ajusteMasivoDelta>0?'+':''}{ajusteMasivoDelta}
+                  </span>
+                  <button onClick={()=>setAjusteMasivoDelta(d=>d+1)} className="w-8 h-8 border border-green-200 rounded-lg text-green-600 hover:bg-green-50 font-bold text-lg">+</button>
+                </div>
+                <span className="text-sm font-mono font-bold text-p-dark ml-2">→ {(ajusteMasivoSel.cantidad||0)+ajusteMasivoDelta}</span>
+              </div>
+              <Field label="Leyenda *">
+                <Input value={ajusteMasivoNota} onChange={e=>setAjusteMasivoNota(e.target.value)} placeholder="Motivo del ajuste…"/>
+              </Field>
+              <button onClick={confirmarAjusteMasivo}
+                disabled={ajusteMasivoLoading||ajusteMasivoDelta===0||!ajusteMasivoNota.trim()}
+                style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer',opacity:(ajusteMasivoLoading||ajusteMasivoDelta===0||!ajusteMasivoNota.trim())?0.5:1}}>
+                {ajusteMasivoLoading?'Aplicando…':'✓ Aplicar y continuar'}
+              </button>
+            </div>
+          )}
+
+          {/* Historial de ajustes de esta sesión */}
+          {ajusteMasivoHistorial.length>0 && (
+            <div className="border border-p-line rounded-xl p-3">
+              <p className="text-xs font-semibold text-p-ink2 mb-2">Ajustes de esta sesión:</p>
+              <div className="flex flex-col gap-1">
+                {ajusteMasivoHistorial.map((h,i)=>(
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono text-p-ink2">{h.codigo}</span>
+                    <span className="flex-1 truncate text-p-ink">{h.desc}</span>
+                    <span className={`font-mono font-bold ${h.delta>0?'text-green-600':'text-red-600'}`}>{h.delta>0?'+':''}{h.delta}</span>
+                    <span className="text-p-ink2 truncate max-w-[100px]">{h.nota}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={open} onClose={() => setOpen(false)} title={editId ? 'Editar artículo' : 'Agregar a stock'}>
         <div className="flex flex-col gap-3">
