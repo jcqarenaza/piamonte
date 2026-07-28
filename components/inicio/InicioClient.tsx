@@ -199,7 +199,7 @@ export default function InicioClient({ nombre, rol, userId }: { nombre: string; 
               {actividad.map((c: any) => (
                 <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${c.categoria==='nc'?'bg-amber-100 text-amber-700':'bg-p-light text-p-dark'}`}>
-                    {c.categoria==='nc' ? 'NC' : (c.tipo||'X')}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
+                    {c.nro_cbte_afip ? `${c.categoria==='nc' ? 'NC' : (c.tipo||'X')}-0006-${String(c.nro_cbte_afip).padStart(8,'0')}` : `⚠ Sin CAE (interno ${String(c.numero??0).padStart(8,'0')})`}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-p-ink truncate">{c.aseguradora_nombre||c.cliente_nombre||'Consumidor Final'}</p>
