@@ -637,12 +637,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                                 const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
                                 if (!st) continue
                                 const nueva = (st.cantidad||0) - (it.c||1)
-                                await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
+                                // Insertar movimiento ANTES del update para que el trigger no cree "Ajuste Qpcia"
                                 await supabase.from('stock_movimientos').insert({
                                   stock_id: it.stock_id, tipo: 'salida',
                                   cantidad: it.c||1, fecha: todayStr(),
                                   descripcion: `Colocado OS ${o.numero ? 'OS-'+String(o.numero).padStart(4,'0') : 'S/N'} · Sancor · ${o.cliente||''}`,
                                 })
+                                await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
                               }
                               await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                               load()
