@@ -666,7 +666,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function generarEtiqueta(s: typeof items[0]) {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [80, 80], unit: 'mm' })
+    const doc = new jsPDF({ format: [80, 80], unit: 'mm', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0)
     doc.text(code, 40, 10, { align: 'center' })
@@ -685,7 +685,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       doc.setFontSize(6); doc.setTextColor(100,100,100)
       doc.text(s.marca, 40, 56, { align: 'center' })
     }
-    doc.save(`etiqueta-${code}.pdf`)
+    // Abrir en nueva ventana para imprimir directamente
+    const blob2 = doc.output('blob')
+    const url2 = URL.createObjectURL(blob2)
+    const win = window.open(url2, '_blank')
+    if (win) { win.onload = () => { win.focus(); win.print() } }
   }
 
   return (

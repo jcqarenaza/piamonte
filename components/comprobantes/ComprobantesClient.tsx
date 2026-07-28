@@ -1186,8 +1186,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   // PDF formato ARCA para Mercantil Andina y Sancor (layout validado)
   async function generarPDFArca(c:Comprobante): Promise<Blob> {
-    const { jsPDF } = await import('jspdf')
-
+    // Fetch datos aseguradora
     let cuitAseg='', dirAseg='', razonSocial=c.aseguradora_nombre||''
     if (c.aseguradora_id) {
       const { data: aRow } = await supabase.from('aseguradoras').select('cuit,direccion,localidad,razon_social').eq('id', c.aseguradora_id).maybeSingle()
@@ -1197,261 +1196,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         razonSocial = aRow.razon_social || razonSocial
       }
     }
-
-    const tipoLabel = c.categoria==='nc' ? 'NOTA DE CREDITO' : 'FACTURA'
-    const codTipo = 'COD. 01'
-    const nroAfip = String(c.nro_cbte_afip??c.numero??0).padStart(8,'0')
-    const fechaFmt = c.fecha.split('-').reverse().join('/')
-    const caeVto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
-    const fmtNum = (n:number) => n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
-
-    // Colores y grosores exactos de la especificación
-    const COLOR_NEGRO = [0,0,0]
-    const COLOR_LINEA = [85,85,85]  // #555555
-    const COLOR_GRIS  = [215,215,215] // #D7D7D7
-    const BRD = 0.7   // bordes
-    const SEP = 0.5   // separadores internos
-
-    const generar = (doc:any, copia:string) => {
-      doc.addPage()
-
-      // ── HELPERS ──
-      const setColor = (rgb:number[]) => doc.setTextColor(rgb[0],rgb[1],rgb[2])
-      const setDraw  = (rgb:number[]) => doc.setDrawColor(rgb[0],rgb[1],rgb[2])
-      const setFill  = (rgb:number[]) => doc.setFillColor(rgb[0],rgb[1],rgb[2])
-
-      // Texto: x,y en mm, texto, tamaño pt, bold, align
-      const txt = (x:number,y:number,s:string,sz:number,bold=false,align='left') => {
-        setColor(COLOR_NEGRO)
-        doc.setFont('helvetica', bold?'bold':'normal')
-        doc.setFontSize(sz)
-        if (align==='right')  doc.text(s,x,y,{align:'right'})
-        else if (align==='center') doc.text(s,x,y,{align:'center'})
-        else doc.text(s,x,y)
-      }
-
-      // Línea
-      const ln = (x1:number,y1:number,x2:number,y2:number,lw=BRD) => {
-        setDraw(COLOR_LINEA); doc.setLineWidth(lw); doc.line(x1,y1,x2,y2)
-      }
-
-      // Rect solo borde
-      const box = (x:number,y:number,w:number,h:number,lw=BRD) => {
-        setDraw(COLOR_LINEA); doc.setLineWidth(lw); doc.rect(x,y,w,h,'S')
-      }
-
-      // Rect con fondo gris
-      const boxGris = (x:number,y:number,w:number,h:number,lw=BRD) => {
-        setFill(COLOR_GRIS); setDraw(COLOR_LINEA); doc.setLineWidth(lw)
-        doc.rect(x,y,w,h,'FD')
-        setFill([255,255,255]); setColor(COLOR_NEGRO); setDraw(COLOR_LINEA)
-      }
-
-      // Medidas absolutas (mm) — especificación + coordenadas Arca
-      const ML=5, MR=205, MT=5  // márgenes
-      const W = MR - ML         // 200mm
-
-      // ── BLOQUE 1: ORIGINAL ──  y=5..14.5
-      box(ML, MT, W, 9.5)
-      txt(105, 12.8, copia, 22, true, 'center')
-
-      // ── BLOQUE 2: DATOS EMPRESA ──  y=15.7..57.5  (h≈42mm)
-      ln(ML, 15.7, MR, 15.7)                    // línea superior
-      ln(ML, 57.5, MR, 57.5)                    // línea inferior
-      ln(ML, 15.7, ML, 57.5)                    // borde izq
-      ln(MR, 15.7, MR, 57.5)                    // borde der
-
-      // Divisor vertical entre emisor y zona derecha (x=97)
-      ln(97, 15.7, 97, 57.5, SEP)
-
-      // Sub-rect letra A (97..113.6, 15.9..30.4)
-      box(97, 15.9, 16.6, 14.5)
-      // Divisor vertical derecho del rect A (x=113.6) baja hasta 57.5
-      ln(113.6, 30.4, 113.6, 57.5, SEP)
-
-      // EMISOR (ML..97)
-      txt(23.7, 22.4, 'KNUTH VERONICA ALEJANDRA', 11, true)
-      txt(ML+2,  36.5, 'Razón Social:',           10, true);  txt(29.6, 36.5, 'KNUTH VERONICA ALEJANDRA', 10)
-      txt(ML+2,  45.0, 'Domicilio Comercial:',    10, true);  txt(40.9, 45.0, 'Calle 102 366 - General Pico, La Pampa', 10)
-      txt(ML+2,  53.7, 'Condición frente al IVA:', 10, true); txt(46.2, 53.7, 'IVA Responsable Inscripto', 10)
-
-      // LETRA A central (97..113.6)
-      txt(105.3, 27.0, c.tipo||'A', 34, true, 'center')
-      txt(105.3, 29.5, codTipo, 10, true, 'center')
-
-      // FACTURA zona derecha (113.6..205)
-      txt(120.3, 20.1, tipoLabel, 28, true)
-      txt(120.3, 30.4, 'Punto de Venta:  0006', 11, true)
-      txt(162.6, 30.4, `Comp. Nro:  ${nroAfip}`, 11, true)
-      txt(120.3, 36.1, 'Fecha de Emisión:', 10, true);  txt(152.0, 36.1, fechaFmt, 10)
-      txt(120.3, 44.2, 'CUIT:', 10, true);              txt(131.6, 44.2, '27242657174', 10)
-      txt(120.3, 48.4, 'Ingresos Brutos:', 10, true);   txt(148.0, 48.4, '1919987', 10)
-      txt(120.3, 52.7, 'Fecha de Inicio de Actividades:', 10, true); txt(170.0, 52.7, '01/09/2007', 10)
-
-      // ── BLOQUE 3: PERÍODO ──  y=57.5..67.5  (h≈10mm)
-      ln(ML, 67.5, MR, 67.5)
-      ln(ML, 57.5, ML, 67.5, SEP); ln(MR, 57.5, MR, 67.5, SEP)
-      // divisor vertical período
-      ln(105, 57.5, 105, 67.5, SEP)
-      txt(ML+2, 62.0, 'Período Facturado Desde:', 11, true)
-      txt(56.1,  62.0, fechaFmt, 10)
-      txt(82.0,  62.0, '  Hasta:', 11, true); txt(94.0, 62.0, fechaFmt, 10)
-      txt(109.0, 62.0, 'Fecha de Vto. para el pago:', 11, true)
-      txt(MR,    62.0, fechaFmt, 10, false, 'right')
-
-      // ── BLOQUE 4: DATOS CLIENTE ──  y=67.5..95.5  (h≈28mm)
-      ln(ML, 95.5, MR, 95.5)
-      ln(ML, 67.5, ML, 95.5, SEP); ln(MR, 67.5, MR, 95.5, SEP)
-      // 3 filas con separadores
-      ln(ML, 75.5, MR, 75.5, SEP)
-      ln(ML, 83.5, MR, 83.5, SEP)
-
-      // Fila 1: CUIT | Razón Social
-      txt(ML+2,  72.0, 'CUIT:', 10, true)
-      txt(18.3,  72.0, cuitAseg.replace(/-/g,''), 10)
-      txt(78.4,  72.0, 'Apellido y Nombre / Razón Social:', 10, true)
-      txt(114.9, 72.0, razonSocial.slice(0,58), 10)
-
-      // Fila 2: Cond IVA | Domicilio
-      txt(ML+2,  79.5, 'Condición frente al IVA:', 10, true)
-      txt(46.2,  79.5, 'IVA Responsable Inscripto', 10)
-      txt(96.1,  79.5, 'Domicilio Comercial:', 10, true)
-      txt(122.0, 79.5, (dirAseg||'').slice(0,45), 10)
-
-      // Fila 3: Cond venta
-      txt(ML+2,  91.0, 'Condición de venta:', 10, true)
-      txt(39.9,  91.0, 'Cuenta Corriente', 10)
-
-      // ── BLOQUE 5: TABLA ──  y=95.5..135.5  (h≈40mm)
-      // Columnas exactas de Arca
-      const colX = [ML,  19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
-      const colW = [14.4, 61.7, 18.7, 13.8,  22.9,  10.2,  22.9,  12.0,  23.3]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
-      const tY = 95.5
-
-      // Header gris con rects individuales
-      colX.forEach((x,i) => boxGris(x, tY, colW[i], 8, BRD))
-      setColor(COLOR_NEGRO)
-      colX.forEach((x,i) => {
-        doc.setFont('helvetica','bold'); doc.setFontSize(9)
-        doc.text(heads[i], x+0.8, tY+5.5)
-      })
-
-
-      // Filas de datos
-      let iy = tY + 8
-      c.items.forEach((it:any) => {
-        const netoUnit = Math.round((it.p||0)/1.21*100)/100
-        const desc = it.d||''
-        const descLines = doc.splitTextToSize(desc, colW[1]-2)
-        const rowH = Math.max(9, descLines.length*5+4)
-
-        // Línea horizontal inferior de la fila
-        ln(ML, iy+rowH, MR, iy+rowH, SEP)
-
-        setColor(COLOR_NEGRO)
-        doc.setFont('helvetica','normal'); doc.setFontSize(9)
-
-        // Código
-        doc.text((it as any).codigo||'', colX[0]+0.8, iy+5.5)
-        // Descripción (puede ser multilinea)
-        descLines.forEach((dl:string, di:number) => doc.text(dl, colX[1]+0.8, iy+5.5+di*5))
-        // Cantidad
-        doc.text(`${Number(it.c||1).toFixed(2).replace('.',',')}`, colX[2]+0.8, iy+5.5)
-        // U. medida
-        doc.text('unidades', colX[3]+0.8, iy+5.5)
-        // Precio Unit. (derecha)
-        doc.text(fmtNum(netoUnit), colX[4]+colW[4]-0.8, iy+5.5, {align:'right'})
-        // % Bonif
-        doc.text('0,00', colX[5]+0.8, iy+5.5)
-        // Subtotal (derecha)
-        doc.text(fmtNum(netoUnit*(it.c||1)), colX[6]+colW[6]-0.8, iy+5.5, {align:'right'})
-        // Alícuota IVA
-        doc.text('21%', colX[7]+0.8, iy+5.5)
-        // Subtotal c/IVA (derecha)
-        doc.text(fmtNum((it.c||1)*(it.p||0)), colX[8]+colW[8]-0.8, iy+5.5, {align:'right'})
-
-        iy += rowH
-
-        // Referencia bajo el ítem
-        if (c.siniestro||c.patente||c.vehiculo) {
-          const ref = [c.vehiculo, c.patente?`Pat: ${c.patente}`:null, c.siniestro?`Sin: ${c.siniestro}`:null].filter(Boolean).join(' · ')
-          doc.setFontSize(8); doc.setTextColor(80,80,80)
-          doc.text(ref, colX[1]+0.8, iy+3)
-          iy += 5
-        }
-      })
-
-      // ── ESPACIO EN BLANCO ── (~120mm libres — posición fija de totales)
-      const TOTALES_Y = 237.8  // coordenada exacta de Arca
-
-      // ── BLOQUE TOTALES ──  y=237.8, h=58mm
-      box(ML, TOTALES_Y, W, 58, BRD)
-      ln(ML, TOTALES_Y+9, MR, TOTALES_Y+9, SEP)  // separador Importe Otros Tributos
-
-      txt(66.0, TOTALES_Y+6.5, 'Importe Otros Tributos: $', 10)
-      txt(116.2, TOTALES_Y+6.5, '0,00', 10)
-
-      const totRows:[string,string,boolean][] = [
-        ['Importe Neto Gravado: $', fmtNum(c.neto||0), true],
-        ['IVA 27%: $', '0,00', false],
-        ['IVA 21%: $', fmtNum(c.iva||0), false],
-        ['IVA 10.5%: $', '0,00', false],
-        ['IVA 5%: $', '0,00', false],
-        ['IVA 2.5%: $', '0,00', false],
-        ['IVA 0%: $', '0,00', false],
-        ['Importe Otros Tributos: $', '0,00', false],
-        ['Importe Total: $', fmtNum(c.total||0), true],
-      ]
-      let ry = TOTALES_Y + 14
-      totRows.forEach(([lbl,val,bold]) => {
-        const sz = bold ? (lbl.includes('Total') ? 14 : 11) : 10
-        txt(139.2, ry, lbl, sz, bold)
-        txt(MR-1,  ry, val, sz, bold, 'right')
-        ry += 5.2
-      })
-
-      // ── OBSERVACIONES ── y=295.8, h=10mm (posición fija)
-      const OBS_Y = TOTALES_Y + 58
-      box(ML, OBS_Y, W, 10, BRD)
-      if (c.cliente_nombre) {
-        txt(105, OBS_Y+6.5, c.cliente_nombre.toUpperCase(), 10, false, 'center')
-      }
-
-      // ── PIE ── QR + ARCA + CAE
-      const PIE_Y = OBS_Y + 11
-      ln(ML, PIE_Y, MR, PIE_Y, SEP)
-
-      // Centro: ARCA + texto legal
-      doc.setTextColor(0,80,160); doc.setFont('helvetica','bold'); doc.setFontSize(14)
-      doc.text('ARCA', 68, PIE_Y+8)
-      doc.setTextColor(60,60,60); doc.setFont('helvetica','normal'); doc.setFontSize(6)
-      doc.text('AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', 55, PIE_Y+12)
-      doc.setTextColor(0,0,0); doc.setFont('helvetica','bold'); doc.setFontSize(8)
-      doc.text('Comprobante Autorizado', 55, PIE_Y+17)
-      doc.setFont('helvetica','italic'); doc.setFontSize(6); doc.setTextColor(80,80,80)
-      doc.text('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', 55, PIE_Y+22)
-
-      // Pág. 1/1 centro arriba
-      txt(105, PIE_Y+6, 'Pág. 1/1', 9, false, 'center')
-
-      // CAE derecha
-      if (c.cae_emitido) {
-        txt(MR, PIE_Y+8,  `CAE N°:  ${c.cae_emitido}`, 10, true, 'right')
-        txt(MR, PIE_Y+13, `Fecha de Vto. de CAE:  ${caeVto}`, 10, true, 'right')
-      }
-    }
-
-    const doc = new jsPDF({ format: 'a4', unit: 'mm' })
-    doc.deletePage(1)
-    generar(doc, 'ORIGINAL')
-    generar(doc, 'DUPLICADO')
-    generar(doc, 'TRIPLICADO')
-    return doc.output('blob')
+    // Llamar a la API route Node.js que usa pdf-lib
+    const res = await fetch('/api/generar-pdf-arca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comprobante: c, cuitAseg, dirAseg, razonSocial }),
+    })
+    if (!res.ok) throw new Error('Error generando PDF: ' + await res.text())
+    return await res.blob()
   }
 
   async function compartirWA(c:Comprobante){
-    const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
+    const ASEG_ARCA = ['acca4421-1905-4607-ae64-12455574d3f3']
     const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
     const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
     const file = new File([blob],`Comprobante-${c.numero}.pdf`,{type:'application/pdf'})
@@ -1463,7 +1219,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function descargar(c:Comprobante){
-    const ASEG_ARCA = ['79b592cf-a211-4f39-826a-5e7c0ef594dc','acca4421-1905-4607-ae64-12455574d3f3']
+    const ASEG_ARCA = ['acca4421-1905-4607-ae64-12455574d3f3']
     const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
     const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`0006-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
