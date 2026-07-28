@@ -1318,12 +1318,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           }
         })
         iy += rowH
+        // Si es la última fila y hay datos de OS, mostrar referencia/patente
+        if (c.siniestro || c.patente || c.vehiculo || c.cliente_nombre) {
+          const refLine = [c.vehiculo, c.patente ? `Pat: ${c.patente}` : null, c.siniestro ? `Sin: ${c.siniestro}` : null].filter(Boolean).join(' · ')
+          if (refLine) { t(colX[1]+0.8, iy+3, refLine, false, 6); iy += 5 }
+        }
       })
 
       // Observación: nombre asegurado
       if (c.cliente_nombre) {
         tC(105.0, iy+6, c.cliente_nombre.toUpperCase(), false, 8)
-        iy += 10
+        iy += 8
       }
 
       // ── TOTALES ── solo líneas horizontales como en Arca
