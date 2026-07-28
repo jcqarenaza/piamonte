@@ -1210,7 +1210,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       )}
 
       {/* Modal Ajuste Masivo */}
-      <Modal open={ajusteMasivoOpen} onClose={()=>setAjusteMasivoOpen(false)} title="📊 Ajuste masivo de stock">
+      <Modal open={ajusteMasivoOpen} onClose={()=>setAjusteMasivoOpen(false)} title="📊 Ajuste masivo de stock" size="lg">
         <div className="flex flex-col gap-3">
           {/* Buscador */}
           <div className="relative">
