@@ -236,7 +236,8 @@ export async function POST(req: NextRequest) {
     }
 
     const pdfBytes = await pdfDoc.save()
-    return new NextResponse(pdfBytes, {
+    const buffer = Buffer.from(pdfBytes)
+    return new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="0006-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}.pdf"`,
