@@ -1326,24 +1326,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       // Columnas exactas de Arca
       const colX = [ML,  19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
       const colW = [14.4, 61.7, 18.7, 13.8,  22.9,  10.2,  22.9,  12.0,  23.3]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota
-IVA','Subtotal c/IVA']
+      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
+      const tY = 95.5
       const tY = 95.5
 
       // Header gris con rects individuales
       colX.forEach((x,i) => boxGris(x, tY, colW[i], 8, BRD))
       setColor(COLOR_NEGRO)
       colX.forEach((x,i) => {
-        const lines = heads[i].split('
-')
         doc.setFont('helvetica','bold'); doc.setFontSize(9)
-        if (lines.length>1) {
-          doc.text(lines[0], x+0.8, tY+4)
-          doc.text(lines[1], x+0.8, tY+6.5)
-        } else {
-          doc.text(heads[i], x+0.8, tY+5.5)
-        }
+        doc.text(heads[i], x+0.8, tY+5.5)
       })
+
 
       // Filas de datos
       let iy = tY + 8
