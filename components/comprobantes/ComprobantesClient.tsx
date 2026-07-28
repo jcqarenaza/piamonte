@@ -832,7 +832,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const nroFormateado = `${prefijo}-0006-${String(nextNum).padStart(8,'0')}`
       // Determinar método de pago principal para caja
       const pagosCCTotal = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
-      const pagoPrincipal = pagosCCTotal >= total*0.9 ? 'Cuenta corriente'
+      const pagoPrincipal = modo==='aseguradora' ? 'Cuenta corriente'
+        : pagosCCTotal >= total*0.9 ? 'Cuenta corriente'
         : pagos.find(p=>p.metodo!=='Cuenta corriente')?.metodo || pagos[0]?.metodo || 'Efectivo'
       const clienteVenta = modo==='aseguradora' ? (asegSel?.nombre||clienteAseg||null)
         : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null)
