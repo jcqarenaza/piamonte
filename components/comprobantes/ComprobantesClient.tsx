@@ -504,14 +504,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // Saldar CC: la NC acredita (haber) el total en la cuenta del cliente o aseguradora
     const ncDesc = `NC-0006-${String(nextNum).padStart(8,'0')} — devolución FA-0006-${String(ncComp.nro_cbte_afip ?? ncComp.numero ?? 0).padStart(8,'0')}`
     if ((ncComp as any).aseguradora_id) {
-      // Insertar haber en CC aseguradora linkeado a la FACTURA ORIGINAL (no a la NC)
-      // Así el saldo por comprobante queda en cero cuando se filtra por factura original
       await supabase.from('cuenta_corriente_aseguradoras').insert({
         aseguradora_id: (ncComp as any).aseguradora_id,
         fecha: todayStr(), tipo: 'nc',
         descripcion: ncDesc,
         debe: 0, haber: ncTotal,
-        comprobante_id: ncComp.id, user_id: userId,
+        comprobante_id: (nc as any).id, user_id: userId,
       })
     } else if ((ncComp as any).cliente_id) {
       await supabase.from('cuenta_corriente').insert({
@@ -520,7 +518,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         fecha: todayStr(), tipo: 'nc',
         descripcion: ncDesc,
         debe: 0, haber: ncTotal,
-        comprobante_id: ncComp.id, user_id: userId,
+        comprobante_id: (nc as any).id, user_id: userId,
       })
     }
 
@@ -689,7 +687,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
       cliente_nombre: modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
       cliente_telefono: modo==='cliente' ? (cliEfectivo?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
-      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && cfDni ? cfDni : null),
+      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && fiscal.tipo_fiscal==='responsable_inscripto' && fiscal.cuit ? fiscal.cuit : (modo==='cf' && cfDni ? cfDni : null)),
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
