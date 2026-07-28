@@ -1232,7 +1232,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
       // ── COPIA ── (coordenadas exactas Arca)
       rectS(77.6, 6.7, 55.0, 8.5, 0.5)
-      tC(105.1, 13.2, copia, true, 12)
+      tC(105.1, 13.2, copia, true, 14)
 
       // ── ENCABEZADO ──
       ln(5.3, 15.7, 205.0, 15.7, 0.5)   // línea superior
@@ -1244,31 +1244,31 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ln(105.3, 29.3, 105.3, 57.5, 0.3) // divisor vertical der letra
 
       // Emisor
-      t(23.7, 22.4, 'KNUTH VERONICA ALEJANDRA', true, 9)
-      t(7.4, 36.5, 'Razón Social:', true, 7); t(29.6, 36.5, 'KNUTH VERONICA ALEJANDRA', false, 7)
-      t(7.4, 45.0, 'Domicilio Comercial:', true, 7); t(40.9, 45.0, 'Calle 102 366 - General Pico, La Pampa', false, 7)
-      t(7.4, 53.7, 'Condición frente al IVA:', true, 7); t(46.2, 53.7, 'IVA Responsable Inscripto', false, 7)
+      t(23.7, 22.4, 'KNUTH VERONICA ALEJANDRA', true, 10)
+      t(7.4, 36.5, 'Razón Social:', true, 9); t(29.6, 36.5, 'KNUTH VERONICA ALEJANDRA', false, 9)
+      t(7.4, 45.0, 'Domicilio Comercial:', true, 9); t(40.9, 45.0, 'Calle 102 366 - General Pico, La Pampa', false, 9)
+      t(7.4, 53.7, 'Condición frente al IVA:', true, 9); t(46.2, 53.7, 'IVA Responsable Inscripto', false, 9)
 
       // Letra A
-      t(102.2, 27.0, c.tipo||'A', true, 16)
-      t(99.8, 28.5, codTipo, false, 6)
+      t(102.2, 27.0, c.tipo||'A', true, 24)
+      t(99.8, 28.5, codTipo, false, 7)
 
       // FACTURA zona derecha
-      t(120.3, 20.1, tipoLabel, true, 14)
-      t(120.3, 30.4, 'Punto de Venta:  0006', true, 7); t(162.6, 30.4, `Comp. Nro:  ${nroAfip}`, true, 7)
-      t(120.3, 36.1, `Fecha de Emisión:  ${fechaFmt}`, false, 7)
-      t(120.3, 44.2, 'CUIT:  27242657174', false, 7)
-      t(120.3, 48.4, 'Ingresos Brutos:  1919987', false, 7)
-      t(120.3, 52.7, 'Fecha de Inicio de Actividades:  01/09/2007', false, 7)
+      t(120.3, 20.1, tipoLabel, true, 18)
+      t(120.3, 30.4, 'Punto de Venta:  0006', true, 9); t(162.6, 30.4, `Comp. Nro:  ${nroAfip}`, true, 9)
+      t(120.3, 36.1, `Fecha de Emisión:  ${fechaFmt}`, false, 9)
+      t(120.3, 44.2, 'CUIT:  27242657174', false, 9)
+      t(120.3, 48.4, 'Ingresos Brutos:  1919987', false, 9)
+      t(120.3, 52.7, 'Fecha de Inicio de Actividades:  01/09/2007', false, 9)
 
       // ── PERÍODO ──
       ln(5.3, 57.5, 205.0, 57.5, 0.4)
       ln(5.3, 64.5, 205.0, 64.5, 0.4)
       ln(5.3, 57.5, 5.3, 64.5, 0.3)
       ln(205.0, 57.5, 205.0, 64.5, 0.3)
-      t(7.4, 60.5, 'Período Facturado Desde:', true, 7.5); t(56.1, 60.5, fechaFmt, false, 7.5)
-      t(82.0, 60.5, `Hasta:${fechaFmt}`, true, 7.5)
-      t(128.1, 60.5, `Fecha de Vto. para el pago:${fechaFmt}`, true, 7.5)
+      t(7.4, 60.5, 'Período Facturado Desde:', true, 10); t(56.1, 60.5, fechaFmt, false, 10)
+      t(82.0, 60.5, `Hasta:${fechaFmt}`, true, 10)
+      t(128.1, 60.5, `Fecha de Vto. para el pago:${fechaFmt}`, true, 10)
 
       // ── RECEPTOR ──
       ln(5.3, 64.5, 205.0, 64.5, 0.4)
@@ -1279,13 +1279,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ln(205.0, 64.5, 205.0, 82.5, 0.3)
 
       // Fila 1
-      t(7.4, 67.5, 'CUIT:', true, 7.5); t(18.3, 67.5, cuitAseg.replace(/-/g,''), false, 7.5)
-      t(78.4, 67.5, 'Apellido y Nombre / Razón Social:', true, 7.5); t(114.9, 67.5, razonSocial.slice(0,55), false, 7)
+      t(7.4, 67.5, 'CUIT:', true, 8); t(18.3, 67.5, cuitAseg.replace(/-/g,''), false, 8)
+      t(78.4, 67.5, 'Apellido y Nombre / Razón Social:', true, 8); t(114.9, 67.5, razonSocial.slice(0,55), false, 8)
       // Fila 2
-      t(7.4, 73.5, 'Condición frente al IVA:', true, 7.5); t(46.2, 73.5, 'IVA Responsable Inscripto', false, 7.5)
-      t(96.1, 73.5, 'Domicilio Comercial:', true, 7.5); t(122.0, 73.5, (dirAseg||'').slice(0,45), false, 7)
+      t(7.4, 73.5, 'Condición frente al IVA:', true, 8); t(46.2, 73.5, 'IVA Responsable Inscripto', false, 8)
+      t(96.1, 73.5, 'Domicilio Comercial:', true, 8); t(122.0, 73.5, (dirAseg||'').slice(0,45), false, 8)
       // Fila 3
-      t(7.4, 79.5, 'Condición de venta:', true, 7.5); t(39.9, 79.5, 'Cuenta Corriente', false, 7.5)
+      t(7.4, 79.5, 'Condición de venta:', true, 8); t(39.9, 79.5, 'Cuenta Corriente', false, 8)
 
       // ── TABLA ── (columnas exactas de Arca)
       const colX = [5.3, 19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
@@ -1295,7 +1295,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
       // Header gris — primero rects, después texto
       colX.forEach((x,i) => rectF(x, tY, colW[i], 6.3, 220))
-      heads.forEach((h,i) => t(colX[i]+0.8, tY+4.2, h, true, 6))
+      heads.forEach((h,i) => t(colX[i]+0.8, tY+4.2, h, true, 7))
 
       let iy = tY + 6.3
       c.items.forEach((it:any) => {
@@ -1315,9 +1315,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         // Después todo el texto
         colX.forEach((x,i) => {
           if (i===1) {
-            descLines.forEach((dl:string,di:number) => t(x+0.8, iy+5.5+di*4, dl, false, 7))
+            descLines.forEach((dl:string,di:number) => t(x+0.8, iy+5.5+di*4, dl, false, 8))
           } else {
-            t(x+0.8, iy+5.5, vals[i], false, 7)
+            t(x+0.8, iy+5.5, vals[i], false, 8)
           }
         })
         iy += descLines.length > 1 ? descLines.length*4+4 : 10
@@ -1339,7 +1339,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ln(205.0, totY, 205.0, totY+46, 0.3)
 
       // Importe Otros Tributos arriba izq
-      t(66.0, totY+6, 'Importe Otros Tributos: $', false, 7); t(116.2, totY+6, '0,00', false, 7)
+      t(66.0, totY+6, 'Importe Otros Tributos: $', false, 9); t(116.2, totY+6, '0,00', false, 9)
 
       // Bloque totales
       const totRows:[string,string,boolean][] = [
@@ -1366,21 +1366,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
 
       // ── PIE ──
-      tC(105.0, 240.9, '"PARABRISAS  EL PIAMONTE "', false, 9)
+      tC(105.0, 240.9, '"PARABRISAS  EL PIAMONTE "', false, 10)
       doc.setDrawColor(180,180,180); doc.setLineWidth(0.2); doc.line(5.3, 244.0, 205.0, 244.0)
 
       doc.setTextColor(0,80,160); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('ARCA', 40.6, 251.0)
       doc.setTextColor(60,60,60); doc.setFont('helvetica','normal'); doc.setFontSize(5)
       doc.text('AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', 40.6, 256.0)
 
-      tC(105.0, 251.0, 'Pág. 1/1', false, 8)
+      tC(105.0, 251.0, 'Pág. 1/1', false, 10)
 
       if (c.cae_emitido) {
-        tR(205.0, 252.8, `CAE N°:  ${c.cae_emitido}`, true, 8)
-        tR(205.0, 257.8, `Fecha de Vto. de CAE:  ${caeVto}`, true, 8)
+        tR(205.0, 252.8, `CAE N°:  ${c.cae_emitido}`, true, 10)
+        tR(205.0, 257.8, `Fecha de Vto. de CAE:  ${caeVto}`, true, 10)
       }
 
-      doc.setTextColor(0,0,0); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.text('Comprobante Autorizado', 40.6, 264.0)
+      doc.setTextColor(0,0,0); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('Comprobante Autorizado', 40.6, 264.0)
       doc.setTextColor(80,80,80); doc.setFont('helvetica','italic'); doc.setFontSize(6)
       doc.text('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', 5.3, 270.9)
     }
