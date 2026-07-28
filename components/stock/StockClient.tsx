@@ -993,10 +993,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   <div className="flex items-center gap-1">
                     {isAdmin && <>
                       {conteoMode ? (<>
-                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)-1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'salida',cantidad:1,fecha:todayStr(),descripcion:'Ajuste conteo -1'});load()}}
+                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)-1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'salida',cantidad:1,fecha:new Date().toISOString().slice(0,10),descripcion:'Ajuste conteo -1'});load()}}
                           className="w-7 h-7 border border-red-200 rounded-lg text-sm text-red-500 hover:bg-red-50 font-bold">-1</button>
                         <span className="font-mono text-sm font-bold w-8 text-center">{conteos[s.id]??s.cantidad}</span>
-                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)+1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'entrada',cantidad:1,fecha:todayStr(),descripcion:'Ajuste conteo +1'});load()}}
+                        <button onClick={async e=>{e.stopPropagation();const nueva=(s.cantidad||0)+1;await supabase.from('stock').update({cantidad:nueva}).eq('id',s.id);await supabase.from('stock_movimientos').insert({stock_id:s.id,tipo:'entrada',cantidad:1,fecha:new Date().toISOString().slice(0,10),descripcion:'Ajuste conteo +1'});load()}}
                           className="w-7 h-7 border border-green-200 rounded-lg text-sm text-green-600 hover:bg-green-50 font-bold">+1</button>
                       </>) : (<>
                         <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
