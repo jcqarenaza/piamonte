@@ -677,8 +677,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }).select('id,nombre,telefono,email,cuit,tipo_fiscal,tipo_cliente_id').single()
       if (nuevoCliente) { setCli(nuevoCliente); cliEfectivo = nuevoCliente }
     }
+    // Tomar el MAX de nro_cbte_afip (número AFIP real) para el próximo número
+    const { data:lastAfip } = await supabase.from('comprobantes').select('nro_cbte_afip').eq('tipo', tipoDoc()).eq('categoria','factura').not('nro_cbte_afip','is',null).order('nro_cbte_afip',{ascending:false}).limit(1)
     const { data:last } = await supabase.from('comprobantes').select('numero').eq('tipo', tipoDoc()).eq('categoria','factura').order('numero',{ascending:false}).limit(1)
-    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
+    const maxAfip = (lastAfip?.[0] as any)?.nro_cbte_afip ?? 0
+    const maxNum = parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0
+    const nextNum = Math.max(maxAfip, maxNum) + 1
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
