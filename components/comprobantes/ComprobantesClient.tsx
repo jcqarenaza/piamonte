@@ -1328,7 +1328,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const colW = [14.4, 61.7, 18.7, 13.8,  22.9,  10.2,  22.9,  12.0,  23.3]
       const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
       const tY = 95.5
-      const tY = 95.5
 
       // Header gris con rects individuales
       colX.forEach((x,i) => boxGris(x, tY, colW[i], 8, BRD))
