@@ -6,12 +6,12 @@ import { Btn, Modal, Field, Input, Select, Empty, AlarmBar } from '@/components/
 import { moneyARS2 as moneyARS, POS_LABEL } from '@/lib/utils/format'
 
 const FAM_MAP: Record<string, string> = {
-  PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas', TECHO: 'Techo',
+  PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas',
   PUERTA_DD: 'Puertas', PUERTA_DI: 'Puertas', PUERTA_TD: 'Puertas', PUERTA_TI: 'Puertas',
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
-  TECHO: 'Otros', VIDRIO: 'Otros',
+  TECHO: 'Techo', VIDRIO: 'Otros',
 }
 const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Otros']
 const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
