@@ -633,15 +633,27 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       const resultado: typeof excelPreview = []
 
       for (const row of rows) {
-        const codigo = String(row['Codigo'] || row['codigo'] || row['CODIGO'] || '').trim().toUpperCase()
+        const codigoRaw = String(row['Codigo'] || row['codigo'] || row['CODIGO'] || '').trim().toUpperCase()
         const nombre = String(row['Nombre'] || row['nombre'] || row['NOMBRE'] || '').trim()
         const marca  = String(row['Marca']  || row['marca']  || row['MARCA']  || '').trim()
-        if (!codigo || codigo === 'NAN') continue
+        if (!codigoRaw || codigoRaw === 'NAN') continue
 
-        // Buscar en stock activo por código exacto (case-insensitive)
+        // Excel borra ceros a la izquierda → generar variantes con 0s al frente hasta 10 chars
+        const codigoVariants = [codigoRaw]
+        if (/^[0-9]/.test(codigoRaw)) {
+          // Solo para códigos que empiezan con número (los alfanuméricos como FAVICUR no necesitan esto)
+          let padded = codigoRaw
+          while (padded.length < 10) {
+            padded = '0' + padded
+            codigoVariants.push(padded)
+          }
+        }
+
+        // Buscar en stock activo por código exacto o variante con ceros (case-insensitive)
         const stockMatch = items.find(s =>
-          (s.codigo || '').toUpperCase() === codigo && (s as any).activo !== false
+          codigoVariants.includes((s.codigo || '').toUpperCase()) && (s as any).activo !== false
         )
+        const codigo = stockMatch ? (stockMatch.codigo || codigoRaw).toUpperCase() : codigoRaw
 
         if (stockMatch) {
           resultado.push({
@@ -655,7 +667,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           const { data: am } = await supabase
             .from('articulos_maestro')
             .select('id,descripcion,marca')
-            .ilike('codigo_referencia', codigo)
+            .or(codigoVariants.map((v:string) => `codigo_referencia.ilike.${v}`).join(','))
             .maybeSingle()
 
           resultado.push({
