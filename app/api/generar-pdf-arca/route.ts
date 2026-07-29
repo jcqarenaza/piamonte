@@ -87,25 +87,12 @@ export async function POST(req: NextRequest) {
       t(341, 102, 'Fecha de Emisión:', 9, true)
       t(428, 102, fecha, 9)
 
-      // ── RECEPTOR: CUIT, Razón Social, Domicilio, Condición venta ──
-      // Fila 1: y=191 h=8
-      cover(p, 21, 191, 542, 8)
-      t(21, 191, 'CUIT:', 8, true)
+      // ── RECEPTOR: solo CUIT y Razón Social (el resto lo tiene la plantilla) ──
+      // Cubrir solo el CUIT y razón social que son variables
+      cover(p, 52, 191, 170, 8)  // CUIT valor
       t(52, 191, (cuitAseg || '').replace(/-/g,''), 8)
-      t(222.3, 191, 'Apellido y Nombre / Razón Social:', 8, true)
+      cover(p, 325.8, 191, 236.5, 8)  // Razón Social valor
       t(325.8, 191, (razonSocial || '').slice(0, 52), 8)
-
-      // Fila 2: y=208 h=8
-      cover(p, 21, 208, 547, 8)
-      t(21, 208, 'Condición frente al IVA:', 8, true)
-      t(131, 208, 'IVA Responsable Inscripto', 8)
-      t(272.5, 208, 'Domicilio Comercial:', 8, true)
-      t(340, 208, (dirAseg || '').slice(0, 38), 8)
-
-      // Fila 3: y=225 h=8
-      cover(p, 21, 225, 153, 8)
-      t(21, 225, 'Condición de venta:', 8, true)
-      t(113, 225, 'Cuenta Corriente', 8)
 
       // ── ITEMS ──
       // Cubrir toda el área de items: y=295..520 (desde abajo del header hasta totales)
