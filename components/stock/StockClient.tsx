@@ -67,6 +67,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [ajusteMasivoLoading, setAjusteMasivoLoading] = useState(false)
   const [ajusteMasivoLeyenda, setAjusteMasivoLeyenda] = useState('')
   const [ajusteMasivoLista, setAjusteMasivoLista] = useState<{id:string;codigo:string;desc:string;cantActual:number;delta:number}[]>([])
+  // Excel import
+  const [excelPreview, setExcelPreview] = useState<{
+    codigo:string; nombre:string; marca:string;
+    stockId:string|null; cantActual:number;
+    maestroId:string|null; estado:'existe'|'sin_stock'|'nuevo'
+  }[]>([])
+  const [excelPreviewOpen, setExcelPreviewOpen] = useState(false)
+  const [excelLoading, setExcelLoading] = useState(false)
   const supabase = createClient()
 
   async function confirmarAjusteCant() {
@@ -611,6 +619,110 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setAjusteMasivoSel(null)
     setAjusteMasivoQ('')
     setAjusteMasivoDelta(0)
+  }
+
+  async function procesarExcel(file: File) {
+    setExcelLoading(true)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+      const resultado: typeof excelPreview = []
+
+      for (const row of rows) {
+        const codigo = String(row['Codigo'] || row['codigo'] || row['CODIGO'] || '').trim().toUpperCase()
+        const nombre = String(row['Nombre'] || row['nombre'] || row['NOMBRE'] || '').trim()
+        const marca  = String(row['Marca']  || row['marca']  || row['MARCA']  || '').trim()
+        if (!codigo || codigo === 'NAN') continue
+
+        // Buscar en stock activo por código exacto (case-insensitive)
+        const stockMatch = items.find(s =>
+          (s.codigo || '').toUpperCase() === codigo && (s as any).activo !== false
+        )
+
+        if (stockMatch) {
+          resultado.push({
+            codigo, nombre: stockMatch.descripcion || nombre, marca,
+            stockId: stockMatch.id, cantActual: stockMatch.cantidad || 0,
+            maestroId: (stockMatch as any).articulo_id || null,
+            estado: 'existe'
+          })
+        } else {
+          // Buscar en articulos_maestro por codigo_referencia
+          const { data: am } = await supabase
+            .from('articulos_maestro')
+            .select('id,descripcion,marca')
+            .ilike('codigo_referencia', codigo)
+            .maybeSingle()
+
+          resultado.push({
+            codigo, nombre: am?.descripcion || nombre, marca: am?.marca || marca,
+            stockId: null, cantActual: 0,
+            maestroId: am?.id || null,
+            estado: am ? 'sin_stock' : 'nuevo'
+          })
+        }
+      }
+
+      setExcelPreview(resultado)
+      setExcelPreviewOpen(true)
+    } catch (e: any) {
+      alert('Error al leer el Excel: ' + e.message)
+    } finally {
+      setExcelLoading(false)
+    }
+  }
+
+  async function confirmarExcel() {
+    setExcelLoading(true)
+    const fecha = new Date().toISOString().slice(0,10)
+    const nuevosALista: typeof ajusteMasivoLista = []
+
+    for (const r of excelPreview) {
+      if (r.estado === 'existe' && r.stockId) {
+        // Ya tiene stock → agregar directo con delta 0
+        if (!ajusteMasivoLista.find(x => x.id === r.stockId)) {
+          nuevosALista.push({ id: r.stockId, codigo: r.codigo, desc: r.nombre, cantActual: r.cantActual, delta: 0 })
+        }
+      } else if (r.estado === 'sin_stock' && r.maestroId) {
+        // Existe en maestro pero sin fila en stock → crear fila con cantidad 0
+        const { data: newStock } = await supabase.from('stock').insert({
+          descripcion: r.nombre,
+          codigo: r.codigo,
+          marca: r.marca || null,
+          cantidad: 0,
+          deposito: 'Principal',
+          activo: true,
+          articulo_id: r.maestroId,
+          updated_at: new Date().toISOString(),
+        }).select('id').single()
+
+        if (newStock) {
+          // Movimiento de alta con cantidad 0
+          await supabase.from('stock_movimientos').insert({
+            stock_id: newStock.id,
+            tipo: 'entrada',
+            cantidad: 0,
+            fecha,
+            descripcion: 'Alta desde carga Excel — pendiente conteo',
+          })
+          nuevosALista.push({ id: newStock.id, codigo: r.codigo, desc: r.nombre, cantActual: 0, delta: 0 })
+        }
+      }
+      // estado === 'nuevo': no se puede crear sin datos completos, se ignora
+    }
+
+    // Refrescar items del estado local
+    const { data: itemsRefresh } = await supabase.from('stock').select('*').eq('activo', true)
+    if (itemsRefresh) setItems(itemsRefresh as any)
+
+    setAjusteMasivoLista(p => [...p, ...nuevosALista])
+    setExcelLoading(false)
+    setExcelPreviewOpen(false)
+    setExcelPreview([])
   }
 
   async function guardarAjusteMasivo() {
@@ -1244,6 +1356,17 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             <Input value={ajusteMasivoLeyenda} onChange={e=>setAjusteMasivoLeyenda(e.target.value)} placeholder="Ej: Conteo físico 29/07/2026"/>
           </Field>
 
+          {/* Cargar Excel */}
+          <div className="flex items-center gap-2">
+            <label style={{display:'flex',alignItems:'center',gap:8,background:'#1a2744',color:'#fff',borderRadius:8,padding:'7px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              {excelLoading ? '⏳ Procesando…' : '📂 Cargar Excel'}
+              <input type="file" accept=".xlsx,.xls" style={{display:'none'}}
+                onChange={e=>{const f=e.target.files?.[0]; if(f) procesarExcel(f); e.target.value=''}}
+                disabled={excelLoading}/>
+            </label>
+            <span className="text-xs text-p-ink2">Cols: Codigo · Marca · Nombre</span>
+          </div>
+
           {/* Buscador de código */}
           <div className="relative">
             <Input value={ajusteMasivoQ} onChange={e=>{
@@ -1321,6 +1444,73 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               opacity:(ajusteMasivoLoading||!ajusteMasivoLeyenda.trim()||!ajusteMasivoLista.length)?0.5:1}}>
             {ajusteMasivoLoading?'Guardando…':`✓ Guardar ${ajusteMasivoLista.length} ajuste(s)`}
           </button>
+        </div>
+      </Modal>
+
+      {/* Modal preview Excel */}
+      <Modal open={excelPreviewOpen} onClose={()=>{setExcelPreviewOpen(false);setExcelPreview([])}} title="📊 Preview — artículos del Excel" size="lg">
+        <div className="flex flex-col gap-3">
+          <div className="text-sm text-p-ink2">
+            Revisá los artículos antes de agregarlos al ajuste. Solo los que <strong>ya existen en stock</strong> se incorporan con delta 0.
+          </div>
+
+          {/* Resumen */}
+          <div className="flex gap-3 flex-wrap">
+            <span className="bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
+              ✓ {excelPreview.filter(r=>r.estado==='existe').length} en stock
+            </span>
+            <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">
+              ⚠ {excelPreview.filter(r=>r.estado==='sin_stock').length} en maestro s/stock
+            </span>
+            <span className="bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">
+              ✕ {excelPreview.filter(r=>r.estado==='nuevo').length} no existen
+            </span>
+          </div>
+
+          {/* Tabla */}
+          <div className="border border-p-line rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-p-light sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold text-p-ink2">Código</th>
+                  <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                  <th className="text-right px-3 py-2 font-semibold text-p-ink2">Stock actual</th>
+                  <th className="text-center px-3 py-2 font-semibold text-p-ink2">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {excelPreview.map((r,i)=>(
+                  <tr key={i} className={`border-t border-p-line2 ${r.estado==='existe'?'':'opacity-50'}`}>
+                    <td className="px-3 py-2 font-mono">{r.codigo}</td>
+                    <td className="px-3 py-2 truncate max-w-[180px]">{r.nombre}</td>
+                    <td className="px-3 py-2 text-right font-mono">{r.estado==='existe'?r.cantActual:'—'}</td>
+                    <td className="px-3 py-2 text-center">
+                      {r.estado==='existe' && <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✓ existe</span>}
+                      {r.estado==='sin_stock' && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">s/stock</span>}
+                      {r.estado==='nuevo' && <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">no existe</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="text-xs text-p-ink2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            ⚠ Los artículos <strong>s/stock</strong> se van a crear con cantidad 0 y quedan listos para ajustar.
+            Los <strong>no existen</strong> se ignoran — necesitan carga manual completa.
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={()=>{setExcelPreviewOpen(false);setExcelPreview([])}}
+              style={{border:'1px solid #ccc',borderRadius:8,padding:'8px 16px',fontSize:13,cursor:'pointer'}}>
+              Cancelar
+            </button>
+            <button onClick={confirmarExcel}
+              disabled={excelLoading||!excelPreview.some(r=>r.estado==='existe'||r.estado==='sin_stock')}
+              style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer',
+                opacity:(excelLoading||!excelPreview.some(r=>r.estado==='existe'||r.estado==='sin_stock'))?0.5:1}}>
+              {excelLoading ? '⏳ Creando…' : `✓ Confirmar (${excelPreview.filter(r=>r.estado==='existe').length} existen · ${excelPreview.filter(r=>r.estado==='sin_stock').length} a crear)`}
+            </button>
+          </div>
         </div>
       </Modal>
 
