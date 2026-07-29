@@ -34,12 +34,31 @@ export async function POST(req: NextRequest) {
     const { comprobante: c, cuitAseg, dirAseg, razonSocial } = await req.json()
 
     const nro = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8, '0')
+
+    // Parchear la plantilla para eliminar los XObjects de imagen (QRs de ARCA)
+    // así el portal no confunde el QR de la plantilla con el nuestro
+    const patchTemplate = async (bytes: Buffer): Promise<Uint8Array> => {
+      const doc = await PDFDocument.load(bytes)
+      const page = doc.getPage(0)
+      const { PDFName, PDFDict } = await import('pdf-lib')
+      try {
+        const resources = page.node.Resources()
+        const xObjects = resources.lookup(PDFName.of('XObject'), PDFDict)
+        if (xObjects) {
+          // Eliminar img0 (QR de ARCA) e img1 (máscara del QR)
+          xObjects.delete(PDFName.of('img0'))
+          xObjects.delete(PDFName.of('img1'))
+        }
+      } catch (_) {}
+      return doc.save()
+    }
     const fecha = (c.fecha || '').split('-').reverse().join('/')
     const vto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
     const tipo = c.categoria === 'nc' ? 'NOTA DE CREDITO' : 'FACTURA'
 
-    // Cargar plantilla
-    const tmplBytes = Buffer.from(TEMPLATE_B64, 'base64')
+    // Cargar y parchear plantilla (eliminar QRs de ARCA embebidos)
+    const tmplRaw = Buffer.from(TEMPLATE_B64, 'base64')
+    const tmplBytes = Buffer.from(await patchTemplate(tmplRaw))
     
     const fontR = await (async () => {
       const tmp = await PDFDocument.create()
@@ -170,7 +189,7 @@ export async function POST(req: NextRequest) {
       }
 
 
-      // QR — posición exacta de Arca
+      // QR — nuestro QR con datos correctos (plantilla ya no tiene QR de ARCA)
       try {
         const qrData = {
           ver: 1,
