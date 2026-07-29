@@ -1437,7 +1437,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                 <span>Stock actual → nuevo</span>
               </div>
               <div className="max-h-48 overflow-y-auto">
-                {ajusteMasivoLista.map((it,i)=>(
+                {[...ajusteMasivoLista].sort((a,b)=>{
+                    // Primero los que tienen diferencia, después los iguales por cantActual desc
+                    const aDif = a.delta !== 0
+                    const bDif = b.delta !== 0
+                    if (aDif && !bDif) return -1
+                    if (!aDif && bDif) return 1
+                    return b.cantActual - a.cantActual
+                  }).map((it,i)=>(
                   <div key={it.id} className="flex items-center gap-3 px-3 py-2 border-b border-p-line2 last:border-0">
                     <span className="font-mono text-xs text-p-ink2 w-24 shrink-0">{it.codigo}</span>
                     <span className="text-sm text-p-ink flex-1 truncate">{it.desc}</span>
@@ -1446,7 +1453,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                       {it.delta>0?'+':''}{it.delta}
                     </span>
                     <span className="font-mono text-sm font-bold text-p-dark w-8">{it.cantActual+it.delta}</span>
-                    <button onClick={()=>setAjusteMasivoLista(p=>p.filter((_,j)=>j!==i))} className="text-p-gray hover:text-red-500 text-sm">✕</button>
+                    <button onClick={()=>setAjusteMasivoLista(p=>p.filter(x=>x.id!==it.id))} className="text-p-gray hover:text-red-500 text-sm">✕</button>
                   </div>
                 ))}
               </div>
