@@ -84,7 +84,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             setEditId(data.id)
             setForm({ cli:data.cliente||'', tel:data.telefono||'', veh:data.vehiculo||'',
               pat:data.patente||'', aseg:data.aseguradora||'', sin:data.siniestro||'',
-              pol:data.poliza||'', obs:data.obs||'', estado:data.estado||'pendiente', turno_id:data.turno_id||'' })
+              pol:data.poliza||'', obs:data.obs||'', estado:data.estado||'pendiente', turno_id:data.turno_id||'', colaborador_id:data.colaborador_id||'' })
             setItems(data.items||[])
             setOpen(true)
           }
@@ -564,7 +564,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             🏢 Factura Sancor
           </button>
           <button onClick={()=>{
-            setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
+            setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:'',colaborador_id:''})
             setItems([]); setItem({d:'',c:'1',p:''}); setEditId(null)
             setStockSel(null); setStockQ(''); setFormProd('')
             setOpen(true)
