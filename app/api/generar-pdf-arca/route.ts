@@ -53,21 +53,6 @@ export async function POST(req: NextRequest) {
     const It = await outDoc.embedFont(StandardFonts.HelveticaOblique)
 
 
-    // Generar QR de ARCA
-    var qrImageBytes: Uint8Array | null = null
-    try {
-      const qrData = {
-        ver: 1, fecha: c.fecha, cuit: 27242657174,
-        ptoVta: 6, tipoCmp: c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
-        nroCmp: c.nro_cbte_afip ?? c.numero ?? 0,
-        importe: c.total || 0, moneda: 'PES', ctz: 1, tipoDocRec: 80,
-        nroDocRec: parseInt((cuitAseg || '0').replace(/-/g, '')),
-        tipoCodAut: 'E', codAut: parseInt(c.cae_emitido || '0'),
-      }
-      const qrUrl = 'https://www.afip.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
-      const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', width: 100, margin: 1 })
-      qrImageBytes = new Uint8Array(qrBuf)
-    } catch (e) { /* QR opcional */ }
 
     for (const copia of copias) {
       // Copiar plantilla
@@ -180,6 +165,23 @@ export async function POST(req: NextRequest) {
         p.drawText(val, { x: 577 - f.widthOfTextAtSize(val, sz), y: B(yRow, sz), font: f, size: sz, color: K })
       }
 
+
+      // QR — posición exacta de Arca
+      try {
+        const qrData = {
+          ver: 1, fecha: c.fecha, cuit: 27242657174,
+          ptoVta: 6, tipoCmp: c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
+          nroCmp: c.nro_cbte_afip ?? c.numero ?? 0,
+          importe: c.total || 0, moneda: 'PES', ctz: 1, tipoDocRec: 80,
+          nroDocRec: parseInt((cuitAseg || '0').replace(/-/g, '')),
+          tipoCodAut: 'E', codAut: parseInt(c.cae_emitido || '0'),
+        }
+        const qrUrl = 'https://www.afip.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
+        const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', width: 100, margin: 1 })
+        const qrEmbed = await outDoc.embedPng(new Uint8Array(qrBuf))
+        p.drawImage(qrEmbed, { x: 15, y: PH - 775, width: 65, height: 65 })
+      } catch (e) { /* QR opcional */ }
+
       // ── CAE ──
       cover(p, 442.6, 717, 121.2, 10)
       cover(p, 374.4, 731, 161.6, 10)
@@ -200,13 +202,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
-
-      // QR — posición exacta de Arca: x=15 y=700, w=65 h=65
-      const qrBytes = qrImageBytes
-      if (qrBytes) {
-        try {
-          const qrEmbed = await outDoc.embedPng(qrBytes)
-          p.drawImage(qrEmbed, { x: 15, y: PH - 775, width: 65, height: 65 })
-        } catch (e) { /* QR opcional */ }
-      }
-
