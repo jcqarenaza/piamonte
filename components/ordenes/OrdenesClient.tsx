@@ -644,6 +644,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
                           const fecha = todayStr()
                           try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
+                          try { await supabase.rpc('set_config', { key: 'app.current_user_id', value: userId, is_local: true }) } catch(_) {}
                           for (const it of stockItems) {
                             const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
                             if (!st) continue

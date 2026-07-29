@@ -98,6 +98,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     })
 
     // DESPUÉS actualizar cantidad — el trigger ya encontrará el movimiento y no duplicará
+    await setUserCtx()
     await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
 
     // Si es salida con pendiente NC → registrar en ajustes_stock con proveedor para que ComprasClient lo encuentre
@@ -355,6 +356,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       descripcion: 'Cargar mercadería',
     })
     // DESPUÉS actualizar cantidad
+    await setUserCtx()
     await supabase.from('stock').update({ cantidad: cant, updated_at: new Date().toISOString() }).eq('id', id)
     setItems(prev => prev.map(x => x.id === id ? { ...x, cantidad: cant } : x))
   }
@@ -386,6 +388,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (ajusteStockId) {
       const s = items.find(x => x.id === ajusteStockId)
       if (s) {
+        await setUserCtx()
         await supabase.from('stock').update({ cantidad: s.cantidad + cant, ...(costo ? {costo} : {}), updated_at: new Date().toISOString() }).eq('id', ajusteStockId)
       }
     } else {
@@ -755,6 +758,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setExcelPreview([])
   }
 
+  // Helper: setear user_id en contexto PostgreSQL para el trigger
+  async function setUserCtx() {
+    if (!userId) return
+    try { await supabase.rpc('set_config', { key: 'app.current_user_id', value: userId, is_local: true }) } catch(_) {}
+  }
+
   async function guardarAjusteMasivo() {
     if (!ajusteMasivoLeyenda.trim() || !ajusteMasivoLista.length) return
     setAjusteMasivoLoading(true)
@@ -773,6 +782,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           descripcion: ajusteMasivoLeyenda.trim(),
           user_id: userId || null,
         })
+        await setUserCtx()
         await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
         setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: nueva} : s))
       } else {
