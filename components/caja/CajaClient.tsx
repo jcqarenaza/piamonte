@@ -32,7 +32,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
   const esCajaRol = perfil.rol === 'caja'
   const [reciboVenta, setReciboVenta] = useState<any|null>(null)
-  const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number;costo:number;stock_id:string|null;cantidad:number}[]>([])
+  const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number|string;costo:number;stock_id:string|null;cantidad:number}[]>([])
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cantidad: '1', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
@@ -662,14 +662,15 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                     onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,cantidad:+e.target.value||1}:x))}
                     className="w-10 border border-p-line rounded text-center text-xs font-mono px-1 py-0.5"/>
                   <input type="text" inputMode="decimal" value={it.precio}
-                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:parseFloat(e.target.value.replace(',','.'))||0}:x))}
+                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:e.target.value}:x))}
+                    onBlur={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:parseFloat(String(x.precio).replace(',','.'))||0}:x))}
                     className="w-24 border border-p-line rounded text-right text-xs font-mono px-1 py-0.5"/>
                   <button onClick={()=>setItemsCaja(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
                 </div>
               ))}
               <div className="flex justify-between font-bold pt-1 border-t border-p-line mt-1">
                 <span>Total</span>
-                <span className="font-mono">{moneyARS(itemsCaja.reduce((a,it)=>a+it.precio*it.cantidad,0))}</span>
+                <span className="font-mono">{moneyARS(itemsCaja.reduce((a,it)=>a+(parseFloat(String(it.precio).replace(',','.'))||0)*it.cantidad,0))}</span>
               </div>
             </div>
           )}
