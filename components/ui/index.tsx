@@ -73,13 +73,15 @@ export function Field({ label, children, className = '' }: { label: string; chil
 
 // ── INPUT ───────────────────────────────────────────────────
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const { type, ...rest } = props
+  const { type, inputMode, ...rest } = props
   const isNumber = type === 'number'
+  // Si el placeholder tiene $ o el tipo es number → decimal; si no viene inputMode explícito lo respetamos
+  const resolvedInputMode = inputMode ?? (isNumber ? 'decimal' : undefined)
   return (
     <input
       {...rest}
-      type={isNumber ? 'text' : type}
-      inputMode={isNumber ? 'decimal' : undefined}
+      type={isNumber ? 'text' : (type ?? 'text')}
+      inputMode={resolvedInputMode}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.keyCode === 13) e.preventDefault()
         props.onKeyDown?.(e)

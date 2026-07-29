@@ -636,7 +636,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
             <Field label="Descripción"><Input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Pegamento, mano de obra…" /></Field>
             <div className="grid grid-cols-3 gap-2">
               {!esCajaRol && <Field label="Costo"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>}
-              <Field label="Precio *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
+              <Field label="Precio *"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" inputMode="decimal" /></Field>
               <Field label="Cantidad"><Input value={form.cantidad||'1'} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))} placeholder="1" /></Field>
             </div>
             {form.descripcion && form.precio && (
