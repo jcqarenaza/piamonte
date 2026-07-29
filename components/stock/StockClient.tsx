@@ -655,9 +655,15 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         }
 
         // Buscar en stock activo por código exacto o variante con ceros (case-insensitive)
-        const stockMatch = items.find(s =>
+        // Usar el PRIMER match por código — si hay múltiples con mismo código (ej: ORIGINAL)
+        // solo tomamos el que tiene descripción más similar al Excel
+        const stockMatches = items.filter(s =>
           codigoVariants.includes((s.codigo || '').toUpperCase()) && (s as any).activo !== false
         )
+        const stockMatch = stockMatches.length === 1
+          ? stockMatches[0]
+          : stockMatches.find(s => (s.descripcion||'').toLowerCase().includes(nombre.toLowerCase()))
+            ?? stockMatches[0]
         const codigo = stockMatch ? (stockMatch.codigo || codigoRaw).toUpperCase() : codigoRaw
 
         if (stockMatch) {
@@ -706,8 +712,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     for (const r of excelPreview) {
       if (r.estado === 'existe' && r.stockId) {
-        // Ya tiene stock → agregar directo con delta 0
-        if (!ajusteMasivoLista.find(x => x.id === r.stockId)) {
+        // Ya tiene stock → agregar directo. Dedup: no agregar si ya está en nuevosALista o en lista existente
+        if (!ajusteMasivoLista.find(x => x.id === r.stockId) && !nuevosALista.find(x => x.id === r.stockId)) {
           nuevosALista.push({ id: r.stockId, codigo: r.codigo, desc: r.nombre, cantActual: r.cantActual, delta: r.deltaExcel ?? 0 })
         }
       } else if (r.estado === 'sin_stock' && r.maestroId) {
