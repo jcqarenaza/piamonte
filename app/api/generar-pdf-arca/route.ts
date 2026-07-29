@@ -202,9 +202,10 @@ export async function POST(req: NextRequest) {
 }
 
       // QR — posición exacta de Arca: x=15 y=700, w=65 h=65
-      if (qrImageBytes) {
+      const qrBytes = qrImageBytes
+      if (qrBytes) {
         try {
-          const qrEmbed = await outDoc.embedPng(qrImageBytes)
+          const qrEmbed = await outDoc.embedPng(qrBytes)
           p.drawImage(qrEmbed, { x: 15, y: PH - 775, width: 65, height: 65 })
         } catch (e) { /* QR opcional */ }
       }
