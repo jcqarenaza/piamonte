@@ -8,13 +8,13 @@ import { moneyARS2 as moneyARS, POS_LABEL } from '@/lib/utils/format'
 const FAM_MAP: Record<string, string> = {
   PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas',
   PUERTA_DD: 'Puertas', PUERTA_DI: 'Puertas', PUERTA_TD: 'Puertas', PUERTA_TI: 'Puertas',
-  CUSTODIA_D: 'Custodias', CUSTODIA_I: 'Custodias',
-  ALETA_D: 'Aletas', ALETA_I: 'Aletas', ALETA: 'Aletas',
-  VENTANA_D: 'Custodias', VENTANA_I: 'Custodias',
+  CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
+  ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
+  VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
   TECHO: 'Otros', VIDRIO: 'Otros',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Custodias', 'Aletas', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', Custodias: '🔻', Aletas: '🔷', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Aletas y Custodias', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -1005,7 +1005,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📋 Conteo
         </button>}
-        {isAdmin && <button onClick={()=>{setAjusteMasivoOpen(true);setAjusteMasivoHistorial([]);setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0);setAjusteMasivoNota('')}}
+        {isAdmin && <button onClick={()=>{setAjusteMasivoOpen(true);setAjusteMasivoLista([]);setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0);setAjusteMasivoNota('')}}
           style={{background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📊 Ajuste masivo
         </button>}
