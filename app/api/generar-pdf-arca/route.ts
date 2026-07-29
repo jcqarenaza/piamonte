@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     for (const copia of copias) {
       // Copiar plantilla
-      const tmplDoc = await PDFDocument.load(tmplBytes)
+      const tmplDoc = await PDFDocument.load(tmplBytes, { ignoreEncryption: true })
       const [tmplPage] = await outDoc.copyPages(tmplDoc, [0])
       outDoc.addPage(tmplPage)
       const p = outDoc.getPage(outDoc.getPageCount() - 1)
