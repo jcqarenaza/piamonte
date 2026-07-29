@@ -6,15 +6,15 @@ import { Btn, Modal, Field, Input, Select, Empty, AlarmBar } from '@/components/
 import { moneyARS2 as moneyARS, POS_LABEL } from '@/lib/utils/format'
 
 const FAM_MAP: Record<string, string> = {
-  PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas',
+  PARABRISAS: 'Parabrisas', LUNETA: 'Lunetas', TECHO: 'Techo',
   PUERTA_DD: 'Puertas', PUERTA_DI: 'Puertas', PUERTA_TD: 'Puertas', PUERTA_TI: 'Puertas',
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
   TECHO: 'Otros', VIDRIO: 'Otros',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Puertas', 'Aletas y Custodias', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -291,6 +291,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!p) return 'SIN_POS'
     if (p.startsWith('PARABRISAS')) return 'PARABRISAS'
     if (p.startsWith('LUNETA') || p === 'LUNETAS') return 'LUNETA'
+    if (p.startsWith('TECHO')) return 'TECHO'
     if (p.startsWith('PUERTA') || p.startsWith('C.D.') || p.startsWith('PUERTA_') || p.startsWith('C.INF')) {
       if (p.includes('TRASERA') || p.includes('_T')) return p.includes('IZQUIERDA') || p.includes('_TI') ? 'PUERTA_TI' : 'PUERTA_TD'
       if (p.includes('IZQUIERDA') || p.startsWith('C.D.I') || p === 'PUERTA IZQUIERDA') return 'PUERTA_DI'
