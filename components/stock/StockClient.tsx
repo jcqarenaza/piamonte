@@ -72,6 +72,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     codigo:string; nombre:string; marca:string;
     stockId:string|null; cantActual:number;
     maestroId:string|null; estado:'existe'|'sin_stock'|'nuevo'
+    deltaExcel:number
   }[]>([])
   const [excelPreviewOpen, setExcelPreviewOpen] = useState(false)
   const [excelLoading, setExcelLoading] = useState(false)
@@ -634,8 +635,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
       for (const row of rows) {
         const codigoRaw = String(row['Codigo'] || row['codigo'] || row['CODIGO'] || '').trim().toUpperCase()
-        const nombre = String(row['Nombre'] || row['nombre'] || row['NOMBRE'] || '').trim()
+        const nombre = String(row['Nombre'] || row['Nombre '] || row['nombre'] || row['NOMBRE'] || '').trim()
         const marca  = String(row['Marca']  || row['marca']  || row['MARCA']  || '').trim()
+        // Cantidad contada: columna sin header (Unnamed: 4) o columna "Cantidad"
+        const cantExcelRaw = row['Unnamed: 4'] ?? row['Cantidad'] ?? row['cantidad'] ?? row['CANTIDAD'] ?? null
+        const cantExcel: number | null = cantExcelRaw !== null && cantExcelRaw !== '' ? Number(cantExcelRaw) : null
         if (!codigoRaw || codigoRaw === 'NAN') continue
 
         // Excel borra ceros a la izquierda → generar variantes con 0s al frente hasta 10 chars
@@ -656,11 +660,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         const codigo = stockMatch ? (stockMatch.codigo || codigoRaw).toUpperCase() : codigoRaw
 
         if (stockMatch) {
+          const deltaExcel = cantExcel !== null ? cantExcel - (stockMatch.cantidad || 0) : 0
           resultado.push({
             codigo, nombre: stockMatch.descripcion || nombre, marca,
             stockId: stockMatch.id, cantActual: stockMatch.cantidad || 0,
             maestroId: (stockMatch as any).articulo_id || null,
-            estado: 'existe'
+            estado: 'existe', deltaExcel,
           })
         } else {
           // Buscar en articulos_maestro probando cada variante de código
@@ -678,7 +683,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             codigo, nombre: am?.descripcion || nombre, marca: am?.marca || marca,
             stockId: null, cantActual: 0,
             maestroId: am?.id || null,
-            estado: am ? 'sin_stock' : 'nuevo'
+            estado: am ? 'sin_stock' : 'nuevo',
+            deltaExcel: cantExcel ?? 0,
           })
         }
       }
@@ -701,7 +707,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       if (r.estado === 'existe' && r.stockId) {
         // Ya tiene stock → agregar directo con delta 0
         if (!ajusteMasivoLista.find(x => x.id === r.stockId)) {
-          nuevosALista.push({ id: r.stockId, codigo: r.codigo, desc: r.nombre, cantActual: r.cantActual, delta: 0 })
+          nuevosALista.push({ id: r.stockId, codigo: r.codigo, desc: r.nombre, cantActual: r.cantActual, delta: r.deltaExcel ?? 0 })
         }
       } else if (r.estado === 'sin_stock' && r.maestroId) {
         // Existe en maestro pero sin fila en stock → crear fila con cantidad 0
@@ -725,7 +731,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             fecha,
             descripcion: 'Alta desde carga Excel — pendiente conteo',
           })
-          nuevosALista.push({ id: newStock.id, codigo: r.codigo, desc: r.nombre, cantActual: 0, delta: 0 })
+          nuevosALista.push({ id: newStock.id, codigo: r.codigo, desc: r.nombre, cantActual: 0, delta: r.deltaExcel ?? 0 })
         }
       }
       // estado === 'nuevo': no se puede crear sin datos completos, se ignora
@@ -1513,22 +1519,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             <table className="w-full text-xs">
               <thead className="bg-p-light sticky top-0">
                 <tr>
-                  <th className="text-left px-3 py-2 font-semibold text-p-ink2">Código</th>
-                  <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
-                  <th className="text-right px-3 py-2 font-semibold text-p-ink2">Stock actual</th>
-                  <th className="text-center px-3 py-2 font-semibold text-p-ink2">Estado</th>
+                  <th className="text-left px-3 py-2 font-semibold text-p-ink2 text-[10px]">Código</th>
+                  <th className="text-left px-3 py-2 font-semibold text-p-ink2 text-[10px]">Descripción</th>
+                  <th className="text-right px-3 py-2 font-semibold text-p-ink2 text-[10px]">Actual</th>
+                  <th className="text-right px-3 py-2 font-semibold text-p-ink2 text-[10px]">Nuevo</th>
+                  <th className="text-right px-3 py-2 font-semibold text-p-ink2 text-[10px]">Δ</th>
+                  <th className="text-center px-3 py-2 font-semibold text-p-ink2 text-[10px]">Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {excelPreview.map((r,i)=>(
                   <tr key={i} className={`border-t border-p-line2 ${r.estado==='existe'?'':'opacity-50'}`}>
-                    <td className="px-3 py-2 font-mono">{r.codigo}</td>
-                    <td className="px-3 py-2 truncate max-w-[180px]">{r.nombre}</td>
-                    <td className="px-3 py-2 text-right font-mono">{r.estado==='existe'?r.cantActual:'—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{r.codigo}</td>
+                    <td className="px-3 py-2 truncate max-w-[160px] text-xs">{r.nombre}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">{r.estado==='existe'?r.cantActual:'—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs font-bold">{r.deltaExcel > 0 ? r.cantActual + r.deltaExcel : r.estado==='existe' ? r.cantActual + r.deltaExcel : '—'}</td>
+                    <td className={`px-3 py-2 text-right font-mono text-xs font-bold ${r.deltaExcel>0?'text-green-600':r.deltaExcel<0?'text-red-600':'text-p-ink2'}`}>
+                      {r.estado!=='nuevo' && r.deltaExcel!==0 ? (r.deltaExcel>0?'+':'')+r.deltaExcel : '—'}
+                    </td>
                     <td className="px-3 py-2 text-center">
-                      {r.estado==='existe' && <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✓ existe</span>}
-                      {r.estado==='sin_stock' && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">s/stock</span>}
-                      {r.estado==='nuevo' && <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">no existe</span>}
+                      {r.estado==='existe' && <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold text-[10px]">✓ existe</span>}
+                      {r.estado==='sin_stock' && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold text-[10px]">s/stock</span>}
+                      {r.estado==='nuevo' && <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold text-[10px]">no existe</span>}
                     </td>
                   </tr>
                 ))}
