@@ -64,10 +64,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7' })
 
   // Items del presupuesto
-  const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
+  const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean; p: number|string })[]>([])
   const [catQ, setCatQ]       = useState('')
   const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}[]>([])
-  const [rubrosEdit, setRubrosEdit] = useState<Record<string,number>>({})
+  const [rubrosEdit, setRubrosEdit] = useState<Record<string,number|string>>({})
   const [itemManual, setItemManual] = useState({ d:'', c:'1', p:'' })
 
   // Leer params desde módulo Precios
@@ -189,7 +189,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   function addRubro(r: RubroPrecio) {
-    const precio = rubrosEdit[r.id] ?? r.precio_base
+    const precio = parseFloat(String(rubrosEdit[r.id] ?? r.precio_base).replace(',','.')) || r.precio_base
     setItems(prev=>[...prev,{d:r.nombre,c:1,p:precio,esRubro:true,visible_impresion:r.visible_en_impresion} as any])
   }
 
@@ -201,7 +201,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   const itemsImpresion = items  // todos los ítems van al PDF
   // En modo aseguradora el precio ya incluye IVA (y recargo si corresponde)
-  const neto  = modoAseg ? items.reduce((a,it)=>a+it.c*it.p,0) : items.reduce((a,it)=>a+it.c*it.p,0)
+  const neto  = modoAseg ? items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0),0) : items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0),0)
   const iva   = modoAseg ? 0 : (ivaOn ? Math.round(neto*IVA_RATE) : 0)
   const total = neto+iva
 
@@ -392,7 +392,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       doc.text(it.d.slice(0,45), hx+2, y+4.5)
       doc.text(String(it.c), hx+cols[0]+cols[1]-2, y+4.5, {align:'right'})
       doc.text(fmt(it.p), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
-      doc.text(fmt(it.c*it.p), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
+      doc.text(fmt(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
       y+=6
     })
 
@@ -784,8 +784,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               {rubros.map(r=>(
                 <div key={r.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
                   <button onClick={()=>addRubro(r)} className="text-xs font-bold text-p-dark hover:text-p-green">+ {r.nombre}</button>
-                  <input type="number" value={rubrosEdit[r.id]??r.precio_base}
-                    onChange={e=>setRubrosEdit(p=>({...p,[r.id]:+e.target.value}))}
+                  <input type="text" inputMode="decimal" value={rubrosEdit[r.id]??r.precio_base}
+                    onChange={e=>setRubrosEdit(p=>({...p,[r.id]:e.target.value}))}
+                    onBlur={e=>setRubrosEdit(p=>({...p,[r.id]:parseFloat(String(p[r.id]).replace(',','.'))||r.precio_base}))}
                     className="ml-auto w-24 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"
                     onFocus={()=>setRubrosEdit(p=>({...p,[r.id]:p[r.id]??r.precio_base}))}/>
                 </div>
@@ -824,16 +825,18 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                         <div className="flex flex-col items-end gap-0.5">
                           <div className="flex items-center gap-1">
                             <span className="text-[9px] text-purple-500">c/IVA</span>
-                            <input value={typeof it.p === 'number' ? it.p.toFixed(2) : it.p} onChange={e=>{
-                              const v = parseFloat(String(e.target.value).replace(',','.')) || 0
-                              setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))
+                            <input type="text" inputMode="decimal" value={it.p} onChange={e=>{
+                              setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))
                             }}
+                            onBlur={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(String(x.p).replace(',','.'))||0}:x))}
                             className="w-28 border border-purple-200 rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-purple-400"/>
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-[9px] text-p-ink2">s/IVA</span>
-                            <input value={(Math.round(it.p / (1 + IVA_RATE) * 100) / 100).toFixed(2)}
-                              onChange={e=>{
+                            <input type="text" inputMode="decimal"
+                              value={typeof it.p === 'number' ? (Math.round(it.p / (1 + IVA_RATE) * 100) / 100).toFixed(2) : it.p}
+                              onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))}
+                              onBlur={e=>{
                                 const neto = parseFloat(String(e.target.value).replace(',','.')) || 0
                                 const conIva = Math.round(neto * (1 + IVA_RATE) * 100) / 100
                                 setItems(prev=>prev.map((x,j)=>j===i?{...x,p:conIva,precioModificado:true}:x))
@@ -842,10 +845,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                           </div>
                         </div>
                       ) : (
-                        <input value={it.p} onChange={e=>{const v=+e.target.value;setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v,precioModificado:true}:x))}}
+                        <input type="text" inputMode="decimal" value={it.p}
+                          onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))}
+                          onBlur={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(String(x.p).replace(',','.'))||0,precioModificado:true}:x))}
                           className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                       )}
-                      <span className="font-mono text-p-ink text-xs w-24 text-right">{modoAseg ? moneyARS2(it.c*it.p) : moneyARS(it.c*it.p)}</span>
+                      <span className="font-mono text-p-ink text-xs w-24 text-right">{modoAseg ? moneyARS2(it.c*(parseFloat(String(it.p).replace(',','.'))||0)) : moneyARS(it.c*(parseFloat(String(it.p).replace(',','.'))||0))}</span>
                       <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs">✕</button>
                     </div>
                   </div>
