@@ -663,12 +663,16 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             estado: 'existe'
           })
         } else {
-          // Buscar en articulos_maestro por codigo_referencia
-          const { data: am } = await supabase
-            .from('articulos_maestro')
-            .select('id,descripcion,marca')
-            .or(codigoVariants.map((v:string) => `codigo_referencia.ilike.${v}`).join(','))
-            .maybeSingle()
+          // Buscar en articulos_maestro probando cada variante de código
+          let am: any = null
+          for (const v of codigoVariants) {
+            const { data } = await supabase
+              .from('articulos_maestro')
+              .select('id,descripcion,marca')
+              .ilike('codigo_referencia', v)
+              .maybeSingle()
+            if (data) { am = data; break }
+          }
 
           resultado.push({
             codigo, nombre: am?.descripcion || nombre, marca: am?.marca || marca,

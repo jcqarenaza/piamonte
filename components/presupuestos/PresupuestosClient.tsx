@@ -64,7 +64,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7' })
 
   // Items del presupuesto
-  const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean; p: number|string })[]>([])
+  const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
   const [catQ, setCatQ]       = useState('')
   const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}[]>([])
   const [rubrosEdit, setRubrosEdit] = useState<Record<string,number|string>>({})
@@ -826,7 +826,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                           <div className="flex items-center gap-1">
                             <span className="text-[9px] text-purple-500">c/IVA</span>
                             <input type="text" inputMode="decimal" value={it.p} onChange={e=>{
-                              setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))
+                              setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value as any,precioModificado:true}:x))
                             }}
                             onBlur={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(String(x.p).replace(',','.'))||0}:x))}
                             className="w-28 border border-purple-200 rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-purple-400"/>
@@ -835,7 +835,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                             <span className="text-[9px] text-p-ink2">s/IVA</span>
                             <input type="text" inputMode="decimal"
                               value={typeof it.p === 'number' ? (Math.round(it.p / (1 + IVA_RATE) * 100) / 100).toFixed(2) : it.p}
-                              onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))}
+                              onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value as any,precioModificado:true}:x))}
                               onBlur={e=>{
                                 const neto = parseFloat(String(e.target.value).replace(',','.')) || 0
                                 const conIva = Math.round(neto * (1 + IVA_RATE) * 100) / 100
@@ -846,7 +846,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                         </div>
                       ) : (
                         <input type="text" inputMode="decimal" value={it.p}
-                          onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value,precioModificado:true}:x))}
+                          onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value as any,precioModificado:true}:x))}
                           onBlur={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(String(x.p).replace(',','.'))||0,precioModificado:true}:x))}
                           className="w-28 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"/>
                       )}
