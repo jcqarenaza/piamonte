@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       const { PDFName, PDFDict } = await import('pdf-lib')
       try {
         const resources = page.node.Resources()
-        const xObjects = resources.lookup(PDFName.of('XObject'), PDFDict)
+        const xObjects = resources?.lookup(PDFName.of('XObject'), PDFDict)
         if (xObjects) {
           // Eliminar img0 (QR de ARCA) e img1 (máscara del QR)
           xObjects.delete(PDFName.of('img0'))
