@@ -670,8 +670,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               .from('articulos_maestro')
               .select('id,descripcion,marca')
               .ilike('codigo_referencia', v)
-              .maybeSingle()
-            if (data) { am = data; break }
+              .limit(1)
+            if (data?.[0]) { am = data[0]; break }
           }
 
           resultado.push({
