@@ -137,13 +137,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     })
   },[stockQ,supabase])
 
-  const neto  = items.reduce((a,it)=>a+it.c*it.p, 0)
+  const neto  = items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0), 0)
   const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
   const total = neto + iva
 
   function addItem() {
     if(!item.d||!item.p) return
-    setItems(prev=>[...prev,{d:item.d,c:+item.c||1,p:+item.p.replace(/[^0-9.]/g,'')}])
+    setItems(prev=>[...prev,{d:item.d,c:+item.c||1,p:parseFloat(item.p.replace(',','.'))||0}])
     setItem({d:'',c:'1',p:''})
   }
 
@@ -404,7 +404,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       doc.text(it.d.slice(0,maxChars), xi+2, y+4.5); xi+=cols[0]
       doc.text(String(it.c), xi-2, y+4.5, {align:'right'}); xi+=cols[1]
       doc.text(moneyARS2(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
-      doc.text(moneyARS2(it.c*it.p), xi-2, y+4.5, {align:'right'})
+      doc.text(moneyARS2(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), xi-2, y+4.5, {align:'right'})
       y+=6.5
     })
     y+=4
@@ -838,18 +838,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     {it.d}{it.c>1?` ×${it.c}`:''}
                   </span>
                   <div className="flex items-center gap-1">
-                    <input value={it.p} onChange={e=>{
-                      const v = parseFloat(e.target.value.replace(',','.')) || 0
-                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
-                    }}
-                    onBlur={e=>{
-                      const v = parseFloat(String(e.target.value).replace(',','.')) || 0
-                      setItems(prev=>prev.map((x,j)=>j===i?{...x,p:v}:x))
-                    }}
+                    <input type="text" inputMode="decimal" value={it.p}
+                    onChange={e=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:e.target.value as any}:x))}
+                    onBlur={()=>setItems(prev=>prev.map((x,j)=>j===i?{...x,p:parseFloat(String(x.p).replace(',','.'))||0}:x))}
                     className="w-28 border border-p-line rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-p-green"/>
                     {ivaOn && <span className="text-[9px] text-p-ink2 whitespace-nowrap">s/IVA</span>}
                   </div>
-                  <span className="font-mono text-xs w-24 text-right">{moneyARS2(it.c*it.p)}</span>
+                  <span className="font-mono text-xs w-24 text-right">{moneyARS2(it.c*(parseFloat(String(it.p).replace(',','.'))||0))}</span>
                   <button onClick={()=>setItems(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs ml-1">✕</button>
                 </div>
               ))}
