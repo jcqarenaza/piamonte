@@ -65,7 +65,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [ajusteMasivoDelta, setAjusteMasivoDelta] = useState(0)
   const [ajusteMasivoNota, setAjusteMasivoNota] = useState('')
   const [ajusteMasivoLoading, setAjusteMasivoLoading] = useState(false)
-  const [ajusteMasivoHistorial, setAjusteMasivoHistorial] = useState<{codigo:string;desc:string;delta:number;nota:string}[]>([])
+  const [ajusteMasivoLeyenda, setAjusteMasivoLeyenda] = useState('')
+  const [ajusteMasivoLista, setAjusteMasivoLista] = useState<{id:string;codigo:string;desc:string;cantActual:number;delta:number}[]>([])
   const supabase = createClient()
 
   async function confirmarAjusteCant() {
@@ -596,32 +597,53 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
 
-  async function confirmarAjusteMasivo() {
-    if (!ajusteMasivoSel || ajusteMasivoDelta === 0 || !ajusteMasivoNota.trim()) return
-    setAjusteMasivoLoading(true)
-    const nueva = (ajusteMasivoSel.cantidad||0) + ajusteMasivoDelta
-    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteMasivoSel.id)
-    await supabase.from('stock_movimientos').insert({
-      stock_id: ajusteMasivoSel.id,
-      tipo: ajusteMasivoDelta > 0 ? 'entrada' : 'salida',
-      cantidad: Math.abs(ajusteMasivoDelta),
-      fecha: new Date().toISOString().slice(0,10),
-      descripcion: ajusteMasivoNota.trim(),
-    })
-    setAjusteMasivoHistorial(p=>[{
-      codigo: ajusteMasivoSel.codigo||'',
-      desc: ajusteMasivoSel.descripcion||'',
+  function agregarAjuste() {
+    if (!ajusteMasivoSel) return
+    // Evitar duplicados
+    if (ajusteMasivoLista.find(x => x.id === ajusteMasivoSel!.id)) return
+    setAjusteMasivoLista(p => [...p, {
+      id: ajusteMasivoSel!.id,
+      codigo: ajusteMasivoSel!.codigo || '',
+      desc: ajusteMasivoSel!.descripcion || '',
+      cantActual: ajusteMasivoSel!.cantidad || 0,
       delta: ajusteMasivoDelta,
-      nota: ajusteMasivoNota,
-    },...p])
-    // Actualizar en memoria
-    setItems(prev => prev.map(s => s.id===ajusteMasivoSel!.id ? {...s, cantidad: nueva} : s))
-    // Limpiar para siguiente
+    }])
     setAjusteMasivoSel(null)
     setAjusteMasivoQ('')
     setAjusteMasivoDelta(0)
-    setAjusteMasivoNota('')
+  }
+
+  async function guardarAjusteMasivo() {
+    if (!ajusteMasivoLeyenda.trim() || !ajusteMasivoLista.length) return
+    setAjusteMasivoLoading(true)
+    const fecha = new Date().toISOString().slice(0,10)
+    for (const it of ajusteMasivoLista) {
+      const nueva = it.cantActual + it.delta
+      if (it.delta !== 0) {
+        await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
+        await supabase.from('stock_movimientos').insert({
+          stock_id: it.id,
+          tipo: it.delta > 0 ? 'entrada' : 'salida',
+          cantidad: Math.abs(it.delta),
+          fecha,
+          descripcion: ajusteMasivoLeyenda.trim(),
+        })
+        setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: nueva} : s))
+      } else {
+        // Delta 0 — registrar conteo confirmado
+        await supabase.from('stock_movimientos').insert({
+          stock_id: it.id,
+          tipo: 'entrada',
+          cantidad: 0,
+          fecha,
+          descripcion: `Conteo confirmado · ${ajusteMasivoLeyenda.trim()}`,
+        })
+      }
+    }
     setAjusteMasivoLoading(false)
+    setAjusteMasivoOpen(false)
+    setAjusteMasivoLista([])
+    setAjusteMasivoLeyenda('')
   }
 
   async function generarConteo() {
@@ -1214,20 +1236,26 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       )}
 
       {/* Modal Ajuste Masivo */}
-      <Modal open={ajusteMasivoOpen} onClose={()=>setAjusteMasivoOpen(false)} title="📊 Ajuste masivo de stock" size="lg">
-        <div className="flex flex-col gap-3">
-          {/* Buscador */}
+      <Modal open={ajusteMasivoOpen} onClose={()=>{setAjusteMasivoOpen(false);setAjusteMasivoLista([]);setAjusteMasivoLeyenda('')}} title="📊 Ajuste masivo de stock" size="lg">
+        <div className="flex flex-col gap-4" style={{minHeight:480}}>
+
+          {/* Leyenda general */}
+          <Field label="Leyenda general del ajuste *">
+            <Input value={ajusteMasivoLeyenda} onChange={e=>setAjusteMasivoLeyenda(e.target.value)} placeholder="Ej: Conteo físico 29/07/2026"/>
+          </Field>
+
+          {/* Buscador de código */}
           <div className="relative">
             <Input value={ajusteMasivoQ} onChange={e=>{
               const q=e.target.value.toUpperCase(); setAjusteMasivoQ(e.target.value)
               if (q.length>=1) {
-                setAjusteMasivoSug(items.filter(s=>(s.codigo||'').toUpperCase().startsWith(q)).slice(0,10))
+                setAjusteMasivoSug(items.filter(s=>(s.codigo||'').toUpperCase().startsWith(q) && !ajusteMasivoLista.find(x=>x.id===s.id)).slice(0,10))
               } else setAjusteMasivoSug([])
-            }} placeholder="Escribí el código…"/>
+            }} placeholder="Buscá por código…"/>
             {ajusteMasivoSug.length>0 && !ajusteMasivoSel && (
               <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
                 {ajusteMasivoSug.map(s=>(
-                  <button key={s.id} type="button" onClick={()=>{setAjusteMasivoSel(s);setAjusteMasivoQ(s.descripcion||'');setAjusteMasivoSug([]);setAjusteMasivoDelta(0)}}
+                  <button key={s.id} type="button" onClick={()=>{setAjusteMasivoSel(s);setAjusteMasivoQ('');setAjusteMasivoSug([]);setAjusteMasivoDelta(0)}}
                     className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0">
                     <p className="font-medium text-p-ink">{s.descripcion}</p>
                     <p className="text-[10px] font-mono text-p-ink2">{s.codigo} · stock: {s.cantidad}</p>
@@ -1239,52 +1267,60 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
           {/* Artículo seleccionado */}
           {ajusteMasivoSel && (
-            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2">
-              <div className="flex justify-between items-start">
+            <div className="bg-p-light rounded-xl p-3 flex flex-col gap-2 border border-p-green">
+              <div className="flex justify-between items-center">
                 <div>
                   <p className="font-semibold text-p-ink">{ajusteMasivoSel.descripcion}</p>
-                  <p className="text-xs font-mono text-p-ink2">{ajusteMasivoSel.codigo}</p>
+                  <p className="text-xs font-mono text-p-ink2">{ajusteMasivoSel.codigo} · stock actual: <strong>{ajusteMasivoSel.cantidad}</strong></p>
                 </div>
-                <button onClick={()=>{setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0)}} className="text-p-gray hover:text-p-ink text-lg">✕</button>
+                <button onClick={()=>{setAjusteMasivoSel(null);setAjusteMasivoDelta(0)}} className="text-p-gray hover:text-p-ink text-lg">✕</button>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-p-ink2">Stock actual: <strong className="font-mono">{ajusteMasivoSel.cantidad}</strong></span>
-                <div className="flex items-center gap-2 ml-auto">
-                  <button onClick={()=>setAjusteMasivoDelta(d=>d-1)} className="w-8 h-8 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 font-bold text-lg">−</button>
-                  <span className={`font-mono font-bold text-lg w-10 text-center ${ajusteMasivoDelta>0?'text-green-600':ajusteMasivoDelta<0?'text-red-600':'text-p-ink2'}`}>
-                    {ajusteMasivoDelta>0?'+':''}{ajusteMasivoDelta}
-                  </span>
-                  <button onClick={()=>setAjusteMasivoDelta(d=>d+1)} className="w-8 h-8 border border-green-200 rounded-lg text-green-600 hover:bg-green-50 font-bold text-lg">+</button>
-                </div>
-                <span className="text-sm font-mono font-bold text-p-dark ml-2">→ {(ajusteMasivoSel.cantidad||0)+ajusteMasivoDelta}</span>
+                <button onClick={()=>setAjusteMasivoDelta(d=>d-1)} className="w-9 h-9 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 font-bold text-xl">−</button>
+                <span className={`font-mono font-bold text-xl w-12 text-center ${ajusteMasivoDelta>0?'text-green-600':ajusteMasivoDelta<0?'text-red-600':'text-p-ink2'}`}>
+                  {ajusteMasivoDelta>0?'+':''}{ajusteMasivoDelta}
+                </span>
+                <button onClick={()=>setAjusteMasivoDelta(d=>d+1)} className="w-9 h-9 border border-green-200 rounded-lg text-green-600 hover:bg-green-50 font-bold text-xl">+</button>
+                <span className="text-sm font-mono text-p-dark ml-2">→ <strong>{(ajusteMasivoSel.cantidad||0)+ajusteMasivoDelta}</strong></span>
+                <button onClick={agregarAjuste}
+                  style={{marginLeft:'auto',background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                  + Agregar
+                </button>
               </div>
-              <Field label="Leyenda *">
-                <Input value={ajusteMasivoNota} onChange={e=>setAjusteMasivoNota(e.target.value)} placeholder="Motivo del ajuste…"/>
-              </Field>
-              <button onClick={confirmarAjusteMasivo}
-                disabled={ajusteMasivoLoading||ajusteMasivoDelta===0||!ajusteMasivoNota.trim()}
-                style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:14,cursor:'pointer',opacity:(ajusteMasivoLoading||ajusteMasivoDelta===0||!ajusteMasivoNota.trim())?0.5:1}}>
-                {ajusteMasivoLoading?'Aplicando…':'✓ Aplicar y continuar'}
-              </button>
             </div>
           )}
 
-          {/* Historial de ajustes de esta sesión */}
-          {ajusteMasivoHistorial.length>0 && (
-            <div className="border border-p-line rounded-xl p-3">
-              <p className="text-xs font-semibold text-p-ink2 mb-2">Ajustes de esta sesión:</p>
-              <div className="flex flex-col gap-1">
-                {ajusteMasivoHistorial.map((h,i)=>(
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className="font-mono text-p-ink2">{h.codigo}</span>
-                    <span className="flex-1 truncate text-p-ink">{h.desc}</span>
-                    <span className={`font-mono font-bold ${h.delta>0?'text-green-600':'text-red-600'}`}>{h.delta>0?'+':''}{h.delta}</span>
-                    <span className="text-p-ink2 truncate max-w-[100px]">{h.nota}</span>
+          {/* Lista de artículos cargados */}
+          {ajusteMasivoLista.length>0 && (
+            <div className="border border-p-line rounded-xl overflow-hidden">
+              <div className="bg-p-light px-3 py-2 flex justify-between text-xs font-semibold text-p-ink2">
+                <span>{ajusteMasivoLista.length} artículo(s)</span>
+                <span>Stock actual → nuevo</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {ajusteMasivoLista.map((it,i)=>(
+                  <div key={it.id} className="flex items-center gap-3 px-3 py-2 border-b border-p-line2 last:border-0">
+                    <span className="font-mono text-xs text-p-ink2 w-24 shrink-0">{it.codigo}</span>
+                    <span className="text-sm text-p-ink flex-1 truncate">{it.desc}</span>
+                    <span className="font-mono text-sm">{it.cantActual}</span>
+                    <span className={`font-mono text-sm font-bold w-10 text-center ${it.delta>0?'text-green-600':it.delta<0?'text-red-600':'text-p-ink2'}`}>
+                      {it.delta>0?'+':''}{it.delta}
+                    </span>
+                    <span className="font-mono text-sm font-bold text-p-dark w-8">{it.cantActual+it.delta}</span>
+                    <button onClick={()=>setAjusteMasivoLista(p=>p.filter((_,j)=>j!==i))} className="text-p-gray hover:text-red-500 text-sm">✕</button>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Guardar */}
+          <button onClick={guardarAjusteMasivo}
+            disabled={ajusteMasivoLoading||!ajusteMasivoLeyenda.trim()||!ajusteMasivoLista.length}
+            style={{background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'12px',fontWeight:700,fontSize:15,cursor:'pointer',
+              opacity:(ajusteMasivoLoading||!ajusteMasivoLeyenda.trim()||!ajusteMasivoLista.length)?0.5:1}}>
+            {ajusteMasivoLoading?'Guardando…':`✓ Guardar ${ajusteMasivoLista.length} ajuste(s)`}
+          </button>
         </div>
       </Modal>
 
