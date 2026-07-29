@@ -771,6 +771,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           cantidad: Math.abs(it.delta),
           fecha,
           descripcion: ajusteMasivoLeyenda.trim(),
+          user_id: userId || null,
         })
         await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
         setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: nueva} : s))
@@ -782,6 +783,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           cantidad: 0,
           fecha,
           descripcion: `Conteo confirmado · ${ajusteMasivoLeyenda.trim()}`,
+          user_id: userId || null,
         })
       }
     }
