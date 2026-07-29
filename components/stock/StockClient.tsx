@@ -1436,6 +1436,24 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                 <span>{ajusteMasivoLista.length} artículo(s)</span>
                 <span>Stock actual → nuevo</span>
               </div>
+              {/* Totales */}
+              <div className="grid grid-cols-3 divide-x divide-p-line2 border-b border-p-line2">
+                <div className="px-3 py-2 text-center">
+                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Artículos</p>
+                  <p className="font-mono font-bold text-p-ink">{ajusteMasivoLista.length}</p>
+                </div>
+                <div className="px-3 py-2 text-center">
+                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Total actual</p>
+                  <p className="font-mono font-bold text-p-ink">{ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0)}</p>
+                </div>
+                <div className="px-3 py-2 text-center">
+                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Total nuevo</p>
+                  <p className={`font-mono font-bold ${
+                    ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0) > ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0) ? 'text-green-600' :
+                    ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0) < ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0) ? 'text-red-600' : 'text-p-ink'
+                  }`}>{ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0)}</p>
+                </div>
+              </div>
               <div className="max-h-48 overflow-y-auto">
                 {[...ajusteMasivoLista].sort((a,b)=>{
                     // Primero los que tienen diferencia, después los iguales por cantActual desc
