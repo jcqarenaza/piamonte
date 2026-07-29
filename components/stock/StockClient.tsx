@@ -639,7 +639,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         const marca  = String(row['Marca']  || row['marca']  || row['MARCA']  || '').trim()
         // Cantidad contada: columna sin header (Unnamed: 4) o columna "Cantidad"
         const cantExcelRaw = row['__EMPTY'] ?? row['Unnamed: 4'] ?? row['Cantidad'] ?? row['cantidad'] ?? row['CANTIDAD'] ?? null
-        const cantExcel: number | null = cantExcelRaw !== null && cantExcelRaw !== '' ? Number(cantExcelRaw) : null
+        // Vacío o NaN = se contó 0; null solo si la fila no tiene columna cantidad en absoluto
+        const cantExcel: number = (cantExcelRaw === null || cantExcelRaw === '') ? 0 : Number(cantExcelRaw)
         if (!codigoRaw || codigoRaw === 'NAN') continue
 
         // Excel borra ceros a la izquierda → generar variantes con 0s al frente hasta 10 chars
@@ -660,7 +661,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         const codigo = stockMatch ? (stockMatch.codigo || codigoRaw).toUpperCase() : codigoRaw
 
         if (stockMatch) {
-          const deltaExcel = cantExcel !== null ? cantExcel - (stockMatch.cantidad || 0) : 0
+          const deltaExcel = cantExcel - (stockMatch.cantidad || 0)
           resultado.push({
             codigo, nombre: stockMatch.descripcion || nombre, marca,
             stockId: stockMatch.id, cantActual: stockMatch.cantidad || 0,
@@ -1443,23 +1444,36 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                 <span>Stock actual → nuevo</span>
               </div>
               {/* Totales */}
-              <div className="grid grid-cols-3 divide-x divide-p-line2 border-b border-p-line2">
-                <div className="px-3 py-2 text-center">
-                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Artículos</p>
-                  <p className="font-mono font-bold text-p-ink">{ajusteMasivoLista.length}</p>
-                </div>
-                <div className="px-3 py-2 text-center">
-                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Total actual</p>
-                  <p className="font-mono font-bold text-p-ink">{ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0)}</p>
-                </div>
-                <div className="px-3 py-2 text-center">
-                  <p className="text-[10px] text-p-ink2 uppercase font-semibold">Total nuevo</p>
-                  <p className={`font-mono font-bold ${
-                    ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0) > ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0) ? 'text-green-600' :
-                    ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0) < ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0) ? 'text-red-600' : 'text-p-ink'
-                  }`}>{ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0)}</p>
-                </div>
-              </div>
+              {(()=>{
+                const totalActual = ajusteMasivoLista.reduce((a,it)=>a+it.cantActual,0)
+                const totalNuevo  = ajusteMasivoLista.reduce((a,it)=>a+it.cantActual+it.delta,0)
+                const suman = ajusteMasivoLista.filter(it=>it.delta>0).reduce((a,it)=>a+it.delta,0)
+                const restan = ajusteMasivoLista.filter(it=>it.delta<0).reduce((a,it)=>a+it.delta,0)
+                return (
+                  <div className="grid grid-cols-4 divide-x divide-p-line2 border-b border-p-line2">
+                    <div className="px-2 py-2 text-center">
+                      <p className="text-[9px] text-p-ink2 uppercase font-semibold">Artículos</p>
+                      <p className="font-mono font-bold text-p-ink text-sm">{ajusteMasivoLista.length}</p>
+                    </div>
+                    <div className="px-2 py-2 text-center">
+                      <p className="text-[9px] text-p-ink2 uppercase font-semibold">Total actual</p>
+                      <p className="font-mono font-bold text-p-ink text-sm">{totalActual}</p>
+                    </div>
+                    <div className="px-2 py-2 text-center">
+                      <p className="text-[9px] text-p-ink2 uppercase font-semibold">Total nuevo</p>
+                      <p className={`font-mono font-bold text-sm ${totalNuevo>totalActual?'text-green-600':totalNuevo<totalActual?'text-red-600':'text-p-ink'}`}>{totalNuevo}</p>
+                    </div>
+                    <div className="px-2 py-2 text-center">
+                      <p className="text-[9px] text-p-ink2 uppercase font-semibold">Δ</p>
+                      <p className="font-mono text-[10px] font-bold">
+                        {suman>0 && <span className="text-green-600">+{suman} </span>}
+                        {restan<0 && <span className="text-red-600">{restan}</span>}
+                        {suman===0&&restan===0 && <span className="text-p-ink2">—</span>}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="max-h-48 overflow-y-auto">
                 {[...ajusteMasivoLista].sort((a,b)=>{
                     // Primero los que tienen diferencia, después los iguales por cantActual desc
