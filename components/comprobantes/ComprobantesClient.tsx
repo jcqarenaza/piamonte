@@ -1186,6 +1186,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   // PDF formato ARCA para Mercantil Andina y Sancor (layout validado)
   async function generarPDFArca(c:Comprobante): Promise<Blob> {
+    // Fetch fresco del comprobante para garantizar nro_cbte_afip, cae_emitido y totales actualizados
+    const { data: cFresh } = await supabase.from('comprobantes').select('*').eq('id', c.id).single()
+    if (cFresh) c = cFresh as Comprobante
+
     // Fetch datos aseguradora
     let cuitAseg='', dirAseg='', razonSocial=c.aseguradora_nombre||''
     if (c.aseguradora_id) {
