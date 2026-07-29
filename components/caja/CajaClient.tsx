@@ -658,11 +658,11 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                 <div key={i} className="flex items-center gap-2 bg-white rounded-lg px-2 py-1.5 border border-p-line">
                   {it.codigo && <span className="font-mono text-[10px] bg-p-light px-1 rounded border shrink-0">{it.codigo}</span>}
                   <span className="flex-1 truncate text-sm">{it.desc}</span>
-                  <input type="number" value={it.cantidad} min={1}
+                  <input type="text" inputMode="numeric" value={it.cantidad}
                     onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,cantidad:+e.target.value||1}:x))}
                     className="w-10 border border-p-line rounded text-center text-xs font-mono px-1 py-0.5"/>
-                  <input type="number" value={it.precio}
-                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:+e.target.value||0}:x))}
+                  <input type="text" inputMode="decimal" value={it.precio}
+                    onChange={e=>setItemsCaja(prev=>prev.map((x,j)=>j===i?{...x,precio:parseFloat(e.target.value.replace(',','.'))||0}:x))}
                     className="w-24 border border-p-line rounded text-right text-xs font-mono px-1 py-0.5"/>
                   <button onClick={()=>setItemsCaja(prev=>prev.filter((_,j)=>j!==i))} className="text-red-400 text-xs shrink-0">✕</button>
                 </div>
