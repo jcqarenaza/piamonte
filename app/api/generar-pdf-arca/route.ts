@@ -3,29 +3,19 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 export const runtime = 'nodejs'
 
-// Colores según especificación
-const NEGRO  = rgb(0, 0, 0)
-const LINEA  = rgb(0.333, 0.333, 0.333) // #555555
-const GRIS   = rgb(0.843, 0.843, 0.843) // #D7D7D7
-const AZUL   = rgb(0, 0.314, 0.627)     // ARCA azul
+const NEGRO = rgb(0, 0, 0)
+const LINEA = rgb(0.333, 0.333, 0.333)
+const GRIS  = rgb(0.922, 0.922, 0.922)
+const AZUL  = rgb(0, 0.314, 0.627)
 
-// Grosores
-const BRD = 0.7
-const SEP = 0.5
+const PH = 842  // altura página en pt
 
-// A4 en puntos (1mm = 2.8346 pt)
-const MM = 2.8346
-const PAGE_W = 210 * MM  // 595.3
-const PAGE_H = 297 * MM  // 841.9
-
-// Convertir mm a pt Y (pdf-lib tiene origen abajo-izquierda)
-const y = (mm: number) => PAGE_H - mm * MM
+// Convierte y desde arriba (como pdfplumber) a y desde abajo (pdf-lib)
+const yb = (yTop: number) => PH - yTop
 
 function fmtNum(n: number): string {
   return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-
-function mm(v: number) { return v * MM }
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +23,7 @@ export async function POST(req: NextRequest) {
     const { comprobante: c, cuitAseg, dirAseg, razonSocial } = data
 
     const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8, '0')
-    const fechaFmt = c.fecha.split('-').reverse().join('/')
+    const fechaFmt = (c.fecha || '').split('-').reverse().join('/')
     const caeVto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
     const tipoLabel = c.categoria === 'nc' ? 'NOTA DE CREDITO' : 'FACTURA'
 
@@ -45,193 +35,220 @@ export async function POST(req: NextRequest) {
     const copias = ['ORIGINAL', 'DUPLICADO', 'TRIPLICADO']
 
     for (const copia of copias) {
-      const page = pdfDoc.addPage([PAGE_W, PAGE_H])
+      const page = pdfDoc.addPage([595, 842])
 
-      // Helper: dibujar texto
-      const txt = (xMm: number, yMm: number, text: string, sizePt: number, bold = false, align: 'left'|'right'|'center' = 'left') => {
+      // Helpers con coordenadas absolutas en pt (origen arriba-izquierda convertido a pdf-lib)
+      const txt = (x: number, yTop: number, text: string, sz: number, bold = false) => {
+        page.drawText(text, { x, y: yb(yTop) - sz * 0.2, font: bold ? fontB : fontR, size: sz, color: NEGRO })
+      }
+      const txtR = (xRight: number, yTop: number, text: string, sz: number, bold = false) => {
         const font = bold ? fontB : fontR
-        const w = font.widthOfTextAtSize(text, sizePt)
-        let xPt = mm(xMm)
-        if (align === 'right')  xPt = mm(xMm) - w
-        if (align === 'center') xPt = mm(xMm) - w / 2
-        page.drawText(text, { x: xPt, y: y(yMm), font, size: sizePt, color: NEGRO })
+        const w = font.widthOfTextAtSize(text, sz)
+        page.drawText(text, { x: xRight - w, y: yb(yTop) - sz * 0.2, font, size: sz, color: NEGRO })
+      }
+      const txtC = (xCenter: number, yTop: number, text: string, sz: number, bold = false) => {
+        const font = bold ? fontB : fontR
+        const w = font.widthOfTextAtSize(text, sz)
+        page.drawText(text, { x: xCenter - w/2, y: yb(yTop) - sz * 0.2, font, size: sz, color: NEGRO })
+      }
+      const ln = (x1: number, y1: number, x2: number, y2: number, lw = 0.7) => {
+        page.drawLine({ start: { x: x1, y: yb(y1) }, end: { x: x2, y: yb(y2) }, thickness: lw, color: LINEA })
+      }
+      const box = (x: number, yTop: number, w: number, h: number, lw = 0.7) => {
+        page.drawRectangle({ x, y: yb(yTop + h), width: w, height: h, borderColor: LINEA, borderWidth: lw, color: rgb(1,1,1) })
+      }
+      const boxG = (x: number, yTop: number, w: number, h: number, lw = 0.7) => {
+        page.drawRectangle({ x, y: yb(yTop + h), width: w, height: h, borderColor: LINEA, borderWidth: lw, color: GRIS })
       }
 
-      // Helper: línea
-      const ln = (x1: number, y1: number, x2: number, y2: number, lw = BRD) => {
-        page.drawLine({ start: { x: mm(x1), y: y(y1) }, end: { x: mm(x2), y: y(y2) }, thickness: lw, color: LINEA })
-      }
+      // ── COPIA ── rect x=220 y=19 w=156 h=24 (exacto de Arca)
+      box(220, 19, 156, 24)
+      txtC(298, 25.2, copia, 14, true)
 
-      // Helper: rect solo borde
-      const box = (xMm: number, yMm: number, wMm: number, hMm: number, lw = BRD) => {
-        page.drawRectangle({ x: mm(xMm), y: y(yMm + hMm), width: mm(wMm), height: mm(hMm), borderColor: LINEA, borderWidth: lw, color: rgb(1,1,1) })
-      }
+      // ── LÍNEA HORIZONTAL ── y=44.5
+      ln(15, 44.5, 581, 44.5)
 
-      // Helper: rect con fondo gris
-      const boxGris = (xMm: number, yMm: number, wMm: number, hMm: number, lw = BRD) => {
-        page.drawRectangle({ x: mm(xMm), y: y(yMm + hMm), width: mm(wMm), height: mm(hMm), borderColor: LINEA, borderWidth: lw, color: GRIS })
-      }
+      // ── RECT LETRA A ── x=275 y=45 w=47 h=41
+      box(275, 45, 47, 41)
+      // Línea interior bajo la A
+      ln(275, 86, 322, 86, 0.5)
+      // Línea vertical divisor A / FACTURA
+      ln(298.5, 83, 298.5, 163, 0.5)
+      // Líneas del rect letra
+      ln(275, 44.8, 275, 86.2, 0.7)
+      ln(322, 44.8, 322, 86.2, 0.7)
 
-      // ── BLOQUE 1: COPIA ── y=5..14.5
-      box(5, 5, 200, 9.5)
-      const copiaW = fontB.widthOfTextAtSize(copia, 22)
-      page.drawText(copia, { x: PAGE_W/2 - copiaW/2, y: y(12.8), font: fontB, size: 22, color: NEGRO })
+      // EMISOR — coordenadas exactas de pdfplumber
+      txt(67, 63.4, 'KNUTH VERONICA ALEJANDRA', 10, true)
+      txt(21, 103.5, 'Razón Social:', 9, true); txt(84, 103.5, 'KNUTH VERONICA ALEJANDRA', 9)
+      txt(21, 127.5, 'Domicilio Comercial:', 9, true); txt(116, 127.5, 'Calle 102 366 - General Pico, La Pampa', 9)
+      txt(21, 152.3, 'Condición frente al IVA:', 9, true); txt(131, 152.3, 'IVA Responsable Inscripto', 9)
 
-      // ── BLOQUE 2: DATOS EMPRESA ── y=15.7..57.5
-      ln(5, 15.7, 205, 15.7)
-      ln(5, 57.5, 205, 57.5)
-      ln(5, 15.7, 5, 57.5)
-      ln(205, 15.7, 205, 57.5)
-      ln(97, 15.7, 97, 57.5, SEP)
-      box(97, 15.9, 16.6, 14.5)
-      ln(113.6, 30.4, 113.6, 57.5, SEP)
+      // LETRA A
+      txtC(298.5, 48.9, c.tipo || 'A', 24, true)
+      txtC(298.5, 73.7, 'COD. 01', 8, true)
 
-      // Emisor
-      txt(23.7, 22.4, 'KNUTH VERONICA ALEJANDRA', 11, true)
-      txt(7, 36.5, 'Razón Social:', 10, true);  txt(30, 36.5, 'KNUTH VERONICA ALEJANDRA', 10)
-      txt(7, 45.0, 'Domicilio Comercial:', 10, true); txt(41, 45.0, 'Calle 102 366 - General Pico, La Pampa', 10)
-      txt(7, 53.7, 'Condición frente al IVA:', 10, true); txt(46.5, 53.7, 'IVA Responsable Inscripto', 10)
+      // FACTURA zona derecha — coordenadas exactas
+      txt(341, 57.1, tipoLabel, 18, true)
+      txt(341, 86.1, 'Punto de Venta:  0006', 9, true)
+      txt(461, 86.1, `Comp. Nro:  ${nroAfip}`, 9, true)
+      txt(341, 102.3, 'Fecha de Emisión:', 9, true); txt(428, 101.6, fechaFmt, 9)
+      txt(341, 125.3, 'CUIT:', 9, true); txt(373, 125.3, '27242657174', 9)
+      txt(341, 137.3, 'Ingresos Brutos:', 9, true); txt(419, 137.3, '1919987', 9)
+      txt(341, 149.3, 'Fecha de Inicio de Actividades:', 9, true); txt(482, 149.3, '01/09/2007', 9)
 
-      // Letra A
-      const aW = fontB.widthOfTextAtSize(c.tipo || 'A', 34)
-      page.drawText(c.tipo || 'A', { x: mm(105.3) - aW/2, y: y(27), font: fontB, size: 34, color: NEGRO })
-      const codW = fontB.widthOfTextAtSize('COD. 01', 10)
-      page.drawText('COD. 01', { x: mm(105.3) - codW/2, y: y(29.5), font: fontB, size: 10, color: NEGRO })
+      // Línea inferior bloque empresa
+      ln(15, 163, 581, 163)
 
-      // FACTURA zona derecha
-      txt(120.3, 20.1, tipoLabel, 28, true)
-      txt(120.3, 30.4, 'Punto de Venta:  0006', 11, true)
-      txt(162.6, 30.4, `Comp. Nro:  ${nroAfip}`, 11, true)
-      txt(120.3, 36.1, 'Fecha de Emisión:', 10, true);  txt(152, 36.1, fechaFmt, 10)
-      txt(120.3, 44.2, 'CUIT:', 10, true);              txt(131.6, 44.2, '27242657174', 10)
-      txt(120.3, 48.4, 'Ingresos Brutos:', 10, true);   txt(148, 48.4, '1919987', 10)
-      txt(120.3, 52.7, 'Fecha de Inicio de Actividades:', 10, true); txt(170, 52.7, '01/09/2007', 10)
+      // ── PERÍODO ── y=163..187 (h≈24)
+      ln(15, 163, 15, 187, 0.5); ln(581, 163, 581, 187, 0.5)
+      ln(15, 187, 581, 187)
+      txt(21, 171.4, 'Período Facturado Desde:', 10, true)
+      txt(159, 171.4, fechaFmt, 10)
+      txt(232.4, 171.4, `Hasta:${fechaFmt}`, 10, true)
+      txt(363.1, 171.4, 'Fecha de Vto. para el pago:', 10, true)
+      txt(465.8, 171.4, fechaFmt, 10)
 
-      // ── BLOQUE 3: PERÍODO ── y=57.5..67.5
-      ln(5, 67.5, 205, 67.5)
-      ln(5, 57.5, 5, 67.5, SEP); ln(205, 57.5, 205, 67.5, SEP)
-      ln(105, 57.5, 105, 67.5, SEP)
-      txt(7, 62.0, 'Período Facturado Desde:', 11, true)
-      txt(56.1, 62.0, fechaFmt, 10)
-      txt(82.0, 62.0, '  Hasta:', 11, true); txt(94, 62.0, fechaFmt, 10)
-      txt(109, 62.0, 'Fecha de Vto. para el pago:', 11, true)
-      txt(204, 62.0, fechaFmt, 10, false, 'right')
+      // ── RECEPTOR ── y=187..240 (3 filas)
+      ln(15, 187, 15, 240, 0.5); ln(581, 187, 581, 240, 0.5)
+      ln(15, 200, 581, 200, 0.5)
+      ln(15, 218, 581, 218, 0.5)
+      ln(15, 240, 581, 240)
 
-      // ── BLOQUE 4: DATOS CLIENTE ── y=67.5..95.5
-      ln(5, 95.5, 205, 95.5)
-      ln(5, 67.5, 5, 95.5, SEP); ln(205, 67.5, 205, 95.5, SEP)
-      ln(5, 75.5, 205, 75.5, SEP)
-      ln(5, 83.5, 205, 83.5, SEP)
+      txt(21, 191.3, 'CUIT:', 8, true); txt(52, 191.3, (cuitAseg || '').replace(/-/g,''), 8)
+      txt(222.3, 191.3, 'Apellido y Nombre / Razón Social:', 8, true)
+      txt(325.8, 191.3, (razonSocial || '').slice(0, 50), 8)
+      txt(21, 208.3, 'Condición frente al IVA:', 8, true); txt(131, 208.3, 'IVA Responsable Inscripto', 8)
+      txt(272.5, 208.3, 'Domicilio Comercial:', 8, true); txt(310.7, 208.3, (dirAseg || '').slice(0, 40), 8)
+      txt(21, 225.3, 'Condición de venta:', 8, true); txt(113, 225.3, 'Cuenta Corriente', 8)
 
-      txt(7, 72.0, 'CUIT:', 10, true); txt(18.3, 72.0, (cuitAseg || '').replace(/-/g,''), 10)
-      txt(78.4, 72.0, 'Apellido y Nombre / Razón Social:', 10, true)
-      txt(115, 72.0, (razonSocial || '').slice(0, 58), 10)
-      txt(7, 79.5, 'Condición frente al IVA:', 10, true); txt(46.5, 79.5, 'IVA Responsable Inscripto', 10)
-      txt(96, 79.5, 'Domicilio Comercial:', 10, true); txt(122, 79.5, (dirAseg || '').slice(0, 45), 10)
-      txt(7, 91.0, 'Condición de venta:', 10, true); txt(40, 91.0, 'Cuenta Corriente', 10)
+      // ── TABLA ── exactamente como en Arca
+      // Columnas: x, w en pt (de pdfplumber)
+      const cols = [
+        { x: 15,  w: 40,  label: 'Código',           align: 'left' },
+        { x: 55,  w: 175, label: 'Producto / Servicio', align: 'left' },
+        { x: 230, w: 53,  label: 'Cantidad',          align: 'center' },
+        { x: 283, w: 39,  label: 'U. medida',         align: 'left' },
+        { x: 322, w: 65,  label: 'Precio Unit.',      align: 'right' },
+        { x: 387, w: 29,  label: '% Bonif',           align: 'right' },
+        { x: 416, w: 65,  label: 'Subtotal',          align: 'right' },
+        { x: 481, w: 34,  label: 'Alícuota\nIVA',    align: 'center' },
+        { x: 515, w: 66,  label: 'Subtotal c/IVA',   align: 'right' },
+      ]
+      const TABLE_Y = 277  // exacto de pdfplumber
+      const HEADER_H = 18
 
-      // ── BLOQUE 5: TABLA ── y=95.5..135.5
-      const colX = [5, 19.4, 81.1, 99.8, 113.6, 136.5, 146.8, 169.7, 181.7]
-      const colW = [14.4, 61.7, 18.7, 13.8, 22.9, 10.2, 22.9, 12.0, 23.3]
-      const heads = ['Código','Producto / Servicio','Cantidad','U. medida','Precio Unit.','% Bonif','Subtotal','Alícuota IVA','Subtotal c/IVA']
-      const tY = 95.5
+      // Cabecera gris
+      cols.forEach(col => boxG(col.x, TABLE_Y, col.w, HEADER_H))
 
-      colX.forEach((x, i) => boxGris(x, tY, colW[i], 8))
-      heads.forEach((h, i) => {
-        page.drawText(h, { x: mm(colX[i]) + mm(0.8), y: y(tY + 5.5), font: fontB, size: 9, color: NEGRO })
+      // Texto cabecera
+      cols.forEach(col => {
+        const lines = col.label.split('\n')
+        if (lines.length > 1) {
+          txtC(col.x + col.w/2, TABLE_Y + 7, lines[0], 7, true)
+          txtC(col.x + col.w/2, TABLE_Y + 13, lines[1], 7, true)
+        } else if (col.align === 'center') {
+          txtC(col.x + col.w/2, TABLE_Y + 10, col.label, 7, true)
+        } else if (col.align === 'right') {
+          txtR(col.x + col.w - 2, TABLE_Y + 10, col.label, 7, true)
+        } else {
+          txt(col.x + 3, TABLE_Y + 10, col.label, 7, true)
+        }
       })
 
-      let iy = tY + 8
+      // Líneas verticales cabecera
+      cols.forEach(col => {
+        ln(col.x, TABLE_Y, col.x, TABLE_Y + HEADER_H, 0.5)
+      })
+      ln(581, TABLE_Y, 581, TABLE_Y + HEADER_H, 0.5)
+
+      // Filas de datos
+      let iy = TABLE_Y + HEADER_H
       for (const it of (c.items || [])) {
         const netoUnit = Math.round((it.p || 0) / 1.21 * 100) / 100
         const desc = (it.d || '').slice(0, 55)
-        const rowH = 9
+        const ROW_H = 18
 
-        ln(5, iy + rowH, 205, iy + rowH, SEP)
+        // Línea inferior fila
+        ln(15, iy + ROW_H, 581, iy + ROW_H, 0.5)
 
-        page.drawText((it.codigo || '').slice(0, 12), { x: mm(colX[0]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-        page.drawText(desc, { x: mm(colX[1]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-        page.drawText(`${Number(it.c || 1).toFixed(2).replace('.', ',')}`, { x: mm(colX[2]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-        page.drawText('unidades', { x: mm(colX[3]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
+        // Datos
+        txt(cols[0].x + 3, iy + 11, (it.codigo || '').slice(0, 10), 8)
+        txt(cols[1].x + 3, iy + 11, desc, 8)
+        txtC(cols[2].x + cols[2].w/2, iy + 11, `${Number(it.c || 1).toFixed(2).replace('.', ',')}`, 8)
+        txt(cols[3].x + 3, iy + 11, 'unidades', 8)
+        txtR(cols[4].x + cols[4].w - 2, iy + 11, fmtNum(netoUnit), 8)
+        txtR(cols[5].x + cols[5].w - 2, iy + 11, '0,00', 8)
+        txtR(cols[6].x + cols[6].w - 2, iy + 11, fmtNum(netoUnit * (it.c || 1)), 8)
+        txtC(cols[7].x + cols[7].w/2, iy + 11, '21%', 8)
+        txtR(cols[8].x + cols[8].w - 2, iy + 11, fmtNum((it.c || 1) * (it.p || 0)), 8)
 
-        const pW = fontR.widthOfTextAtSize(fmtNum(netoUnit), 9)
-        page.drawText(fmtNum(netoUnit), { x: mm(colX[4] + colW[4]) - pW - mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-        page.drawText('0,00', { x: mm(colX[5]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
+        iy += ROW_H
 
-        const sW = fontR.widthOfTextAtSize(fmtNum(netoUnit * (it.c || 1)), 9)
-        page.drawText(fmtNum(netoUnit * (it.c || 1)), { x: mm(colX[6] + colW[6]) - sW - mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-        page.drawText('21%', { x: mm(colX[7]) + mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-
-        const tcW = fontR.widthOfTextAtSize(fmtNum((it.c || 1) * (it.p || 0)), 9)
-        page.drawText(fmtNum((it.c || 1) * (it.p || 0)), { x: mm(colX[8] + colW[8]) - tcW - mm(0.8), y: y(iy + 6), font: fontR, size: 9, color: NEGRO })
-
-        iy += rowH
-
+        // Referencia vehículo/patente/siniestro
         if (c.siniestro || c.patente || c.vehiculo) {
           const ref = [c.vehiculo, c.patente ? `Pat: ${c.patente}` : null, c.siniestro ? `Sin: ${c.siniestro}` : null].filter(Boolean).join(' · ')
-          page.drawText(ref, { x: mm(colX[1]) + mm(0.8), y: y(iy + 4), font: fontI, size: 8, color: rgb(0.3, 0.3, 0.3) })
-          iy += 5
+          page.drawText(ref, { x: cols[1].x + 3, y: yb(iy + 8) - 7 * 0.2, font: fontI, size: 7, color: rgb(0.3, 0.3, 0.3) })
+          iy += 10
         }
       }
 
-      // ── TOTALES ── posición fija y=237.8
-      const TOTALES_Y = 237.8
-      box(5, TOTALES_Y, 200, 58)
-      ln(5, TOTALES_Y + 9, 205, TOTALES_Y + 9, SEP)
+      // ── ESPACIO EN BLANCO ── totales siempre en posición fija
+      // Según pdfplumber: "Importe Otros Tributos" está en y=532.8
+      const TOT_Y = 524  // top del recuadro de totales
 
-      txt(66, TOTALES_Y + 6.5, 'Importe Otros Tributos: $', 10)
-      txt(116.2, TOTALES_Y + 6.5, '0,00', 10)
+      // Rect totales — de pdfplumber: y=674 a y=700 (líneas), pero el bloque arranca antes
+      box(15, TOT_Y, 566, 150)
+      ln(15, TOT_Y + 18, 581, TOT_Y + 18, 0.5)  // separador Importe Otros Tributos
 
-      const totRows: [string, string, boolean, number][] = [
-        ['Importe Neto Gravado: $', fmtNum(c.neto || 0), true, 11],
-        ['IVA 27%: $', '0,00', false, 10],
-        ['IVA 21%: $', fmtNum(c.iva || 0), false, 10],
-        ['IVA 10.5%: $', '0,00', false, 10],
-        ['IVA 5%: $', '0,00', false, 10],
-        ['IVA 2.5%: $', '0,00', false, 10],
-        ['IVA 0%: $', '0,00', false, 10],
-        ['Importe Otros Tributos: $', '0,00', false, 10],
-        ['Importe Total: $', fmtNum(c.total || 0), true, 14],
+      // "Importe Otros Tributos" centrado izquierda — x=187 de pdfplumber
+      txt(187, 532.8, 'Importe Otros Tributos: $', 9); txt(329.5, 532.8, '0,00', 9)
+
+      // Bloque derecho — coordenadas exactas de pdfplumber
+      const totRows: [string, string, boolean, number, number][] = [
+        ['Importe Neto Gravado: $', fmtNum(c.neto || 0), true, 9, 553.3],
+        ['IVA 27%: $', '0,00', false, 9, 566.3],
+        ['IVA 21%: $', fmtNum(c.iva || 0), false, 9, 579.3],
+        ['IVA 10.5%: $', '0,00', false, 9, 592.3],
+        ['IVA 5%: $', '0,00', false, 9, 605.3],
+        ['IVA 2.5%: $', '0,00', false, 9, 618.3],
+        ['IVA 0%: $', '0,00', false, 9, 631.3],
+        ['Importe Otros Tributos: $', '0,00', false, 9, 644.3],
+        ['Importe Total: $', fmtNum(c.total || 0), true, 10, 658.4],
       ]
-      let ry = TOTALES_Y + 14
-      for (const [lbl, val, bold, sz] of totRows) {
+      for (const [lbl, val, bold, sz, yRow] of totRows) {
+        // Label alineado a la derecha del bloque (x=498 "$" de pdfplumber)
         const font = bold ? fontB : fontR
-        txt(139.2, ry, lbl, sz, bold)
+        const lW = font.widthOfTextAtSize(lbl, sz)
+        page.drawText(lbl, { x: 498 - lW - 5, y: yb(yRow) - sz * 0.2, font, size: sz, color: NEGRO })
+        // Valor alineado a la derecha (hasta x=581-4=577)
         const vW = font.widthOfTextAtSize(val, sz)
-        page.drawText(val, { x: mm(204) - vW, y: y(ry), font, size: sz, color: NEGRO })
-        ry += 5.2
+        page.drawText(val, { x: 577 - vW, y: yb(yRow) - sz * 0.2, font, size: sz, color: NEGRO })
       }
 
-      // ── OBSERVACIONES ── y=295.8, h=10
-      const OBS_Y = TOTALES_Y + 58
-      box(5, OBS_Y, 200, 10)
+      // ── "PARABRISAS EL PIAMONTE" ── y=682.9 exacto
       if (c.cliente_nombre) {
-        const obsW = fontR.widthOfTextAtSize(c.cliente_nombre.toUpperCase(), 10)
-        page.drawText(c.cliente_nombre.toUpperCase(), { x: PAGE_W/2 - obsW/2, y: y(OBS_Y + 6.5), font: fontR, size: 10, color: NEGRO })
+        txtC(298, 670, c.cliente_nombre.toUpperCase(), 9)
       }
+      txtC(298, 682.9, '"PARABRISAS  EL PIAMONTE "', 10)
+
+      // ── LÍNEA SEPARADORA PIE __ y=700 exacto de pdfplumber
+      ln(15, 700, 581, 700)
 
       // ── PIE ──
-      const PIE_Y = OBS_Y + 11
-      ln(5, PIE_Y, 205, PIE_Y, SEP)
+      // Pág 1/1 — x=277.8 y=711.4
+      txt(277.8, 711.4, 'Pág. 1/1', 10)
 
-      // ARCA azul
-      page.drawText('ARCA', { x: mm(55), y: y(PIE_Y + 8), font: fontB, size: 14, color: AZUL })
-      page.drawText('AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', { x: mm(55), y: y(PIE_Y + 12), font: fontR, size: 6, color: rgb(0.24, 0.24, 0.24) })
-      page.drawText('Comprobante Autorizado', { x: mm(55), y: y(PIE_Y + 17), font: fontB, size: 8, color: NEGRO })
-      page.drawText('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', { x: mm(55), y: y(PIE_Y + 22), font: fontI, size: 6, color: rgb(0.3, 0.3, 0.3) })
+      // ARCA — izquierda
+      page.drawText('ARCA', { x: 115, y: yb(735), font: fontB, size: 14, color: AZUL })
+      page.drawText('AGENCIA DE RECAUDACIÓN Y CONTROL ADUANERO', { x: 115, y: yb(748), font: fontR, size: 6, color: rgb(0.3,0.3,0.3) })
+      txt(115, 748.5, 'Comprobante Autorizado', 9, true)
+      page.drawText('Esta Agencia no se responsabiliza por los datos ingresados en el detalle de la operación', { x: 115, y: yb(768), font: fontI, size: 6, color: rgb(0.3,0.3,0.3) })
 
-      // Pág 1/1 centro
-      const pagW = fontR.widthOfTextAtSize('Pág. 1/1', 9)
-      page.drawText('Pág. 1/1', { x: PAGE_W/2 - pagW/2, y: y(PIE_Y + 6), font: fontR, size: 9, color: NEGRO })
-
-      // CAE derecha
+      // CAE — derecha, coordenadas exactas
       if (c.cae_emitido) {
-        const caeStr = `CAE N°:  ${c.cae_emitido}`
-        const caeW = fontB.widthOfTextAtSize(caeStr, 10)
-        page.drawText(caeStr, { x: mm(204) - caeW, y: y(PIE_Y + 8), font: fontB, size: 10, color: NEGRO })
-        const vtoStr = `Fecha de Vto. de CAE:  ${caeVto}`
-        const vtoW = fontB.widthOfTextAtSize(vtoStr, 10)
-        page.drawText(vtoStr, { x: mm(204) - vtoW, y: y(PIE_Y + 13), font: fontB, size: 10, color: NEGRO })
+        txt(442.6, 716.6, `CAE N°:  ${c.cae_emitido}`, 10, true)
+        txt(374.4, 730.6, `Fecha de Vto. de CAE:  ${caeVto}`, 10, true)
       }
     }
 
