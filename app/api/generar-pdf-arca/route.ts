@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import QRCode from 'qrcode'
 
 export const runtime = 'nodejs'
 
@@ -51,6 +52,23 @@ export async function POST(req: NextRequest) {
     const Bd = await outDoc.embedFont(StandardFonts.HelveticaBold)
     const It = await outDoc.embedFont(StandardFonts.HelveticaOblique)
 
+
+    // Generar QR de ARCA
+    let qrImageBytes: Uint8Array | null = null
+    try {
+      const qrData = {
+        ver: 1, fecha: c.fecha, cuit: 27242657174,
+        ptoVta: 6, tipoCmp: c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
+        nroCmp: c.nro_cbte_afip ?? c.numero ?? 0,
+        importe: c.total || 0, moneda: 'PES', ctz: 1, tipoDocRec: 80,
+        nroDocRec: parseInt((cuitAseg || '0').replace(/-/g, '')),
+        tipoCodAut: 'E', codAut: parseInt(c.cae_emitido || '0'),
+      }
+      const qrUrl = 'https://www.afip.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
+      const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', width: 100, margin: 1 })
+      qrImageBytes = new Uint8Array(qrBuf)
+    } catch (e) { /* QR opcional */ }
+
     for (const copia of copias) {
       // Copiar plantilla
       const tmplDoc = await PDFDocument.load(tmplBytes)
@@ -76,16 +94,21 @@ export async function POST(req: NextRequest) {
       tC(298, 25, copia, 14, true)
 
       // ── COMP NRO: cubrir "00002693" y escribir el nuevo ──
-      // "Punto de Venta: 00003  Comp. Nro: 00002693" — x=341..561.5 y=86 h=10
-      cover(p, 341, 86, 221, 10)
-      t(341, 86, 'Punto de Venta:  0006', 9, true)
+      cover(p, 417, 86, 150, 10)  // solo el número, no el label
       t(461, 86, `Comp. Nro:  ${nro}`, 9, true)
 
       // ── FECHA EMISIÓN ──
-      // "Fecha de Emisión: 21/07/2026" x=341..478 y=102 h=10
-      cover(p, 341, 102, 137, 10)
-      t(341, 102, 'Fecha de Emisión:', 9, true)
+      cover(p, 428, 102, 50, 10)
       t(428, 102, fecha, 9)
+
+      // ── PERÍODO FACTURADO y FECHA VTO PAGO ──
+      // "21/07/2026 Hasta:21/07/2026" x=159..315 y=171 h=10
+      cover(p, 159, 171, 157, 10)
+      t(159, 171, fecha, 10)
+      t(232.4, 171, `Hasta:${fecha}`, 10, true)
+      // "Fecha de Vto. para el pago: 21/07/2026" — cubrir solo la fecha
+      cover(p, 465.8, 171, 80, 10)
+      t(465.8, 171, fecha, 10)
 
       // ── RECEPTOR: solo CUIT y Razón Social (el resto lo tiene la plantilla) ──
       // Cubrir solo el CUIT y razón social que son variables
@@ -102,7 +125,7 @@ export async function POST(req: NextRequest) {
       for (const it of (c.items || [])) {
         const net = Math.round((it.p || 0) / 1.21 * 100) / 100
         // Código
-        t(19, iy, (it.codigo || '').slice(0, 10), 8)
+        // Código omitido para no pisar descripción
         // Descripción
         t(57, iy, (it.d || '').slice(0, 55), 8)
         // Cantidad
@@ -123,20 +146,18 @@ export async function POST(req: NextRequest) {
         iy += 18
 
         // Referencia
-        if (c.siniestro || c.patente || c.vehiculo) {
-          const ref = [c.vehiculo, c.patente ? `Pat: ${c.patente}` : null, c.siniestro ? `Sin: ${c.siniestro}` : null].filter(Boolean).join(' · ')
+        if (c.siniestro || c.patente || c.vehiculo || c.cliente_nombre) {
+          const ref = [c.vehiculo, c.patente ? `Pat: ${c.patente}` : null, c.siniestro ? `Sin: ${c.siniestro}` : null, c.cliente_nombre ? c.cliente_nombre.toUpperCase() : null].filter(Boolean).join(' · ')
           p.drawText(ref, { x: 57, y: B(iy + 4, 7), font: It, size: 7, color: GRAY2 })
           iy += 10
         }
       }
 
-      // ── NOMBRE ASEGURADO (observaciones) ──
-      cover(p, 223.4, 683, 149.2, 10)
-      if (c.cliente_nombre) tC(298, 670, c.cliente_nombre.toUpperCase(), 9)
+      // Nombre asegurado va junto a la referencia del ítem (ya se agrega arriba)
 
       // ── TOTALES ──
       // Cubrir todos los valores
-      cover(p, 187, 533, 388, 130, 1)
+      cover(p, 187, 524, 392, 145, 1)
       // Importe Otros Tributos arriba
       t(187, 533, 'Importe Otros Tributos: $', 9)
       t(329.5, 533, '0,00', 9)
@@ -179,3 +200,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+
+      // QR — posición exacta de Arca: x=15 y=700, w=65 h=65
+      if (qrImageBytes) {
+        try {
+          const qrEmbed = await outDoc.embedPng(qrImageBytes)
+          p.drawImage(qrEmbed, { x: 15, y: PH - 775, width: 65, height: 65 })
+        } catch (e) { /* QR opcional */ }
+      }
+
