@@ -759,7 +759,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setAjusteMasivoLoading(true)
     const fecha = new Date().toISOString().slice(0,10)
     // Desactivar trigger antes del loop para evitar doble movimiento
-    await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }).catch(()=>{})
+    try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
     for (const it of ajusteMasivoLista) {
       const nueva = it.cantActual + it.delta
       if (it.delta !== 0) {
@@ -785,7 +785,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       }
     }
     // Reactivar trigger
-    await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }).catch(()=>{})
+    try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
     setAjusteMasivoLoading(false)
     setAjusteMasivoOpen(false)
     setAjusteMasivoLista([])
