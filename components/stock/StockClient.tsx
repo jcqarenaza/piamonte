@@ -758,10 +758,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!ajusteMasivoLeyenda.trim() || !ajusteMasivoLista.length) return
     setAjusteMasivoLoading(true)
     const fecha = new Date().toISOString().slice(0,10)
+    // Desactivar trigger antes del loop para evitar doble movimiento
+    await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }).catch(()=>{})
     for (const it of ajusteMasivoLista) {
       const nueva = it.cantActual + it.delta
       if (it.delta !== 0) {
-        await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
+        // INSERT movimiento ANTES del UPDATE (regla crítica)
         await supabase.from('stock_movimientos').insert({
           stock_id: it.id,
           tipo: it.delta > 0 ? 'entrada' : 'salida',
@@ -769,6 +771,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           fecha,
           descripcion: ajusteMasivoLeyenda.trim(),
         })
+        await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
         setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: nueva} : s))
       } else {
         // Delta 0 — registrar conteo confirmado
@@ -781,6 +784,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         })
       }
     }
+    // Reactivar trigger
+    await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }).catch(()=>{})
     setAjusteMasivoLoading(false)
     setAjusteMasivoOpen(false)
     setAjusteMasivoLista([])
