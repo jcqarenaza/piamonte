@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
 
     // Generar QR de ARCA
-    let qrImageBytes: Uint8Array | null = null
+    var qrImageBytes: Uint8Array | null = null
     try {
       const qrData = {
         ver: 1, fecha: c.fecha, cuit: 27242657174,
