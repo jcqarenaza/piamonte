@@ -638,7 +638,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         const nombre = String(row['Nombre'] || row['Nombre '] || row['nombre'] || row['NOMBRE'] || '').trim()
         const marca  = String(row['Marca']  || row['marca']  || row['MARCA']  || '').trim()
         // Cantidad contada: columna sin header (Unnamed: 4) o columna "Cantidad"
-        const cantExcelRaw = row['Unnamed: 4'] ?? row['Cantidad'] ?? row['cantidad'] ?? row['CANTIDAD'] ?? null
+        const cantExcelRaw = row['__EMPTY'] ?? row['Unnamed: 4'] ?? row['Cantidad'] ?? row['cantidad'] ?? row['CANTIDAD'] ?? null
         const cantExcel: number | null = cantExcelRaw !== null && cantExcelRaw !== '' ? Number(cantExcelRaw) : null
         if (!codigoRaw || codigoRaw === 'NAN') continue
 
