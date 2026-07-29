@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string; activo:boolean }
 interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean; activo:boolean; orden:number }
 interface CategoriaGasto { id:string; nombre:string; color:string; orden:number; activo:boolean }
+interface Colaborador { id:string; nombre:string; activo:boolean }
 
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer' } as const
 const btnRed  = { ...btn, background:'#ef4444' } as const
@@ -17,6 +18,7 @@ export default function ConfiguracionClient() {
   const [tipos,      setTipos]      = useState<TipoCliente[]>([])
   const [rubros,     setRubros]     = useState<RubroPrecio[]>([])
   const [categorias, setCategorias] = useState<CategoriaGasto[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [saving,     setSaving]     = useState(false)
   const [toast,      setToast]      = useState('')
   const supabase = createClient()
@@ -32,11 +34,15 @@ export default function ConfiguracionClient() {
   const [catEdit,      setCatEdit]      = useState<Record<string,{nombre:string;color:string}>>({})
   const [nuevaCat,     setNuevaCat]     = useState({ nombre:'', color:COLORS[0] })
   const [showNuevaCat, setShowNuevaCat] = useState(false)
+  const [nuevoColab,     setNuevoColab]     = useState('')
+  const [showNuevoColab, setShowNuevoColab] = useState(false)
+  const [colabEdit,      setColabEdit]      = useState<Record<string,string>>({})
 
   useEffect(() => {
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden').then(({data})=>setCategorias(data??[]))
+    supabase.from('colaboradores').select('*').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
   },[supabase])
 
   function ok(msg:string){ setToast(msg); setTimeout(()=>setToast(''),2500) }
@@ -328,6 +334,74 @@ export default function ConfiguracionClient() {
             </div>
           )
         })}
+      </div>
+
+      {/* ── Colaboradores ─────────────────────────────────────────────────── */}
+      <div className="bg-white border border-p-line rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-p-line2">
+          <div>
+            <p className="font-saira font-bold text-sm text-p-ink">👷 Colaboradores</p>
+            <p className="text-xs text-p-ink2 mt-0.5">Técnicos asignables a las Órdenes de Trabajo.</p>
+          </div>
+          <button onClick={()=>setShowNuevoColab(true)} style={btn}>+ Nuevo colaborador</button>
+        </div>
+
+        {showNuevoColab && (
+          <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex gap-3 items-end">
+            <input value={nuevoColab} onChange={e=>setNuevoColab(e.target.value)}
+              placeholder="Nombre del colaborador…"
+              className="border border-p-line rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-p-green"/>
+            <button onClick={async ()=>{
+              if(!nuevoColab.trim()) return
+              setSaving(true)
+              await supabase.from('colaboradores').insert({nombre:nuevoColab.trim()})
+              const {data}=await supabase.from('colaboradores').select('*').eq('activo',true).order('nombre')
+              setColaboradores(data??[])
+              setNuevoColab(''); setShowNuevoColab(false)
+              setSaving(false); ok('Colaborador creado ✓')
+            }} disabled={saving||!nuevoColab.trim()} style={btn}>Guardar</button>
+            <button onClick={()=>{setShowNuevoColab(false);setNuevoColab('')}} style={btnGray}>Cancelar</button>
+          </div>
+        )}
+
+        {colaboradores.map(col=>{
+          const editando = colabEdit[col.id] !== undefined
+          return (
+            <div key={col.id} className="flex items-center gap-3 px-4 py-3 border-b border-p-line2 last:border-0 flex-wrap">
+              {editando ? (
+                <>
+                  <input value={colabEdit[col.id]} onChange={e=>setColabEdit(p=>({...p,[col.id]:e.target.value}))}
+                    className="border border-p-line rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[160px] focus:outline-none focus:border-p-green"/>
+                  <button onClick={async ()=>{
+                    setSaving(true)
+                    await supabase.from('colaboradores').update({nombre:colabEdit[col.id]}).eq('id',col.id)
+                    const {data}=await supabase.from('colaboradores').select('*').eq('activo',true).order('nombre')
+                    setColaboradores(data??[])
+                    setColabEdit(p=>{const n={...p};delete n[col.id];return n})
+                    setSaving(false); ok('Colaborador actualizado ✓')
+                  }} disabled={saving} style={btn}>Guardar</button>
+                  <button onClick={()=>setColabEdit(p=>{const n={...p};delete n[col.id];return n})} style={btnGray}>Cancelar</button>
+                </>
+              ) : (
+                <>
+                  <span className="text-lg">👷</span>
+                  <p className="font-semibold text-sm text-p-ink flex-1">{col.nombre}</p>
+                  <button onClick={()=>setColabEdit(p=>({...p,[col.id]:col.nombre}))}
+                    style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
+                  <button onClick={async ()=>{
+                    if(!confirm(`¿Desactivar a "${col.nombre}"?`)) return
+                    await supabase.from('colaboradores').update({activo:false}).eq('id',col.id)
+                    setColaboradores(prev=>prev.filter(c=>c.id!==col.id))
+                    ok('Colaborador desactivado')
+                  }} style={{...btnRed,padding:'5px 12px',fontSize:12}}>✕</button>
+                </>
+              )}
+            </div>
+          )
+        })}
+        {colaboradores.length === 0 && !showNuevoColab && (
+          <p className="text-sm text-p-gray text-center py-6">No hay colaboradores cargados</p>
+        )}
       </div>
 
     </div>

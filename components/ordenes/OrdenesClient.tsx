@@ -34,7 +34,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente', turno_id:'' })
+  const [form, setForm] = useState({ aseg:'', sin:'', pol:'', cli:'', tel:'', veh:'', pat:'', obs:'', estado:'pendiente', turno_id:'', colaborador_id:'' })
   const [item, setItem] = useState({ d:'', c:'1', p:'' })
   const [posVidrio, setPosVidrio] = useState<string[]>([])
   const [filtroAseg, setFiltroAseg] = useState('')
@@ -54,6 +54,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   // Aseguradoras — cargadas desde la base, no hardcodeadas, para que se puedan agregar nuevas
   // (Allianz, Mapfre, etc.) sin tocar código, y siempre desde un registro real, no texto libre.
   const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])
+  const [colaboradores, setColaboradores] = useState<{id:string;nombre:string}[]>([])
   // Factura manual (Sancor)
   const [factManualModal, setFactManualModal] = useState<any|null>(null)
   const [sancorModal, setSancorModal] = useState(false)
@@ -113,6 +114,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
     supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
     supabase.from('aseguradoras').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setAseguradoras(data??[]))
+    supabase.from('colaboradores').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
   }, [supabase])
 
   useEffect(() => { load() }, [load])
@@ -183,7 +185,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setForm({
       cli: o.cliente||'', tel: o.telefono||'', veh: o.vehiculo||'',
       pat: o.patente||'', aseg: o.aseguradora||'', sin: o.siniestro||'',
-      pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente', turno_id: o.turno_id||''
+      pol: o.poliza||'', obs: o.obs||'', estado: o.estado||'pendiente', turno_id: o.turno_id||'',
+      colaborador_id: (o as any).colaborador_id||''
     })
     setFormProd(o.productor_id||'')
     // Preservar posición del vidrio
@@ -241,7 +244,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   async function save() {
     if(!form.cli && !form.aseg) { alert('Completá al menos el nombre del cliente o la aseguradora'); return }
-    if(!form.aseg) { alert('La aseguradora es obligatoria en una Orden de Servicio.'); return }
     setLoading(true)
     const conADAS = tieneADAS(items)
     let numero_adas: number|null = null
@@ -277,6 +279,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       aseguradora: form.aseg||null, siniestro: form.sin||null, poliza: form.pol||null,
       cliente: form.cli||null, telefono: form.tel||null, vehiculo: form.veh||null,
       patente: form.pat||null, obs: form.obs||null,
+      colaborador_id: form.colaborador_id||null,
       items, neto: neto ?? 0, iva_pct:IVA_RATE, iva: iva ?? 0, total: total ?? 0,
       tiene_adas: conADAS, numero_adas, user_id: userId,
       productor_id: formProd || null,
@@ -288,7 +291,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     // Stock se descuenta solo al facturar, NO al guardar la OS
     }
 
-    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:''})
+    setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:'',colaborador_id:''})
     setStockSel(null); setStockQ(''); setFormProd('')
     setLoading(false); load()
   }
@@ -312,128 +315,138 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     await supabase.from('ordenes_servicio').delete().eq('id',id); load()
   }
 
-  // ── PDF ──────────────────────────────────────────────────────────────────
+  // ── PDF interno (blanco y negro, sin logo, para taller) ────────────────────
   async function generarPDF(o: OrdenServicio): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({format:'a4',unit:'mm'})
-    const W=210, pad=15
-    let y=20
+    const doc = new jsPDF({ format: 'a4', unit: 'mm' })
+    const W = 210, pad = 15
+    let y = 15
+
+    const numOT = `OT-${String((o as any).numero || 0).padStart(4, '0')}`
     const conADAS = (o as any).tiene_adas
     const numADAS = (o as any).numero_adas
-    const numOS   = `OS-${String((o as any).numero||0).padStart(4,'0')}`
+    const numDoc = conADAS ? `ADAS-${String(numADAS || 0).padStart(7, '0')}` : numOT
+    const tipoDoc = conADAS ? 'CERTIFICADO ADAS' : 'ORDEN DE TRABAJO'
 
-    // ── Header ──
-    doc.setFillColor(0,165,80)
-    doc.rect(0,0,W,30,'F')
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,2,42,24) } catch(e){}
-    doc.setTextColor(255,255,255)
-    doc.setFont('helvetica','bold')
-    doc.setFontSize(18); doc.text('PARABRISAS EL PIAMONTE', pad, 13)
-    doc.setFontSize(9); doc.text('Especialistas en cristales automotrices · General Pico, La Pampa', pad, 20)
-    // Tipo de documento y número
-    const tipoDoc = conADAS ? 'CERTIFICADO ADAS' : 'ORDEN DE SERVICIO'
-    const numDoc  = conADAS ? String(numADAS||0).padStart(7,'0') : numOS
-    doc.setFontSize(13); doc.text(tipoDoc, W-pad, 13, {align:'right'})
-    doc.setFontSize(10); doc.text(`N° ${numDoc}`, W-pad, 20, {align:'right'})
-    doc.setFontSize(8);  doc.text(o.fecha.split('-').reverse().join('/'), W-pad, 26, {align:'right'})
-    y = 38
+    // Colaborador
+    const colab = colaboradores.find(c => c.id === (o as any).colaborador_id)
 
-    // ── Datos ──
-    doc.setTextColor(30,30,30)
-    const hasAseg = !conADAS && !!o.aseguradora
-    const boxH = conADAS ? 24 : hasAseg ? 42 : 22
-    doc.setFillColor(245,250,247)
-    doc.rect(pad, y-4, W-pad*2, boxH, 'F')
+    // ── Header simple ──────────────────────────────────────────────────────
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.text('PARABRISAS EL PIAMONTE', pad, y)
+    doc.setFontSize(11)
+    doc.text(tipoDoc, W - pad, y, { align: 'right' })
+    y += 7
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('General Pico, La Pampa · Tel: 2302 595969', pad, y)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text(`N° ${numDoc}`, W - pad, y, { align: 'right' })
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(`Fecha: ${o.fecha.split('-').reverse().join('/')}`, W - pad, y, { align: 'right' })
+    y += 3
 
-    if(hasAseg) {
-      // Aseguradora como destinatario principal
-      doc.setFont('helvetica','bold'); doc.setFontSize(10)
-      doc.setTextColor(0,120,60)
-      doc.text('ASEGURADORA:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.setTextColor(30,30,30)
-      doc.text(o.aseguradora!, pad+38, y); y+=7
+    // Línea separadora
+    doc.setDrawColor(0); doc.setLineWidth(0.5)
+    doc.line(pad, y, W - pad, y)
+    y += 8
 
-      // Datos del asegurado
-      doc.setFont('helvetica','bold'); doc.setFontSize(9)
-      doc.text('Asegurado:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(o.cliente||'—', pad+26, y)
-      if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
-      y+=6
-
-      doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(o.vehiculo||'—', pad+22, y)
-      if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
-      y+=6
-
-      if(o.siniestro||o.poliza){
-        if(o.siniestro){ doc.setFont('helvetica','bold'); doc.text('Siniestro:', pad+2, y); doc.setFont('helvetica','normal'); doc.text(o.siniestro!, pad+24, y) }
-        if(o.poliza)   { doc.setFont('helvetica','bold'); doc.text('Póliza:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.poliza!, pad+116, y) }
-        y+=6
-      }
-    } else {
-      doc.setFont('helvetica','bold'); doc.setFontSize(9)
-      doc.text('Cliente:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(o.cliente||'—', pad+22, y)
-      if(o.telefono){ doc.setFont('helvetica','bold'); doc.text('Tel:', pad+100, y); doc.setFont('helvetica','normal'); doc.text(o.telefono, pad+110, y) }
-      y+=6
-
-      doc.setFont('helvetica','bold'); doc.text('Vehículo:', pad+2, y); doc.setFont('helvetica','normal')
-      doc.text(o.vehiculo||'—', pad+22, y)
-      if((o as any).patente){ doc.setFont('helvetica','bold'); doc.text('Patente:', pad+100, y); doc.setFont('helvetica','normal'); doc.text((o as any).patente, pad+122, y) }
-      y+=6
+    // ── Datos del trabajo ──────────────────────────────────────────────────
+    const labelW = 32
+    const addRow = (label: string, value: string) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+      doc.text(label + ':', pad, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(value || '—', pad + labelW, y)
+      y += 7
     }
-    y+=6
 
-    // ── Tabla de ítems ──
-    const usableW = W - pad*2  // ancho útil real
-    const cols = [usableW - 20 - 32 - 32, 20, 32, 32]  // Detalle ocupa el resto
-    doc.setFillColor(0,165,80)
-    doc.rect(pad, y, usableW, 7, 'F')
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    let xi = pad
-    ;['Detalle','Cant.','Precio unit.','Subtotal'].forEach((h,i)=>{
-      doc.text(h, i===0 ? xi+2 : xi+cols[i]-2, y+5, {align:i>0?'right':'left'}); xi+=cols[i]
-    })
-    y+=7
+    if (o.aseguradora) addRow('Aseguradora', o.aseguradora)
+    addRow('Cliente', o.cliente || '—')
+    if (o.telefono) addRow('Teléfono', o.telefono)
+    addRow('Vehículo', o.vehiculo || '—')
+    addRow('Patente', (o as any).patente || '—')
+    if (o.siniestro) addRow('Siniestro', o.siniestro)
+    if (o.poliza) addRow('Póliza', o.poliza)
+    if (colab) addRow('Colaborador', colab.nombre)
+    y += 2
 
-    doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(9)
-    ;(o.items as VentaItem[]).forEach((it,idx)=>{
-      if(idx%2===0){doc.setFillColor(240,250,245);doc.rect(pad,y,usableW,6.5,'F')}
-      let xi=pad
-      const maxChars = Math.floor(cols[0]/2.5)
-      doc.text(it.d.slice(0,maxChars), xi+2, y+4.5); xi+=cols[0]
-      doc.text(String(it.c), xi-2, y+4.5, {align:'right'}); xi+=cols[1]
-      doc.text(moneyARS2(it.p), xi-2, y+4.5, {align:'right'}); xi+=cols[2]
-      doc.text(moneyARS2(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), xi-2, y+4.5, {align:'right'})
-      y+=6.5
-    })
-    y+=4
+    doc.line(pad, y, W - pad, y)
+    y += 8
 
-    // ── Totales ──
-    const totX = W-pad-70
-    if(o.iva){ doc.text('Subtotal neto:', totX, y); doc.text(moneyARS2(o.neto), W-pad, y, {align:'right'}); y+=6 }
-    if(o.iva){ doc.text('IVA 21%:', totX, y); doc.text(moneyARS2(o.iva), W-pad, y, {align:'right'}); y+=6 }
-    doc.setFont('helvetica','bold'); doc.setFontSize(12)
-    doc.text('TOTAL:', totX, y); doc.text(moneyARS2(o.total), W-pad, y, {align:'right'})
-    y+=10
+    // ── Vidrio a colocar ───────────────────────────────────────────────────
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.text('VIDRIO A COLOCAR', pad, y)
+    y += 7
 
-    // Observaciones
-    if(o.obs){ doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(100,100,100); doc.text(`Obs: ${o.obs}`, pad, y); y+=6 }
+    // Ítems
+    const stockItems = (o.items || []).filter((it: any) => it.stock_id && it.codigo)
+    if (stockItems.length > 0) {
+      stockItems.forEach((it: any) => {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+        doc.text(`Código: ${it.codigo}`, pad, y)
+        doc.setFont('helvetica', 'normal')
+        doc.text(it.d || '', pad + 50, y)
+        y += 7
+      })
+    } else if ((o as any).stock_codigo) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+      doc.text(`Código: ${(o as any).stock_codigo}`, pad, y)
+      y += 7
+    } else {
+      // Sin código — espacio para anotar a mano
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+      doc.text('Código: ______________________________', pad, y)
+      y += 7
+      doc.text('Descripción: ___________________________________________', pad, y)
+      y += 7
+    }
 
-    // ── Firma (siempre para OS, especialmente para ADAS) ──
-    y = Math.max(y, 220)
-    doc.setDrawColor(180,180,180); doc.line(pad, y, pad+70, y)
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,80,80)
-    doc.text('Mario Sappa', pad, y+5)
-    doc.text('Técnico Especialista en Cristales Automotrices', pad, y+10)
-    if(conADAS){ doc.setFont('helvetica','bold'); doc.text('ADAS Calibration Technician', pad, y+15) }
+    // Todos los ítems de trabajo
+    if ((o.items || []).length > 0) {
+      y += 3
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+      doc.text('Detalle del trabajo:', pad, y); y += 5
+      doc.setFont('helvetica', 'normal')
+      ;(o.items as any[]).forEach((it: any) => {
+        doc.text(`• ${it.d}  (cant: ${it.c})`, pad + 3, y); y += 5
+      })
+    }
 
-    // ── Footer ──
-    doc.setFillColor(0,165,80); doc.rect(0,285,W,12,'F')
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text('📞 2302 595969', pad, 292)
-    doc.text('General Pico, La Pampa', W/2, 292, {align:'center'})
-    doc.text('Calle 102 Nro 366', W-pad, 292, {align:'right'})
+    if (o.obs) {
+      y += 3
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9)
+      doc.text(`Obs: ${o.obs}`, pad, y); y += 6
+    }
+
+    y = Math.max(y + 10, 180)
+    doc.line(pad, y, W - pad, y)
+    y += 8
+
+    // ── Sección para el colaborador ────────────────────────────────────────
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.text('PARA EL COLABORADOR', pad, y); y += 8
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+    doc.text('Vidrio colocado (N° de pieza / observación):', pad, y); y += 6
+    doc.line(pad, y, W - pad, y); y += 8
+    doc.line(pad, y, W - pad, y); y += 12
+
+    // Firma
+    doc.line(pad, y, pad + 70, y)
+    doc.setFontSize(9)
+    doc.text('Firma colaborador', pad, y + 5)
+    doc.line(W - pad - 70, y, W - pad, y)
+    doc.text('Firma recepción Admin', W - pad - 70, y + 5)
+    y += 20
+
+    doc.line(pad, y, W - pad, y)
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(8)
+    doc.text('Parabrisas El Piamonte · General Pico, La Pampa · 2302 595969', W / 2, y + 5, { align: 'center' })
 
     return doc.output('blob')
   }
@@ -625,33 +638,30 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
                         }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
                       )}
-                      {o.aseguradora==='Sancor Seguros' && !(o as any).cristal_colocado && (
-                        (() => {
+                      {!(o as any).cristal_colocado && (o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
+                        <button onClick={async()=>{
+                          if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
                           const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
-                          if (stockItems.length === 0) return null
-                          return (
-                            <button onClick={async()=>{
-                              if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
-                              // Descontar stock por cada ítem con stock_id
-                              for (const it of stockItems) {
-                                const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
-                                if (!st) continue
-                                const nueva = (st.cantidad||0) - (it.c||1)
-                                // Insertar movimiento ANTES del update para que el trigger no cree "Ajuste Qpcia"
-                                await supabase.from('stock_movimientos').insert({
-                                  stock_id: it.stock_id, tipo: 'salida',
-                                  cantidad: it.c||1, fecha: todayStr(),
-                                  descripcion: `Colocado OS ${o.numero ? 'OS-'+String(o.numero).padStart(4,'0') : 'S/N'} · Sancor · ${o.cliente||''}`,
-                                })
-                                await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
-                              }
-                              await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
-                              load()
-                            }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
-                          )
-                        })()
+                          const fecha = todayStr()
+                          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
+                          for (const it of stockItems) {
+                            const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
+                            if (!st) continue
+                            const nueva = Math.max(0,(st.cantidad||0) - (it.c||1))
+                            await supabase.from('stock_movimientos').insert({
+                              stock_id: it.stock_id, tipo: 'salida',
+                              cantidad: it.c||1, fecha,
+                              descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                              user_id: userId,
+                            })
+                            await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
+                          }
+                          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
+                          await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
+                          load()
+                        }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
                       )}
-                      {o.aseguradora==='Sancor Seguros' && (o as any).cristal_colocado && !(o as any).convertido_comp && (
+                      {(o as any).cristal_colocado && (
                         <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">🔩 Colocado ✓</span>
                       )}
                       {!(o as any).convertido_comp && (
@@ -761,17 +771,24 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
         <div className="flex flex-col gap-3">
-          {/* Aseguradora arriba — siempre obligatoria, cargada desde la tabla aseguradoras */}
+          {/* Aseguradora — opcional, o puede ser solo cliente */}
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Aseguradora *">
+            <Field label="Aseguradora">
               <Select value={form.aseg} onChange={e=>setForm(p=>({...p,aseg:e.target.value}))}>
-                <option value="">— Seleccioná *</option>
+                <option value="">Sin aseguradora</option>
                 {aseguradoras.map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}
               </Select>
             </Field>
             <Field label="N° Siniestro"><Input value={form.sin} onChange={e=>setForm(p=>({...p,sin:e.target.value}))} placeholder="000000"/></Field>
             <Field label="Póliza"><Input value={form.pol} onChange={e=>setForm(p=>({...p,pol:e.target.value}))} placeholder="000000"/></Field>
           </div>
+          {/* Colaborador asignado */}
+          <Field label="Colaborador asignado">
+            <Select value={form.colaborador_id} onChange={e=>setForm(p=>({...p,colaborador_id:e.target.value}))}>
+              <option value="">Sin asignar</option>
+              {colaboradores.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </Select>
+          </Field>
           {/* Asegurado */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Asegurado"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
