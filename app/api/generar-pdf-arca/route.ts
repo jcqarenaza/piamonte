@@ -172,23 +172,20 @@ export async function POST(req: NextRequest) {
 
       // QR — posición exacta de Arca
       try {
-        const cuitAsegNum = Number((cuitAseg || '0').replace(/-/g, ''))
-        const codAutNum   = Number(c.cae_emitido || '0')
-        const nroCmpNum   = Number(c.nro_cbte_afip ?? c.numero ?? 0)
         const qrData = {
           ver: 1,
           fecha: c.fecha,
           cuit: 27242657174,
           ptoVta: 6,
           tipoCmp: c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
-          nroCmp: nroCmpNum,
-          importe: c.total || 0,
+          nroCmp:     Number(c.nro_cbte_afip ?? c.numero ?? 0),
+          importe:    Number(c.total  || 0),
           moneda: 'PES',
           ctz: 1,
           tipoDocRec: 80,
-          nroDocRec: cuitAsegNum,
+          nroDocRec:  Number((cuitAseg || '0').replace(/-/g, '')),
           tipoCodAut: 'E',
-          codAut: codAutNum,
+          codAut:     Number(c.cae_emitido || '0'),
         }
         const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
         const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', width: 100, margin: 1 })
