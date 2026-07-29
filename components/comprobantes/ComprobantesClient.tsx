@@ -756,8 +756,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const compId   = (comp as any)?.id
     const fechaComp = todayStr()
 
-    // Descontar stock solo en ventas directas — si viene de una OS la OS ya lo descontó al crearse
-    if (!oid) {
+    // Descontar stock:
+    // - Venta directa (sin OS): siempre descuenta
+    // - Desde OS: descuenta SOLO si cristal_colocado=false (si ya estaba colocada, el stock ya se descontó)
+    let yaColocada = false
+    if (oid) {
+      const { data: osData } = await supabase.from('ordenes_servicio').select('cristal_colocado').eq('id', oid).maybeSingle()
+      yaColocada = !!(osData as any)?.cristal_colocado
+    }
+    const osSelActual = osSelId && !oid ? osSelId : null
+    if (osSelActual) {
+      const { data: osData2 } = await supabase.from('ordenes_servicio').select('cristal_colocado').eq('id', osSelActual).maybeSingle()
+      if ((osData2 as any)?.cristal_colocado) yaColocada = true
+    }
+
+    if (!yaColocada) {
       for(const it of items){
         if(it.stock_id && it.c > 0){
           const {data:s} = await supabase.from('stock').select('cantidad,costo').eq('id',it.stock_id).single()
@@ -767,6 +780,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               asegSel?.nombre || cliSel?.nombre || null,
             ].filter(Boolean).join(' · ') || it.d
             // PRIMERO insertar movimiento — así el trigger no duplica
+            try { await supabase.rpc('set_config', { key: 'app.current_user_id', value: userId, is_local: true }) } catch(_) {}
             await supabase.from('stock_movimientos').insert({
               stock_id: it.stock_id, tipo: 'salida',
               cantidad: it.c,
@@ -775,6 +789,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               fecha: fechaComp,
               descripcion: notaMov,
               comprobante_venta_id: compId,
+              user_id: userId || null,
             })
             // DESPUÉS actualizar cantidad
             await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
