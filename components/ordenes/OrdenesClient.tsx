@@ -613,6 +613,15 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       <span className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1 rounded">{(o as any).stock_codigo}</span>
                     ) : null
                   })()}
+                  {(o as any).cristal_colocado && (
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">🔩 Colocada ✓</span>
+                  )}
+                  {(() => {
+                    const colab = colaboradores.find(c => c.id === (o as any).colaborador_id)
+                    return colab ? (
+                      <span className="text-[10px] text-p-ink2 shrink-0">👤 {colab.nombre}</span>
+                    ) : null
+                  })()}
                   <span className="text-xs text-p-ink2 shrink-0">{o.fecha.split('-').reverse().join('/')}</span>
                   {o.aseguradora && <span className="text-xs text-p-ink2 shrink-0">· {o.aseguradora}</span>}
                   <div className="flex-1 min-w-[8px]"/>
