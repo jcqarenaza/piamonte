@@ -11,10 +11,10 @@ const FAM_MAP: Record<string, string> = {
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
-  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros',
+  TECHO: 'Techo', VIDRIO: 'Otros',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -303,7 +303,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       return 'CUSTODIA_D'
     }
     if (p.startsWith('ALETA') || p === 'ALETA_I' || p === 'ALETA_D') return 'ALETA'
-    if (p.startsWith('ESCOBILLA') || p.startsWith('PLUMILLA') || p.startsWith('LIMPIAPARABRISAS')) return 'ESCOBILLA'
     if (p.startsWith('VIDRIO') || p.startsWith('TECHO')) return 'VIDRIO'
     return p
   }
@@ -850,38 +849,22 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format: [80, 80], unit: 'mm', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
-    const W = 80
-
-    // Código en texto centrado arriba
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0)
-    doc.text(code, W/2, 10, { align: 'center' })
-
-    // Calcular ancho total del barcode para centrarlo
-    const barH = 28
-    type Bar = { x: number; w: number }
-    const bars: Bar[] = []
-    let totalBarW = 0
-    for (let i = 0; i < code.length; i++) {
-      const w = (code.charCodeAt(i) % 3) * 0.4 + 0.8
-      const gap = (code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2
-      bars.push({ x: totalBarW, w })
-      totalBarW += w + gap
-    }
-    // Centrar el bloque de barras en los 80mm (margen 4mm a cada lado máx)
-    const startX = Math.max(4, (W - totalBarW) / 2)
-    const barY = 14
+    doc.text(code, 40, 10, { align: 'center' })
+    // Barcode simple con líneas
+    const barY = 14; const barH = 28; let bx = 5
     doc.setFillColor(0,0,0)
-    for (const bar of bars) {
-      if (startX + bar.x + bar.w > W - 4) break
-      doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
+    for (let i=0; i<code.length; i++) {
+      const w = (code.charCodeAt(i) % 3) * 0.4 + 0.8
+      doc.rect(bx, barY, w, barH, 'F')
+      bx += w + ((code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2)
+      if (bx > 74) break
     }
-
-    // Descripción y marca centradas debajo
     doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').slice(0,50), W/2, 48, { align: 'center', maxWidth: 70 })
+    doc.text((s.descripcion||'').slice(0,50), 40, 48, { align: 'center', maxWidth: 70 })
     if (s.marca) {
       doc.setFontSize(6); doc.setTextColor(100,100,100)
-      doc.text(s.marca, W/2, 56, { align: 'center' })
+      doc.text(s.marca, 40, 56, { align: 'center' })
     }
     // Abrir en nueva ventana para imprimir directamente
     const blob2 = doc.output('blob')
@@ -1252,7 +1235,18 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const tieneCompra = !!m.comprobante_compra_id
                           const tieneVenta = !!m.comprobante_venta_id
                           const esPendienteNC = !!m.pendiente_nc
-                          const etiqueta = m.nota || m.motivo || '—'
+                          // Armar etiqueta consistente: prioridad descripcion del movimiento,
+                          // si no, construir desde el join de compra con formato uniforme
+                          const etiqueta = (() => {
+                            if (m.descripcion) return m.descripcion
+                            if (m.compra) {
+                              const c = m.compra
+                              const tipoLabel = c.tipo === 'nc' ? 'NC' : c.tipo === 'remito' ? 'Remito' : 'Factura'
+                              const nro = `${c.letra||''}${c.punto_venta ? ' '+c.punto_venta : ''}-${c.numero||''}`
+                              return `${tipoLabel} ${nro} · ${c.proveedor_nombre||''}`
+                            }
+                            return m.nota || m.motivo || '—'
+                          })()
                           return (
                           <div key={m.id}
                             onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
