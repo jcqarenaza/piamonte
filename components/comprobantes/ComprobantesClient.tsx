@@ -509,7 +509,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         fecha: todayStr(), tipo: 'nc',
         descripcion: ncDesc,
         debe: 0, haber: ncTotal,
-        comprobante_id: (nc as any).id, user_id: userId,
+        comprobante_id: ncComp.id, user_id: userId,  // ID de la factura original para cancelar su saldo
       })
     } else if ((ncComp as any).cliente_id) {
       await supabase.from('cuenta_corriente').insert({
@@ -583,16 +583,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         setTimeout(()=>setToast(''), 5000)
         setCaeLoading(null); return
       }
+      // Exento: neto = total (sin IVA), iva = 0, sin alícuota
+      const esExentoComp = c.cliente_tipo_fiscal === 'exento'
+      const impNeto = esExentoComp
+        ? c.total
+        : c.iva > 0 ? c.neto : Math.round(c.total / 1.21 * 100) / 100
+      const impIva = esExentoComp
+        ? 0
+        : c.iva > 0 ? c.iva : Math.round((c.total - c.total / 1.21) * 100) / 100
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
           comprobante_id: c.id, tipoCbte,
-          // Factura B a CF: el total incluye IVA pero no está discriminado
-          // AFIP requiere neto + iva por separado igualmente
           impTotal: c.total,
-          impNeto: c.iva > 0 ? c.neto : Math.round(c.total / 1.21 * 100) / 100,
-          impIva:  c.iva > 0 ? c.iva  : Math.round((c.total - c.total / 1.21) * 100) / 100,
+          impNeto,
+          impIva,
           docTipo, docNro,
-          ivaAlicuota: 5, // siempre mandar alícuota 21% cuando hay neto > 0
+          // Exento: no mandar alícuota IVA (null = exento en AFIP)
+          ivaAlicuota: esExentoComp ? null : 5,
           cbteAsoc,
         }
       })
@@ -691,7 +698,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
       cliente_nombre: modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
       cliente_telefono: modo==='cliente' ? (cliEfectivo?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
-      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && fiscal.tipo_fiscal==='responsable_inscripto' && fiscal.cuit ? fiscal.cuit : (modo==='cf' && cfDni ? cfDni : null)),
+      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && (fiscal.tipo_fiscal==='responsable_inscripto'||fiscal.tipo_fiscal==='exento') && fiscal.cuit ? fiscal.cuit : (modo==='cf' && cfDni ? cfDni : null)),
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
@@ -1442,15 +1449,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <Field label="Teléfono (opcional)">
                 <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
               </Field>
-              {/* Opción para facturar como RI aunque sea consumidor final */}
-              <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
-                <input type="checkbox" checked={fiscal.tipo_fiscal==='responsable_inscripto'}
-                  onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
-                  className="accent-p-green"/>
-                <span className="font-semibold text-p-dark">Facturar como Responsable Inscripto (Factura A)</span>
-              </label>
-              {fiscal.tipo_fiscal==='responsable_inscripto' && (
-                <Field label="CUIT *">
+              {/* Condición IVA especial para CF */}
+              <div className="flex flex-col gap-1.5 mt-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={fiscal.tipo_fiscal==='responsable_inscripto'}
+                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
+                    className="accent-p-green"/>
+                  <span className="font-semibold text-p-dark">Facturar como Responsable Inscripto (Factura A)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={fiscal.tipo_fiscal==='exento'}
+                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'exento' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
+                    className="accent-amber-500"/>
+                  <span className="font-semibold text-amber-700">Exento de IVA (Factura B sin IVA)</span>
+                </label>
+              </div>
+              {(fiscal.tipo_fiscal==='responsable_inscripto' || fiscal.tipo_fiscal==='exento') && (
+                <Field label={fiscal.tipo_fiscal==='exento' ? 'CUIT (opcional para exentos)' : 'CUIT *'}>
                   <Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/>
                 </Field>
               )}
