@@ -37,12 +37,20 @@ export async function POST(req: NextRequest) {
     const fecha = (c.fecha || '').split('-').reverse().join('/')
     const vto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
     const tipo = c.categoria === 'nc' ? 'NOTA DE CREDITO' : 'FACTURA'
+    // Código de tipo de comprobante ARCA (para el nombre de archivo): 001=FA A, 003=NC A, 006=FA B, 008=NC B
+    const tipoCode =
+      c.tipo === 'A' ? (c.categoria === 'nc' ? '003' : '001')
+                     : (c.categoria === 'nc' ? '008' : '006')
 
     // Cargar plantilla
     const tmplBytes = Buffer.from(TEMPLATE_B64, 'base64')
 
     const copias = ['ORIGINAL', 'DUPLICADO', 'TRIPLICADO']
     const outDoc = await PDFDocument.create()
+    // Metadatos idénticos a los PDFs nativos de ARCA
+    outDoc.setCreator('ARCA')
+    outDoc.setAuthor('ARCA')
+    outDoc.setProducer('iText 2.1.7 by 1T3XT')
     const R  = await outDoc.embedFont(StandardFonts.Helvetica)
     const Bd = await outDoc.embedFont(StandardFonts.HelveticaBold)
     const It = await outDoc.embedFont(StandardFonts.HelveticaOblique)
@@ -168,9 +176,11 @@ export async function POST(req: NextRequest) {
           codAut:     Number(c.cae_emitido || '0'),
         }
         const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
-        const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', width: 100, margin: 1 })
+        // ECC 'L' y scale entero (5px por módulo) como ARCA: sin anti-aliasing fraccional,
+        // decodifica en cualquier lector. Dibujado 80x80pt en la posición del QR original.
+        const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', scale: 5, margin: 4, errorCorrectionLevel: 'L' })
         const qrEmbed = await outDoc.embedPng(new Uint8Array(qrBuf))
-        p.drawImage(qrEmbed, { x: 15, y: PH - 775, width: 65, height: 65 })
+        p.drawImage(qrEmbed, { x: 20, y: 55, width: 80, height: 80 })
       } catch (e) { /* QR opcional */ }
 
       // ── CAE ── (labels eliminados de la plantilla; se escriben completos, un espacio tras ':')
@@ -184,7 +194,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(Buffer.from(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="0006-${nro}.pdf"`,
+        'Content-Disposition': `attachment; filename="27242657174_${tipoCode}_00006_${nro}.pdf"`,
       },
     })
   } catch (err: any) {
