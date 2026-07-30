@@ -61,33 +61,17 @@ export async function POST(req: NextRequest) {
       outDoc.addPage(tmplPage)
       const p = outDoc.getPage(outDoc.getPageCount() - 1)
 
-      // Obtener fuentes Arial de la plantilla copiada (reconocidas por portales de aseguradoras)
-      const { PDFName, PDFFont } = await import('pdf-lib')
-      const pageNode = p.node
-      const resources = pageNode.Resources()
-      const fontDict = resources?.lookup(PDFName.of('Font'))
-      let ArialBd: any = Bd
-      let ArialR: any = R  
-      try {
-        const f2ref = fontDict?.get(PDFName.of('F2')) // Arial-BoldMT
-        const f3ref = fontDict?.get(PDFName.of('F3')) // ArialMT
-        if (f2ref) ArialBd = PDFFont.of(f2ref as any, outDoc as any, undefined as any)
-        if (f3ref) ArialR = PDFFont.of(f3ref as any, outDoc as any, undefined as any)
-      } catch(_) {}
-
       const t = (x: number, yTop: number, s: string, sz: number, bold = false, color = K) =>
-        p.drawText(s, { x, y: B(yTop, sz), font: bold ? ArialBd : ArialR, size: sz, color })
+        p.drawText(s, { x, y: B(yTop, sz), font: bold ? Bd : R, size: sz, color })
 
       const tR = (xRight: number, yTop: number, s: string, sz: number, bold = false) => {
-        const f = bold ? ArialBd : ArialR
-        const w = f.widthOfTextAtSize ? f.widthOfTextAtSize(s, sz) : Bd.widthOfTextAtSize(s, sz)
-        p.drawText(s, { x: xRight - w, y: B(yTop, sz), font: f, size: sz, color: K })
+        const f = bold ? Bd : R
+        p.drawText(s, { x: xRight - f.widthOfTextAtSize(s, sz), y: B(yTop, sz), font: f, size: sz, color: K })
       }
 
       const tC = (xC: number, yTop: number, s: string, sz: number, bold = false) => {
-        const f = bold ? ArialBd : ArialR
-        const w = f.widthOfTextAtSize ? f.widthOfTextAtSize(s, sz) : Bd.widthOfTextAtSize(s, sz)
-        p.drawText(s, { x: xC - w/2, y: B(yTop, sz), font: f, size: sz, color: K })
+        const f = bold ? Bd : R
+        p.drawText(s, { x: xC - f.widthOfTextAtSize(s, sz)/2, y: B(yTop, sz), font: f, size: sz, color: K })
       }
 
       // ── COPIA: cubrir "ORIGINAL" y escribir el texto correcto ──
