@@ -387,16 +387,18 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const stockItems = (o.items || []).filter((it: any) => it.stock_id && it.codigo)
     if (stockItems.length > 0) {
       stockItems.forEach((it: any) => {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-        doc.text(`Código: ${it.codigo}`, pad, y)
-        doc.setFont('helvetica', 'normal')
-        doc.text(it.d || '', pad + 50, y)
-        y += 7
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+        doc.text(it.codigo, pad, y)
+        y += 8
+        if (it.d) {
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(11)
+          doc.text(it.d, pad, y); y += 7
+        }
       })
     } else if ((o as any).stock_codigo) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-      doc.text(`Código: ${(o as any).stock_codigo}`, pad, y)
-      y += 7
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+      doc.text((o as any).stock_codigo, pad, y)
+      y += 8
     } else {
       // Sin código — espacio para anotar a mano
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
@@ -602,17 +604,19 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     </span>
                   )}
                   <span className="text-xs text-p-ink2 shrink-0">{[o.vehiculo,(o as any).patente].filter(Boolean).join(' · ')}</span>
-                  {(o as any).posicion_vidrio && (
-                    <span className="text-[10px] font-semibold text-p-green shrink-0">· {(o as any).posicion_vidrio}</span>
-                  )}
                   {(() => {
                     const stockItems = (o.items||[]).filter((it:any)=>it.stock_id&&it.codigo)
                     return stockItems.length>0 ? stockItems.map((it:any)=>(
-                      <span key={it.stock_id} className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1 rounded">{it.codigo}</span>
+                      <span key={it.stock_id} className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1.5 py-0.5 rounded">
+                        {it.codigo}{it.d ? ` · ${it.d.slice(0,30)}` : ''}
+                      </span>
                     )) : (o as any).stock_codigo ? (
-                      <span className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1 rounded">{(o as any).stock_codigo}</span>
+                      <span className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1.5 py-0.5 rounded">{(o as any).stock_codigo}</span>
                     ) : null
                   })()}
+                  {(o as any).posicion_vidrio && !(o.items||[]).some((it:any)=>it.stock_id) && (
+                    <span className="text-[10px] font-semibold text-p-green shrink-0">{(o as any).posicion_vidrio}</span>
+                  )}
                   {(o as any).cristal_colocado && (
                     <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">🔩 Colocada ✓</span>
                   )}
