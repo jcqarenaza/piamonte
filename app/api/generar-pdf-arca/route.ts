@@ -81,28 +81,30 @@ export async function POST(req: NextRequest) {
       // ── PUNTO DE VENTA / COMP NRO / FECHA ──
       // Los labels fueron eliminados de la plantilla: se dibujan UNA sola vez,
       // completos y contiguos al valor, para que el parser del portal los lea.
-      t(341, 86, 'Punto de Venta: 00006', 9, true)
-      t(461, 86, `Comp. Nro: ${nro}`, 9, true)
-      t(341, 102, `Fecha de Emisión: ${fecha}`, 9, true)
+      // Baselines calcadas de los valores del PDF nativo de ARCA, para que el extractor
+      // del portal agrupe label+valor en la misma línea de texto
+      t(341, 85, 'Punto de Venta: 00006', 9, true)
+      t(461, 85, `Comp. Nro: ${nro}`, 9, true)
+      t(341, 100.7, `Fecha de Emisión: ${fecha}`, 9, true)
 
       // ── PERÍODO FACTURADO / HASTA / FECHA VTO PAGO ── (formato exacto ARCA, con espacios tras ':')
-      cover(p, 150, 170, 430, 12, 1)
-      t(159, 171, fecha, 10)
-      t(232.4, 171, 'Hasta:', 10, true)
-      t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 171, fecha, 10)
+      cover(p, 150, 168, 430, 14, 1)
+      t(159, 169.3, fecha, 10)
+      t(232.4, 169.3, 'Hasta:', 10, true)
+      t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 169.3, fecha, 10)
       {
         const lblVto = 'Fecha de Vto. para el pago: '
         const wF = R.widthOfTextAtSize(fecha, 10)
         const wL = Bd.widthOfTextAtSize(lblVto, 10)
-        t(578 - wF - wL, 171, lblVto, 10, true)
-        t(578 - wF, 171, fecha, 10)
+        t(578 - wF - wL, 169.3, lblVto, 10, true)
+        t(578 - wF, 169.3, fecha, 10)
       }
 
       // ── RECEPTOR ──
-      cover(p, 52, 190, 528, 11, 1)
-      t(52, 191, (cuitAseg || '').replace(/-/g,''), 8)
-      t(222, 191, 'Apellido y Nombre / Razón Social:', 8, true)
-      t(356, 191, (razonSocial || '').slice(0, 46), 8)
+      cover(p, 52, 188, 528, 13, 1)
+      t(52, 189.6, (cuitAseg || '').replace(/-/g,''), 8)
+      t(222, 189.6, 'Apellido y Nombre / Razón Social:', 8, true)
+      t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
       // ── ITEMS ──
       cover(p, 15, 295, 566, 225, 0)
 
