@@ -1235,18 +1235,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                           const tieneCompra = !!m.comprobante_compra_id
                           const tieneVenta = !!m.comprobante_venta_id
                           const esPendienteNC = !!m.pendiente_nc
-                          // Armar etiqueta consistente: prioridad descripcion del movimiento,
-                          // si no, construir desde el join de compra con formato uniforme
-                          const etiqueta = (() => {
-                            if (m.descripcion) return m.descripcion
-                            if (m.compra) {
-                              const c = m.compra
-                              const tipoLabel = c.tipo === 'nc' ? 'NC' : c.tipo === 'remito' ? 'Remito' : 'Factura'
-                              const nro = `${c.letra||''}${c.punto_venta ? ' '+c.punto_venta : ''}-${c.numero||''}`
-                              return `${tipoLabel} ${nro} · ${c.proveedor_nombre||''}`
-                            }
-                            return m.nota || m.motivo || '—'
-                          })()
+                          // La vista ya construye `nota` con número de comprobante y proveedor
+                          const etiqueta = m.nota || m.motivo || '—'
                           return (
                           <div key={m.id}
                             onClick={()=>{ if(tieneVenta||tieneCompra) abrirComprobante(m.comprobante_venta_id||m.comprobante_compra_id) }}
