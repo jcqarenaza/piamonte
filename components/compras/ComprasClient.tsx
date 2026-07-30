@@ -1375,7 +1375,7 @@ export default function ComprasClient() {
                       const { data } = await supabase.from('ajustes_stock')
                         .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
                         .eq('pendiente_nc', true)
-                        .eq('proveedor_id', form.proveedor_id)
+                        .or(`proveedor_id.eq.${form.proveedor_id},proveedor_id.is.null`)
                         .order('fecha', { ascending: true })
                       setPendientesNC(data ?? [])
                     }
