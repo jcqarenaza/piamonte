@@ -81,10 +81,13 @@ export async function POST(req: NextRequest) {
       // ── PUNTO DE VENTA / COMP NRO / FECHA ──
       // Los labels fueron eliminados de la plantilla: se dibujan UNA sola vez,
       // completos y contiguos al valor, para que el parser del portal los lea.
-      // Baselines calcadas de los valores del PDF nativo de ARCA, para que el extractor
-      // del portal agrupe label+valor en la misma línea de texto
-      t(341, 85, 'Punto de Venta: 00006', 9, true)
-      t(461, 85, `Comp. Nro: ${nro}`, 9, true)
+      // Estructura EXACTA del PDF nativo de ARCA: labels a 9pt (bottom 95.1) y valores a 10pt
+      // (bottom 96.1) en baselines distintas. El parser del portal espera las dos "líneas":
+      //   "Punto de Venta: Comp. Nro:"  /  "00006 00000033"
+      t(341, 84.2, 'Punto de Venta:', 9, true)
+      t(461, 84.2, 'Comp. Nro:', 9, true)
+      t(417, 84.0, '00006', 10, true)
+      t(517, 84.0, nro, 10, true)
       t(341, 100.7, `Fecha de Emisión: ${fecha}`, 9, true)
 
       // ── PERÍODO FACTURADO / HASTA / FECHA VTO PAGO ── (formato exacto ARCA, con espacios tras ':')
