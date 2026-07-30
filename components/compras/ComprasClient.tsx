@@ -513,46 +513,44 @@ export default function ComprasClient() {
         const cantRestante = pendiente.cantidad - cantSaldada
 
         if (cantRestante <= 0) {
-          // Saldo total — reemplazar el ajuste por un movimiento de NC y borrar el ajuste
+          // Saldo total — actualizar el ajuste existente con el número de NC (no mover stock, ya fue descontado al marcar roto)
+          await supabase.from('ajustes_stock')
+            .update({
+              pendiente_nc: false,
+              nota: `NC ${numNc} · ${provNombre}`,
+            })
+            .eq('id', pendiente.id)
+          // Actualizar también el movimiento en stock_movimientos para que la vista lo muestre como saldado
           await supabase.from('stock_movimientos')
-            .delete()
+            .update({
+              pendiente_nc: false,
+              descripcion: `NC ${numNc} · ${provNombre}`,
+              comprobante_compra_id: comp.id,
+            })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          await supabase.from('ajustes_stock')
-            .delete()
-            .eq('id', pendiente.id)
-          // Insertar movimiento de NC (siempre, independiente de si existía pendiente_nc)
-          await supabase.from('stock_movimientos').insert({
-            stock_id: pendiente.stock_id,
-            tipo: 'salida',
-            cantidad: cantSaldada,
-            fecha: form.fecha || todayStr(),
-            descripcion: `NC ${numNc} · ${provNombre}`,
-            pendiente_nc: false,
-            comprobante_compra_id: comp.id,
-          })
         } else {
-          // Saldo parcial — reducir el ajuste y agregar movimiento de NC
+          // Saldo parcial — reducir cantidad del ajuste, mantener pendiente_nc=true por el resto
           await supabase.from('ajustes_stock')
             .update({
               cantidad: cantRestante,
-              nota: `${pendiente.nota||'Roto'} — quedan ${cantRestante}u`,
+              nota: `${pendiente.nota||'Roto'} — quedan ${cantRestante}u (NC parcial ${numNc})`,
             })
             .eq('id', pendiente.id)
           await supabase.from('stock_movimientos')
             .update({
               cantidad: cantRestante,
-              descripcion: `${pendiente.nota||'Roto'} — quedan ${cantRestante}u`,
+              descripcion: `${pendiente.nota||'Roto'} — quedan ${cantRestante}u (NC parcial ${numNc})`,
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          // Insertar movimiento de NC por la cantidad saldada
+          // Insertar movimiento informativo de la NC parcial (sin afectar stock — cantidad 0)
           await supabase.from('stock_movimientos').insert({
             stock_id: pendiente.stock_id,
             tipo: 'salida',
-            cantidad: cantSaldada,
+            cantidad: 0,
             fecha: form.fecha || todayStr(),
-            descripcion: `NC ${numNc} · ${provNombre}`,
+            descripcion: `NC parcial ${numNc} · ${cantSaldada}u saldadas · ${provNombre}`,
             pendiente_nc: false,
             comprobante_compra_id: comp.id,
           })
