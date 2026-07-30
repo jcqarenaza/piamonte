@@ -55,11 +55,8 @@ export async function POST(req: NextRequest) {
 
 
     for (const copia of copias) {
-      // Copiar plantilla
-      const tmplDoc = await PDFDocument.load(tmplBytes)
-      const [tmplPage] = await outDoc.copyPages(tmplDoc, [0])
-      outDoc.addPage(tmplPage)
-      const p = outDoc.getPage(outDoc.getPageCount() - 1)
+      // Página en blanco — no copiar plantilla para evitar texto residual
+      const p = outDoc.addPage([595.28, 841.89]) // A4 en puntos
 
       const t = (x: number, yTop: number, s: string, sz: number, bold = false, color = K) =>
         p.drawText(s, { x, y: B(yTop, sz), font: bold ? Bd : R, size: sz, color })
