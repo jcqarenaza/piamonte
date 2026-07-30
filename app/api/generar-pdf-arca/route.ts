@@ -81,14 +81,14 @@ export async function POST(req: NextRequest) {
       // ── PUNTO DE VENTA y COMP NRO ──
       // "00003" está en x=417..444.8, cubrirlo y escribir 0006
       cover(p, 413, 84, 55, 12)
-      t(417, 86, '0006', 9, true)
+      t(341, 86, 'Punto de Venta: 0006', 9, true)
       // "00002693" está en x=517..561.5, cubrirlo y escribir nuevo nro
       cover(p, 513, 84, 55, 12)
-      t(517, 86, nro, 9, true)
+      t(461, 86, `Comp. Nro: ${nro}`, 9, true)
 
       // ── FECHA EMISIÓN ──
-      cover(p, 428, 102, 50, 10)
-      t(428, 102, fecha, 9)
+      cover(p, 341, 102, 239, 10)
+      t(341, 102, `Fecha de Emisión: ${fecha}`, 9)
 
       // ── PERÍODO FACTURADO y FECHA VTO PAGO ──
       // "21/07/2026 Hasta:21/07/2026" x=159..315 y=171 h=10
@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
       cover(p, 442.6, 717, 121.2, 10)
       cover(p, 374.4, 731, 161.6, 10)
       if (c.cae_emitido) {
-        t(50, 400, `CAE N°:  ${c.cae_emitido}`, 10, true)  // TEST: movido de posición
+        t(442.6, 717, `CAE N°:  ${c.cae_emitido}`, 10, true)
         t(374.4, 731, `Fecha de Vto. de CAE:  ${vto}`, 10, true)
       }
     }
