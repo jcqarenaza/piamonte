@@ -422,9 +422,14 @@ export default function ComprasClient() {
       }
     }
 
-    // Al cargar factura con afecta_stock: crear artículos en stock como "pendiente de ingreso"
-    // La cantidad real se suma cuando confirman la llegada de mercadería (botón Cargar a stock)
-    if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado) {
+    // Al cargar factura con afecta_stock: sumar al stock directamente si el artículo existe
+    // Si es solo flete (sin ítems de stock), marcar procesado directamente
+    const itemsConStock = items.filter(it => (it.d||'').toUpperCase().trim() !== 'FLETE' && (it as any).codigo !== 'FL')
+    if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado && itemsConStock.length === 0) {
+      // Solo flete — procesar directamente sin tocar stock
+      await supabase.from('comprobantes_compra').update({ estado: 'procesado' }).eq('id', comp.id)
+    }
+    if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado && itemsConStock.length > 0) {
       const numFact = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
       const itemsActualizados = [...items]
 
@@ -458,37 +463,55 @@ export default function ComprasClient() {
           if (data && data.codigo === codigo) stockRow = data
         }
 
+        const cantItem = it.c || 1
+        const fechaFact = form.fecha || todayStr()
+        const numFact2 = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
+
         if (stockRow) {
-          // Ya existe — actualizar costo y marcar pendiente de ingreso (no suma cantidad todavía)
+          // Existe — sumar cantidad directamente y marcar como procesado
           await supabase.from('stock').update({
             costo: costoUnit,
             articulo_id: stockRow.articulo_id || articuloId || null,
-            pendiente_ingreso: true,
+            cantidad: (stockRow.cantidad || 0) + cantItem,
+            pendiente_ingreso: false,
           }).eq('id', stockRow.id)
+          await supabase.from('stock_movimientos').insert({
+            stock_id: stockRow.id, tipo: 'entrada',
+            cantidad: cantItem, costo_unitario: costoUnit,
+            fecha: fechaFact,
+            comprobante_compra_id: comp.id,
+          })
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
-          // Crear nueva fila de stock con cantidad 0 y pendiente_ingreso = true
+          // No existe — crear con cantidad ya cargada y procesado
           let desc = it.d
           if (codigo) {
-            const { data: cat } = await supabase.from('catalogo').select('descripcion').eq('codigo', codigo).limit(1).maybeSingle()
+            const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').eq('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
             if (cat?.descripcion) desc = cat.descripcion
           }
           const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
           const { data: newStock } = await supabase.from('stock').insert({
-            codigo: codigoFinal, descripcion: desc, cantidad: 0,
+            codigo: codigoFinal, descripcion: desc, cantidad: cantItem,
             costo: costoUnit, precio_venta: 0,
             articulo_id: articuloId || null, activo: true,
-            pendiente_ingreso: true,
+            pendiente_ingreso: false,
           }).select('id').single()
           if (newStock) {
+            await supabase.from('stock_movimientos').insert({
+              stock_id: newStock.id, tipo: 'entrada',
+              cantidad: cantItem, costo_unitario: costoUnit,
+              fecha: fechaFact,
+              comprobante_compra_id: comp.id,
+            })
             itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
           }
         }
       }
 
-      // Guardar stock_ids y dejar como pendiente (no procesado — se procesa al confirmar llegada)
+      // Guardar stock_ids y marcar procesado (ya se sumó el stock directamente)
       await supabase.from('comprobantes_compra').update({
         items: itemsActualizados,
+        estado: 'procesado',
       }).eq('id', comp.id)
 
     } else if (comp) {
