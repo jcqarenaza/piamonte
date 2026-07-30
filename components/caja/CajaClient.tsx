@@ -247,7 +247,19 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     if (!confirm('¿Borrar venta?')) return
     if (v.origen === 'stock' && v.stock_id) {
       const s = stockItems.find(x => x.id === v.stock_id)
-      if (s) { await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id); await supabase.from('stock_movimientos').insert({ stock_id: v.stock_id, tipo: 'entrada', cantidad: 1, fecha: v.fecha || fecha, descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, user_id: userId || null }); }
+      if (s) {
+        // PRIMERO movimiento, DESPUÉS update — y skip trigger para no duplicar
+        await supabase.from('stock_movimientos').insert({
+          stock_id: v.stock_id, tipo: 'entrada', cantidad: 1,
+          fecha: v.fecha || fecha,
+          descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
+          user_id: userId || null,
+        })
+        try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
+        await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
+        try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
+        setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
+      }
     }
     await supabase.from('ventas').delete().eq('id', v.id)
     loadVentas()
