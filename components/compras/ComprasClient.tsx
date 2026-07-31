@@ -457,13 +457,19 @@ export default function ComprasClient() {
         // Buscar fila de stock existente
         let stockRow: any = null
         if (codigo) {
-          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('codigo', codigo).eq('activo', true).maybeSingle()
-          stockRow = data
+          // Buscar exacto primero, luego case-insensitive
+          const { data: exact } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('codigo', codigo).eq('activo', true).maybeSingle()
+          if (exact) {
+            stockRow = exact
+          } else {
+            // Buscar ignorando mayúsculas/minúsculas
+            const { data: ilike } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').ilike('codigo', codigo).eq('activo', true).maybeSingle()
+            stockRow = ilike || null
+          }
         }
         if (!stockRow && articuloId) {
           const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
-          // Solo reutilizar si el código es el mismo — si el código es distinto, crear uno nuevo
-          if (data && data.codigo === codigo) stockRow = data
+          stockRow = data || null
         }
 
         const cantItem = it.c || 1
@@ -486,17 +492,23 @@ export default function ComprasClient() {
           })
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
-          // No existe — crear con cantidad ya cargada y procesado
+          // No existe — buscar en maestro para obtener articulo_id y descripcion correctos
           let desc = it.d
+          let articuloIdFinal = articuloId
           if (codigo) {
-            const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').eq('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
+            const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').ilike('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
             if (cat?.descripcion) desc = cat.descripcion
+            // Buscar en maestro por codigo_referencia
+            if (!articuloIdFinal) {
+              const { data: am } = await supabase.from('articulos_maestro').select('id').ilike('codigo_referencia', codigo).maybeSingle()
+              if (am?.id) articuloIdFinal = am.id
+            }
           }
-          const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
+          const codigoFinal = codigo ? codigo.toUpperCase() : (articuloIdFinal ? `ART-${articuloIdFinal.slice(0,8)}` : null)
           const { data: newStock } = await supabase.from('stock').insert({
             codigo: codigoFinal, descripcion: desc, cantidad: cantItem,
             costo: costoUnit, precio_venta: 0,
-            articulo_id: articuloId || null, activo: true,
+            articulo_id: articuloIdFinal || null, activo: true,
             pendiente_ingreso: false,
           }).select('id').single()
           if (newStock) {
