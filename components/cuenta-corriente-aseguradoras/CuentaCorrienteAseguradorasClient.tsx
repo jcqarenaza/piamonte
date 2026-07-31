@@ -400,42 +400,71 @@ export default function CuentaCorrienteAseguradorasClient() {
 
       {/* ── TAB SALDOS ── */}
       {tab==='saldos' && (
-        <div>
-          <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 inline-flex items-center gap-4">
-              <div>
-                <p className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">Total pendiente de cobro</p>
-                <p className="font-saira font-bold text-2xl text-red-600">{moneyARS(totalPendiente)}</p>
+        <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
+          {/* Lista compacta aseguradoras */}
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}}>
+              <div className="bg-white border border-p-line rounded-xl p-3">
+                <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Pendiente cobro</p>
+                <p className="font-saira font-bold text-base text-red-500 mt-0.5">{moneyARS(totalPendiente)}</p>
               </div>
-              <p className="text-xs text-red-500">{saldos.filter(s=>s.saldo>0).length} compañías con saldo</p>
+              <div className="bg-white border border-p-line rounded-xl p-3">
+                <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Compañías</p>
+                <p className="font-saira font-bold text-base text-p-dark mt-0.5">{saldos.filter(s=>s.saldo>0).length}</p>
+              </div>
             </div>
-            <button onClick={abrirCobroLibre} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-              💵 Cargar liquidación
-            </button>
-          </div>
 
-          <div className="mb-4">
-            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar aseguradora…"
-              className="w-full max-w-md border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green"/>
-          </div>
+            <div className="flex gap-2 mb-1">
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar…"
+                className="flex-1 border border-p-line rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-p-green bg-white"/>
+              <button onClick={abrirCobroLibre} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                + Liquidación
+              </button>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            {filtrados.filter(s=>s.saldo>0).map(s=>(
-              <div key={s.aseguradora_id}>
-                <div onClick={()=>seleccionar(s)}
-                  className={`bg-white border rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 cursor-pointer ${sel?.aseguradora_id===s.aseguradora_id?'border-p-green bg-p-light/30':'border-p-line hover:border-p-green'}`}>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-saira font-bold text-p-ink text-sm truncate">{s.nombre}</p>
-                    <p className="text-[10px] text-p-ink2">{s.facturas} factura(s) · Facturado: {moneyARS(s.total_debe)} · Cobrado: {moneyARS(s.total_haber)}</p>
-                  </div>
-                  <p className="font-saira font-bold text-xl text-red-500 shrink-0">Debe {moneyARS(s.saldo)}</p>
-                </div>
-
-                {sel?.aseguradora_id===s.aseguradora_id && (
-                  <div className="border border-p-green border-t-0 rounded-b-xl bg-p-light/10 px-4 py-3">
-                    <div className="mb-3">
-                      <button onClick={abrirCobro} style={btn}>💵 Registrar cobro</button>
+            <div className="flex flex-col gap-1.5">
+              {filtrados.filter(s=>s.saldo>0).map(s=>(
+                <div key={s.aseguradora_id}
+                  onClick={()=>seleccionar(s)}
+                  className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.aseguradora_id===s.aseguradora_id?'border-p-green ring-1 ring-green-200 bg-green-50/20':'border-p-line hover:border-p-green'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-p-ink truncate">{s.nombre}</p>
+                      <p className="text-[10px] text-p-ink2">{s.facturas} fact. · {moneyARS(s.total_haber)} cobrado</p>
                     </div>
+                    <p className="text-sm font-bold text-red-500 shrink-0">{moneyARS(s.saldo)}</p>
+                  </div>
+                </div>
+              ))}
+              {filtrados.filter(s=>s.saldo>0).length===0 && <Empty msg="No hay saldos pendientes."/>}
+            </div>
+          </div>
+
+          {/* Panel detalle aseguradora */}
+          {sel ? (
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {/* Header */}
+              <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-saira font-bold text-p-ink text-base">{sel.nombre}</p>
+                  <p className="text-[10px] text-p-ink2">Facturado {moneyARS(sel.total_debe)} · Cobrado {moneyARS(sel.total_haber)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="font-bold text-lg text-red-500">Debe {moneyARS(sel.saldo)}</p>
+                  <button onClick={abrirCobro} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    💵 Cobrar
+                  </button>
+                  <button onClick={()=>setSel(null)} className="text-p-gray text-lg leading-none">✕</button>
+                </div>
+              </div>
+
+              {/* Movimientos */}
+              <div className="bg-white border border-p-line rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
+                  <span className="text-xs font-semibold text-p-ink">Movimientos</span>
+                  <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
+                </div>
+                {loading ? <p className="text-sm text-p-gray py-4 text-center">Cargando…</p> : (
                     {loading ? <p className="text-sm text-p-gray py-2">Cargando…</p> : (
                       <table className="w-full text-xs">
                         <thead>
@@ -511,9 +540,11 @@ export default function CuentaCorrienteAseguradorasClient() {
                     )}
                   </div>
                 )}
+            ) : (
+              <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
+                <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
               </div>
-            ))}
-            {filtrados.filter(s=>s.saldo>0).length===0 && <Empty msg="No hay saldos pendientes con aseguradoras."/>}
+            )}
           </div>
         </div>
       )}

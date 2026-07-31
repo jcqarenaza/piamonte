@@ -210,139 +210,132 @@ export default function CuentaCorrienteClient() {
 
       {tab==='aseguradoras' && <CuentaCorrienteAseguradorasClient />}
 
-      {tab==='clientes' && <div className="flex gap-4">
-      {/* Lista de clientes con saldo */}
-      <div className="flex-1 min-w-0">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-            <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Total en calle</p>
-            <p className="font-saira font-bold text-2xl text-red-500 mt-1">{moneyARS(totalDeuda)}</p>
+      {tab==='clientes' && <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
+      {/* Lista compacta de clientes */}
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}}>
+          <div className="bg-white border border-p-line rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Total en calle</p>
+            <p className="font-saira font-bold text-base text-red-500 mt-0.5">{moneyARS(totalDeuda)}</p>
           </div>
-          <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-            <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Clientes con saldo</p>
-            <p className="font-saira font-bold text-2xl text-p-dark mt-1">{conSaldo}</p>
+          <div className="bg-white border border-p-line rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Con saldo</p>
+            <p className="font-saira font-bold text-base text-p-dark mt-0.5">{conSaldo}</p>
           </div>
         </div>
 
         <input value={q} onChange={e=>setQ(e.target.value)}
           placeholder="Buscar cliente…"
-          className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm mb-4 focus:outline-none focus:border-p-green bg-white shadow-sm"/>
+          className="w-full border border-p-line rounded-lg px-3 py-2 text-xs mb-1 focus:outline-none focus:border-p-green bg-white"/>
 
-        {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-         filtrados.length===0 ? <Empty msg="Sin clientes con saldo pendiente." /> : (
-          <div className="flex flex-col gap-2">
-            {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>(
+        {loading ? <p className="text-sm text-p-gray text-center py-6">Cargando…</p> :
+         filtrados.length===0 ? <Empty msg="Sin clientes con saldo." /> : (
+          <div className="flex flex-col gap-1.5">
+            {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>{
+              const plazo = s.plazo_cc_dias ?? 30
+              const dias = s.ultima_operacion ? Math.floor((Date.now() - new Date(s.ultima_operacion).getTime()) / 86400000) : 0
+              const vencido = s.saldo_actual > 0 && dias >= plazo
+              const tope = s.tope_credito && s.saldo_actual >= s.tope_credito
+              return (
               <div key={s.cliente_nombre}
                 onClick={()=>setSel(sel?.cliente_nombre===s.cliente_nombre?null:s)}
-                className={`bg-white border rounded-xl p-4 cursor-pointer shadow-sm transition-all ${sel?.cliente_nombre===s.cliente_nombre?'border-red-400 ring-1 ring-red-300':'border-p-line hover:border-red-300'}`}>
-                {/* Alerta de plazo vencido */}
-                {(() => {
-                  if (!s.ultima_operacion || !s.saldo_actual || s.saldo_actual <= 0) return null
-                  const plazo = s.plazo_cc_dias ?? 30
-                  const diasTranscurridos = Math.floor((Date.now() - new Date(s.ultima_operacion).getTime()) / 86400000)
-                  if (diasTranscurridos < plazo) return null
-                  return (
-                    <div style={{background:'#fee2e2',borderRadius:8,padding:'6px 10px',marginBottom:8,fontSize:12,fontWeight:700,color:'#dc2626'}}>
-                      ⚠️ Plazo vencido — {diasTranscurridos} días sin pago (límite: {plazo} días)
-                    </div>
-                  )
-                })()}
-                {s.tope_credito && s.saldo_actual >= s.tope_credito && (
-                  <div style={{background:'#fef3c7',borderRadius:8,padding:'6px 10px',marginBottom:8,fontSize:12,fontWeight:700,color:'#d97706'}}>
-                    🚫 Tope de crédito superado — {moneyARS(s.saldo_actual)} / {moneyARS(s.tope_credito)}
+                className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.cliente_nombre===s.cliente_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
+                {vencido && <div className="text-[9px] font-bold text-red-600 mb-1">⚠ {dias}d sin pago</div>}
+                {tope && <div className="text-[9px] font-bold text-amber-600 mb-1">🚫 Tope superado</div>}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-p-ink truncate">{s.cliente_nombre}</p>
+                    <p className="text-[10px] text-p-ink2">{s.movimientos} mov · {s.ultima_operacion?.split('-').reverse().join('/')}</p>
                   </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-saira font-bold text-p-ink">{s.cliente_nombre}</p>
-                    <p className="text-xs text-p-ink2 mt-0.5">
-                      {s.movimientos} movimiento(s) · último: {s.ultima_operacion?.split('-').reverse().join('/')}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-saira font-bold text-xl ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
-                      {s.saldo_actual>0?'Debe ':s.saldo_actual<0?'Favor ':''}{moneyARS(Math.abs(s.saldo_actual))}
-                    </p>
-                    <p className="text-[10px] text-p-ink2">
-                      Cargado: {moneyARS(s.total_debe)} · Pagado: {moneyARS(s.total_haber)}
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-bold ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
+                      {moneyARS(Math.abs(s.saldo_actual))}
                     </p>
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
 
-      {/* Panel movimientos del cliente */}
-      {sel && (
-        <div className="w-96 shrink-0 bg-white border border-p-line rounded-2xl shadow-sm self-start sticky top-4 flex flex-col">
-          <div className="p-4 border-b border-p-line">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-saira font-bold text-p-ink text-lg">{sel.cliente_nombre}</p>
-                <p className={`font-bold text-xl ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
-                  {sel.saldo_actual>0?'Debe ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
-                </p>
-              </div>
-              <button onClick={()=>setSel(null)} className="text-p-gray text-xl">✕</button>
+      {/* Panel detalle cliente */}
+      {sel ? (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {/* Header */}
+          <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-saira font-bold text-p-ink text-base">{sel.cliente_nombre}</p>
+              <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
             </div>
-            {sel.saldo_actual > 0 && (
-              <button onClick={abrirCobro} style={{...btn,marginTop:10,width:'100%',textAlign:'center'}}>
-                🧾 Registrar cobro
-              </button>
-            )}
-            <button onClick={()=>{
-              const params = new URLSearchParams({
-                cli: sel.cliente_nombre,
-                ...(sel.cliente_id ? {tel:''} : {}),
-              })
-              // Buscar el teléfono del cliente para pre-cargarlo
-              supabase.from('clientes').select('telefono,tipo_cliente_id').eq('id', sel.cliente_id||'').maybeSingle()
-                .then(({data})=>{
-                  const p = new URLSearchParams({
-                    cli: sel.cliente_nombre,
-                    ...(data?.telefono ? {tel: data.telefono} : {}),
-                    ...(data?.tipo_cliente_id ? {tipo_id: data.tipo_cliente_id} : {}),
-                  })
-                  router.push(`/comprobantes?${p.toString()}`)
-                })
-            }} style={{...btn,marginTop:8,width:'100%',textAlign:'center',background:'#1d4ed8'}}>
-              🧾 Nueva factura
-            </button>
+            <div className="flex items-center gap-3">
+              <p className={`font-bold text-lg ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
+                {sel.saldo_actual>0?'Debe ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
+              </p>
+              <div className="flex gap-2">
+                {sel.saldo_actual > 0 && (
+                  <button onClick={abrirCobro} style={{...btn,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
+                    💰 Cobrar
+                  </button>
+                )}
+                <button onClick={()=>{
+                  supabase.from('clientes').select('telefono,tipo_cliente_id').eq('id', sel.cliente_id||'').maybeSingle()
+                    .then(({data})=>{
+                      const p = new URLSearchParams({
+                        cli: sel.cliente_nombre,
+                        ...(data?.telefono ? {tel: data.telefono} : {}),
+                        ...(data?.tipo_cliente_id ? {tipo_id: data.tipo_cliente_id} : {}),
+                      })
+                      router.push(`/comprobantes?${p.toString()}`)
+                    })
+                }} style={{...btn,padding:'7px 14px',fontSize:12,background:'#1d4ed8',whiteSpace:'nowrap'}}>
+                  🧾 Factura
+                </button>
+              </div>
+              <button onClick={()=>setSel(null)} className="text-p-gray text-lg leading-none">✕</button>
+            </div>
           </div>
 
           {/* Movimientos */}
-          <div className="overflow-y-auto max-h-[500px]">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-p-light">
-                <tr>
-                  <th className="text-left px-3 py-2 font-bold text-p-ink2">Fecha</th>
-                  <th className="text-left px-3 py-2 font-bold text-p-ink2">Descripción</th>
-                  <th className="text-right px-3 py-2 font-bold text-red-500">Debe</th>
-                  <th className="text-right px-3 py-2 font-bold text-green-600">Haber</th>
-                  <th className="text-right px-3 py-2 font-bold text-p-dark">Saldo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movs.map((m,i)=>(
-                  <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
-                    <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
-                    <td className="px-3 py-2 max-w-[100px]">
-                      <p className="truncate">{m.descripcion||'—'}</p>
-                      {m.tipo==='pago'&&<span className="text-[9px] font-bold bg-green-100 text-green-700 px-1 rounded">PAGO</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>
-                    <td className={`px-3 py-2 text-right font-mono font-bold ${m.saldo>0?'text-red-500':m.saldo<0?'text-green-600':'text-p-ink2'}`}>
-                      {moneyARS(Math.abs(m.saldo))}
-                    </td>
+          <div className="bg-white border border-p-line rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
+              <span className="text-xs font-semibold text-p-ink">Movimientos</span>
+              <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
+            </div>
+            <div className="overflow-y-auto" style={{maxHeight:400}}>
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-p-light">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                    <th className="text-right px-3 py-2 font-semibold text-red-400">Debe</th>
+                    <th className="text-right px-3 py-2 font-semibold text-green-600">Haber</th>
+                    <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {movs.map((m,i)=>(
+                    <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
+                      <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
+                      <td className="px-3 py-2 max-w-[140px]">
+                        <p className="truncate">{m.descripcion||'—'}</p>
+                        {m.tipo==='pago'&&<span className="text-[9px] font-bold bg-green-100 text-green-700 px-1 rounded">PAGO</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>
+                      <td className={`px-3 py-2 text-right font-mono font-bold ${m.saldo>0?'text-red-500':m.saldo<0?'text-green-600':'text-p-ink2'}`}>
+                        {moneyARS(Math.abs(m.saldo))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
+      ) : (
+        <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
+          <p className="text-sm text-p-ink2">Seleccioná un cliente para ver sus movimientos</p>
         </div>
       )}
 
