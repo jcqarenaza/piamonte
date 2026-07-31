@@ -461,31 +461,47 @@ export default function ComprasClient() {
             if (m) { articuloId = m.id; descEquivalente = m.descripcion || null }
           }
 
-          // 3) Equivalente por código base (primeros 9 chars) — mismo vidrio físico, otro origen/proveedor.
-          //    El maestro tiene UN artículo por vidrio (código Pilkington); los códigos de proveedor
-          //    (GAMMA, Malatesta, etc.) son equivalencias. Si el código no existe pero su base sí,
-          //    se crea la equivalencia nueva bajo ese artículo con el costo de la factura de ESTE código.
+          // 3) Equivalente por código base (primeros 9 chars) — mismo vidrio físico, otro origen.
+          //    Cada código completo es SU PROPIO artículo en el maestro (P, I, U... = artículos distintos,
+          //    cada uno con su precio). Si el código no existe pero su base sí, se crea el artículo nuevo
+          //    en el maestro copiando descripción/marca/pos/año del equivalente, con su equivalencia
+          //    del proveedor de la factura y el costo de la factura de ESTE código.
           if (!articuloId && codigo.length >= 9) {
             const codigoBase = codigo.slice(0, 9)
             let matchId: string | null = null
             const { data: m2 } = await supabase.from('articulos_maestro')
-              .select('id,descripcion').ilike('codigo_referencia', `${codigoBase}%`).eq('activo', true).limit(1).maybeSingle()
-            if (m2) { matchId = m2.id; descEquivalente = m2.descripcion || null }
+              .select('id').ilike('codigo_referencia', `${codigoBase}%`).eq('activo', true).limit(1).maybeSingle()
+            if (m2) matchId = m2.id
             if (!matchId) {
               const { data: eq2 } = await supabase.from('articulo_equivalencias')
-                .select('articulo_id,descripcion_proveedor').ilike('codigo_proveedor', `${codigoBase}%`).limit(1).maybeSingle()
-              if (eq2) { matchId = eq2.articulo_id; descEquivalente = eq2.descripcion_proveedor || null }
+                .select('articulo_id').ilike('codigo_proveedor', `${codigoBase}%`).limit(1).maybeSingle()
+              if (eq2) matchId = eq2.articulo_id
             }
             if (matchId) {
-              await supabase.from('articulo_equivalencias').insert({
-                articulo_id: matchId,
-                proveedor: form.proveedor_nombre || proveedores.find(pv => pv.id === form.proveedor_id)?.nombre || null,
-                codigo_proveedor: codigo,
-                descripcion_proveedor: descEquivalente || it.d || null,
-                costo_neto: costoUnit,
-                lista_nombre: null,
-              })
-              articuloId = matchId
+              // Copiar datos del artículo equivalente
+              const { data: artBase } = await supabase.from('articulos_maestro')
+                .select('descripcion,marca,pos,anio').eq('id', matchId).maybeSingle()
+              descEquivalente = artBase?.descripcion || null
+              // Crear el artículo NUEVO en el maestro con el código completo de la factura
+              const { data: nuevoArt } = await supabase.from('articulos_maestro').insert({
+                codigo_referencia: codigo,
+                descripcion: descEquivalente || it.d || codigo,
+                marca: artBase?.marca ?? null,
+                pos: artBase?.pos ?? null,
+                anio: artBase?.anio ?? null,
+                activo: true,
+              }).select('id').single()
+              if (nuevoArt) {
+                await supabase.from('articulo_equivalencias').insert({
+                  articulo_id: nuevoArt.id,
+                  proveedor: form.proveedor_nombre || proveedores.find(pv => pv.id === form.proveedor_id)?.nombre || null,
+                  codigo_proveedor: codigo,
+                  descripcion_proveedor: descEquivalente || it.d || null,
+                  costo_neto: costoUnit,
+                  lista_nombre: null,
+                })
+                articuloId = nuevoArt.id
+              }
             }
           }
         }
