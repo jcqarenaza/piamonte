@@ -532,12 +532,12 @@ export default function CuentaCorrienteAseguradorasClient() {
                         <tfoot>
                           <tr className="font-bold border-t border-p-line">
                             <td colSpan={2} className="py-2">Saldo pendiente</td>
-                            <td colSpan={2} className="py-2 text-right font-saira text-lg text-red-500">{moneyARS(s.saldo)}</td>
+                            <td colSpan={2} className="py-2 text-right font-saira text-lg text-red-500">{moneyARS(sel?.saldo||0)}</td>
                           </tr>
                         </tfoot>
                       </table>
-                  </div>
                 )}
+              </div>
             ) : (
               <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
                 <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
