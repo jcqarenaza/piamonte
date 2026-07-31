@@ -156,7 +156,9 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
               descripcion: `Remito R-${String(remito.numero).padStart(4,'0')} · ${form.dest_nombre}`,
             })
             const { data: s } = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
-            if(s) await supabase.from('stock').update({ cantidad: Math.max(0,(s as any).cantidad - it.c) }).eq('id',it.stock_id)
+                      try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
+          if(s) await supabase.from('stock').update({ cantidad: Math.max(0,(s as any).cantidad - it.c) }).eq('id',it.stock_id)
+          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
           }
         }
         setGuardando(false); setOpen(false)

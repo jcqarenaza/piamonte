@@ -668,7 +668,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                               descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
                               user_id: userId,
                             })
-                            await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
+                                      try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
+          await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
+          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
                           }
                           try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
                           await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
