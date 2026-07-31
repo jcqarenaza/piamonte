@@ -539,7 +539,8 @@ export default function CuentaCorrienteAseguradorasClient() {
                 )}
               </div>
             </div>
-            {!sel && (
+          )}
+          {!sel && (
               <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
                 <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
               </div>
