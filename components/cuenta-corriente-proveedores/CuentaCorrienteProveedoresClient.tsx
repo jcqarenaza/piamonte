@@ -45,7 +45,7 @@ export default function CuentaCorrienteProveedoresClient() {
   // NC: reemplazar ajuste pendiente
   const [ajustesPendNC, setAjustesPendNC] = useState<any[]>([])
   const [ordenesPago, setOrdenesPago] = useState<any[]>([])
-  const [verOPs, setVerOPs] = useState(false)
+  const [verOPs, setVerOPs] = useState<string|null>(null)
   const [borrandoOp, setBorrandoOp] = useState<string|null>(null)
   const supabase = createClient()
 
@@ -505,20 +505,28 @@ export default function CuentaCorrienteProveedoresClient() {
                   <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Órdenes de pago</p>
                   <div className="flex flex-col gap-1.5">
                     {ordenesPago.map(op=>(
-                      <div key={op.id} className="flex items-center justify-between text-xs">
-                        <div>
-                          <span className="font-semibold text-p-ink">OP Nº {op.numero}</span>
-                          <span className="text-p-ink2 ml-1">· {op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</span>
+                      <div key={op.id} className="flex flex-col text-xs border border-p-line rounded-lg overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-p-light/50"
+                          onClick={()=>setVerOPs(v=>v===op.id?null:op.id)}>
+                          <div>
+                            <span className="font-semibold text-p-ink">OP Nº {op.numero}</span>
+                            <span className="text-p-ink2 ml-1">· {op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</span>
+                            <span className="text-p-ink2 text-[10px]">{verOPs===op.id ? '▲' : '▼'}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</span>
-                          <button onClick={()=>eliminarOrdenPago(op)}
-                            disabled={borrandoOp===op.id}
-                            className="text-red-400 hover:text-red-600 text-sm"
-                            title="Eliminar OP">
-                            {borrandoOp===op.id ? '…' : '✕'}
-                          </button>
-                        </div>
+                        {verOPs===op.id && (
+                          <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between gap-3">
+                            <p className="text-[10px] text-red-600">Eliminar esta OP revertirá las facturas a pendientes de pago.</p>
+                            <button onClick={()=>{if(confirm(`¿Eliminar OP Nº ${op.numero} de ${moneyARS(op.total_pagado)}? Las facturas volverán a pendientes.`))eliminarOrdenPago(op)}}
+                              disabled={borrandoOp===op.id}
+                              className="text-[11px] font-bold text-red-600 border border-red-300 bg-white rounded px-2 py-1 hover:bg-red-100 shrink-0">
+                              {borrandoOp===op.id ? '…' : 'Eliminar OP'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

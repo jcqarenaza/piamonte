@@ -379,9 +379,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     y += 8
 
     // ── Vidrio a colocar ───────────────────────────────────────────────────
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
     doc.text('VIDRIO A COLOCAR', pad, y)
-    y += 7
+    y += 10
 
     // Ítems
     const stockItems = (o.items || []).filter((it: any) => it.stock_id && it.codigo)
