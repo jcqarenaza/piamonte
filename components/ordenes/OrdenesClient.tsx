@@ -389,7 +389,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       stockItems.forEach((it: any) => {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(28)
         doc.text(it.codigo, pad, y)
-        y += 8
+        y += 12
         if (it.d) {
           doc.setFont('helvetica', 'normal'); doc.setFontSize(11)
           doc.text(it.d, pad, y); y += 7
@@ -398,7 +398,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     } else if ((o as any).stock_codigo) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(28)
       doc.text((o as any).stock_codigo, pad, y)
-      y += 8
+      y += 12
     } else {
       // Sin código — espacio para anotar a mano
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
