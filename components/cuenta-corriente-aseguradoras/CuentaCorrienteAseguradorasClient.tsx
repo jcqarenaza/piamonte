@@ -465,7 +465,6 @@ export default function CuentaCorrienteAseguradorasClient() {
                   <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
                 </div>
                 {loading ? <p className="text-sm text-p-gray py-4 text-center">Cargando…</p> : (
-                    {loading ? <p className="text-sm text-p-gray py-2">Cargando…</p> : (
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-p-ink2 font-semibold border-b border-p-line">
@@ -537,7 +536,6 @@ export default function CuentaCorrienteAseguradorasClient() {
                           </tr>
                         </tfoot>
                       </table>
-                    )}
                   </div>
                 )}
             ) : (
