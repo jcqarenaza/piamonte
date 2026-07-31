@@ -463,13 +463,14 @@ export default function CuentaCorrienteAseguradorasClient() {
                   <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
                 </div>
                 {loading ? <p className="text-sm text-p-gray py-4 text-center">Cargando…</p> : (
+                  <div className="overflow-y-auto" style={{maxHeight:400}}>
                       <table className="w-full text-xs">
-                        <thead>
+                        <thead className="sticky top-0 bg-p-light">
                           <tr className="text-p-ink2 font-semibold border-b border-p-line">
-                            <th className="text-left py-1.5 w-24">Fecha</th>
-                            <th className="text-left py-1.5">Descripción</th>
-                            <th className="text-right py-1.5 text-red-500">Debe</th>
-                            <th className="text-right py-1.5 text-green-600">Haber</th>
+                            <th className="text-left px-3 py-2 w-24">Fecha</th>
+                            <th className="text-left px-3 py-2">Descripción</th>
+                            <th className="text-right px-3 py-2 text-red-400">Debe</th>
+                            <th className="text-right px-3 py-2 text-green-600">Haber</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -478,8 +479,8 @@ export default function CuentaCorrienteAseguradorasClient() {
                               <tr key={m.id}
                                 className={`border-b border-p-line2 ${m.haber>0?'cursor-pointer hover:bg-green-50/40':''}`}
                                 onClick={()=>m.haber>0&&setExpandedMov(expandedMov===m.id?null:m.id)}>
-                                <td className="py-2 font-mono text-p-ink2 align-top">{m.fecha.split('-').reverse().join('/')}</td>
-                                <td className="py-2 text-p-ink align-top">
+                                <td className="px-3 py-2 font-mono text-p-ink2 align-top">{m.fecha.split('-').reverse().join('/')}</td>
+                                <td className="px-3 py-2 text-p-ink align-top">
                                   <div className="flex items-center gap-1.5">
                                     {m.haber>0 && <span className="text-[9px] text-p-ink2">{expandedMov===m.id?'▼':'▶'}</span>}
                                     <span>{m.descripcion}</span>
@@ -492,8 +493,8 @@ export default function CuentaCorrienteAseguradorasClient() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="py-2 text-right font-mono text-red-500 align-top">{m.debe>0?moneyARS(m.debe):'—'}</td>
-                                <td className="py-2 text-right font-mono text-green-600 align-top">{m.haber>0?moneyARS(m.haber):'—'}</td>
+                                <td className="px-3 py-2 text-right font-mono text-red-500 align-top">{m.debe>0?moneyARS(m.debe):'—'}</td>
+                                <td className="px-3 py-2 text-right font-mono text-green-600 align-top">{m.haber>0?moneyARS(m.haber):'—'}</td>
                               </tr>
                               {expandedMov===m.id && cobrosMap[m.id] && (() => {
                                 const c = cobrosMap[m.id]
@@ -534,6 +535,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                           </tr>
                         </tfoot>
                       </table>
+                  </div>
                 )}
               </div>
             </div>
