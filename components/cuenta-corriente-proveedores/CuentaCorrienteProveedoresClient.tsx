@@ -493,6 +493,7 @@ export default function CuentaCorrienteProveedoresClient() {
               </tbody>
             </table>
           </div>
+          </div>
 
           {/* OPs + NC pendientes — dos columnas abajo */}
           {(ordenesPago.length > 0 || ajustesPendNC.length > 0) && (
