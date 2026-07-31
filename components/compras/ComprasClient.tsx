@@ -549,16 +549,11 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          // Marcar SOLO el ajuste de CC que corresponde a este artículo
-          // Filtramos por el id del ajuste_stock vinculado (guardado en la descripción del CC como código del artículo)
-          const stockCodigo = pendiente.stock?.codigo || ''
-          if (stockCodigo) {
+          // Marcar SOLO el ajuste de CC que corresponde a este ajuste usando comprobante_id (vínculo exacto)
+          if ((pendiente as any).comprobante_id) {
             await supabase.from('cuenta_corriente_proveedores')
               .update({ notas: `NC aplicada — ${numNc}` })
-              .eq('proveedor_id', provId)
-              .eq('tipo', 'ajuste')
-              .ilike('notas', '%pendiente_nc%')
-              .ilike('descripcion', `%(${stockCodigo})%`)
+              .eq('id', (pendiente as any).comprobante_id)
           }
         } else {
           // Saldo parcial — reducir cantidad del ajuste, mantener pendiente_nc=true por el resto
@@ -1381,7 +1376,7 @@ export default function ComprasClient() {
                   if (t.id === 'nc' && form.proveedor_id) {
                     if (form.proveedor_id) {
                       const { data } = await supabase.from('ajustes_stock')
-                        .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
+                        .select('id, descripcion, cantidad, fecha, nota, comprobante_id, stock:stock_id(id, codigo, descripcion)')
                         .eq('pendiente_nc', true)
                         .or(`proveedor_id.eq.${form.proveedor_id},proveedor_id.is.null`)
                         .order('fecha', { ascending: true })

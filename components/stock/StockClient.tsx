@@ -122,15 +122,23 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         stock_posterior: nueva,
       })
 
-      // Registrar en CC del proveedor
-      await supabase.from('cuenta_corriente_proveedores').insert({
+      // Registrar en CC del proveedor y guardar el id en ajustes_stock.comprobante_id
+      const { data: ccMov } = await supabase.from('cuenta_corriente_proveedores').insert({
         proveedor_id: ajusteCantForm.proveedor_id,
         proveedor_nombre: ajusteCantForm.proveedor_nombre,
         fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
         descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
         debe: 0, haber: montoAjuste,
         notas: `pendiente_nc`,
-      })
+      }).select('id').single()
+      // Vincular el ajuste de CC con el ajuste_stock para poder saldarlo exactamente al cargar la NC
+      if (ccMov?.id) {
+        await supabase.from('ajustes_stock')
+          .update({ comprobante_id: ccMov.id })
+          .eq('stock_id', ajusteCantModal.id)
+          .eq('pendiente_nc', true)
+          .eq('fecha', new Date().toISOString().slice(0,10))
+      }
     }
 
     setAjusteCantModal(null)
