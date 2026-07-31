@@ -11,10 +11,10 @@ const FAM_MAP: Record<string, string> = {
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
-  TECHO: 'Techo', VIDRIO: 'Otros',
+  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -303,6 +303,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       return 'CUSTODIA_D'
     }
     if (p.startsWith('ALETA') || p === 'ALETA_I' || p === 'ALETA_D') return 'ALETA'
+    if (p.startsWith('ESCOBILLA') || p.startsWith('PLUMILLA') || p.startsWith('LIMPIAPARABRISAS')) return 'ESCOBILLA'
     if (p.startsWith('VIDRIO') || p.startsWith('TECHO')) return 'VIDRIO'
     return p
   }
@@ -849,24 +850,33 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format: [80, 80], unit: 'mm', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
+    const W = 80
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0)
-    doc.text(code, 40, 10, { align: 'center' })
-    // Barcode simple con líneas
-    const barY = 14; const barH = 28; let bx = 5
-    doc.setFillColor(0,0,0)
-    for (let i=0; i<code.length; i++) {
+    doc.text(code, W/2, 10, { align: 'center' })
+    // Calcular ancho total del barcode para centrarlo
+    const barH = 28
+    type Bar = { x: number; w: number }
+    const bars: Bar[] = []
+    let totalBarW = 0
+    for (let i = 0; i < code.length; i++) {
       const w = (code.charCodeAt(i) % 3) * 0.4 + 0.8
-      doc.rect(bx, barY, w, barH, 'F')
-      bx += w + ((code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2)
-      if (bx > 74) break
+      const gap = (code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2
+      bars.push({ x: totalBarW, w })
+      totalBarW += w + gap
+    }
+    const startX = Math.max(4, (W - totalBarW) / 2)
+    const barY = 14
+    doc.setFillColor(0,0,0)
+    for (const bar of bars) {
+      if (startX + bar.x + bar.w > W - 4) break
+      doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
     }
     doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').slice(0,50), 40, 48, { align: 'center', maxWidth: 70 })
+    doc.text((s.descripcion||'').slice(0,50), W/2, 48, { align: 'center', maxWidth: 70 })
     if (s.marca) {
       doc.setFontSize(6); doc.setTextColor(100,100,100)
-      doc.text(s.marca, 40, 56, { align: 'center' })
+      doc.text(s.marca, W/2, 56, { align: 'center' })
     }
-    // Abrir en nueva ventana para imprimir directamente
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
     const win = window.open(url2, '_blank')
