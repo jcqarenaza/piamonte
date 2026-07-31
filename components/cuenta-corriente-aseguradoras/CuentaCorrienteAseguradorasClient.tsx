@@ -441,7 +441,7 @@ export default function CuentaCorrienteAseguradorasClient() {
           </div>
 
           {/* Panel detalle aseguradora */}
-          {sel ? (
+          {sel && (
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {/* Header */}
               <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
@@ -539,11 +539,12 @@ export default function CuentaCorrienteAseguradorasClient() {
                 )}
               </div>
             </div>
-            ) : (
+            {!sel && (
               <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
                 <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
               </div>
             )}
+        </div>
       )}
 
       {/* ── TAB LIQUIDACIONES ── */}
