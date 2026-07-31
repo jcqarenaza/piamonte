@@ -296,6 +296,9 @@ export default function ComprasClient() {
 
     // Si es edición, hacer update y salir
     if (editId) {
+      // Al editar NO resetear estado — preservar el estado actual (procesado/pendiente)
+      const { data: compActual } = await supabase.from('comprobantes_compra')
+        .select('estado').eq('id', editId).single()
       await supabase.from('comprobantes_compra').update({
         tipo: form.tipo, letra: form.letra||null,
         punto_venta: form.punto_venta||null, numero: form.numero||null,
@@ -306,7 +309,7 @@ export default function ComprasClient() {
         flete: flete||0, ret_iva: retIva||0, ret_ganancias: retGanancias||0, ret_iibb: retIibb||0,
         ajuste_redondeo: ajuste||0,
         notas: form.notas||null,
-        estado: 'pendiente',
+        estado: compActual?.estado || 'pendiente',
         afecta_stock: form.afecta_stock,
       }).eq('id', editId)
       setEditId(null); setOpen(false); setItems([]); load()
