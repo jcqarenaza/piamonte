@@ -1667,7 +1667,7 @@ export default function ComprasClient() {
             {descuentoItemsTotal > 0 && (
               <div className="flex justify-between text-xs text-p-ink2"><span>Bruto ítems (antes de dto por ítem)</span><span className="font-mono">{moneyARS(items.reduce((a,it)=>a+it.c*it.p,0))}</span></div>
             )}
-            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
+            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems+netoFlete)}</span></div>
 
             {/* Descuento editable */}
             {(descuentoMonto > 0 || ovDescuento !== '') && (
@@ -1733,7 +1733,7 @@ export default function ComprasClient() {
               </Field>
             </div>
 
-            {flete > 0 && <div className="flex justify-between text-sm text-p-ink2"><span>Flete</span><span className="font-mono">+{moneyARS(flete)}</span></div>}
+
             {totalRetenciones > 0 && <div className="flex justify-between text-sm text-red-600"><span>Retenciones</span><span className="font-mono">−{moneyARS(totalRetenciones)}</span></div>}
             {ajuste !== 0 && <div className="flex justify-between text-sm text-p-ink2"><span>Ajuste</span><span className="font-mono">{ajuste>0?'+':''}{moneyARS(ajuste)}</span></div>}
 
