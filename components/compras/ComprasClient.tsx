@@ -1667,7 +1667,7 @@ export default function ComprasClient() {
             {descuentoItemsTotal > 0 && (
               <div className="flex justify-between text-xs text-p-ink2"><span>Bruto ítems (antes de dto por ítem)</span><span className="font-mono">{moneyARS(items.reduce((a,it)=>a+it.c*it.p,0))}</span></div>
             )}
-            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems+netoFlete)}</span></div>
+            <div className="flex justify-between text-sm text-p-ink2"><span>Subtotal ítems {descuentoItemsTotal>0?'(con dto por ítem)':''}</span><span className="font-mono">{moneyARS(netoItems)}</span></div>
 
             {/* Descuento editable */}
             {(descuentoMonto > 0 || ovDescuento !== '') && (
