@@ -44,6 +44,9 @@ export default function CuentaCorrienteProveedoresClient() {
   const [ajusteForm, setAjusteForm]   = useState({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
   // NC: reemplazar ajuste pendiente
   const [ajustesPendNC, setAjustesPendNC] = useState<any[]>([])
+  const [ordenesPago, setOrdenesPago] = useState<any[]>([])
+  const [verOPs, setVerOPs] = useState(false)
+  const [borrandoOp, setBorrandoOp] = useState<string|null>(null)
   const supabase = createClient()
 
   async function load() {
@@ -75,13 +78,20 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp(data??[]))
-      // Cargar ajustes pendientes de NC para este proveedor
+      // Cargar ajustes pendientes de NC para este proveedor (solo los no saldados)
       supabase.from('cuenta_corriente_proveedores')
         .select('id,descripcion,haber,fecha,notas')
         .eq('proveedor_nombre', sel.proveedor_nombre)
         .eq('tipo','ajuste')
         .ilike('notas','%pendiente_nc%')
+        .not('notas','ilike','%NC aplicada%')
         .then(({data})=>setAjustesPendNC(data??[]))
+      // Cargar OPs del proveedor
+      supabase.from('ordenes_pago')
+        .select('id,numero,fecha,total_pagado,total_facturas,total_nc,forma_pago,notas,cuenta_corriente_id')
+        .eq('proveedor_id', sel.proveedor_id)
+        .order('fecha', { ascending: false })
+        .then(({data})=>setOrdenesPago(data??[]))
     }
   },[sel])
 
@@ -135,6 +145,30 @@ export default function CuentaCorrienteProveedoresClient() {
     loadMovs(sel.proveedor_nombre)
     setAjustesPendNC(prev=>prev.filter(a=>a.id!==ajusteId))
   }
+  async function eliminarOrdenPago(op: any) {
+    if (!sel || !confirm(`¿Eliminar la Orden de Pago Nº ${op.numero}? Se revertirán las facturas a pendientes.`)) return
+    setBorrandoOp(op.id)
+    // Revertir saldado en facturas vinculadas
+    const { data: items } = await supabase.from('orden_pago_items')
+      .select('comprobante_compra_id').eq('orden_pago_id', op.id)
+    if (items && items.length) {
+      await supabase.from('comprobantes_compra')
+        .update({ saldado: false })
+        .in('id', items.map((i:any) => i.comprobante_compra_id))
+    }
+    // Borrar movimiento de CC
+    if (op.cuenta_corriente_id) {
+      await supabase.from('cuenta_corriente_proveedores').delete().eq('id', op.cuenta_corriente_id)
+    }
+    // Borrar items y OP
+    await supabase.from('orden_pago_items').delete().eq('orden_pago_id', op.id)
+    await supabase.from('ordenes_pago').delete().eq('id', op.id)
+    setBorrandoOp(null)
+    setOrdenesPago(prev => prev.filter(o => o.id !== op.id))
+    load()
+    loadMovs(sel.proveedor_nombre)
+  }
+
   async function abrirOrdenPago() {
     if (!sel) return
     const { data } = await supabase.from('comprobantes_compra')
@@ -441,7 +475,39 @@ export default function CuentaCorrienteProveedoresClient() {
             )}
           </div>
 
-          {/* Movimientos */}
+          {/* OPs del proveedor */}
+          {ordenesPago.length > 0 && (
+            <div className="border-b border-p-line">
+              <button onClick={()=>setVerOPs(v=>!v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-p-ink2 hover:bg-p-light/50">
+                <span>🧾 Órdenes de Pago ({ordenesPago.length})</span>
+                <span>{verOPs ? '▲' : '▼'}</span>
+              </button>
+              {verOPs && (
+                <div className="flex flex-col gap-1.5 px-3 pb-3">
+                  {ordenesPago.map(op=>(
+                    <div key={op.id} className="flex items-center justify-between bg-p-light rounded-lg px-3 py-2 text-xs">
+                      <div>
+                        <p className="font-bold text-p-ink">OP Nº {op.numero}</p>
+                        <p className="text-p-ink2">{op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</p>
+                        <button onClick={()=>eliminarOrdenPago(op)}
+                          disabled={borrandoOp===op.id}
+                          className="text-red-400 hover:text-red-600 font-bold text-sm px-1"
+                          title="Eliminar OP">
+                          {borrandoOp===op.id ? '…' : '✕'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Movimientos — ocultar ajustes pendiente_nc (ya aparecen arriba) */}
           <div className="overflow-y-auto max-h-[500px]">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-p-light">
@@ -454,13 +520,14 @@ export default function CuentaCorrienteProveedoresClient() {
                 </tr>
               </thead>
               <tbody>
-                {movs.map((m,i)=>(
+                {movs.filter(m => !(m.tipo==='ajuste' && m.notas?.includes('pendiente_nc') && !m.notas?.includes('NC aplicada'))).map((m,i)=>(
                   <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
                     <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
                     <td className="px-3 py-2 max-w-[100px]">
                       <p className="truncate">{m.descripcion||'—'}</p>
                       {m.tipo==='pago'&&<span className="text-[9px] font-bold bg-green-100 text-green-700 px-1 rounded">PAGO</span>}
-                      {m.tipo==='ajuste'&&<span className="text-[9px] font-bold bg-gray-100 text-gray-600 px-1 rounded">AJUSTE</span>}
+                      {m.tipo==='ajuste'&&m.notas?.includes('NC aplicada')&&<span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1 rounded">NC APLICADA</span>}
+                      {m.tipo==='ajuste'&&!m.notas?.includes('pendiente_nc')&&!m.notas?.includes('NC aplicada')&&<span className="text-[9px] font-bold bg-gray-100 text-gray-600 px-1 rounded">AJUSTE</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
                     <td className="px-3 py-2 text-right font-mono font-bold text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>

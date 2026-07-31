@@ -552,6 +552,13 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
+          // Marcar el ajuste de CC del proveedor como saldado con la NC
+          await supabase.from('cuenta_corriente_proveedores')
+            .update({ notas: `NC aplicada — ${numNc}` })
+            .eq('proveedor_nombre', provNombre)
+            .eq('tipo', 'ajuste')
+            .ilike('notas', '%pendiente_nc%')
+            .ilike('descripcion', `%${pendiente.stock?.codigo||''}%`)
         } else {
           // Saldo parcial — reducir cantidad del ajuste, mantener pendiente_nc=true por el resto
           await supabase.from('ajustes_stock')
