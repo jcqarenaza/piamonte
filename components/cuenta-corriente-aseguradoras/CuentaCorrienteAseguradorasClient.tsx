@@ -414,13 +414,11 @@ export default function CuentaCorrienteAseguradorasClient() {
               </div>
             </div>
 
-            <div className="flex gap-2 mb-1">
-              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar…"
-                className="flex-1 border border-p-line rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-p-green bg-white"/>
-              <button onClick={abrirCobroLibre} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'6px 12px',fontWeight:700,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
-                + Liquidación
-              </button>
-            </div>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar…"
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-p-green bg-white mb-1"/>
+            <button onClick={abrirCobroLibre} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'7px 0',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%',marginBottom:6}}>
+              + Liquidación
+            </button>
 
             <div className="flex flex-col gap-1.5">
               {filtrados.filter(s=>s.saldo>0).map(s=>(
@@ -541,7 +539,7 @@ export default function CuentaCorrienteAseguradorasClient() {
             </div>
           )}
           {!sel && (
-              <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
+              <div className="flex items-center justify-center p-8">
                 <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
               </div>
             )}
