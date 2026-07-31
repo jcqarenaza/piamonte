@@ -86,18 +86,21 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || 'Ajuste manual'
     const esPendienteNC = ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc
 
-    // PRIMERO registrar en stock_movimientos — así el trigger encuentra el registro y no duplica
-    await supabase.from('stock_movimientos').insert({
-      stock_id: ajusteCantModal.id,
-      tipo: ajusteCantForm.tipo,
-      cantidad: Math.abs(delta),
-      fecha: new Date().toISOString().slice(0,10),
-      descripcion: notaFinal,
-      pendiente_nc: esPendienteNC,
-      user_id: userId || null,
-    })
+    // Para rotos pendientes NC: NO insertar en stock_movimientos (se registra en ajustes_stock)
+    // Para otros ajustes: sí insertar en stock_movimientos
+    if (!esPendienteNC) {
+      await supabase.from('stock_movimientos').insert({
+        stock_id: ajusteCantModal.id,
+        tipo: ajusteCantForm.tipo,
+        cantidad: Math.abs(delta),
+        fecha: new Date().toISOString().slice(0,10),
+        descripcion: notaFinal,
+        pendiente_nc: false,
+        user_id: userId || null,
+      })
+    }
 
-    // DESPUÉS actualizar cantidad — el trigger ya encontrará el movimiento y no duplicará
+    // Actualizar cantidad en stock
     await setUserCtx()
     await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
 
@@ -122,23 +125,15 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         stock_posterior: nueva,
       })
 
-      // Registrar en CC del proveedor y guardar el id en ajustes_stock.comprobante_id
-      const { data: ccMov } = await supabase.from('cuenta_corriente_proveedores').insert({
+      // Registrar en CC del proveedor
+      await supabase.from('cuenta_corriente_proveedores').insert({
         proveedor_id: ajusteCantForm.proveedor_id,
         proveedor_nombre: ajusteCantForm.proveedor_nombre,
         fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
         descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
         debe: 0, haber: montoAjuste,
         notas: `pendiente_nc`,
-      }).select('id').single()
-      // Vincular el ajuste de CC con el ajuste_stock para poder saldarlo exactamente al cargar la NC
-      if (ccMov?.id) {
-        await supabase.from('ajustes_stock')
-          .update({ comprobante_id: ccMov.id })
-          .eq('stock_id', ajusteCantModal.id)
-          .eq('pendiente_nc', true)
-          .eq('fecha', new Date().toISOString().slice(0,10))
-      }
+      })
     }
 
     setAjusteCantModal(null)

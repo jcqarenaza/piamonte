@@ -543,7 +543,7 @@ export default function ComprasClient() {
           await supabase.from('ajustes_stock')
             .update({ pendiente_nc: false, nota: `NC ${numNc} · ${provNombre}` })
             .eq('id', pendiente.id)
-          // Actualizar el movimiento en stock_movimientos para que la vista lo muestre como saldado
+          // Actualizar stock_movimientos si existe (rotos viejos que se registraron ahí)
           await supabase.from('stock_movimientos')
             .update({
               pendiente_nc: false,
@@ -552,6 +552,8 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
+            .eq('fecha', pendiente.fecha)
+          // Los nuevos rotos solo están en ajustes_stock — ya se actualizó arriba
           // Marcar SOLO el ajuste de CC que corresponde a este ajuste usando comprobante_id (vínculo exacto)
           if ((pendiente as any).comprobante_id) {
             await supabase.from('cuenta_corriente_proveedores')
@@ -573,6 +575,7 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
+            .eq('fecha', pendiente.fecha)
           // Insertar movimiento informativo de la NC parcial (sin afectar stock — cantidad 0)
           await supabase.from('stock_movimientos').insert({
             stock_id: pendiente.stock_id,
