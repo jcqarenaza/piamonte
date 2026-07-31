@@ -547,7 +547,9 @@ export default function CuentaCorrienteProveedoresClient() {
           )}
 
         </div>
-      ) : (
+      ) }
+
+      {!sel && (
         <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
           <p className="text-sm text-p-ink2">Seleccioná un proveedor para ver sus movimientos</p>
         </div>
