@@ -384,7 +384,7 @@ export default function CuentaCorrienteProveedoresClient() {
   const filtrados  = saldos.filter(s=>!q||s.proveedor_nombre.toLowerCase().includes(q.toLowerCase()))
 
   return (
-    <>
+    <div>
     <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
       {/* Lista compacta de proveedores */}
       <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -554,6 +554,8 @@ export default function CuentaCorrienteProveedoresClient() {
           <p className="text-sm text-p-ink2">Seleccioná un proveedor para ver sus movimientos</p>
         </div>
       )}
+
+    </div>
 
       {/* Modal registrar pago */}
       <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar pago — ${sel?.proveedor_nombre}`}>
@@ -757,6 +759,6 @@ export default function CuentaCorrienteProveedoresClient() {
           </div>
         </div>
       </Modal>
-    </>
+    </div>
   )
 }
