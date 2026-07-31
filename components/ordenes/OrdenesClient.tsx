@@ -387,7 +387,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const stockItems = (o.items || []).filter((it: any) => it.stock_id && it.codigo)
     if (stockItems.length > 0) {
       stockItems.forEach((it: any) => {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(28)
         doc.text(it.codigo, pad, y)
         y += 8
         if (it.d) {
@@ -396,7 +396,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         }
       })
     } else if ((o as any).stock_codigo) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(18)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(28)
       doc.text((o as any).stock_codigo, pad, y)
       y += 8
     } else {
@@ -441,7 +441,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     // Firma
     doc.line(pad, y, pad + 70, y)
     doc.setFontSize(9)
-    doc.text('Firma colaborador', pad, y + 5)
+    doc.text(colab ? `Firma: ${colab.nombre}` : 'Firma colaborador', pad, y + 5)
     doc.line(W - pad - 70, y, W - pad, y)
     doc.text('Firma recepción Admin', W - pad - 70, y + 5)
     y += 20
