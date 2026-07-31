@@ -556,7 +556,6 @@ export default function CuentaCorrienteProveedoresClient() {
       )}
 
       {/* Modal registrar pago */}
-</div>
       <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar pago — ${sel?.proveedor_nombre}`}>
         <div className="flex flex-col gap-3">
           <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
@@ -758,7 +757,6 @@ export default function CuentaCorrienteProveedoresClient() {
           </div>
         </div>
       </Modal>
-    </div>
     </>
   )
 }
