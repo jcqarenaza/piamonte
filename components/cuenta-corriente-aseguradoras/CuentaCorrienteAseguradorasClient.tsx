@@ -544,8 +544,6 @@ export default function CuentaCorrienteAseguradorasClient() {
                 <p className="text-sm text-p-ink2">Seleccioná una aseguradora para ver sus movimientos</p>
               </div>
             )}
-          </div>
-        </div>
       )}
 
       {/* ── TAB LIQUIDACIONES ── */}
