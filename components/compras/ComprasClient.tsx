@@ -435,6 +435,7 @@ export default function ComprasClient() {
     if (comp && form.tipo === 'factura' && form.afecta_stock && !tieneRemitoVinculado && itemsConStock.length > 0) {
       const numFact = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
       const itemsActualizados = [...items]
+      const sinVincular: string[] = []
 
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx]
@@ -444,15 +445,59 @@ export default function ComprasClient() {
         const dtoPct = (it.dto ?? descuentoPct) / 100
         const costoUnit = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
-        // Resolver articulo_id
+        // Resolver articulo_id contra el catálogo maestro
         let articuloId: string | null = (it as any).articulo_id || null
+        let descEquivalente: string | null = null
         if (!articuloId && codigo) {
+          // 1) Equivalencia exacta por código de proveedor
           const { data: eq } = await supabase.from('articulo_equivalencias')
             .select('articulo_id').eq('codigo_proveedor', codigo).maybeSingle()
           articuloId = eq?.articulo_id || null
+
+          // 2) Código de referencia Pilkington exacto en el maestro
+          if (!articuloId) {
+            const { data: m } = await supabase.from('articulos_maestro')
+              .select('id,descripcion').eq('codigo_referencia', codigo).eq('activo', true).maybeSingle()
+            if (m) { articuloId = m.id; descEquivalente = m.descripcion || null }
+          }
+
+          // 3) Equivalente por código base (primeros 9 chars) — mismo vidrio físico, otro origen/proveedor.
+          //    El maestro tiene UN artículo por vidrio (código Pilkington); los códigos de proveedor
+          //    (GAMMA, Malatesta, etc.) son equivalencias. Si el código no existe pero su base sí,
+          //    se crea la equivalencia nueva bajo ese artículo con el costo de la factura de ESTE código.
+          if (!articuloId && codigo.length >= 9) {
+            const codigoBase = codigo.slice(0, 9)
+            let matchId: string | null = null
+            const { data: m2 } = await supabase.from('articulos_maestro')
+              .select('id,descripcion').ilike('codigo_referencia', `${codigoBase}%`).eq('activo', true).limit(1).maybeSingle()
+            if (m2) { matchId = m2.id; descEquivalente = m2.descripcion || null }
+            if (!matchId) {
+              const { data: eq2 } = await supabase.from('articulo_equivalencias')
+                .select('articulo_id,descripcion_proveedor').ilike('codigo_proveedor', `${codigoBase}%`).limit(1).maybeSingle()
+              if (eq2) { matchId = eq2.articulo_id; descEquivalente = eq2.descripcion_proveedor || null }
+            }
+            if (matchId) {
+              await supabase.from('articulo_equivalencias').insert({
+                articulo_id: matchId,
+                proveedor: form.proveedor_nombre || proveedores.find(pv => pv.id === form.proveedor_id)?.nombre || null,
+                codigo_proveedor: codigo,
+                descripcion_proveedor: descEquivalente || it.d || null,
+                costo_neto: costoUnit,
+                lista_nombre: null,
+              })
+              articuloId = matchId
+            }
+          }
         }
 
-        if (!codigo && !articuloId) continue
+        // Sin vínculo al maestro — registrar para avisar al final (hay que crearlo a mano con su descripción)
+        if (!articuloId) {
+          if (!codigo) {
+            sinVincular.push(`(sin código) ${(it.d||'').slice(0,50)} — NO se cargó stock`)
+            continue
+          }
+          sinVincular.push(`${codigo} — ${(it.d||'').slice(0,50)}`)
+        }
 
         // Buscar fila de stock existente
         let stockRow: any = null
@@ -484,7 +529,8 @@ export default function ComprasClient() {
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
           // No existe — crear con cantidad ya cargada y procesado
-          let desc = it.d
+          // Prioridad de descripción: catálogo por código exacto > descripción heredada del maestro/equivalente > la de la factura
+          let desc = descEquivalente || it.d
           if (codigo) {
             const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').eq('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
             if (cat?.descripcion) desc = cat.descripcion
@@ -506,6 +552,11 @@ export default function ComprasClient() {
             itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
           }
         }
+      }
+
+      // Avisar ítems que quedaron sin vincular al catálogo maestro
+      if (sinVincular.length > 0) {
+        alert(`⚠ ${sinVincular.length} ítem(s) sin vincular al catálogo maestro:\n\n${sinVincular.join('\n')}\n\nNo se encontró el código ni un equivalente por código base. Crealos a mano en el maestro (con la descripción correcta) y vinculá la fila de stock desde el módulo Stock.`)
       }
 
       // Guardar stock_ids y marcar procesado (ya se sumó el stock directamente)
