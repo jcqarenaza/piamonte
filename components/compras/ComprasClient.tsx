@@ -412,9 +412,7 @@ export default function ComprasClient() {
           if (stockMatch.costo && Math.abs(costoNuevo - stockMatch.costo) / stockMatch.costo > 0.05) {
             alertas.push(`${it.d.slice(0,40)}: costo anterior $${Math.round(stockMatch.costo).toLocaleString('es-AR')} → nuevo $${costoNuevo.toLocaleString('es-AR')}`)
           }
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          await supabase.from('stock').update({ costo: costoNuevo }).eq('id', stockMatch.id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
+          await supabase.rpc('actualizar_costo_stock', { p_stock_id: stockMatch.id, p_costo: costoNuevo })
         }
 
         // También actualizar catalogo.costo_neto si hay código
@@ -473,21 +471,16 @@ export default function ComprasClient() {
         const numFact2 = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
 
         if (stockRow) {
-          // Existe — PRIMERO insertar movimiento, DESPUÉS update con skip trigger
-          await supabase.from('stock_movimientos').insert({
-            stock_id: stockRow.id, tipo: 'entrada',
-            cantidad: cantItem, costo_unitario: costoUnit,
-            fecha: fechaFact,
-            comprobante_compra_id: comp.id,
+          // Existe — movimiento + suma de stock en una sola transacción (RPC atómico)
+          await supabase.rpc('insertar_movimiento_stock', {
+            p_stock_id: stockRow.id, p_tipo: 'entrada',
+            p_cantidad: cantItem, p_costo_unitario: costoUnit,
+            p_fecha: fechaFact,
+            p_comprobante_compra_id: comp.id,
+            p_stock_costo: costoUnit,
+            p_stock_articulo_id: articuloId || null,
+            p_stock_pendiente_ingreso: false,
           })
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          await supabase.from('stock').update({
-            costo: costoUnit,
-            articulo_id: stockRow.articulo_id || articuloId || null,
-            cantidad: (stockRow.cantidad || 0) + cantItem,
-            pendiente_ingreso: false,
-          }).eq('id', stockRow.id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
           // No existe — crear con cantidad ya cargada y procesado
@@ -714,25 +707,16 @@ export default function ComprasClient() {
       const item = remitoModal.items[idx]
       if (!map) continue
 
-      const { data: st } = await supabase.from('stock').select('cantidad,articulo_id,pendiente_ingreso').eq('id', map.stock_id).maybeSingle()
-      if (st) {
-        const updatePayload: any = {
-          cantidad: (st.cantidad||0) + map.qty,
-          pendiente_ingreso: false,
-        }
-        if (!st.articulo_id && item.articulo_id) updatePayload.articulo_id = item.articulo_id
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-        await supabase.from('stock').update(updatePayload).eq('id', map.stock_id)
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
-      }
-
-      // Registrar en stock_movimientos sin descripcion hardcodeada —
-      // la vista_movimientos_stock la construye automáticamente desde comprobante_compra_id
-      await supabase.from('stock_movimientos').insert({
-        stock_id: map.stock_id, tipo: 'entrada',
-        cantidad: map.qty, costo_unitario: map.costo,
-        fecha,
-        comprobante_compra_id: remitoModal.id,
+      // Movimiento + suma de stock + pendiente_ingreso=false en una sola transacción (RPC atómico)
+      // Sin descripcion hardcodeada — la vista_movimientos_stock la construye desde comprobante_compra_id
+      // articulo_id solo se completa si estaba null (COALESCE en el RPC)
+      await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: map.stock_id, p_tipo: 'entrada',
+        p_cantidad: map.qty, p_costo_unitario: map.costo,
+        p_fecha: fecha,
+        p_comprobante_compra_id: remitoModal.id,
+        p_stock_articulo_id: item.articulo_id || null,
+        p_stock_pendiente_ingreso: false,
       })
 
       // Persistir stock_id en el JSONB del comprobante para que quede vinculado
@@ -792,19 +776,8 @@ export default function ComprasClient() {
 
     // Si afectó stock, revertir movimientos
     if (comp.afecta_stock && comp.estado === 'procesado') {
-      const { data: movimientos } = await supabase.from('stock_movimientos')
-        .select('id, stock_id, cantidad').eq('comprobante_compra_id', id)
-      if (movimientos && movimientos.length > 0) {
-        for (const mov of movimientos) {
-          const { data: s } = await supabase.from('stock').select('cantidad').eq('id', mov.stock_id).maybeSingle()
-          if (s) {
-            try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-            await supabase.from('stock').update({ cantidad: Math.max(0, (s.cantidad || 0) - mov.cantidad) }).eq('id', mov.stock_id)
-            try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
-          }
-        }
-        await supabase.from('stock_movimientos').delete().eq('comprobante_compra_id', id)
-      }
+      // Reversa de stock + borrado de movimientos en una sola transacción (RPC atómico)
+      await supabase.rpc('revertir_movimientos_comprobante_compra', { p_comprobante_id: id })
     }
 
     // Revertir CC del proveedor si generó cargo

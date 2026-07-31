@@ -150,15 +150,12 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
       if(remito) {
         for(const it of items) {
           if(it.stock_id) {
-            await supabase.from('stock_movimientos').insert({
-              stock_id: it.stock_id, tipo: 'salida', cantidad: it.c,
-              fecha: form.fecha,
-              descripcion: `Remito R-${String(remito.numero).padStart(4,'0')} · ${form.dest_nombre}`,
+            // Movimiento + descuento de stock en una sola transacción (RPC atómico)
+            await supabase.rpc('insertar_movimiento_stock', {
+              p_stock_id: it.stock_id, p_tipo: 'salida', p_cantidad: it.c,
+              p_fecha: form.fecha,
+              p_descripcion: `Remito R-${String(remito.numero).padStart(4,'0')} · ${form.dest_nombre}`,
             })
-            const { data: s } = await supabase.from('stock').select('cantidad').eq('id',it.stock_id).single()
-                      try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          if(s) await supabase.from('stock').update({ cantidad: Math.max(0,(s as any).cantidad - it.c) }).eq('id',it.stock_id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
           }
         }
         setGuardando(false); setOpen(false)

@@ -222,18 +222,16 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           form.cliente || null,
           form.pago !== 'Efectivo' ? form.pago : null,
         ].filter(Boolean).join(' · ') || 'Venta de caja'
-        // PRIMERO insertar movimiento — así el trigger no duplica
-        await supabase.from('stock_movimientos').insert({
-          stock_id: form.stock_id,
-          tipo: 'salida',
-          cantidad: 1,
-          precio_venta_unitario: +form.precio.replace(/[^0-9.]/g, '') || null,
-          fecha: fecha,
-          descripcion: notaVenta,
-          user_id: userId || null,
+        // Movimiento + descuento de stock en una sola transacción (RPC atómico)
+        await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: form.stock_id,
+          p_tipo: 'salida',
+          p_cantidad: 1,
+          p_precio_venta_unitario: +form.precio.replace(/[^0-9.]/g, '') || null,
+          p_fecha: fecha,
+          p_descripcion: notaVenta,
+          p_user_id: userId || null,
         })
-        // DESPUÉS actualizar cantidad
-        await supabase.from('stock').update({ cantidad: s.cantidad - 1, updated_at: new Date().toISOString() }).eq('id', s.id)
         setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
       }
     }
@@ -248,16 +246,13 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     if (v.origen === 'stock' && v.stock_id) {
       const s = stockItems.find(x => x.id === v.stock_id)
       if (s) {
-        // PRIMERO movimiento, DESPUÉS update — y skip trigger para no duplicar
-        await supabase.from('stock_movimientos').insert({
-          stock_id: v.stock_id, tipo: 'entrada', cantidad: 1,
-          fecha: v.fecha || fecha,
-          descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
-          user_id: userId || null,
+        // Movimiento + devolución de stock en una sola transacción (RPC atómico)
+        await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1,
+          p_fecha: v.fecha || fecha,
+          p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
+          p_user_id: userId || null,
         })
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-        await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
         setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
       }
     }
@@ -322,11 +317,8 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     if (v.origen === 'stock' && v.stock_id) {
       const s = stockItems.find(x => x.id === v.stock_id)
       if (s) {
-        // PRIMERO movimiento, DESPUÉS update con skip trigger
-        await supabase.from('stock_movimientos').insert({ stock_id: v.stock_id, tipo: 'entrada', cantidad: 1, fecha: v.fecha || fecha, descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, user_id: userId || null })
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-        await supabase.from('stock').update({ cantidad: s.cantidad + 1, updated_at: new Date().toISOString() }).eq('id', s.id)
-        try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
+        // Movimiento + devolución de stock en una sola transacción (RPC atómico)
+        await supabase.rpc('insertar_movimiento_stock', { p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1, p_fecha: v.fecha || fecha, p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, p_user_id: userId || null })
       }
     }
     await supabase.from('ventas').delete().eq('id', v.id)

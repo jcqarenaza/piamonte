@@ -474,25 +474,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // Devolver stock de los ítems que sí tenían unidad física vinculada
     for (const x of ncItemsSel) {
       if (x.it.stock_id && x.cant > 0) {
-        const { data: s } = await supabase.from('stock').select('cantidad').eq('id', x.it.stock_id).single()
-        if (s) {
-          const cantAnterior = (s as any).cantidad
-          // PRIMERO insertar movimiento — así el trigger no duplica
-          await supabase.from('stock_movimientos').insert({
-            stock_id: x.it.stock_id,
-            tipo: 'entrada',
-            cantidad: x.cant,
-            costo_unitario: x.it.costo ?? null,
-            fecha: todayStr(),
-            descripcion: `NC-${String(nextNum).padStart(8,'0')} · ${ncComp.cliente_nombre}${ncComp.aseguradora_nombre ? ' · ' + ncComp.aseguradora_nombre : ''} — devolución`,
-            comprobante_venta_id: (nc as any).id,
-            user_id: userId,
-          })
-          // DESPUÉS actualizar cantidad
-                    try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          await supabase.from('stock').update({ cantidad: cantAnterior + x.cant }).eq('id', x.it.stock_id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
-        }
+        // Movimiento + devolución de stock en una sola transacción (RPC atómico)
+        await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: x.it.stock_id,
+          p_tipo: 'entrada',
+          p_cantidad: x.cant,
+          p_costo_unitario: x.it.costo ?? null,
+          p_fecha: todayStr(),
+          p_descripcion: `NC-${String(nextNum).padStart(8,'0')} · ${ncComp.cliente_nombre}${ncComp.aseguradora_nombre ? ' · ' + ncComp.aseguradora_nombre : ''} — devolución`,
+          p_comprobante_venta_id: (nc as any).id,
+          p_user_id: userId,
+        })
       }
     }
 
@@ -782,28 +774,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (!yaColocada) {
       for(const it of items){
         if(it.stock_id && it.c > 0){
-          const {data:s} = await supabase.from('stock').select('cantidad,costo').eq('id',it.stock_id).single()
+          const {data:s} = await supabase.from('stock').select('costo').eq('id',it.stock_id).single()
           if(s) {
             const notaMov = [
               comp ? `FC-0006-${String((comp as any).nro_cbte_afip || (comp as any).numero || '').padStart(8,'0')}` : null,
               asegSel?.nombre || cliSel?.nombre || null,
             ].filter(Boolean).join(' · ') || it.d
-            // PRIMERO insertar movimiento — así el trigger no duplica
-            try { await supabase.rpc('set_config', { key: 'app.current_user_id', value: userId, is_local: true }) } catch(_) {}
-            await supabase.from('stock_movimientos').insert({
-              stock_id: it.stock_id, tipo: 'salida',
-              cantidad: it.c,
-              costo_unitario: (s as any).costo || null,
-              precio_venta_unitario: it.p,
-              fecha: fechaComp,
-              descripcion: notaMov,
-              comprobante_venta_id: compId,
-              user_id: userId || null,
+            // Movimiento + descuento de stock en una sola transacción (RPC atómico)
+            await supabase.rpc('insertar_movimiento_stock', {
+              p_stock_id: it.stock_id, p_tipo: 'salida',
+              p_cantidad: it.c,
+              p_costo_unitario: (s as any).costo || null,
+              p_precio_venta_unitario: it.p,
+              p_fecha: fechaComp,
+              p_descripcion: notaMov,
+              p_comprobante_venta_id: compId,
+              p_user_id: userId || null,
             })
-            // DESPUÉS actualizar cantidad
-                      try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          await supabase.from('stock').update({cantidad:Math.max(0,(s as any).cantidad-it.c)}).eq('id',it.stock_id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
           }
         }
       }

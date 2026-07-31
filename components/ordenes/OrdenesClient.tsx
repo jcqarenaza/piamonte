@@ -656,23 +656,15 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
                           const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
                           const fecha = todayStr()
-                          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
-                          try { await supabase.rpc('set_config', { key: 'app.current_user_id', value: userId, is_local: true }) } catch(_) {}
                           for (const it of stockItems) {
-                            const { data: st } = await supabase.from('stock').select('cantidad').eq('id', it.stock_id).maybeSingle()
-                            if (!st) continue
-                            const nueva = Math.max(0,(st.cantidad||0) - (it.c||1))
-                            await supabase.from('stock_movimientos').insert({
-                              stock_id: it.stock_id, tipo: 'salida',
-                              cantidad: it.c||1, fecha,
-                              descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
-                              user_id: userId,
+                            // Movimiento + descuento de stock en una sola transacción (RPC atómico)
+                            await supabase.rpc('insertar_movimiento_stock', {
+                              p_stock_id: it.stock_id, p_tipo: 'salida',
+                              p_cantidad: it.c||1, p_fecha: fecha,
+                              p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                              p_user_id: userId,
                             })
-                                      try { await supabase.rpc('set_skip_stock_trigger', { skip: true }) } catch(_) {}
-          await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.stock_id)
-          try { await supabase.rpc('set_skip_stock_trigger', { skip: false }) } catch(_) {}
                           }
-                          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
                           await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                           load()
                         }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
