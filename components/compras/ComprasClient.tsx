@@ -412,7 +412,9 @@ export default function ComprasClient() {
           if (stockMatch.costo && Math.abs(costoNuevo - stockMatch.costo) / stockMatch.costo > 0.05) {
             alertas.push(`${it.d.slice(0,40)}: costo anterior $${Math.round(stockMatch.costo).toLocaleString('es-AR')} → nuevo $${costoNuevo.toLocaleString('es-AR')}`)
           }
+          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
           await supabase.from('stock').update({ costo: costoNuevo }).eq('id', stockMatch.id)
+          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
         }
 
         // También actualizar catalogo.costo_neto si hay código
@@ -457,19 +459,13 @@ export default function ComprasClient() {
         // Buscar fila de stock existente
         let stockRow: any = null
         if (codigo) {
-          // Buscar exacto primero, luego case-insensitive
-          const { data: exact } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('codigo', codigo).eq('activo', true).maybeSingle()
-          if (exact) {
-            stockRow = exact
-          } else {
-            // Buscar ignorando mayúsculas/minúsculas
-            const { data: ilike } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').ilike('codigo', codigo).eq('activo', true).maybeSingle()
-            stockRow = ilike || null
-          }
+          const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('codigo', codigo).eq('activo', true).maybeSingle()
+          stockRow = data
         }
         if (!stockRow && articuloId) {
           const { data } = await supabase.from('stock').select('id,cantidad,articulo_id,codigo,pendiente_ingreso').eq('articulo_id', articuloId).eq('activo', true).maybeSingle()
-          stockRow = data || null
+          // Solo reutilizar si el código es el mismo — si el código es distinto, crear uno nuevo
+          if (data && data.codigo === codigo) stockRow = data
         }
 
         const cantItem = it.c || 1
@@ -477,38 +473,34 @@ export default function ComprasClient() {
         const numFact2 = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
 
         if (stockRow) {
-          // Existe — sumar cantidad directamente y marcar como procesado
-          await supabase.from('stock').update({
-            costo: costoUnit,
-            articulo_id: stockRow.articulo_id || articuloId || null,
-            cantidad: (stockRow.cantidad || 0) + cantItem,
-            pendiente_ingreso: false,
-          }).eq('id', stockRow.id)
+          // Existe — PRIMERO insertar movimiento, DESPUÉS update con skip trigger
           await supabase.from('stock_movimientos').insert({
             stock_id: stockRow.id, tipo: 'entrada',
             cantidad: cantItem, costo_unitario: costoUnit,
             fecha: fechaFact,
             comprobante_compra_id: comp.id,
           })
+          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
+          await supabase.from('stock').update({
+            costo: costoUnit,
+            articulo_id: stockRow.articulo_id || articuloId || null,
+            cantidad: (stockRow.cantidad || 0) + cantItem,
+            pendiente_ingreso: false,
+          }).eq('id', stockRow.id)
+          try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
           itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: stockRow.id } as any
         } else {
-          // No existe — buscar en maestro para obtener articulo_id y descripcion correctos
+          // No existe — crear con cantidad ya cargada y procesado
           let desc = it.d
-          let articuloIdFinal = articuloId
           if (codigo) {
-            const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').ilike('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
+            const { data: cat } = await supabase.from('catalogo').select('descripcion,pos,marca').eq('codigo', codigo).is('lista_nombre', null).limit(1).maybeSingle()
             if (cat?.descripcion) desc = cat.descripcion
-            // Buscar en maestro por codigo_referencia
-            if (!articuloIdFinal) {
-              const { data: am } = await supabase.from('articulos_maestro').select('id').ilike('codigo_referencia', codigo).maybeSingle()
-              if (am?.id) articuloIdFinal = am.id
-            }
           }
-          const codigoFinal = codigo ? codigo.toUpperCase() : (articuloIdFinal ? `ART-${articuloIdFinal.slice(0,8)}` : null)
+          const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
           const { data: newStock } = await supabase.from('stock').insert({
             codigo: codigoFinal, descripcion: desc, cantidad: cantItem,
             costo: costoUnit, precio_venta: 0,
-            articulo_id: articuloIdFinal || null, activo: true,
+            articulo_id: articuloId || null, activo: true,
             pendiente_ingreso: false,
           }).select('id').single()
           if (newStock) {
@@ -729,7 +721,9 @@ export default function ComprasClient() {
           pendiente_ingreso: false,
         }
         if (!st.articulo_id && item.articulo_id) updatePayload.articulo_id = item.articulo_id
+        try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
         await supabase.from('stock').update(updatePayload).eq('id', map.stock_id)
+        try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
       }
 
       // Registrar en stock_movimientos sin descripcion hardcodeada —
@@ -804,7 +798,9 @@ export default function ComprasClient() {
         for (const mov of movimientos) {
           const { data: s } = await supabase.from('stock').select('cantidad').eq('id', mov.stock_id).maybeSingle()
           if (s) {
+            try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
             await supabase.from('stock').update({ cantidad: Math.max(0, (s.cantidad || 0) - mov.cantidad) }).eq('id', mov.stock_id)
+            try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
           }
         }
         await supabase.from('stock_movimientos').delete().eq('comprobante_compra_id', id)
