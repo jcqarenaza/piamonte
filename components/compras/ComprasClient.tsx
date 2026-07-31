@@ -536,14 +536,11 @@ export default function ComprasClient() {
         const cantRestante = pendiente.cantidad - cantSaldada
 
         if (cantRestante <= 0) {
-          // Saldo total — actualizar el ajuste existente con el número de NC (no mover stock, ya fue descontado al marcar roto)
+          // Saldo total — actualizar ajuste_stock con número de NC
           await supabase.from('ajustes_stock')
-            .update({
-              pendiente_nc: false,
-              nota: `NC ${numNc} · ${provNombre}`,
-            })
+            .update({ pendiente_nc: false, nota: `NC ${numNc} · ${provNombre}` })
             .eq('id', pendiente.id)
-          // Actualizar también el movimiento en stock_movimientos para que la vista lo muestre como saldado
+          // Actualizar el movimiento en stock_movimientos para que la vista lo muestre como saldado
           await supabase.from('stock_movimientos')
             .update({
               pendiente_nc: false,
@@ -552,13 +549,17 @@ export default function ComprasClient() {
             })
             .eq('stock_id', pendiente.stock_id)
             .eq('pendiente_nc', true)
-          // Marcar el ajuste de CC del proveedor como saldado con la NC
-          await supabase.from('cuenta_corriente_proveedores')
-            .update({ notas: `NC aplicada — ${numNc}` })
-            .eq('proveedor_nombre', provNombre)
-            .eq('tipo', 'ajuste')
-            .ilike('notas', '%pendiente_nc%')
-            .ilike('descripcion', `%${pendiente.stock?.codigo||''}%`)
+          // Marcar SOLO el ajuste de CC que corresponde a este artículo
+          // Filtramos por el id del ajuste_stock vinculado (guardado en la descripción del CC como código del artículo)
+          const stockCodigo = pendiente.stock?.codigo || ''
+          if (stockCodigo) {
+            await supabase.from('cuenta_corriente_proveedores')
+              .update({ notas: `NC aplicada — ${numNc}` })
+              .eq('proveedor_id', provId)
+              .eq('tipo', 'ajuste')
+              .ilike('notas', '%pendiente_nc%')
+              .ilike('descripcion', `%(${stockCodigo})%`)
+          }
         } else {
           // Saldo parcial — reducir cantidad del ajuste, mantener pendiente_nc=true por el resto
           await supabase.from('ajustes_stock')
