@@ -384,141 +384,94 @@ export default function CuentaCorrienteProveedoresClient() {
   const filtrados  = saldos.filter(s=>!q||s.proveedor_nombre.toLowerCase().includes(q.toLowerCase()))
 
   return (
-    <div className="flex gap-4">
-      {/* Lista de proveedores con saldo */}
-      <div className="flex-1 min-w-0">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-            <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Total a pagar</p>
-            <p className="font-saira font-bold text-2xl text-red-500 mt-1">{moneyARS(totalDeuda)}</p>
+    <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
+      {/* Lista compacta de proveedores */}
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {/* Totales compactos */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:4}}>
+          <div className="bg-white border border-p-line rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Total a pagar</p>
+            <p className="font-saira font-bold text-base text-red-500 mt-0.5">{moneyARS(totalDeuda)}</p>
           </div>
-          <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-            <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Proveedores con saldo</p>
-            <p className="font-saira font-bold text-2xl text-p-dark mt-1">{conSaldo}</p>
+          <div className="bg-white border border-p-line rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Con saldo</p>
+            <p className="font-saira font-bold text-base text-p-dark mt-0.5">{conSaldo}</p>
           </div>
         </div>
 
         <input value={q} onChange={e=>setQ(e.target.value)}
           placeholder="Buscar proveedor…"
-          className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm mb-4 focus:outline-none focus:border-p-green bg-white shadow-sm"/>
+          className="w-full border border-p-line rounded-lg px-3 py-2 text-xs mb-1 focus:outline-none focus:border-p-green bg-white"/>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-700">
-          📒 Las facturas cargadas en Compras con forma de pago "Cuenta corriente" aparecen acá automáticamente.
-          Las facturas al contado no generan deuda.
-        </div>
-
-        {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> :
-         filtrados.length===0 ? <Empty msg="Sin proveedores con saldo pendiente." /> : (
-          <div className="flex flex-col gap-2">
+        {loading ? <p className="text-sm text-p-gray text-center py-6">Cargando…</p> :
+         filtrados.length===0 ? <Empty msg="Sin proveedores con saldo." /> : (
+          <div className="flex flex-col gap-1.5">
             {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>(
               <div key={s.proveedor_nombre}
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
-                className={`bg-white border rounded-xl p-4 cursor-pointer shadow-sm transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-300':'border-p-line hover:border-red-300'}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-saira font-bold text-p-ink">{s.proveedor_nombre}</p>
-                    <p className="text-xs text-p-ink2 mt-0.5">
-                      {s.movimientos} movimiento(s) · último: {s.ultima_operacion?.split('-').reverse().join('/')}
-                    </p>
+                className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-p-ink truncate">{s.proveedor_nombre}</p>
+                    <p className="text-[10px] text-p-ink2">{s.movimientos} mov · {s.ultima_operacion?.split('-').reverse().join('/')}</p>
                   </div>
-                  <div className="text-right">
-                    <p className={`font-saira font-bold text-xl ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
-                      {s.saldo_actual>0?'Debemos ':'A favor '}{moneyARS(Math.abs(s.saldo_actual))}
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-bold ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
+                      {moneyARS(Math.abs(s.saldo_actual))}
                     </p>
-                    <p className="text-[10px] text-p-ink2">
-                      Cargado: {moneyARS(s.total_debe)} · Pagado: {moneyARS(s.total_haber)}
-                    </p>
+                    {ajustesPendNC.length>0 && sel?.proveedor_nombre===s.proveedor_nombre && (
+                      <p className="text-[9px] text-amber-600 font-semibold">{ajustesPendNC.length} NC pend.</p>
+                    )}
                   </div>
                 </div>
               </div>
             ))}
           </div>
         )}
+
+        <p className="text-[10px] text-p-ink2 mt-2 px-1">📒 Solo facturas en cuenta corriente generan deuda.</p>
       </div>
 
-      {/* Panel movimientos del proveedor */}
-      {sel && (
-        <div className="w-96 shrink-0 bg-white border border-p-line rounded-2xl shadow-sm self-start sticky top-4 flex flex-col">
-          <div className="p-4 border-b border-p-line">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-saira font-bold text-p-ink text-lg">{sel.proveedor_nombre}</p>
-                <p className={`font-bold text-xl ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
-                  {sel.saldo_actual>0?'Debemos ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
-                </p>
-              </div>
-              <button onClick={()=>setSel(null)} className="text-p-gray text-xl">✕</button>
+      {/* Panel detalle — ocupa el resto */}
+      {sel ? (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+
+          {/* Header proveedor */}
+          <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-saira font-bold text-p-ink text-base">{sel.proveedor_nombre}</p>
+              <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
             </div>
-            {sel.saldo_actual > 0 && (
-              <div className="mt-2.5">
-                <button onClick={abrirOrdenPago} style={{...btnBlue,width:'100%',textAlign:'center',padding:'10px 20px',fontSize:14}}>
-                  🧾 Nueva Orden de Pago
+            <div className="flex items-center gap-3">
+              <p className={`font-bold text-lg ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
+                {sel.saldo_actual>0?'Debemos ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
+              </p>
+              {sel.saldo_actual > 0 && (
+                <button onClick={abrirOrdenPago} style={{...btnBlue,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
+                  🧾 Nueva OP
                 </button>
-              </div>
-            )}
-            {/* Ajustes pendientes de NC */}
-            {ajustesPendNC.length > 0 && (
-              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">⏳ Ajustes pendientes de NC</p>
-                <p className="text-[10px] text-amber-600 mb-2">Para saldar: cargá la NC del proveedor en Compras y seleccioná estos pendientes</p>
-                {ajustesPendNC.map(a=>(
-                  <div key={a.id} className="flex items-center justify-between py-1.5 border-b border-amber-100 last:border-0 text-xs">
-                    <div>
-                      <p className="font-semibold text-amber-800">{a.descripcion}</p>
-                      <p className="text-amber-600">{a.fecha?.split('-').reverse().join('/')}</p>
-                    </div>
-                    <p className="font-mono font-bold text-green-600">{moneyARS(+a.haber)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+              )}
+              <button onClick={()=>setSel(null)} className="text-p-gray text-lg leading-none">✕</button>
+            </div>
           </div>
 
-          {/* OPs del proveedor */}
-          {ordenesPago.length > 0 && (
-            <div className="border-b border-p-line">
-              <button onClick={()=>setVerOPs(v=>!v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-p-ink2 hover:bg-p-light/50">
-                <span>🧾 Órdenes de Pago ({ordenesPago.length})</span>
-                <span>{verOPs ? '▲' : '▼'}</span>
-              </button>
-              {verOPs && (
-                <div className="flex flex-col gap-1.5 px-3 pb-3">
-                  {ordenesPago.map(op=>(
-                    <div key={op.id} className="flex items-center justify-between bg-p-light rounded-lg px-3 py-2 text-xs">
-                      <div>
-                        <p className="font-bold text-p-ink">OP Nº {op.numero}</p>
-                        <p className="text-p-ink2">{op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</p>
-                        <button onClick={()=>eliminarOrdenPago(op)}
-                          disabled={borrandoOp===op.id}
-                          className="text-red-400 hover:text-red-600 font-bold text-sm px-1"
-                          title="Eliminar OP">
-                          {borrandoOp===op.id ? '…' : '✕'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* Movimientos — protagonistas */}
+          <div className="bg-white border border-p-line rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
+              <span className="text-xs font-semibold text-p-ink">Movimientos</span>
+              <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
             </div>
-          )}
-
-          {/* Movimientos — ocultar ajustes pendiente_nc (ya aparecen arriba) */}
-          <div className="overflow-y-auto max-h-[500px]">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-p-light">
-                <tr>
-                  <th className="text-left px-3 py-2 font-bold text-p-ink2">Fecha</th>
-                  <th className="text-left px-3 py-2 font-bold text-p-ink2">Descripción</th>
-                  <th className="text-right px-3 py-2 font-bold text-red-500">Debe</th>
-                  <th className="text-right px-3 py-2 font-bold text-green-600">Haber</th>
-                  <th className="text-right px-3 py-2 font-bold text-p-dark">Saldo</th>
-                </tr>
-              </thead>
+            <div className="overflow-y-auto" style={{maxHeight:360}}>
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-p-light">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                    <th className="text-right px-3 py-2 font-semibold text-red-400">Debe</th>
+                    <th className="text-right px-3 py-2 font-semibold text-green-600">Haber</th>
+                    <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
+                  </tr>
+                </thead>
               <tbody>
                 {movs.filter(m => !(m.tipo==='ajuste' && m.notas?.includes('pendiente_nc') && !m.notas?.includes('NC aplicada'))).map((m,i)=>(
                   <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
@@ -539,6 +492,64 @@ export default function CuentaCorrienteProveedoresClient() {
               </tbody>
             </table>
           </div>
+
+          {/* OPs + NC pendientes — dos columnas abajo */}
+          {(ordenesPago.length > 0 || ajustesPendNC.length > 0) && (
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+
+              {/* OPs */}
+              {ordenesPago.length > 0 && (
+                <div className="bg-white border border-p-line rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Órdenes de pago</p>
+                  <div className="flex flex-col gap-1.5">
+                    {ordenesPago.map(op=>(
+                      <div key={op.id} className="flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-semibold text-p-ink">OP Nº {op.numero}</span>
+                          <span className="text-p-ink2 ml-1">· {op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</span>
+                          <button onClick={()=>eliminarOrdenPago(op)}
+                            disabled={borrandoOp===op.id}
+                            className="text-red-400 hover:text-red-600 text-sm"
+                            title="Eliminar OP">
+                            {borrandoOp===op.id ? '…' : '✕'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* NC pendientes */}
+              {ajustesPendNC.length > 0 && (
+                <div style={{background:'#fefce8',border:'0.5px solid #fef08a',borderRadius:10,padding:'10px 12px'}}>
+                  <p style={{fontSize:10,fontWeight:600,color:'#854d0e',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>
+                    NC pendientes
+                  </p>
+                  <p style={{fontSize:10,color:'#92400e',marginBottom:6}}>
+                    Cargá la NC en Compras y seleccioná los artículos pendientes
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {ajustesPendNC.map(a=>(
+                      <div key={a.id} className="flex items-center justify-between text-xs">
+                        <span style={{color:'#78350f'}} className="truncate max-w-[160px]">{a.descripcion}</span>
+                        <span style={{color:'#92400e',fontWeight:600}} className="font-mono shrink-0 ml-2">{moneyARS(+a.haber)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+
+        </div>
+      ) : (
+        <div className="bg-white border border-p-line rounded-xl p-8 flex items-center justify-center">
+          <p className="text-sm text-p-ink2">Seleccioná un proveedor para ver sus movimientos</p>
         </div>
       )}
 
