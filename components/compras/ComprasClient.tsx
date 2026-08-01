@@ -623,21 +623,23 @@ export default function ComprasClient() {
         const cantSaldada = itemNC ? itemNC.c : pendiente.cantidad
         const cantRestante = pendiente.cantidad - cantSaldada
 
+        const pendStockId = pendiente.stock_id || (pendiente as any).stock?.id || null
         if (cantRestante <= 0) {
           // Saldo total — actualizar ajuste_stock con número de NC
-          await supabase.from('ajustes_stock')
+          const { error: eAj } = await supabase.from('ajustes_stock')
             .update({ pendiente_nc: false, nota: `NC ${numNc} · ${provNombre}` })
             .eq('id', pendiente.id)
           // Actualizar stock_movimientos si existe (rotos viejos que se registraron ahí)
-          await supabase.from('stock_movimientos')
+          const { error: eMov } = await supabase.from('stock_movimientos')
             .update({
               pendiente_nc: false,
               descripcion: `NC ${numNc} · ${provNombre}`,
               comprobante_compra_id: comp.id,
             })
-            .eq('stock_id', pendiente.stock_id)
+            .eq('stock_id', pendStockId)
             .eq('pendiente_nc', true)
             .eq('fecha', pendiente.fecha)
+          if (eAj || eMov) alert(`⚠ NC guardada, pero falló el saldado del pendiente ${(pendiente as any).stock?.codigo || ''}: ${eAj?.message || eMov?.message}`)
           // Los nuevos rotos solo están en ajustes_stock — ya se actualizó arriba
           // Marcar SOLO el ajuste de CC que corresponde a este ajuste usando comprobante_id (vínculo exacto)
           if ((pendiente as any).comprobante_id) {
@@ -658,12 +660,12 @@ export default function ComprasClient() {
               cantidad: cantRestante,
               descripcion: `${pendiente.nota||'Roto'} — quedan ${cantRestante}u (NC parcial ${numNc})`,
             })
-            .eq('stock_id', pendiente.stock_id)
+            .eq('stock_id', pendStockId)
             .eq('pendiente_nc', true)
             .eq('fecha', pendiente.fecha)
           // Insertar movimiento informativo de la NC parcial (sin afectar stock — cantidad 0)
           await supabase.from('stock_movimientos').insert({
-            stock_id: pendiente.stock_id,
+            stock_id: pendStockId,
             tipo: 'salida',
             cantidad: 0,
             fecha: form.fecha || todayStr(),
@@ -1451,7 +1453,7 @@ export default function ComprasClient() {
                   if (t.id === 'nc' && form.proveedor_id) {
                     if (form.proveedor_id) {
                       const { data } = await supabase.from('ajustes_stock')
-                        .select('id, descripcion, cantidad, fecha, nota, comprobante_id, stock:stock_id(id, codigo, descripcion)')
+                        .select('id, stock_id, descripcion, cantidad, fecha, nota, comprobante_id, proveedor_id, stock:stock_id(id, codigo, descripcion)')
                         .eq('pendiente_nc', true)
                         .or(`proveedor_id.eq.${form.proveedor_id},proveedor_id.is.null`)
                         .order('fecha', { ascending: true })
@@ -1580,7 +1582,7 @@ export default function ComprasClient() {
                   setForm(p=>({...p,proveedor_id:e.target.value}))
                   if (form.tipo === 'nc' && e.target.value) {
                     const { data } = await supabase.from('ajustes_stock')
-                      .select('id, descripcion, cantidad, fecha, nota, stock:stock_id(codigo, descripcion)')
+                      .select('id, stock_id, descripcion, cantidad, fecha, nota, comprobante_id, stock:stock_id(codigo, descripcion)')
                       .eq('pendiente_nc', true)
                       .eq('proveedor_id', e.target.value)
                       .order('fecha', { ascending: true })
