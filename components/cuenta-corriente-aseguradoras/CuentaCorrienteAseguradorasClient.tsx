@@ -420,14 +420,14 @@ export default function CuentaCorrienteAseguradorasClient() {
               + Liquidación
             </button>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 overflow-y-auto" style={{maxHeight:380}}>
               {filtrados.filter(s=>s.saldo>0).map(s=>(
                 <div key={s.aseguradora_id}
                   onClick={()=>seleccionar(s)}
                   className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.aseguradora_id===s.aseguradora_id?'border-p-green ring-1 ring-green-200 bg-green-50/20':'border-p-line hover:border-p-green'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-p-ink truncate">{s.nombre}</p>
+                      <p className="text-base font-semibold text-p-ink truncate">{s.nombre}</p>
                       <p className="text-[10px] text-p-ink2">{s.facturas} fact. · {moneyARS(s.total_haber)} cobrado</p>
                     </div>
                     <p className="text-sm font-bold text-red-500 shrink-0">{moneyARS(s.saldo)}</p>

@@ -47,6 +47,9 @@ export default function CuentaCorrienteProveedoresClient() {
   const [ordenesPago, setOrdenesPago] = useState<any[]>([])
   const [verOPs, setVerOPs] = useState<string|null>(null)
   const [borrandoOp, setBorrandoOp] = useState<string|null>(null)
+  const [vistaMovs, setVistaMovs] = useState(false)  // false=saldos, true=movimientos
+  const [pendientesPago, setPendientesPago] = useState<any[]>([])  // facturas/NC no saldadas
+  const [verComp, setVerComp] = useState<any|null>(null)  // comprobante a ver en modal
   const supabase = createClient()
 
   async function load() {
@@ -72,10 +75,10 @@ export default function CuentaCorrienteProveedoresClient() {
   useEffect(()=>{
     if(sel) {
       loadMovs(sel.proveedor_nombre)
-      // Cargar cheques propios emitidos a este proveedor — por proveedor_id O por contraparte (nombre)
+      // Cargar cheques propios emitidos a este proveedor — busca por proveedor_id o por contraparte
       supabase.from('cheques').select('id,numero,banco,formato,modalidad,monto,fecha_cobro,contraparte')
         .eq('tipo','propio')
-        .or(`proveedor_id.eq.${sel.proveedor_id},contraparte.ilike.%${sel.proveedor_nombre}%`)
+        .eq('proveedor_id', sel.proveedor_id)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp(data??[]))
       // Cargar ajustes pendientes de NC para este proveedor (solo los no saldados)
@@ -92,6 +95,15 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .order('fecha', { ascending: false })
         .then(({data})=>setOrdenesPago(data??[]))
+      // Cargar facturas/NC pendientes de pago (no saldadas)
+      supabase.from('comprobantes_compra')
+        .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado')
+        .eq('proveedor_id', sel.proveedor_id)
+        .eq('saldado', false)
+        .in('tipo',['factura','nc','nd'])
+        .order('fecha', { ascending: false })
+        .then(({data})=>setPendientesPago(data??[]))
+      setVistaMovs(false)
     }
   },[sel])
 
@@ -406,14 +418,14 @@ export default function CuentaCorrienteProveedoresClient() {
 
         {loading ? <p className="text-sm text-p-gray text-center py-6">Cargando…</p> :
          filtrados.length===0 ? <Empty msg="Sin proveedores con saldo." /> : (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 overflow-y-auto" style={{maxHeight:380}}>
             {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>(
               <div key={s.proveedor_nombre}
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
                 className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-p-ink truncate">{s.proveedor_nombre}</p>
+                    <p className="text-base font-semibold text-p-ink truncate">{s.proveedor_nombre}</p>
                     <p className="text-[10px] text-p-ink2">{s.movimientos} mov · {s.ultima_operacion?.split('-').reverse().join('/')}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -456,13 +468,60 @@ export default function CuentaCorrienteProveedoresClient() {
             </div>
           </div>
 
-          {/* Movimientos — protagonistas */}
+          {/* Panel saldos o movimientos */}
           <div className="bg-white border border-p-line rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
-              <span className="text-xs font-semibold text-p-ink">Movimientos</span>
-              <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
+              <div className="flex gap-1">
+                <button onClick={()=>setVistaMovs(false)}
+                  className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${!vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                  Saldos pendientes
+                </button>
+                <button onClick={()=>setVistaMovs(true)}
+                  className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                  Movimientos
+                </button>
+              </div>
+              <span className="text-[10px] text-p-ink2">
+                {vistaMovs ? `${movs.length} registros` : `${pendientesPago.length} pendientes`}
+              </span>
             </div>
-            <div className="overflow-y-auto" style={{maxHeight:360}}>
+
+            {/* Vista saldos pendientes */}
+            {!vistaMovs && (
+              <div className="overflow-y-auto" style={{maxHeight:400}}>
+                {pendientesPago.length === 0 ? (
+                  <p className="text-sm text-p-ink2 text-center py-8">Sin facturas pendientes de pago ✓</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-p-light">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                        <th className="text-left px-3 py-2 font-semibold text-p-ink2">Comprobante</th>
+                        <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendientesPago.map((p,i)=>{
+                        const tipoLabel = p.tipo==='nc'?'NC':p.tipo==='nd'?'ND':'FC'
+                        const nro = `${tipoLabel} ${p.letra||''} ${p.punto_venta||''}-${p.numero||''}`
+                        return (
+                          <tr key={p.id} className={`border-t border-p-line2 cursor-pointer hover:bg-p-light/40 ${i%2===0?'':'bg-p-light/20'}`}
+                            onClick={()=>setVerComp(p)}>
+                            <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
+                            <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(p.total)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Vista movimientos completa */}
+            {vistaMovs && (
+            <div className="overflow-y-auto" style={{maxHeight:400}}>
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-p-light">
                   <tr>
@@ -493,6 +552,7 @@ export default function CuentaCorrienteProveedoresClient() {
               </tbody>
             </table>
           </div>
+            )}
           </div>
 
           {/* OPs + NC pendientes — dos columnas abajo */}
@@ -767,6 +827,5 @@ export default function CuentaCorrienteProveedoresClient() {
           </div>
         </div>
       </Modal>
-    </div>
   )
 }

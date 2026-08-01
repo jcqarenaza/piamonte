@@ -230,7 +230,7 @@ export default function CuentaCorrienteClient() {
 
         {loading ? <p className="text-sm text-p-gray text-center py-6">Cargando…</p> :
          filtrados.length===0 ? <Empty msg="Sin clientes con saldo." /> : (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 overflow-y-auto" style={{maxHeight:380}}>
             {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>{
               const plazo = s.plazo_cc_dias ?? 30
               const dias = s.ultima_operacion ? Math.floor((Date.now() - new Date(s.ultima_operacion).getTime()) / 86400000) : 0
@@ -244,7 +244,7 @@ export default function CuentaCorrienteClient() {
                 {tope && <div className="text-[9px] font-bold text-amber-600 mb-1">🚫 Tope superado</div>}
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-p-ink truncate">{s.cliente_nombre}</p>
+                    <p className="text-base font-semibold text-p-ink truncate">{s.cliente_nombre}</p>
                     <p className="text-[10px] text-p-ink2">{s.movimientos} mov · {s.ultima_operacion?.split('-').reverse().join('/')}</p>
                   </div>
                   <div className="text-right shrink-0">
