@@ -106,11 +106,12 @@ export default function CuentaCorrienteProveedoresClient() {
           // Calcular saldo acumulado
           let acum = 0
           const conSaldo = (data??[]).map(p=>{
-            const delta = p.tipo==='nc' ? -p.total : p.total
+            // NC resta, ND suma como debe, factura suma
+            const delta = p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)
             acum += delta
             return {...p, saldo_acum: acum}
           })
-          setPendientesPago(conSaldo.reverse()) // mostrar más recientes primero
+          setPendientesPago(conSaldo.reverse())
         })
       setVistaMovs(false)
     }
@@ -431,13 +432,11 @@ export default function CuentaCorrienteProveedoresClient() {
             {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>(
               <div key={s.proveedor_nombre}
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
-                className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-base font-bold text-p-ink truncate flex-1">{s.proveedor_nombre}</p>
-                  <p className={`text-base font-bold shrink-0 ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
-                    {moneyARS(Math.abs(s.saldo_actual))}
-                  </p>
-                </div>
+                className={`bg-white border rounded-lg px-3 py-3 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
+                <p className="text-base font-bold text-p-ink w-full leading-tight mb-1">{s.proveedor_nombre}</p>
+                <p className={`text-lg font-bold ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
+                  {moneyARS(Math.abs(s.saldo_actual))}
+                </p>
               </div>
             ))}
           </div>
