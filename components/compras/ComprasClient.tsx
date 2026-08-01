@@ -146,7 +146,10 @@ export default function ComprasClient() {
   const calcIvaFlete = ivaOn ? Math.round(netoFlete * IVA * 100) / 100 : 0
   const calcIva = calcIvaItems + calcIvaFlete
   // Valores finales: override manual si el usuario lo editó, sino el calculado
-  const finalSubtotal  = ovSubtotal  !== '' ? parseFloat(ovSubtotal.replace(',','.'))  || calcSubtotal  : calcSubtotal
+  // El subtotal neto que se muestra/edita INCLUYE el flete (para que la cadena visible cierre:
+  // Subtotal ítems − Descuento = Subtotal neto). El override manual también se interpreta con flete.
+  const calcSubtotalConFlete = Math.round((calcSubtotal + netoFlete) * 100) / 100
+  const finalSubtotal  = ovSubtotal  !== '' ? parseFloat(ovSubtotal.replace(',','.'))  || calcSubtotalConFlete  : calcSubtotalConFlete
   const finalDescuento = ovDescuento !== '' ? parseFloat(ovDescuento.replace(',','.')) || calcDescuento : calcDescuento
   const finalIva       = ovIva       !== '' ? parseFloat(ovIva.replace(',','.'))       || calcIva       : calcIva
   const iva = finalIva
@@ -157,8 +160,8 @@ export default function ComprasClient() {
   const totalRetenciones = retIva + retGanancias + retIibb
   const [ajusteManual, setAjusteManual] = useState('')
   const ajuste = parseFloat(ajusteManual.replace(',','.')) || 0
-  const neto  = finalSubtotal + netoFlete  // neto incluye flete sin IVA
-  const total = Math.round((finalSubtotal + netoFlete + finalIva - totalRetenciones + ajuste) * 100) / 100
+  const neto  = finalSubtotal  // ya incluye flete sin IVA
+  const total = Math.round((finalSubtotal + finalIva - totalRetenciones + ajuste) * 100) / 100
 
   const loadProveedores = useCallback(async () => {
     const { data } = await supabase.from('proveedores_compra').select('id,nombre,razon_social,cuit,descuento_pct').eq('activo',true).order('nombre')
@@ -1744,12 +1747,12 @@ export default function ComprasClient() {
 
             {/* Subtotal neto editable */}
             <div className="flex items-center justify-between gap-2 border-t border-p-line pt-1">
-              <span className="text-sm font-semibold text-p-ink">Subtotal neto</span>
+              <span className="text-sm font-semibold text-p-ink">Subtotal neto{netoFlete > 0 ? ' (incl. flete)' : ''}</span>
               <div className="flex items-center gap-1">
                 <span className="text-xs text-p-ink2">$</span>
-                <input type="number" value={ovSubtotal !== '' ? ovSubtotal : calcSubtotal.toFixed(2)}
+                <input type="number" value={ovSubtotal !== '' ? ovSubtotal : calcSubtotalConFlete.toFixed(2)}
                   onChange={e=>setOvSubtotal(e.target.value)}
-                  onFocus={e=>{ if(ovSubtotal==='') setOvSubtotal(calcSubtotal.toFixed(2)); e.target.select() }}
+                  onFocus={e=>{ if(ovSubtotal==='') setOvSubtotal(calcSubtotalConFlete.toFixed(2)); e.target.select() }}
                   className="w-36 border border-p-line rounded px-2 py-0.5 text-sm font-mono text-right focus:outline-none focus:border-p-green"/>
                 {ovSubtotal !== '' && <button onClick={()=>setOvSubtotal('')} className="text-[10px] text-p-ink2 hover:text-p-ink">↩</button>}
               </div>
