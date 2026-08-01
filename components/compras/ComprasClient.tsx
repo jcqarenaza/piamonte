@@ -553,27 +553,35 @@ export default function ComprasClient() {
             if (cat?.descripcion) desc = cat.descripcion
           }
           const codigoFinal = codigo || (articuloId ? `ART-${articuloId.slice(0,8)}` : null)
-          const { data: newStock } = await supabase.from('stock').insert({
-            codigo: codigoFinal, descripcion: desc, cantidad: cantItem,
+          // Crear la fila con cantidad 0 (un INSERT con cantidad cargada dispara el trigger de auditoría
+          // y falla por descripcion null en ajustes_stock) y sumar la cantidad vía RPC atómico
+          const { data: newStock, error: errStock } = await supabase.from('stock').insert({
+            codigo: codigoFinal, descripcion: desc, cantidad: 0,
             costo: costoUnit, precio_venta: 0,
             articulo_id: articuloId || null, activo: true,
             pendiente_ingreso: false,
           }).select('id').single()
-          if (newStock) {
-            await supabase.from('stock_movimientos').insert({
-              stock_id: newStock.id, tipo: 'entrada',
-              cantidad: cantItem, costo_unitario: costoUnit,
-              fecha: fechaFact,
-              comprobante_compra_id: comp.id,
-            })
-            itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
+          if (errStock || !newStock) {
+            sinVincular.push(`${codigoFinal || '(sin código)'} — ERROR al crear stock: ${errStock?.message || 'desconocido'}`)
+            continue
           }
+          const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
+            p_stock_id: newStock.id, p_tipo: 'entrada',
+            p_cantidad: cantItem, p_costo_unitario: costoUnit,
+            p_fecha: fechaFact,
+            p_comprobante_compra_id: comp.id,
+          })
+          if (errMov) {
+            sinVincular.push(`${codigoFinal} — ERROR al cargar cantidad: ${errMov.message}`)
+            continue
+          }
+          itemsActualizados[idx] = { ...itemsActualizados[idx], stock_id: newStock.id } as any
         }
       }
 
-      // Avisar ítems que quedaron sin vincular al catálogo maestro
+      // Avisar ítems con problemas: sin vínculo al maestro o con error al cargar stock
       if (sinVincular.length > 0) {
-        alert(`⚠ ${sinVincular.length} ítem(s) sin vincular al catálogo maestro:\n\n${sinVincular.join('\n')}\n\nNo se encontró el código ni un equivalente por código base. Crealos a mano en el maestro (con la descripción correcta) y vinculá la fila de stock desde el módulo Stock.`)
+        alert(`⚠ ${sinVincular.length} ítem(s) con observaciones:\n\n${sinVincular.join('\n')}\n\nLos "sin vincular": crealos a mano en el maestro con la descripción correcta y vinculá desde Stock. Los "ERROR": ese ítem NO cargó stock — avisale a Juan Cruz.`)
       }
 
       // Guardar stock_ids y marcar procesado (ya se sumó el stock directamente)
