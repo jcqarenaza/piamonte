@@ -72,10 +72,10 @@ export default function CuentaCorrienteProveedoresClient() {
   useEffect(()=>{
     if(sel) {
       loadMovs(sel.proveedor_nombre)
-      // Cargar cheques propios emitidos a este proveedor — busca por proveedor_id o por contraparte
+      // Cargar cheques propios emitidos a este proveedor — por proveedor_id O por contraparte (nombre)
       supabase.from('cheques').select('id,numero,banco,formato,modalidad,monto,fecha_cobro,contraparte')
         .eq('tipo','propio')
-        .eq('proveedor_id', sel.proveedor_id)
+        .or(`proveedor_id.eq.${sel.proveedor_id},contraparte.ilike.%${sel.proveedor_nombre}%`)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp(data??[]))
       // Cargar ajustes pendientes de NC para este proveedor (solo los no saldados)
