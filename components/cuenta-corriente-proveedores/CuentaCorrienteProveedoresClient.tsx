@@ -62,9 +62,13 @@ export default function CuentaCorrienteProveedoresClient() {
   async function loadMovs(nombre: string) {
     const { data } = await supabase.from('cuenta_corriente_proveedores')
       .select('*').eq('proveedor_nombre', nombre).order('fecha').order('created_at')
+    // Excluir ajustes pendiente_nc activos (los mismos que excluye la vista y el header)
+    const filtrados = (data??[]).filter((m:any) =>
+      !(m.tipo === 'ajuste' && m.notas?.includes('pendiente_nc') && !m.notas?.includes('NC aplicada'))
+    )
     // Recalcular saldo acumulado (asc) y luego invertir para mostrar más reciente primero
     let saldoAcum = 0
-    const movConSaldo = (data??[]).map((m:any) => {
+    const movConSaldo = filtrados.map((m:any) => {
       saldoAcum += (m.debe||0) - (m.haber||0)
       return { ...m, saldo: saldoAcum }
     })
@@ -433,8 +437,8 @@ export default function CuentaCorrienteProveedoresClient() {
               <div key={s.proveedor_nombre}
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
                 className={`bg-white border rounded-lg px-3 py-3 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
-                <p className="text-base font-bold text-p-ink w-full leading-tight mb-1">{s.proveedor_nombre}</p>
-                <p className={`text-lg font-bold ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
+                <p className="font-saira font-bold text-p-ink w-full leading-tight mb-1.5" style={{fontSize:17}}>{s.proveedor_nombre}</p>
+                <p className={`font-saira font-bold text-center ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`} style={{fontSize:20}}>
                   {moneyARS(Math.abs(s.saldo_actual))}
                 </p>
               </div>
@@ -499,8 +503,7 @@ export default function CuentaCorrienteProveedoresClient() {
                       <tr>
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Comprobante</th>
-                        <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
-                        <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
+                        <th className="text-right px-3 py-2 font-semibold text-p-ink2">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -514,9 +517,8 @@ export default function CuentaCorrienteProveedoresClient() {
                             <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
                             <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
                             <td className={`px-3 py-2 text-right font-mono font-bold ${p.tipo==='nc'?'text-green-600':'text-red-500'}`}>
-                              {p.tipo==='nc'?'-':''}{moneyARS(p.total)}
+                              {p.tipo==='nc'?'−':''}{moneyARS(p.total)}
                             </td>
-                            <td className={`px-3 py-2 text-right font-mono font-bold ${(p as any).saldo_acum>0?'text-red-500':'text-green-600'}`}>{moneyARS(Math.abs((p as any).saldo_acum))}</td>
                           </tr>
                         )
                       })}
@@ -540,7 +542,7 @@ export default function CuentaCorrienteProveedoresClient() {
                   </tr>
                 </thead>
               <tbody>
-                {movs.filter(m => !(m.tipo==='ajuste' && m.notas?.includes('pendiente_nc') && !m.notas?.includes('NC aplicada'))).map((m,i)=>(
+                {movs.map((m,i)=>(
                   <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
                     <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
                     <td className="px-3 py-2 max-w-[100px]">
