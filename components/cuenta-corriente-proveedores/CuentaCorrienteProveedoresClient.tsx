@@ -107,13 +107,15 @@ export default function CuentaCorrienteProveedoresClient() {
         .in('tipo',['factura','nc','nd'])
         .order('fecha', { ascending: true })
         .then(({data})=>{
-          // Calcular saldo acumulado
-          let acum = 0
-          const conSaldo = (data??[]).map(p=>{
-            // NC resta, ND suma como debe, factura suma
+          // Saldo acumulado decreciente: cuánto queda por pagar desde cada fila hacia adelante
+          const lista = data??[]
+          const totalPend = lista.reduce((a:number,p:any)=> a + (p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)), 0)
+          let acum = totalPend
+          const conSaldo = lista.map((p:any)=>{
             const delta = p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)
-            acum += delta
-            return {...p, saldo_acum: acum}
+            const saldo_acum = acum
+            acum -= delta
+            return {...p, saldo_acum}
           })
           setPendientesPago(conSaldo.reverse())
         })
@@ -437,8 +439,8 @@ export default function CuentaCorrienteProveedoresClient() {
               <div key={s.proveedor_nombre}
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
                 className={`bg-white border rounded-lg px-3 py-3 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
-                <p className="font-saira font-bold text-p-ink w-full leading-tight mb-1.5" style={{fontSize:17}}>{s.proveedor_nombre}</p>
-                <p className={`font-saira font-bold text-center ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`} style={{fontSize:20}}>
+                <p className="font-saira font-bold text-p-ink w-full leading-tight mb-1" style={{fontSize:20}}>{s.proveedor_nombre}</p>
+                <p className={`font-saira font-bold text-center ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`} style={{fontSize:15}}>
                   {moneyARS(Math.abs(s.saldo_actual))}
                 </p>
               </div>
@@ -503,7 +505,8 @@ export default function CuentaCorrienteProveedoresClient() {
                       <tr>
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Comprobante</th>
-                        <th className="text-right px-3 py-2 font-semibold text-p-ink2">Total</th>
+                        <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
+                        <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -519,6 +522,7 @@ export default function CuentaCorrienteProveedoresClient() {
                             <td className={`px-3 py-2 text-right font-mono font-bold ${p.tipo==='nc'?'text-green-600':'text-red-500'}`}>
                               {p.tipo==='nc'?'−':''}{moneyARS(p.total)}
                             </td>
+                            <td className={`px-3 py-2 text-right font-mono font-bold ${(p as any).saldo_acum>0?'text-red-500':'text-green-600'}`}>{moneyARS(Math.abs((p as any).saldo_acum))}</td>
                           </tr>
                         )
                       })}
