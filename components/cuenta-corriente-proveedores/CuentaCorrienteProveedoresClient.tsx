@@ -433,18 +433,10 @@ export default function CuentaCorrienteProveedoresClient() {
                 onClick={()=>setSel(sel?.proveedor_nombre===s.proveedor_nombre?null:s)}
                 className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.proveedor_nombre===s.proveedor_nombre?'border-red-400 ring-1 ring-red-200 bg-red-50/30':'border-p-line hover:border-red-200'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-base font-semibold text-p-ink truncate">{s.proveedor_nombre}</p>
-                    <p className="text-[10px] text-p-ink2">{s.movimientos} mov · {s.ultima_operacion?.split('-').reverse().join('/')}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={`text-sm font-bold ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
-                      {moneyARS(Math.abs(s.saldo_actual))}
-                    </p>
-                    {ajustesPendNC.length>0 && sel?.proveedor_nombre===s.proveedor_nombre && (
-                      <p className="text-[9px] text-amber-600 font-semibold">{ajustesPendNC.length} NC pend.</p>
-                    )}
-                  </div>
+                  <p className="text-base font-bold text-p-ink truncate flex-1">{s.proveedor_nombre}</p>
+                  <p className={`text-base font-bold shrink-0 ${s.saldo_actual>0?'text-red-500':s.saldo_actual<0?'text-green-600':'text-p-ink2'}`}>
+                    {moneyARS(Math.abs(s.saldo_actual))}
+                  </p>
                 </div>
               </div>
             ))}
@@ -522,7 +514,9 @@ export default function CuentaCorrienteProveedoresClient() {
                             onDoubleClick={()=>setVerComp(p)}>
                             <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
                             <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
-                            <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(p.total)}</td>
+                            <td className={`px-3 py-2 text-right font-mono font-bold ${p.tipo==='nc'?'text-green-600':'text-red-500'}`}>
+                              {p.tipo==='nc'?'-':''}{moneyARS(p.total)}
+                            </td>
                             <td className={`px-3 py-2 text-right font-mono font-bold ${(p as any).saldo_acum>0?'text-red-500':'text-green-600'}`}>{moneyARS(Math.abs((p as any).saldo_acum))}</td>
                           </tr>
                         )
