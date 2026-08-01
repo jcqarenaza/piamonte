@@ -191,8 +191,9 @@ export default function ComprasClient() {
   }, [supabase, loadProveedores])
 
   // Sugerir el % de descuento habitual del proveedor al elegirlo — solo si el operador no lo tocó a mano
+  // y SOLO al crear: al editar un comprobante existente los descuentos guardados no deben pisarse
   useEffect(() => {
-    if (!form.proveedor_id || descuentoTocadoAMano) return
+    if (!form.proveedor_id || descuentoTocadoAMano || editId) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
     const dtoStr = prov?.descuento_pct ? String(prov.descuento_pct) : ''
     setForm(p => ({ ...p, descuento_pct: dtoStr }))
@@ -202,7 +203,7 @@ export default function ComprasClient() {
       setItems(prev => prev.map(it => it.dto != null ? it : { ...it, dto: pct }))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.proveedor_id, descuentoTocadoAMano])
+  }, [form.proveedor_id, descuentoTocadoAMano, editId])
 
   // Buscar en el catálogo maestro de artículos a medida que se tipea la descripción del ítem —
   // mismo criterio que ya usa Stock, para que Compras también quede vinculado al SKU.
