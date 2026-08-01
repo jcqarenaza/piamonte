@@ -121,6 +121,15 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   }
   async function guardar() {
     if (!form.numero||!form.monto) return
+    // Validar número duplicado (solo en insert)
+    if (!editId) {
+      const { data: dup } = await supabase.from('cheques')
+        .select('id').eq('numero', form.numero).eq('tipo', form.tipo).maybeSingle()
+      if (dup) {
+        alert(`⛔ Ya existe un cheque ${form.tipo === 'propio' ? 'propio' : 'de tercero'} con el número ${form.numero}.`)
+        return
+      }
+    }
     const payload = {
       tipo:form.tipo, modalidad:form.modalidad, formato:form.formato,
       numero:form.numero, banco:form.banco,

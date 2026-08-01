@@ -62,13 +62,13 @@ export default function CuentaCorrienteProveedoresClient() {
   async function loadMovs(nombre: string) {
     const { data } = await supabase.from('cuenta_corriente_proveedores')
       .select('*').eq('proveedor_nombre', nombre).order('fecha').order('created_at')
-    // Recalcular saldo acumulado
+    // Recalcular saldo acumulado (asc) y luego invertir para mostrar más reciente primero
     let saldoAcum = 0
     const movConSaldo = (data??[]).map((m:any) => {
       saldoAcum += (m.debe||0) - (m.haber||0)
       return { ...m, saldo: saldoAcum }
     })
-    setMovs(movConSaldo)
+    setMovs([...movConSaldo].reverse())
   }
 
   useEffect(()=>{ load() },[supabase])
@@ -97,7 +97,7 @@ export default function CuentaCorrienteProveedoresClient() {
         .then(({data})=>setOrdenesPago(data??[]))
       // Cargar facturas/NC/ND pendientes de pago (no saldadas), ordenadas por fecha asc para calcular acumulado
       supabase.from('comprobantes_compra')
-        .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado')
+        .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado,items')
         .eq('proveedor_id', sel.proveedor_id)
         .eq('saldado', false)
         .in('tipo',['factura','nc','nd'])
@@ -459,21 +459,23 @@ export default function CuentaCorrienteProveedoresClient() {
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
 
           {/* Header proveedor */}
-          <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="font-saira font-bold text-p-ink text-xl">{sel.proveedor_nombre}</p>
-              <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
+          <div className="bg-white border border-p-line rounded-xl px-4 py-3">
+            <div className="flex items-start justify-between mb-1">
+              <p className="font-saira font-bold text-p-ink text-2xl flex-1">{sel.proveedor_nombre}</p>
+              <div className="flex items-center gap-2 shrink-0 ml-3">
+                {sel.saldo_actual > 0 && (
+                  <button onClick={abrirOrdenPago} style={{...btnBlue,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
+                    🧾 Nueva OP
+                  </button>
+                )}
+                <button onClick={()=>setSel(null)} className="text-p-gray text-lg leading-none">✕</button>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <p className={`font-bold text-lg ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
+              <p className={`font-bold text-xl ${sel.saldo_actual>0?'text-red-500':'text-green-600'}`}>
                 {sel.saldo_actual>0?'Debemos ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
               </p>
-              {sel.saldo_actual > 0 && (
-                <button onClick={abrirOrdenPago} style={{...btnBlue,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
-                  🧾 Nueva OP
-                </button>
-              )}
-              <button onClick={()=>setSel(null)} className="text-p-gray text-lg leading-none">✕</button>
             </div>
           </div>
 
@@ -516,7 +518,8 @@ export default function CuentaCorrienteProveedoresClient() {
                         const nro = `${tipoLabel} ${p.letra||''} ${p.punto_venta||''}-${p.numero||''}`
                         return (
                           <tr key={p.id} className={`border-t border-p-line2 cursor-pointer hover:bg-p-light/40 ${i%2===0?'':'bg-p-light/20'}`}
-                            onClick={()=>setVerComp(p)}>
+                            onClick={()=>setVerComp(p)}
+                            onDoubleClick={()=>setVerComp(p)}>
                             <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
                             <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
                             <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(p.total)}</td>
@@ -636,15 +639,42 @@ export default function CuentaCorrienteProveedoresClient() {
 
     </div>
 
-      {/* Modal ver comprobante */}
+      {/* Modal ver comprobante con ítems */}
       {verComp && (
         <Modal open={!!verComp} onClose={()=>setVerComp(null)} title={`${verComp.tipo==='nc'?'NC':verComp.tipo==='nd'?'ND':'Factura'} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}`}>
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between"><span className="text-p-ink2">Fecha</span><span>{verComp.fecha?.split('-').reverse().join('/')}</span></div>
-            <div className="flex justify-between"><span className="text-p-ink2">Total</span><span className="font-bold text-red-500">{moneyARS(verComp.total)}</span></div>
-            <div className="flex justify-between"><span className="text-p-ink2">Estado</span><span>{verComp.saldado?'✓ Saldado':'Pendiente de pago'}</span></div>
-            <div className="mt-2 flex justify-end">
-              <button onClick={()=>{setVerComp(null)}} style={btnGray}>Cerrar</button>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="flex justify-between"><span className="text-p-ink2">Fecha</span><span>{verComp.fecha?.split('-').reverse().join('/')}</span></div>
+              <div className="flex justify-between"><span className="text-p-ink2">Total</span><span className="font-bold text-red-500">{moneyARS(verComp.total)}</span></div>
+              <div className="flex justify-between col-span-2"><span className="text-p-ink2">Estado</span><span className={verComp.saldado?'text-green-600 font-semibold':'text-amber-600 font-semibold'}>{verComp.saldado?'✓ Saldado':'⏳ Pendiente de pago'}</span></div>
+            </div>
+            {verComp.items && verComp.items.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1.5">Ítems</p>
+                <table className="w-full text-xs">
+                  <thead className="bg-p-light">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-semibold text-p-ink2">Descripción</th>
+                      <th className="text-left px-2 py-1.5 font-semibold text-p-ink2">Código</th>
+                      <th className="text-right px-2 py-1.5 font-semibold text-p-ink2">Cant</th>
+                      <th className="text-right px-2 py-1.5 font-semibold text-p-ink2">Precio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {verComp.items.map((it:any,i:number)=>(
+                      <tr key={i} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
+                        <td className="px-2 py-1.5">{it.d||'—'}</td>
+                        <td className="px-2 py-1.5 font-mono text-[10px]">{(it as any).codigo||'—'}</td>
+                        <td className="px-2 py-1.5 text-right">{it.c}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{moneyARS(it.p)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={()=>setVerComp(null)} style={btnGray}>Cerrar</button>
             </div>
           </div>
         </Modal>
