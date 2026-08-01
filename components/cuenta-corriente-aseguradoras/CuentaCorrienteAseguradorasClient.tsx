@@ -444,7 +444,7 @@ export default function CuentaCorrienteAseguradorasClient() {
               {/* Header */}
               <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-saira font-bold text-p-ink text-base">{sel.nombre}</p>
+                  <p className="font-saira font-bold text-p-ink text-xl">{sel.nombre}</p>
                   <p className="text-[10px] text-p-ink2">Facturado {moneyARS(sel.total_debe)} · Cobrado {moneyARS(sel.total_haber)}</p>
                 </div>
                 <div className="flex items-center gap-3">

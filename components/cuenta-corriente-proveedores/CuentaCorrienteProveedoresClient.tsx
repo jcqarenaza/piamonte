@@ -95,14 +95,23 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .order('fecha', { ascending: false })
         .then(({data})=>setOrdenesPago(data??[]))
-      // Cargar facturas/NC pendientes de pago (no saldadas)
+      // Cargar facturas/NC/ND pendientes de pago (no saldadas), ordenadas por fecha asc para calcular acumulado
       supabase.from('comprobantes_compra')
         .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado')
         .eq('proveedor_id', sel.proveedor_id)
         .eq('saldado', false)
         .in('tipo',['factura','nc','nd'])
-        .order('fecha', { ascending: false })
-        .then(({data})=>setPendientesPago(data??[]))
+        .order('fecha', { ascending: true })
+        .then(({data})=>{
+          // Calcular saldo acumulado
+          let acum = 0
+          const conSaldo = (data??[]).map(p=>{
+            const delta = p.tipo==='nc' ? -p.total : p.total
+            acum += delta
+            return {...p, saldo_acum: acum}
+          })
+          setPendientesPago(conSaldo.reverse()) // mostrar más recientes primero
+        })
       setVistaMovs(false)
     }
   },[sel])
@@ -452,7 +461,7 @@ export default function CuentaCorrienteProveedoresClient() {
           {/* Header proveedor */}
           <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
             <div>
-              <p className="font-saira font-bold text-p-ink text-base">{sel.proveedor_nombre}</p>
+              <p className="font-saira font-bold text-p-ink text-xl">{sel.proveedor_nombre}</p>
               <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
             </div>
             <div className="flex items-center gap-3">
@@ -473,11 +482,11 @@ export default function CuentaCorrienteProveedoresClient() {
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
               <div className="flex gap-1">
                 <button onClick={()=>setVistaMovs(false)}
-                  className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${!vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
-                  Saldos pendientes
+                  style={!vistaMovs?{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}:{background:'transparent',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'4px 12px',fontWeight:600,fontSize:11,cursor:'pointer'}}>
+                  Saldos
                 </button>
                 <button onClick={()=>setVistaMovs(true)}
-                  className={`text-xs px-3 py-1 rounded-lg font-semibold transition-all ${vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                  style={vistaMovs?{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}:{background:'transparent',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'4px 12px',fontWeight:600,fontSize:11,cursor:'pointer'}}>
                   Movimientos
                 </button>
               </div>
@@ -498,6 +507,7 @@ export default function CuentaCorrienteProveedoresClient() {
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
                         <th className="text-left px-3 py-2 font-semibold text-p-ink2">Comprobante</th>
                         <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
+                        <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -510,6 +520,7 @@ export default function CuentaCorrienteProveedoresClient() {
                             <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
                             <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
                             <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(p.total)}</td>
+                            <td className={`px-3 py-2 text-right font-mono font-bold ${(p as any).saldo_acum>0?'text-red-500':'text-green-600'}`}>{moneyARS(Math.abs((p as any).saldo_acum))}</td>
                           </tr>
                         )
                       })}
@@ -624,6 +635,20 @@ export default function CuentaCorrienteProveedoresClient() {
       )}
 
     </div>
+
+      {/* Modal ver comprobante */}
+      {verComp && (
+        <Modal open={!!verComp} onClose={()=>setVerComp(null)} title={`${verComp.tipo==='nc'?'NC':verComp.tipo==='nd'?'ND':'Factura'} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}`}>
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="flex justify-between"><span className="text-p-ink2">Fecha</span><span>{verComp.fecha?.split('-').reverse().join('/')}</span></div>
+            <div className="flex justify-between"><span className="text-p-ink2">Total</span><span className="font-bold text-red-500">{moneyARS(verComp.total)}</span></div>
+            <div className="flex justify-between"><span className="text-p-ink2">Estado</span><span>{verComp.saldado?'✓ Saldado':'Pendiente de pago'}</span></div>
+            <div className="mt-2 flex justify-end">
+              <button onClick={()=>{setVerComp(null)}} style={btnGray}>Cerrar</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Modal registrar pago */}
       <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar pago — ${sel?.proveedor_nombre}`}>

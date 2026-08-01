@@ -265,7 +265,7 @@ export default function CuentaCorrienteClient() {
           {/* Header */}
           <div className="bg-white border border-p-line rounded-xl px-4 py-3 flex items-center justify-between gap-3">
             <div>
-              <p className="font-saira font-bold text-p-ink text-base">{sel.cliente_nombre}</p>
+              <p className="font-saira font-bold text-p-ink text-xl">{sel.cliente_nombre}</p>
               <p className="text-[10px] text-p-ink2">Cargado {moneyARS(sel.total_debe)} · Pagado {moneyARS(sel.total_haber)}</p>
             </div>
             <div className="flex items-center gap-3">
