@@ -248,13 +248,15 @@ export default function ComprasClient() {
     if (!itemForm.d || !p || !c) return
     const dto = parseFloat(itemForm.dto) || null
 
-    // Si no hay articulo_id del catálogo pero hay código, buscar maestro por código base (9 chars)
-    let articuloId = itemArticuloSel?.id || null
+    // OJO: itemArticuloSel.id es el ID de la fila del CATÁLOGO/equivalencia, NO del maestro.
+    // Usar articulo_id solo si el resultado lo trae; si no, resolver contra articulos_maestro
+    // SOLO por código exacto — la resolución por base (y el alta del artículo nuevo si corresponde)
+    // la hace el procesamiento de la factura, porque cada código completo es su propio artículo.
+    let articuloId = (itemArticuloSel as any)?.articulo_id || null
     if (!articuloId && itemForm.codigo && itemForm.codigo.length >= 6) {
-      const codigoBase = itemForm.codigo.slice(0, 9)
-      const { data: maestro } = await supabase.from('articulos_maestro')
-        .select('id').ilike('codigo_referencia', `${codigoBase}%`).limit(1).maybeSingle()
-      if (maestro) articuloId = maestro.id
+      const { data: mEx } = await supabase.from('articulos_maestro')
+        .select('id').eq('codigo_referencia', itemForm.codigo).eq('activo', true).maybeSingle()
+      if (mEx) articuloId = mEx.id
     }
 
     const nuevoItemData: Item = { d:itemForm.d, c, p, articulo_id: articuloId, dto, ...(itemForm.codigo?{codigo:itemForm.codigo}:{}) }
@@ -447,7 +449,14 @@ export default function ComprasClient() {
         const costoUnit = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
         // Resolver articulo_id contra el catálogo maestro
+        // Validar el articulo_id heredado del ítem: facturas viejas guardaron IDs de catálogo
+        // (no del maestro) en el JSONB — si no existe en el maestro, descartarlo y resolver por código
         let articuloId: string | null = (it as any).articulo_id || null
+        if (articuloId) {
+          const { data: chk } = await supabase.from('articulos_maestro')
+            .select('id').eq('id', articuloId).maybeSingle()
+          if (!chk) articuloId = null
+        }
         let descEquivalente: string | null = null
         if (!articuloId && codigo) {
           // 1) Equivalencia exacta por código de proveedor
