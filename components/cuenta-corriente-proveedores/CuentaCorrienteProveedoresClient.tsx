@@ -107,16 +107,16 @@ export default function CuentaCorrienteProveedoresClient() {
         .in('tipo',['factura','nc','nd'])
         .order('fecha', { ascending: true })
         .then(({data})=>{
-          // Saldo acumulado decreciente: cuánto queda por pagar desde cada fila hacia adelante
+          // Saldo decreciente: primera fila (más reciente) = total pendiente, última = su propio importe
           const lista = data??[]
-          const totalPend = lista.reduce((a:number,p:any)=> a + (p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)), 0)
-          let acum = totalPend
+          let acum = 0
+          // Calcular acumulado ASC (de más antigua a más nueva)
           const conSaldo = lista.map((p:any)=>{
             const delta = p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)
-            const saldo_acum = acum
-            acum -= delta
-            return {...p, saldo_acum}
+            acum += delta
+            return {...p, saldo_acum: acum}
           })
+          // Reverse: más reciente primero. La primera fila tendrá el acum total (= totalPend), la última solo su delta.
           setPendientesPago(conSaldo.reverse())
         })
       setVistaMovs(false)
