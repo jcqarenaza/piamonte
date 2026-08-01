@@ -827,5 +827,6 @@ export default function CuentaCorrienteProveedoresClient() {
           </div>
         </div>
       </Modal>
+    </div>
   )
 }
