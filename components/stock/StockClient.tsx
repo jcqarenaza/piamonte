@@ -86,30 +86,39 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const notaFinal = [ajusteCantForm.motivo, ajusteCantForm.nota].filter(Boolean).join(' — ') || 'Ajuste manual'
     const esPendienteNC = ajusteCantForm.tipo === 'salida' && ajusteCantForm.pendiente_nc
 
-    // Para rotos pendientes NC: NO insertar en stock_movimientos (se registra en ajustes_stock)
-    // Para otros ajustes: sí insertar en stock_movimientos
-    if (!esPendienteNC) {
-      await supabase.from('stock_movimientos').insert({
-        stock_id: ajusteCantModal.id,
-        tipo: ajusteCantForm.tipo,
-        cantidad: Math.abs(delta),
-        fecha: new Date().toISOString().slice(0,10),
-        descripcion: notaFinal,
-        pendiente_nc: false,
-        user_id: userId || null,
-      })
+    // Movimiento + actualización de cantidad en una sola transacción (RPC atómico).
+    // Para rotos pendiente NC el movimiento nace con pendiente_nc=true (espejo del ajuste).
+    const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
+      p_stock_id: ajusteCantModal.id,
+      p_tipo: ajusteCantForm.tipo,
+      p_cantidad: Math.abs(delta),
+      p_fecha: new Date().toISOString().slice(0,10),
+      p_descripcion: notaFinal,
+      p_user_id: userId || null,
+      p_pendiente_nc: esPendienteNC,
+    })
+    if (errMov) {
+      alert(`⚠ No se pudo aplicar el ajuste: ${errMov.message}`)
+      setSavingAjuste(false)
+      return
     }
 
-    // Actualizar cantidad en stock
-    await setUserCtx()
-    await supabase.from('stock').update({ cantidad: nueva }).eq('id', ajusteCantModal.id)
-
-    // Si es salida con pendiente NC → registrar en ajustes_stock con proveedor para que ComprasClient lo encuentre
+    // Si es salida con pendiente NC → registrar en ajustes_stock + CC del proveedor, VINCULADOS:
+    // primero la fila de CC (capturando su id), después el ajuste con comprobante_id apuntándole.
+    // Ese vínculo es el que permite que el saldado de la NC en Compras marque la CC automáticamente.
     if (esPendienteNC && ajusteCantForm.proveedor_id) {
       const montoAjuste = Math.round((ajusteCantModal.costo || 0) * Math.abs(delta))
 
-      // Insertar en ajustes_stock con proveedor — es la fuente que usa ComprasClient para listar pendientes NC
-      await supabase.from('ajustes_stock').insert({
+      const { data: ccRow, error: errCC } = await supabase.from('cuenta_corriente_proveedores').insert({
+        proveedor_id: ajusteCantForm.proveedor_id,
+        proveedor_nombre: ajusteCantForm.proveedor_nombre,
+        fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
+        descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
+        debe: 0, haber: montoAjuste,
+        notas: `pendiente_nc`,
+      }).select('id').single()
+
+      const { error: errAj } = await supabase.from('ajustes_stock').insert({
         stock_id: ajusteCantModal.id,
         tipo: 'salida',
         cantidad: Math.abs(delta),
@@ -123,17 +132,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         costo_unitario: ajusteCantModal.costo || null,
         stock_anterior: ajusteCantModal.cantidad,
         stock_posterior: nueva,
+        comprobante_id: ccRow?.id || null,
       })
 
-      // Registrar en CC del proveedor
-      await supabase.from('cuenta_corriente_proveedores').insert({
-        proveedor_id: ajusteCantForm.proveedor_id,
-        proveedor_nombre: ajusteCantForm.proveedor_nombre,
-        fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
-        descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
-        debe: 0, haber: montoAjuste,
-        notas: `pendiente_nc`,
-      })
+      if (errCC || errAj) alert(`⚠ Ajuste aplicado al stock, pero falló el registro del pendiente NC: ${errCC?.message || errAj?.message}`)
     }
 
     setAjusteCantModal(null)

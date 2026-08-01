@@ -62,9 +62,10 @@ export default function CuentaCorrienteProveedoresClient() {
   async function loadMovs(nombre: string) {
     const { data } = await supabase.from('cuenta_corriente_proveedores')
       .select('*').eq('proveedor_nombre', nombre).order('fecha').order('created_at')
-    // Excluir ajustes pendiente_nc activos (los mismos que excluye la vista y el header)
+    // Excluir TODOS los ajustes pendiente_nc (activos o ya saldados) — mismo criterio que el header:
+    // el crédito real lo aporta la NC del proveedor cuando se carga, el ajuste es solo informativo
     const filtrados = (data??[]).filter((m:any) =>
-      !(m.tipo === 'ajuste' && m.notas?.includes('pendiente_nc') && !m.notas?.includes('NC aplicada'))
+      !(m.tipo === 'ajuste' && m.notas?.includes('pendiente_nc'))
     )
     // Recalcular saldo acumulado (asc) y luego invertir para mostrar más reciente primero
     let saldoAcum = 0
@@ -85,13 +86,13 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp(data??[]))
-      // Cargar ajustes pendientes de NC para este proveedor (solo los no saldados)
-      supabase.from('cuenta_corriente_proveedores')
-        .select('id,descripcion,haber,fecha,notas')
-        .eq('proveedor_nombre', sel.proveedor_nombre)
-        .eq('tipo','ajuste')
-        .ilike('notas','%pendiente_nc%')
-        .not('notas','ilike','%NC aplicada%')
+      // NC pendientes: fuente única = ajustes_stock.pendiente_nc (la misma que usa el modal de Compras).
+      // Se muestran TODOS los pendientes, tengan monto o no.
+      supabase.from('ajustes_stock')
+        .select('id, fecha, cantidad, costo_unitario, nota, descripcion, stock:stock_id(codigo, descripcion)')
+        .eq('pendiente_nc', true)
+        .eq('proveedor_id', sel.proveedor_id)
+        .order('fecha')
         .then(({data})=>setAjustesPendNC(data??[]))
       // Cargar OPs del proveedor
       supabase.from('ordenes_pago')
@@ -99,25 +100,25 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .order('fecha', { ascending: false })
         .then(({data})=>setOrdenesPago(data??[]))
-      // Cargar facturas/NC/ND pendientes de pago (no saldadas), ordenadas por fecha asc para calcular acumulado
-      supabase.from('comprobantes_compra')
-        .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado,items')
+      // Saldos pendientes desde el LEDGER (vista de imputación FIFO) — misma fuente que el header,
+      // coincidencia por construcción: la primera fila (más reciente) siempre = "Debemos" del header.
+      supabase.from('vista_cc_saldos_detalle')
+        .select('*')
         .eq('proveedor_id', sel.proveedor_id)
-        .eq('saldado', false)
-        .in('tipo',['factura','nc','nd'])
-        .order('fecha', { ascending: true })
-        .then(({data})=>{
-          // Saldo decreciente: primera fila (más reciente) = total pendiente, última = su propio importe
-          const lista = data??[]
-          let acum = 0
-          // Calcular acumulado ASC (de más antigua a más nueva)
-          const conSaldo = lista.map((p:any)=>{
-            const delta = p.tipo==='nc' ? -Math.abs(p.total) : Math.abs(p.total)
-            acum += delta
-            return {...p, saldo_acum: acum}
-          })
-          // Reverse: más reciente primero. La primera fila tendrá el acum total (= totalPend), la última solo su delta.
-          setPendientesPago(conSaldo.reverse())
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
+        .then(async ({data})=>{
+          const rows = data ?? []
+          // Traer los comprobantes vinculados (número, tipo, ítems) para etiqueta y detalle al click
+          const compIds = Array.from(new Set(rows.map((r:any)=>r.comprobante_compra_id).filter(Boolean)))
+          const compMap: Record<string, any> = {}
+          if (compIds.length) {
+            const { data: comps } = await supabase.from('comprobantes_compra')
+              .select('id,tipo,letra,punto_venta,numero,fecha,total,saldado,items')
+              .in('id', compIds)
+            for (const c of (comps ?? [])) compMap[(c as any).id] = c
+          }
+          setPendientesPago(rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null })))
         })
       setVistaMovs(false)
     }
@@ -510,19 +511,23 @@ export default function CuentaCorrienteProveedoresClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pendientesPago.map((p,i)=>{
-                        const tipoLabel = p.tipo==='nc'?'NC':p.tipo==='nd'?'ND':'FC'
-                        const nro = `${tipoLabel} ${p.letra||''} ${p.punto_venta||''}-${p.numero||''}`
+                      {pendientesPago.map((p:any,i)=>{
+                        const c = p.comp
+                        const tipoEf = c?.tipo || p.tipo
+                        const tipoLabel = tipoEf==='nc'?'NC':tipoEf==='nd'?'ND':tipoEf==='ajuste'?'AJ':'FC'
+                        const nro = c
+                          ? `${tipoLabel} ${c.letra||''} ${c.punto_venta||''}-${c.numero||''}`
+                          : (p.descripcion || tipoLabel)
+                        const monto = +p.monto  // signado: cargos +, NC/créditos −
                         return (
-                          <tr key={p.id} className={`border-t border-p-line2 cursor-pointer hover:bg-p-light/40 ${i%2===0?'':'bg-p-light/20'}`}
-                            onClick={()=>setVerComp(p)}
-                            onDoubleClick={()=>setVerComp(p)}>
+                          <tr key={p.id} className={`border-t border-p-line2 ${c?'cursor-pointer hover:bg-p-light/40':''} ${i%2===0?'':'bg-p-light/20'}`}
+                            onClick={()=>{ if(c) setVerComp(c) }}>
                             <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
-                            <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
-                            <td className={`px-3 py-2 text-right font-mono font-bold ${p.tipo==='nc'?'text-green-600':'text-red-500'}`}>
-                              {p.tipo==='nc'?'−':''}{moneyARS(p.total)}
+                            <td className="px-3 py-2 font-semibold text-p-ink truncate max-w-[280px]" title={p.descripcion||''}>{nro}</td>
+                            <td className={`px-3 py-2 text-right font-mono font-bold ${monto<0?'text-green-600':'text-red-500'}`}>
+                              {monto<0?'−':''}{moneyARS(Math.abs(monto))}
                             </td>
-                            <td className={`px-3 py-2 text-right font-mono font-bold ${(p as any).saldo_acum>0?'text-red-500':'text-green-600'}`}>{moneyARS(Math.abs((p as any).saldo_acum))}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(+p.saldo_acumulado)}</td>
                           </tr>
                         )
                       })}
@@ -616,12 +621,17 @@ export default function CuentaCorrienteProveedoresClient() {
                     Cargá la NC en Compras y seleccioná los artículos pendientes
                   </p>
                   <div className="flex flex-col gap-1">
-                    {ajustesPendNC.map(a=>(
-                      <div key={a.id} className="flex items-center justify-between text-xs">
-                        <span style={{color:'#78350f'}} className="truncate max-w-[160px]">{a.descripcion}</span>
-                        <span style={{color:'#92400e',fontWeight:600}} className="font-mono shrink-0 ml-2">{moneyARS(+a.haber)}</span>
-                      </div>
-                    ))}
+                    {ajustesPendNC.map((a:any)=>{
+                      const monto = Math.round((a.costo_unitario || 0) * (a.cantidad || 0))
+                      const st = a.stock
+                      const label = `${a.nota || 'Roto'} — ${st?.descripcion || a.descripcion || ''} (${st?.codigo || ''}) ×${a.cantidad}`
+                      return (
+                        <div key={a.id} className="flex items-center justify-between text-xs">
+                          <span style={{color:'#78350f'}} className="truncate max-w-[160px]" title={label}>{label}</span>
+                          <span style={{color:'#92400e',fontWeight:600}} className="font-mono shrink-0 ml-2">{moneyARS(monto)}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
