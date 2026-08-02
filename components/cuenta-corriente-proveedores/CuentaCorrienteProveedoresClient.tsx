@@ -242,17 +242,22 @@ export default function CuentaCorrienteProveedoresClient() {
     const partesOtros = opPagos.filter(p=>p.monto).map(p=>`${p.tipo} $${Number(p.monto).toLocaleString('es-AR')}`)
     const formasPagoDesc = [...partesCheques, ...partesOtros].join(' + ') || 'Sin especificar'
 
+    // total_pagado = suma real de medios de pago (cheques + otros), NO facturas - NC
+    const totalChequesSel = chequesSelArr.reduce((a,ch)=>a+(+ch.monto),0)
+    const totalOtrosSel = opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0)
+    const totalMedioPago = totalChequesSel + totalOtrosSel
+
     const { data: mov } = await supabase.from('cuenta_corriente_proveedores').insert({
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
       fecha: fechaOp, tipo: 'pago', descripcion: `Orden de Pago Nº ${numero}`,
-      debe: 0, haber: totalAPagar,
+      debe: 0, haber: totalMedioPago,
       notas: opForm.notas || null,
     }).select('id').single()
 
     const { data: opIns } = await supabase.from('ordenes_pago').insert({
       numero, fecha: fechaOp,
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
-      total_facturas: totalFacturasSel, total_nc: totalNcSel, total_pagado: totalAPagar,
+      total_facturas: totalFacturasSel, total_nc: totalNcSel, total_pagado: totalMedioPago,
       forma_pago: formasPagoDesc, notas: opForm.notas || null,
       cuenta_corriente_id: mov?.id || null,
     }).select('id').single()
@@ -302,7 +307,7 @@ export default function CuentaCorrienteProveedoresClient() {
     imprimirOrdenPago({
       numero, fecha: fechaOp, proveedor_nombre: sel.proveedor_nombre,
       facturas: facturasSel, nc: ncSel,
-      totalFacturas: totalFacturasSel, totalNc: totalNcSel, totalPagado: totalAPagar,
+      totalFacturas: totalFacturasSel, totalNc: totalNcSel, totalPagado: totalMedioPago,
       forma_pago: formasPagoDesc, notas: opForm.notas,
     })
     load()
