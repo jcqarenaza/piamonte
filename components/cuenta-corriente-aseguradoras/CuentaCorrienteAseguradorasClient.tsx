@@ -472,11 +472,11 @@ export default function CuentaCorrienteAseguradorasClient() {
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
                   <div className="flex gap-1">
                     <button onClick={()=>setVistaMovs(false)}
-                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${!vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                      style={!vistaMovs?{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}:{background:'transparent',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'4px 12px',fontWeight:600,fontSize:11,cursor:'pointer'}}>
                       Saldos
                     </button>
                     <button onClick={()=>setVistaMovs(true)}
-                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                      style={vistaMovs?{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontWeight:700,fontSize:11,cursor:'pointer'}:{background:'transparent',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'4px 12px',fontWeight:600,fontSize:11,cursor:'pointer'}}>
                       Movimientos
                     </button>
                   </div>

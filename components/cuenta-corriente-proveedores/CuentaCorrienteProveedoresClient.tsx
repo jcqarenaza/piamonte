@@ -175,28 +175,37 @@ export default function CuentaCorrienteProveedoresClient() {
     loadMovs(sel.proveedor_nombre)
     setAjustesPendNC(prev=>prev.filter(a=>a.id!==ajusteId))
   }
-  async function eliminarOrdenPago(op: any) {
-    if (!sel || !confirm(`¿Eliminar la Orden de Pago Nº ${op.numero}? Se revertirán las facturas a pendientes.`)) return
+  async function anularOrdenPago(op: any) {
+    if (!sel) return
+    const motivo = prompt(`Motivo de anulación de OP Nº ${op.numero}:`)
+    if (motivo === null) return
     setBorrandoOp(op.id)
-    // Revertir saldado en facturas vinculadas
-    const { data: items } = await supabase.from('orden_pago_items')
+    const fecha = new Date().toISOString().slice(0,10)
+    // 1. Contramovimiento en CC
+    await supabase.from('cuenta_corriente_proveedores').insert({
+      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
+      fecha, tipo: 'ajuste',
+      descripcion: `Anulación OP Nº ${op.numero}`,
+      debe: op.total_pagado, haber: 0,
+      notas: `anulacion_op · ${motivo || 'Sin motivo'}`,
+    })
+    // 2. Cheques vuelven a disponible
+    const chNros = Array.from((op.forma_pago||'').matchAll(/Cheque (\d+)/g)).map((m:any)=>m[1])
+    if (chNros.length) await supabase.from('cheques').update({ estado: 'disponible' }).in('numero', chNros)
+    // 3. Facturas vuelven a saldado=false
+    const { data: opItems } = await supabase.from('orden_pago_items')
       .select('comprobante_compra_id').eq('orden_pago_id', op.id)
-    if (items && items.length) {
-      await supabase.from('comprobantes_compra')
-        .update({ saldado: false })
-        .in('id', items.map((i:any) => i.comprobante_compra_id))
+    if (opItems?.length) {
+      await supabase.from('comprobantes_compra').update({ saldado: false })
+        .in('id', opItems.map((i:any)=>i.comprobante_compra_id))
     }
-    // Borrar movimiento de CC
-    if (op.cuenta_corriente_id) {
-      await supabase.from('cuenta_corriente_proveedores').delete().eq('id', op.cuenta_corriente_id)
-    }
-    // Borrar items y OP
-    await supabase.from('orden_pago_items').delete().eq('orden_pago_id', op.id)
-    await supabase.from('ordenes_pago').delete().eq('id', op.id)
+    // 4. Marcar OP anulada (sin borrar)
+    await supabase.from('ordenes_pago').update({
+      anulada: true, fecha_anulacion: fecha, motivo_anulacion: motivo||'Sin motivo'
+    }).eq('id', op.id)
     setBorrandoOp(null)
-    setOrdenesPago(prev => prev.filter(o => o.id !== op.id))
-    load()
-    loadMovs(sel.proveedor_nombre)
+    setOrdenesPago(prev=>prev.filter(o=>o.id!==op.id))
+    load(); loadMovs(sel.proveedor_nombre)
   }
 
   async function abrirOrdenPago() {
@@ -604,10 +613,10 @@ export default function CuentaCorrienteProveedoresClient() {
                         {verOPs===op.id && (
                           <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between gap-3">
                             <p className="text-[10px] text-red-600">Eliminar esta OP revertirá las facturas a pendientes de pago.</p>
-                            <button onClick={()=>{if(confirm(`¿Eliminar OP Nº ${op.numero} de ${moneyARS(op.total_pagado)}? Las facturas volverán a pendientes.`))eliminarOrdenPago(op)}}
+                            <button onClick={()=>{anularOrdenPago(op)}}
                               disabled={borrandoOp===op.id}
                               className="text-[11px] font-bold text-red-600 border border-red-300 bg-white rounded px-2 py-1 hover:bg-red-100 shrink-0">
-                              {borrandoOp===op.id ? '…' : 'Eliminar OP'}
+                              {borrandoOp===op.id ? '…' : 'Anular OP'}
                             </button>
                           </div>
                         )}
