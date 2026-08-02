@@ -340,26 +340,23 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   if (filtroFam) visible = visible.filter(s => FAM_MAP[normPos(s.pos)] === filtroFam)
 
   async function chgCant(id: string, delta: number) {
-    const s = items.find(x => x.id === id)!
-    const cant = Math.max(0, s.cantidad + delta)
-    // PRIMERO insertar movimiento — así el trigger no duplica
-    await supabase.from('stock_movimientos').insert({
-      stock_id: id,
-      tipo: delta > 0 ? 'entrada' : 'salida',
-      cantidad: Math.abs(delta),
-      fecha: new Date().toISOString().slice(0,10),
-      descripcion: 'Cargar mercadería',
+    const { error } = await supabase.rpc('insertar_movimiento_stock', {
+      p_stock_id: id,
+      p_tipo: delta > 0 ? 'entrada' : 'salida',
+      p_cantidad: Math.abs(delta),
+      p_fecha: new Date().toISOString().slice(0,10),
+      p_descripcion: 'Cargar mercancía',
+      p_user_id: userId || null,
     })
-    // DESPUÉS actualizar cantidad
-    await setUserCtx()
-    await supabase.from('stock').update({ cantidad: cant, updated_at: new Date().toISOString() }).eq('id', id)
-    setItems(prev => prev.map(x => x.id === id ? { ...x, cantidad: cant } : x))
+    if (error) { alert(`⚠ Error al actualizar cantidad: ${error.message}`); return }
+    setItems(prev => prev.map(x => x.id === id ? { ...x, cantidad: Math.max(0, x.cantidad + delta) } : x))
   }
 
   async function saveCosto(id: string, val: string) {
     const c = +val.replace(/[^0-9.]/g, '')
     if (!c) return
-    await supabase.from('stock').update({ costo: c, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.rpc('actualizar_costo_stock', { p_stock_id: id, p_costo: c })
+    if (error) { alert(`⚠ Error al guardar costo: ${error.message}`); return }
     setItems(prev => prev.map(x => x.id === id ? { ...x, costo: c } : x))
     setCostoEdit(p => { const n = { ...p }; delete n[id]; return n })
   }
@@ -381,11 +378,17 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const cant = +ajusteForm.cant || 0
     const costo = ajusteForm.costo ? +ajusteForm.costo.replace(/[^0-9.]/g,'') : null
     if (ajusteStockId) {
-      const s = items.find(x => x.id === ajusteStockId)
-      if (s) {
-        await setUserCtx()
-        await supabase.from('stock').update({ cantidad: s.cantidad + cant, ...(costo ? {costo} : {}), updated_at: new Date().toISOString() }).eq('id', ajusteStockId)
-      }
+      const { error } = await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: ajusteStockId,
+        p_tipo: 'entrada',
+        p_cantidad: cant,
+        p_fecha: new Date().toISOString().slice(0,10),
+        p_descripcion: ajusteForm.nota || 'Ajuste manual',
+        p_user_id: userId || null,
+        ...(costo ? { p_stock_costo: costo } : {})
+      })
+      if (error) { alert(`⚠ Error al guardar ajuste: ${error.message}`); return }
+      if (costo) await supabase.rpc('actualizar_costo_stock', { p_stock_id: ajusteStockId, p_costo: costo })
     } else {
       await supabase.from('stock').insert({
         descripcion: ajusteForm.desc, cantidad: cant, costo,
@@ -500,16 +503,18 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       await supabase.from('stock').update(payload).eq('id', editId)
     } else {
       const { data: newStock } = await supabase.from('stock').insert(payload).select('id').single()
-      // Si tiene cantidad inicial, registrar movimiento de alta
+      // Si tiene cantidad inicial, registrar movimiento de alta via RPC
       if (newStock && +form.cant > 0) {
-        await supabase.from('stock_movimientos').insert({
-          stock_id: newStock.id,
-          tipo: 'entrada',
-          cantidad: +form.cant,
-          fecha: new Date().toISOString().slice(0,10),
-          descripcion: form.leyenda.trim() || 'Alta manual de stock',
-          user_id: userId || null,
+        const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: newStock.id,
+          p_tipo: 'entrada',
+          p_cantidad: +form.cant,
+          p_fecha: new Date().toISOString().slice(0,10),
+          p_descripcion: form.leyenda.trim() || 'Alta manual de stock',
+          p_user_id: userId || null,
         })
+        if (errMov) alert(`⚠ Stock creado pero error en movimiento: ${errMov.message}`)
+      }
       }
     }
     setOpen(false)
@@ -763,25 +768,22 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!ajusteMasivoLeyenda.trim() || !ajusteMasivoLista.length) return
     setAjusteMasivoLoading(true)
     const fecha = new Date().toISOString().slice(0,10)
-    // Desactivar trigger antes del loop para evitar doble movimiento
-    try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'true', is_local: true }) } catch(_) {}
+    const errores: string[] = []
     for (const it of ajusteMasivoLista) {
-      const nueva = it.cantActual + it.delta
       if (it.delta !== 0) {
-        // INSERT movimiento ANTES del UPDATE (regla crítica)
-        await supabase.from('stock_movimientos').insert({
-          stock_id: it.id,
-          tipo: it.delta > 0 ? 'entrada' : 'salida',
-          cantidad: Math.abs(it.delta),
-          fecha,
-          descripcion: ajusteMasivoLeyenda.trim(),
-          user_id: userId || null,
+        // Cambio de cantidad — usar RPC atómico
+        const { error } = await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: it.id,
+          p_tipo: it.delta > 0 ? 'entrada' : 'salida',
+          p_cantidad: Math.abs(it.delta),
+          p_fecha: fecha,
+          p_descripcion: ajusteMasivoLeyenda.trim(),
+          p_user_id: userId || null,
         })
-        await setUserCtx()
-        await supabase.from('stock').update({ cantidad: nueva }).eq('id', it.id)
-        setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: nueva} : s))
+        if (error) errores.push(`${it.codigo}: ${error.message}`)
+        else setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: it.cantActual + it.delta} : s))
       } else {
-        // Delta 0 — registrar conteo confirmado
+        // Delta 0 — registrar conteo confirmado (no toca cantidad)
         await supabase.from('stock_movimientos').insert({
           stock_id: it.id,
           tipo: 'entrada',
@@ -792,8 +794,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         })
       }
     }
-    // Reactivar trigger
-    try { await supabase.rpc('set_config', { key: 'app.skip_stock_trigger', value: 'false', is_local: true }) } catch(_) {}
+    if (errores.length) alert(`⚠ Errores en ajuste masivo:\n${errores.join('\n')}`)
     setAjusteMasivoLoading(false)
     setAjusteMasivoOpen(false)
     setAjusteMasivoLista([])

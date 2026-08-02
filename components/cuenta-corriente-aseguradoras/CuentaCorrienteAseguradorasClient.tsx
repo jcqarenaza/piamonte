@@ -506,7 +506,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                             return (
                               <tr key={p.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/20'}`}>
                                 <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
-                                <td className="px-3 py-2 font-semibold text-p-ink truncate max-w-[240px]" title={p.descripcion}>{p.descripcion}</td>
+                                <td className="px-3 py-2 font-semibold text-p-ink truncate max-w-[240px]" title={p.descripcion}>{p.descripcion?.split(' — ')[0]}</td>
                                 <td className={`px-3 py-2 text-right font-mono font-bold ${monto<0?'text-green-600':'text-red-500'}`}>
                                   {monto<0?'−':''}{moneyARS(Math.abs(monto))}
                                 </td>
