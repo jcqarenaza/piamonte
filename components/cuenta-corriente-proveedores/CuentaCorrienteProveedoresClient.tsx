@@ -105,8 +105,8 @@ export default function CuentaCorrienteProveedoresClient() {
       supabase.from('vista_cc_saldos_detalle')
         .select('*')
         .eq('proveedor_id', sel.proveedor_id)
-        .order('fecha', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('fecha', { ascending: true })
+        .order('created_at', { ascending: true })
         .then(async ({data})=>{
           const rows = data ?? []
           // Traer los comprobantes vinculados (número, tipo, ítems) para etiqueta y detalle al click
@@ -527,7 +527,7 @@ export default function CuentaCorrienteProveedoresClient() {
                             <td className={`px-3 py-2 text-right font-mono font-bold ${monto<0?'text-green-600':'text-red-500'}`}>
                               {monto<0?'−':''}{moneyARS(Math.abs(monto))}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{moneyARS(+p.saldo_acumulado)}</td>
+                            <td className={"px-3 py-2 text-right font-mono font-bold text-red-500"}>{moneyARS(+p.saldo_acumulado)}</td>
                           </tr>
                         )
                       })}
