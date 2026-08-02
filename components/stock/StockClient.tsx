@@ -798,6 +798,34 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setAjusteMasivoLeyenda('')
   }
 
+  function exportarCSV() {
+    const filtrados = items.filter(s => {
+      if (!s.activo) return false
+      if (q && !s.descripcion?.toLowerCase().includes(q.toLowerCase()) && !s.codigo?.toLowerCase().includes(q.toLowerCase())) return false
+      if (depFilter && s.deposito !== depFilter) return false
+      if (filtroFam && FAM_MAP[normPos(s.pos)] !== filtroFam) return false
+      return true
+    })
+    const headers = ['Código','Descripción','Marca','Posición','Año','Cantidad','Mínimo','Costo','Depósito']
+    const rows = filtrados.map(s => [
+      s.codigo || '',
+      s.descripcion || '',
+      s.marca || '',
+      s.pos || '',
+      s.anio || '',
+      s.cantidad,
+      s.stock_minimo || 0,
+      s.costo || '',
+      s.deposito || 'Principal',
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `stock_${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
   async function generarConteo() {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format: 'a4', unit: 'mm' })
@@ -1216,6 +1244,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   }`}>
                   <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
                   <div className="flex-1 min-w-0">
+        <button onClick={exportarCSV}
+          style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          📅 CSV
+        </button>
                     <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
                     <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
                   </div>

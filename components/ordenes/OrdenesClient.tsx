@@ -607,8 +607,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   {(() => {
                     const stockItems = (o.items||[]).filter((it:any)=>it.stock_id&&it.codigo)
                     return stockItems.length>0 ? stockItems.map((it:any)=>(
-                      <span key={it.stock_id} className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1.5 py-0.5 rounded">
-                        {it.codigo}{it.d ? ` · ${it.d.slice(0,30)}` : ''}
+                      <span key={it.stock_id} className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1.5 py-0.5 rounded max-w-[180px] truncate block" title={`${it.codigo}${it.d ? \` · ${it.d}\` : ''}`}>
+                        {it.codigo}{it.d ? ` · ${it.d.slice(0,25)}` : ''}
                       </span>
                     )) : (o as any).stock_codigo ? (
                       <span className="text-[10px] font-mono text-p-ink2 shrink-0 bg-p-light px-1.5 py-0.5 rounded">{(o as any).stock_codigo}</span>

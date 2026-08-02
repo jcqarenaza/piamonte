@@ -2132,7 +2132,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </button>
           ))}
         </div>
-        <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>
+        {rol !== 'caja' && <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>}
       </div>
 
       {compsFiltrados.length===0 ? <Empty msg="Sin comprobantes para este filtro." /> : (
