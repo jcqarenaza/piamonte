@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
-import { moneyARS } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS } from '@/lib/utils/format'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 

@@ -38,6 +38,8 @@ export default function CuentaCorrienteAseguradorasClient() {
   const [saldos, setSaldos]       = useState<Saldo[]>([])
   const [sel, setSel]             = useState<Saldo|null>(null)
   const [movs, setMovs]           = useState<Mov[]>([])
+  const [vistaMovs, setVistaMovs] = useState(false)
+  const [pendientesAseg, setPendientesAseg] = useState<any[]>([])
   const [cobrosMap, setCobrosMap] = useState<Record<string,CobroDetalle>>({})
   const [expandedMov, setExpandedMov] = useState<string|null>(null)
   const [q, setQ]                 = useState('')
@@ -156,6 +158,15 @@ export default function CuentaCorrienteAseguradorasClient() {
   }
 
   async function loadMovs(asegId:string) {
+    // Cargar saldos pendientes desde la vista FIFO
+    supabase.from('vista_cc_aseguradoras_saldos_detalle')
+      .select('*')
+      .eq('aseguradora_id', asegId)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
+      .then(({data})=>{
+        setPendientesAseg((data??[]).filter((r:any) => +r.saldo_acumulado >= 1))
+      })
     setLoading(true)
     const [{ data: movsData }, { data: cobrosData }] = await Promise.all([
       supabase.from('cuenta_corriente_aseguradoras').select('*').eq('aseguradora_id',asegId).order('fecha',{ascending:false}).order('created_at',{ascending:false}),
@@ -456,12 +467,63 @@ export default function CuentaCorrienteAseguradorasClient() {
                 </div>
               </div>
 
-              {/* Movimientos */}
+              {/* Saldos / Movimientos toggle */}
               <div className="bg-white border border-p-line rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
-                  <span className="text-xs font-semibold text-p-ink">Movimientos</span>
-                  <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
+                  <div className="flex gap-1">
+                    <button onClick={()=>setVistaMovs(false)}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${!vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                      Saldos
+                    </button>
+                    <button onClick={()=>setVistaMovs(true)}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                      Movimientos
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-p-ink2">
+                    {vistaMovs ? `${movs.length} registros` : `${pendientesAseg.length} pendientes`}
+                  </span>
                 </div>
+
+                {/* Vista Saldos FIFO */}
+                {!vistaMovs && (
+                  <div className="overflow-y-auto" style={{maxHeight:400}}>
+                    {pendientesAseg.length === 0 ? (
+                      <p className="text-sm text-p-ink2 text-center py-8">Sin facturas pendientes ✓</p>
+                    ) : (
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-p-light">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                            <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                            <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
+                            <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pendientesAseg.map((p:any,i)=>{
+                            const monto = +p.monto
+                            return (
+                              <tr key={p.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/20'}`}>
+                                <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
+                                <td className="px-3 py-2 font-semibold text-p-ink truncate max-w-[240px]" title={p.descripcion}>{p.descripcion}</td>
+                                <td className={`px-3 py-2 text-right font-mono font-bold ${monto<0?'text-green-600':'text-red-500'}`}>
+                                  {monto<0?'−':''}{moneyARS(Math.abs(monto))}
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono font-bold text-red-500">
+                                  {moneyARS(+p.saldo_acumulado)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+
+                {/* Vista Movimientos original */}
+                {vistaMovs && (<>
                 {loading ? <p className="text-sm text-p-gray py-4 text-center">Cargando…</p> : (
                   <div className="overflow-y-auto" style={{maxHeight:400}}>
                       <table className="w-full text-xs">
@@ -537,6 +599,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                       </table>
                   </div>
                 )}
+                </> )} {/* fin vistaMovs */}
               </div>
             </div>
           )}

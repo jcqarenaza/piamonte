@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Modal, Field, Input, Empty } from '@/components/ui'
-import { moneyARS } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS } from '@/lib/utils/format'
 import CuentaCorrienteAseguradorasClient from '@/components/cuenta-corriente-aseguradoras/CuentaCorrienteAseguradorasClient'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
@@ -27,6 +27,8 @@ export default function CuentaCorrienteClient() {
   const [loading, setLoading]   = useState(true)
   const [factsPend, setFactsPend] = useState<any[]>([])
   const [factsSel, setFactsSel]   = useState<Record<string,boolean>>({})
+  const [vistaMovs, setVistaMovs] = useState(false)
+  const [pendientes, setPendientes] = useState<any[]>([])
   const supabase = createClient()
   const router   = useRouter()
 
@@ -50,7 +52,30 @@ export default function CuentaCorrienteClient() {
   }
 
   useEffect(()=>{ load() },[supabase])
-  useEffect(()=>{ if(sel) loadMovs(sel.cliente_nombre) },[sel])
+  useEffect(()=>{
+    if(sel){
+      loadMovs(sel.cliente_nombre)
+      // Cargar saldos pendientes desde la vista FIFO
+      supabase.from('vista_cc_clientes_saldos_detalle')
+        .select('*')
+        .eq('cliente_id', sel.cliente_id)
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
+        .then(async ({data})=>{
+          const rows = (data??[]).filter((r:any) => +r.saldo_acumulado >= 1)
+          const compIds = Array.from(new Set(rows.map((r:any)=>r.comprobante_id).filter(Boolean)))
+          const compMap: Record<string,any> = {}
+          if (compIds.length) {
+            const { data: comps } = await supabase.from('comprobantes')
+              .select('id,tipo,nro_cbte_afip,numero,fecha,total')
+              .in('id', compIds)
+            for (const c of (comps??[])) compMap[(c as any).id] = c
+          }
+          setPendientes(rows.map((r:any)=>({ ...r, comp: r.comprobante_id ? (compMap[r.comprobante_id]||null) : null })))
+        })
+      setVistaMovs(false)
+    }
+  },[sel])
 
   async function abrirCobro() {
     if (!sel?.cliente_id) return
@@ -296,41 +321,97 @@ export default function CuentaCorrienteClient() {
             </div>
           </div>
 
-          {/* Movimientos */}
+          {/* Saldos / Movimientos toggle */}
           <div className="bg-white border border-p-line rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-p-line bg-p-light/50">
-              <span className="text-xs font-semibold text-p-ink">Movimientos</span>
-              <span className="text-[10px] text-p-ink2">{movs.length} registros</span>
+              <div className="flex gap-1">
+                <button onClick={()=>setVistaMovs(false)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${!vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                  Saldos
+                </button>
+                <button onClick={()=>setVistaMovs(true)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${vistaMovs?'bg-p-green text-white':'text-p-ink2 hover:bg-p-light'}`}>
+                  Movimientos
+                </button>
+              </div>
+              <span className="text-[10px] text-p-ink2">
+                {vistaMovs ? `${movs.length} registros` : `${pendientes.length} pendientes`}
+              </span>
             </div>
-            <div className="overflow-y-auto" style={{maxHeight:400}}>
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-p-light">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
-                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
-                    <th className="text-right px-3 py-2 font-semibold text-red-400">Debe</th>
-                    <th className="text-right px-3 py-2 font-semibold text-green-600">Haber</th>
-                    <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movs.map((m,i)=>(
-                    <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
-                      <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
-                      <td className="px-3 py-2 max-w-[140px]">
-                        <p className="truncate">{m.descripcion||'—'}</p>
-                        {m.tipo==='pago'&&<span className="text-[9px] font-bold bg-green-100 text-green-700 px-1 rounded">PAGO</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>
-                      <td className={`px-3 py-2 text-right font-mono font-bold ${m.saldo>0?'text-red-500':m.saldo<0?'text-green-600':'text-p-ink2'}`}>
-                        {moneyARS(Math.abs(m.saldo))}
-                      </td>
+
+            {/* Vista Saldos */}
+            {!vistaMovs && (
+              <div className="overflow-y-auto" style={{maxHeight:400}}>
+                {pendientes.length === 0 ? (
+                  <p className="text-sm text-p-ink2 text-center py-8">Sin facturas pendientes ✓</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-p-light">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                        <th className="text-left px-3 py-2 font-semibold text-p-ink2">Comprobante</th>
+                        <th className="text-right px-3 py-2 font-semibold text-red-400">Total</th>
+                        <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendientes.map((p:any,i)=>{
+                        const c = p.comp
+                        const monto = +p.monto
+                        const nro = c
+                          ? `FA 0006-${String(c.nro_cbte_afip||c.numero||'').padStart(8,'0')}`
+                          : (p.descripcion || p.tipo)
+                        return (
+                          <tr key={p.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/20'}`}>
+                            <td className="px-3 py-2 font-mono">{p.fecha?.split('-').reverse().join('/')}</td>
+                            <td className="px-3 py-2 font-semibold text-p-ink">{nro}</td>
+                            <td className={`px-3 py-2 text-right font-mono font-bold ${monto<0?'text-green-600':'text-red-500'}`}>
+                              {monto<0?'−':''}{moneyARS(Math.abs(monto))}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-red-500">
+                              {moneyARS(+p.saldo_acumulado)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Vista Movimientos */}
+            {vistaMovs && (
+              <div className="overflow-y-auto" style={{maxHeight:400}}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-p-light">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold text-p-ink2">Fecha</th>
+                      <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                      <th className="text-right px-3 py-2 font-semibold text-red-400">Debe</th>
+                      <th className="text-right px-3 py-2 font-semibold text-green-600">Haber</th>
+                      <th className="text-right px-3 py-2 font-semibold text-p-dark">Saldo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {movs.map((m,i)=>(
+                      <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'}`}>
+                        <td className="px-3 py-2 font-mono">{m.fecha?.split('-').reverse().join('/')}</td>
+                        <td className="px-3 py-2 max-w-[140px]">
+                          <p className="truncate">{m.descripcion||'—'}</p>
+                          {m.tipo==='pago'&&<span className="text-[9px] font-bold bg-green-100 text-green-700 px-1 rounded">PAGO</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-red-500">{m.debe>0?moneyARS(m.debe):'—'}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-green-600">{m.haber>0?moneyARS(m.haber):'—'}</td>
+                        <td className={`px-3 py-2 text-right font-mono font-bold ${m.saldo>0?'text-red-500':m.saldo<0?'text-green-600':'text-p-ink2'}`}>
+                          {moneyARS(Math.abs(m.saldo))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       ) : (
