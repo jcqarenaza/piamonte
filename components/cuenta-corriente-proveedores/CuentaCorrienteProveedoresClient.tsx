@@ -118,7 +118,8 @@ export default function CuentaCorrienteProveedoresClient() {
               .in('id', compIds)
             for (const c of (comps ?? [])) compMap[(c as any).id] = c
           }
-          setPendientesPago(rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null })))
+          const withComp = rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null }))
+          setPendientesPago(withComp.filter((r:any) => +r.saldo_acumulado >= 1))
         })
       setVistaMovs(false)
     }
