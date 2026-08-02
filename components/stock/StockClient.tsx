@@ -345,7 +345,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       p_tipo: delta > 0 ? 'entrada' : 'salida',
       p_cantidad: Math.abs(delta),
       p_fecha: new Date().toISOString().slice(0,10),
-      p_descripcion: 'Cargar mercancía',
+      p_descripcion: 'Cargar mercadería',
       p_user_id: userId || null,
     })
     if (error) { alert(`⚠ Error al actualizar cantidad: ${error.message}`); return }
@@ -501,7 +501,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (editId) {
       await supabase.from('stock').update(payload).eq('id', editId)
     } else {
-      const { data: newStock } = await supabase.from('stock').insert(payload).select('id').single()
       // Si tiene cantidad inicial, registrar movimiento de alta via RPC
       if (newStock && +form.cant > 0) {
         const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
@@ -514,6 +513,15 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         })
         if (errMov) alert(`⚠ Stock creado pero error en movimiento: ${errMov.message}`)
       }
+      if (newStock && +form.cant > 0) {
+        await supabase.from('stock_movimientos').insert({
+          stock_id: newStock.id,
+          tipo: 'entrada',
+          cantidad: +form.cant,
+          fecha: new Date().toISOString().slice(0,10),
+          descripcion: form.leyenda.trim() || 'Alta manual de stock',
+          user_id: userId || null,
+        })
       }
     }
     setOpen(false)
@@ -770,7 +778,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const errores: string[] = []
     for (const it of ajusteMasivoLista) {
       if (it.delta !== 0) {
-        // Cambio de cantidad — usar RPC atómico
         const { error } = await supabase.rpc('insertar_movimiento_stock', {
           p_stock_id: it.id,
           p_tipo: it.delta > 0 ? 'entrada' : 'salida',
@@ -782,7 +789,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         if (error) errores.push(`${it.codigo}: ${error.message}`)
         else setItems(prev => prev.map(s => s.id===it.id ? {...s, cantidad: it.cantActual + it.delta} : s))
       } else {
-        // Delta 0 — registrar conteo confirmado (no toca cantidad)
         await supabase.from('stock_movimientos').insert({
           stock_id: it.id,
           tipo: 'entrada',
