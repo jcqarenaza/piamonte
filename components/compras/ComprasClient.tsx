@@ -65,7 +65,7 @@ export default function ComprasClient() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string|null>(null)
-  const editandoRef = React.useRef(false) // ref para guardar en useEffect sin stale closure
+  const editandoRef = useRef(false) // ref para guardar en useEffect sin stale closure
   const [loading, setLoading] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
