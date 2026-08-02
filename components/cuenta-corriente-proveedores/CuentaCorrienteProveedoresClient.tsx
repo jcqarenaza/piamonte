@@ -105,8 +105,8 @@ export default function CuentaCorrienteProveedoresClient() {
       supabase.from('vista_cc_saldos_detalle')
         .select('*')
         .eq('proveedor_id', sel.proveedor_id)
-        .order('fecha', { ascending: true })
-        .order('created_at', { ascending: true })
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
         .then(async ({data})=>{
           const rows = data ?? []
           // Traer los comprobantes vinculados (número, tipo, ítems) para etiqueta y detalle al click
