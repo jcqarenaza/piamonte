@@ -501,6 +501,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (editId) {
       await supabase.from('stock').update(payload).eq('id', editId)
     } else {
+      const { data: newStock } = await supabase.from('stock').insert(payload).select('id').single()
       // Si tiene cantidad inicial, registrar movimiento de alta via RPC
       if (newStock && +form.cant > 0) {
         const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
@@ -513,17 +514,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         })
         if (errMov) alert(`⚠ Stock creado pero error en movimiento: ${errMov.message}`)
       }
-      if (newStock && +form.cant > 0) {
-        await supabase.from('stock_movimientos').insert({
-          stock_id: newStock.id,
-          tipo: 'entrada',
-          cantidad: +form.cant,
-          fecha: new Date().toISOString().slice(0,10),
-          descripcion: form.leyenda.trim() || 'Alta manual de stock',
-          user_id: userId || null,
-        })
       }
-    }
     setOpen(false)
     setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
     setEditId(null)
