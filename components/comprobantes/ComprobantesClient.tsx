@@ -475,7 +475,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     for (const x of ncItemsSel) {
       if (x.it.stock_id && x.cant > 0) {
         // Movimiento + devolución de stock en una sola transacción (RPC atómico)
-        await supabase.rpc('insertar_movimiento_stock', {
+        const { error: errStockNC } = await supabase.rpc('insertar_movimiento_stock', {
           p_stock_id: x.it.stock_id,
           p_tipo: 'entrada',
           p_cantidad: x.cant,
@@ -485,6 +485,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           p_comprobante_venta_id: (nc as any).id,
           p_user_id: userId,
         })
+        if (errStockNC) alert(`⚠ NC creada pero error al devolver stock: ${errStockNC.message}`)
       }
     }
 
@@ -781,7 +782,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               asegSel?.nombre || cliSel?.nombre || null,
             ].filter(Boolean).join(' · ') || it.d
             // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-            await supabase.rpc('insertar_movimiento_stock', {
+            const { error: errStockFV } = await supabase.rpc('insertar_movimiento_stock', {
               p_stock_id: it.stock_id, p_tipo: 'salida',
               p_cantidad: it.c,
               p_costo_unitario: (s as any).costo || null,
@@ -791,6 +792,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               p_comprobante_venta_id: compId,
               p_user_id: userId || null,
             })
+            if (errStockFV) { alert(`⚠ Error al descontar stock al facturar: ${errStockFV.message}`); return }
           }
         }
       }

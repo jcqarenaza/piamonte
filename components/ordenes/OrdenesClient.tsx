@@ -658,12 +658,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           const fecha = todayStr()
                           for (const it of stockItems) {
                             // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-                            await supabase.rpc('insertar_movimiento_stock', {
+                            const { error: errStockOS } = await supabase.rpc('insertar_movimiento_stock', {
                               p_stock_id: it.stock_id, p_tipo: 'salida',
                               p_cantidad: it.c||1, p_fecha: fecha,
                               p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
                               p_user_id: userId,
                             })
+                            if (errStockOS) { alert(`⚠ Error al descontar stock: ${errStockOS.message}`); return }
                           }
                           await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                           load()

@@ -151,11 +151,12 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
         for(const it of items) {
           if(it.stock_id) {
             // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-            await supabase.rpc('insertar_movimiento_stock', {
+            const { error: errStockRem } = await supabase.rpc('insertar_movimiento_stock', {
               p_stock_id: it.stock_id, p_tipo: 'salida', p_cantidad: it.c,
               p_fecha: form.fecha,
               p_descripcion: `Remito R-${String(remito.numero).padStart(4,'0')} · ${form.dest_nombre}`,
             })
+            if (errStockRem) { alert(`⚠ Error al descontar stock en remito: ${errStockRem.message}`); setGuardando(false); return }
           }
         }
         setGuardando(false); setOpen(false)

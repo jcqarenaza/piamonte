@@ -223,7 +223,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           form.pago !== 'Efectivo' ? form.pago : null,
         ].filter(Boolean).join(' · ') || 'Venta de caja'
         // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-        await supabase.rpc('insertar_movimiento_stock', {
+        const { error: errStock1 } = await supabase.rpc('insertar_movimiento_stock', {
           p_stock_id: form.stock_id,
           p_tipo: 'salida',
           p_cantidad: 1,
@@ -232,8 +232,8 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           p_descripcion: notaVenta,
           p_user_id: userId || null,
         })
-        setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
-      }
+        if (errStock1) { alert(`⚠ Venta guardada pero error al descontar stock: ${errStock1.message}`) }
+        else setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
     }
     setOpen(false)
     setItemsCaja([])
@@ -247,14 +247,14 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       const s = stockItems.find(x => x.id === v.stock_id)
       if (s) {
         // Movimiento + devolución de stock en una sola transacción (RPC atómico)
-        await supabase.rpc('insertar_movimiento_stock', {
+        const { error: errStock2 } = await supabase.rpc('insertar_movimiento_stock', {
           p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1,
           p_fecha: v.fecha || fecha,
           p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
           p_user_id: userId || null,
         })
-        setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
-      }
+        if (errStock2) { alert(`⚠ Venta borrada pero error al devolver stock: ${errStock2.message}`) }
+        else setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
     }
     await supabase.from('ventas').delete().eq('id', v.id)
     loadVentas()
@@ -318,7 +318,8 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       const s = stockItems.find(x => x.id === v.stock_id)
       if (s) {
         // Movimiento + devolución de stock en una sola transacción (RPC atómico)
-        await supabase.rpc('insertar_movimiento_stock', { p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1, p_fecha: v.fecha || fecha, p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, p_user_id: userId || null })
+        const { error: errStock3 } = await supabase.rpc('insertar_movimiento_stock', { p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1, p_fecha: v.fecha || fecha, p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, p_user_id: userId || null })
+        if (errStock3) alert(`⚠ Error al devolver stock: ${errStock3.message}`)
       }
     }
     await supabase.from('ventas').delete().eq('id', v.id)
