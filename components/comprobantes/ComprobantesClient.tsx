@@ -760,8 +760,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function confirmarND() {
     if (!ndComp || !ndConcepto || ndMontoNum <= 0) return
     setNdLoading(true)
-    const { data: last } = await supabase.from('comprobantes').select('numero').eq('tipo', ndComp.tipo).eq('categoria','nd').order('numero',{ascending:false}).limit(1)
-    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
+    const { data: nextNumDataND } = await supabase.rpc('siguiente_numero_comprobante', { p_tipo: ndComp.tipo, p_categoria: 'nd' })
+    const nextNum = nextNumDataND as number
 
     const itemsNd: ItemVenta[] = [{ d: ndConcepto, c: 1, p: ndNeto }]
     const { data: nd } = await supabase.from('comprobantes').insert({
@@ -1289,8 +1289,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   async function confirmarNC() {
     if (!ncComp || ncItemsSel.length === 0) return
     setNcLoading(true)
-    const { data: last } = await supabase.from('comprobantes').select('numero').eq('tipo', ncComp.tipo).eq('categoria','nc').order('numero',{ascending:false}).limit(1)
-    const nextNum = (parseInt(String((last?.[0] as any)?.numero ?? '0'), 10) || 0) + 1
+    const { data: nextNumDataNC } = await supabase.rpc('siguiente_numero_comprobante', { p_tipo: ncComp.tipo, p_categoria: 'nc' })
+    const nextNum = nextNumDataNC as number
 
     const itemsNc: ItemVenta[] = ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
     const { data: nc } = await supabase.from('comprobantes').insert({
