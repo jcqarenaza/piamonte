@@ -234,6 +234,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         })
         if (errStock1) { alert(`⚠ Venta guardada pero error al descontar stock: ${errStock1.message}`) }
         else setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
+      }
     }
     setOpen(false)
     setItemsCaja([])
@@ -255,6 +256,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         })
         if (errStock2) { alert(`⚠ Venta borrada pero error al devolver stock: ${errStock2.message}`) }
         else setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
+      }
     }
     await supabase.from('ventas').delete().eq('id', v.id)
     loadVentas()
