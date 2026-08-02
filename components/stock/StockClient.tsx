@@ -385,7 +385,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         p_fecha: new Date().toISOString().slice(0,10),
         p_descripcion: ajusteForm.nota || 'Ajuste manual',
         p_user_id: userId || null,
-        ...(costo ? { p_stock_costo: costo } : {})
       })
       if (error) { alert(`⚠ Error al guardar ajuste: ${error.message}`); return }
       if (costo) await supabase.rpc('actualizar_costo_stock', { p_stock_id: ajusteStockId, p_costo: costo })
