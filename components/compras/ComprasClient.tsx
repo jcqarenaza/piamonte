@@ -506,14 +506,14 @@ export default function ComprasClient() {
                 activo: true,
               }).select('id').single()
               if (nuevoArt) {
-                await supabase.from('articulo_equivalencias').insert({
+                await supabase.from('articulo_equivalencias').upsert({
                   articulo_id: nuevoArt.id,
                   proveedor: form.proveedor_nombre || proveedores.find(pv => pv.id === form.proveedor_id)?.nombre || null,
                   codigo_proveedor: codigo,
                   descripcion_proveedor: descEquivalente || it.d || null,
                   costo_neto: costoUnit,
                   lista_nombre: null,
-                })
+                }, { onConflict: 'codigo_proveedor', ignoreDuplicates: false })
                 articuloId = nuevoArt.id
               }
             }
