@@ -20,7 +20,6 @@ type Tab = 'inventario' | 'vincular' | 'movimientos'
 
 export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; userId?: string }) {
   const [tab, setTab] = useState<Tab>('inventario')
-  const [inconsistencias, setInconsistencias] = useState<any[]>([])
   const [selMov, setSelMov] = useState<any|null>(null)
   const [verComp, setVerComp] = useState<any|null>(null)
 
