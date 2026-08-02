@@ -20,6 +20,7 @@ type Tab = 'inventario' | 'vincular' | 'movimientos'
 
 export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; userId?: string }) {
   const [tab, setTab] = useState<Tab>('inventario')
+  const [inconsistencias, setInconsistencias] = useState<any[]>([])
   const [selMov, setSelMov] = useState<any|null>(null)
   const [verComp, setVerComp] = useState<any|null>(null)
 
@@ -879,8 +880,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-p-line2">
         <button onClick={() => setTab('inventario')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='inventario' ? 'border-p-green text-p-green' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${tab==='inventario' ? 'border-p-green text-p-green' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
           📦 Inventario
+          {inconsistencias.length > 0 && (
+            <span title={`${inconsistencias.length} inconsistencia(s) de stock hoy`}
+              style={{background:'#ef4444',color:'#fff',borderRadius:999,fontSize:10,fontWeight:700,padding:'1px 6px',lineHeight:'16px'}}>
+              {inconsistencias.length}
+            </span>
+          )}
         </button>
         {isAdmin && (
           <button onClick={() => setTab('vincular')}
@@ -892,6 +899,16 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
       </div>
 
+      {inconsistencias.length > 0 && tab === 'inventario' && (
+        <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:12,padding:'10px 16px',marginBottom:8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{color:'#991b1b',fontSize:13,fontWeight:600}}>
+            ⚠️ {inconsistencias.length} inconsistencia{inconsistencias.length>1?'s':''} de stock detectada{inconsistencias.length>1?'s':''} hoy
+          </span>
+          <span style={{color:'#dc2626',fontSize:12}}>
+            {inconsistencias.map(i => i.codigo).join(', ')}
+          </span>
+        </div>
+      )}
       {tab === 'vincular' ? (
         <div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
