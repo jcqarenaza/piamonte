@@ -65,6 +65,7 @@ export default function ComprasClient() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string|null>(null)
+  const editandoRef = React.useRef(false) // ref para guardar en useEffect sin stale closure
   const [loading, setLoading] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -196,7 +197,7 @@ export default function ComprasClient() {
   // Sugerir el % de descuento habitual del proveedor al elegirlo — solo si el operador no lo tocó a mano
   // y SOLO al crear: al editar un comprobante existente los descuentos guardados no deben pisarse
   useEffect(() => {
-    if (!form.proveedor_id || descuentoTocadoAMano || editId) return
+    if (!form.proveedor_id || descuentoTocadoAMano || editandoRef.current) return
     const prov = proveedores.find(p=>p.id===form.proveedor_id)
     const dtoStr = prov?.descuento_pct ? String(prov.descuento_pct) : ''
     setForm(p => ({ ...p, descuento_pct: dtoStr }))
@@ -318,7 +319,7 @@ export default function ComprasClient() {
         estado: compActual?.estado || 'pendiente',
         afecta_stock: form.afecta_stock,
       }).eq('id', editId)
-      setEditId(null); setOpen(false); setItems([]); load()
+      setEditId(null); editandoRef.current = false; setOpen(false); setItems([]); load()
       return
     }
 
@@ -834,7 +835,8 @@ export default function ComprasClient() {
 
 
   function editarComprobante(c: Comprobante) {
-    setEditId(c.id) // PRIMERO — evita que el useEffect de descuento pise los valores guardados
+    editandoRef.current = true // bloquea el useEffect de descuento antes de cualquier setForm
+    setEditId(c.id)
     setForm({
       tipo: c.tipo, letra: c.letra || 'A', punto_venta: c.punto_venta || '0001', numero: c.numero || '',
       fecha: c.fecha, proveedor_id: c.proveedor_id || '', proveedor_nombre: c.proveedor_nombre || '',
@@ -1055,7 +1057,7 @@ export default function ComprasClient() {
             setForm({tipo:'factura',letra:'A',punto_venta:'0001',numero:'',fecha:todayStr(),
               proveedor_id:'',proveedor_nombre:'',notas:'',afecta_stock:true,cae:'',cae_vencimiento:'',remito_vinculado_id:'',
               descuento_pct:'',flete:'',ret_iva:'',ret_ganancias:'',ret_iibb:'',forma_pago:'cuenta_corriente'})
-            setItems([]); setIvaOn(true); setEditId(null)
+            setItems([]); setIvaOn(true); setEditId(null); editandoRef.current = false
             setItemForm({d:'',c:'1',p:'',dto:'',codigo:''})
             setDescuentoTocadoAMano(false); setAjusteManual('')
             setPendientesNC([]); setPendientesSelNC({})
@@ -1441,7 +1443,7 @@ export default function ComprasClient() {
       </Modal>
 
       {/* Modal nuevo comprobante */}
-      <Modal open={open} onClose={()=>{setOpen(false);setEditId(null)}} title={editId ? "Editar comprobante de compra" : "Cargar comprobante de compra"} size="xl">
+      <Modal open={open} onClose={()=>{setOpen(false);setEditId(null);editandoRef.current=false}} title={editId ? "Editar comprobante de compra" : "Cargar comprobante de compra"} size="xl">
         <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
           {/* Tipo */}
           <div>
