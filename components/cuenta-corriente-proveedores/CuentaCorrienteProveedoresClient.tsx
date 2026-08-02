@@ -620,15 +620,22 @@ export default function CuentaCorrienteProveedoresClient() {
                   <p style={{fontSize:10,color:'#92400e',marginBottom:6}}>
                     Cargá la NC en Compras y seleccioná los artículos pendientes
                   </p>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1.5">
                     {ajustesPendNC.map((a:any)=>{
                       const monto = Math.round((a.costo_unitario || 0) * (a.cantidad || 0))
                       const st = a.stock
-                      const label = `${a.nota || 'Roto'} — ${st?.descripcion || a.descripcion || ''} (${st?.codigo || ''}) ×${a.cantidad}`
+                      const fechaStr = a.fecha ? a.fecha.split('-').reverse().join('/') : ''
+                      const codigo = st?.codigo || ''
+                      const desc = st?.descripcion || a.descripcion || ''
+                      const nota = a.nota && a.nota !== 'Roto' && a.nota !== 'Roto / Dañado' ? a.nota : ''
+                      const fullLabel = [fechaStr, codigo, desc, nota].filter(Boolean).join(' · ')
                       return (
-                        <div key={a.id} className="flex items-center justify-between text-xs">
-                          <span style={{color:'#78350f'}} className="truncate max-w-[160px]" title={label}>{label}</span>
-                          <span style={{color:'#92400e',fontWeight:600}} className="font-mono shrink-0 ml-2">{moneyARS(monto)}</span>
+                        <div key={a.id} className="flex items-start justify-between gap-2">
+                          <div className="flex flex-col min-w-0">
+                            <span style={{color:'#78350f',fontSize:11,fontWeight:600}} className="font-mono">{fechaStr} · {codigo}</span>
+                            <span style={{color:'#92400e',fontSize:10}} className="truncate" title={fullLabel}>{desc}{nota ? ` — ${nota}` : ''}</span>
+                          </div>
+                          <span style={{color:'#92400e',fontWeight:600,fontSize:11}} className="font-mono shrink-0">{moneyARS(monto)}</span>
                         </div>
                       )
                     })}
