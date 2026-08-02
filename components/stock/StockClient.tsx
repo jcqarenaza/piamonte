@@ -103,21 +103,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       return
     }
 
-    // Si es salida con pendiente NC → registrar en ajustes_stock + CC del proveedor, VINCULADOS:
-    // primero la fila de CC (capturando su id), después el ajuste con comprobante_id apuntándole.
-    // Ese vínculo es el que permite que el saldado de la NC en Compras marque la CC automáticamente.
+    // Si es salida con pendiente NC → registrar SOLO en ajustes_stock.
+    // El roto NO entra a cuenta_corriente_proveedores — solo la NC real lo hace cuando se carga en Compras.
+    // El badge naranja lee de ajustes_stock.pendiente_nc=true (independiente de CC).
     if (esPendienteNC && ajusteCantForm.proveedor_id) {
-      const montoAjuste = Math.round((ajusteCantModal.costo || 0) * Math.abs(delta))
-
-      const { data: ccRow, error: errCC } = await supabase.from('cuenta_corriente_proveedores').insert({
-        proveedor_id: ajusteCantForm.proveedor_id,
-        proveedor_nombre: ajusteCantForm.proveedor_nombre,
-        fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
-        descripcion: `${notaFinal} — ${ajusteCantModal.descripcion?.slice(0,50)} (${ajusteCantModal.codigo||''})`,
-        debe: 0, haber: montoAjuste,
-        notas: `pendiente_nc`,
-      }).select('id').single()
-
       const { error: errAj } = await supabase.from('ajustes_stock').insert({
         stock_id: ajusteCantModal.id,
         tipo: 'salida',
@@ -132,10 +121,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         costo_unitario: ajusteCantModal.costo || null,
         stock_anterior: ajusteCantModal.cantidad,
         stock_posterior: nueva,
-        comprobante_id: ccRow?.id || null,
+        comprobante_id: null,
       })
 
-      if (errCC || errAj) alert(`⚠ Ajuste aplicado al stock, pero falló el registro del pendiente NC: ${errCC?.message || errAj?.message}`)
+      if (errAj) alert(`⚠ Ajuste aplicado al stock, pero falló el registro del pendiente NC: ${errAj.message}`)
     }
 
     setAjusteCantModal(null)
