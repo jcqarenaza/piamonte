@@ -834,6 +834,7 @@ export default function ComprasClient() {
 
 
   function editarComprobante(c: Comprobante) {
+    setEditId(c.id) // PRIMERO — evita que el useEffect de descuento pise los valores guardados
     setForm({
       tipo: c.tipo, letra: c.letra || 'A', punto_venta: c.punto_venta || '0001', numero: c.numero || '',
       fecha: c.fecha, proveedor_id: c.proveedor_id || '', proveedor_nombre: c.proveedor_nombre || '',
@@ -850,7 +851,6 @@ export default function ComprasClient() {
       d: it.d || '', c: it.c || 1, p: it.p || 0, dto: it.dto ?? null,
       codigo: it.codigo || '', articulo_id: it.articulo_id || null
     })))
-    setEditId(c.id)
     setOpen(true)
   }
 
