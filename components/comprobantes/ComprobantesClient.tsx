@@ -638,6 +638,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         if (data.nro_cbte) {
           const nroAfipFmt = `${c.tipo||'A'}-0006-${String(data.nro_cbte).padStart(8,'0')}`
           await supabase.from('ventas').update({ comprobante: nroAfipFmt }).eq('comprobante_id', c.id)
+          // Actualizar descripción en movimientos de stock vinculados
+          const prefMov = c.aseguradora_id
+            ? `FC-0006-${String(data.nro_cbte).padStart(8,'0')} · ${c.aseguradora_nombre||''}`
+            : `${c.tipo||'A'}-0006-${String(data.nro_cbte).padStart(8,'0')} · ${c.cliente_nombre||''}`
+          await supabase.from('stock_movimientos')
+            .update({ descripcion: prefMov })
+            .eq('comprobante_venta_id', c.id)
         }
         setToast(`✓ CAE obtenido: ${data.cae} (N° AFIP ${String(data.nro_cbte).padStart(8,'0')})`)
       } else {
@@ -1164,7 +1171,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
     const esCuentaCorriente = c.pagos?.every((p:Pago) => p.metodo?.toLowerCase().includes('corriente') || p.metodo?.toLowerCase().includes('cta'))
-    const pagoY = 262
+    const pagoY = 257
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)
