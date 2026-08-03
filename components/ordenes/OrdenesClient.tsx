@@ -669,6 +669,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                           load()
                         }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
+                      )}
                       {(o as any).cristal_colocado && !(o as any).convertido_comp && (
                         <button onClick={async()=>{
                           if (!confirm('¿Retirar el vidrio? Esto devolverá las unidades al stock.')) return
