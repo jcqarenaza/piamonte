@@ -58,6 +58,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [abreviaturas, setAbreviaturas] = useState<Record<string,string>>({})
   const [conteoMode, setConteoMode] = useState(false)
   const [conteos, setConteos] = useState<Record<string,number>>({})
+  const [conteoModalOpen, setConteoModalOpen] = useState(false)
+  const [conteoForm, setConteoForm] = useState({ fam: '', marca: '', dep: 'Principal' })
+  const [conteoImportRows, setConteoImportRows] = useState<{id:string;codigo:string;descripcion:string;sistema:number;contado:number;delta:number}[]|null>(null)
+  const [conteoImportLeyenda, setConteoImportLeyenda] = useState('')
+  const [conteoImportOmitidos, setConteoImportOmitidos] = useState({ sinConteo: 0, sinCambio: 0, noEncontrados: 0 })
+  const [aplicandoConteo, setAplicandoConteo] = useState(false)
   const [ajusteMasivoOpen, setAjusteMasivoOpen] = useState(false)
   const [ajusteMasivoQ, setAjusteMasivoQ] = useState('')
   const [ajusteMasivoSug, setAjusteMasivoSug] = useState<typeof items>([])
@@ -280,6 +286,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }, [supabase])
 
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
+  const marcas = [...new Set(items.filter(s => s.activo && s.marca).map(s => s.marca as string))].sort()
 
   function normPos(pos: string | null | undefined): string {
     const p = (pos ?? '').trim().toUpperCase()
@@ -825,20 +832,26 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     a.click(); URL.revokeObjectURL(url)
   }
 
-  async function generarConteo() {
+  async function generarConteo(scope?: { fam?: string; marca?: string; dep?: string }) {
     const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ format: 'a4', unit: 'mm' })
-    const fams = filtroFam ? [filtroFam] : FAMS
+    const fams = scope?.fam ? [scope.fam] : (filtroFam ? [filtroFam] : FAMS)
+    const marcaUp = (scope?.marca || '').trim().toUpperCase()
     let firstPage = true
     fams.forEach(fam => {
-      const arts = items.filter(s => FAM_MAP[normPos(s.pos)] === fam && s.activo && s.cantidad >= 0)
+      const arts = items.filter(s =>
+        FAM_MAP[normPos(s.pos)] === fam && s.activo && s.cantidad >= 0
+        && (!scope?.dep || (s.deposito || 'Principal') === scope.dep)
+        && (!marcaUp || (s.marca || '').toUpperCase().includes(marcaUp))
+      )
       if (!arts.length) return
       if (!firstPage) doc.addPage()
       firstPage = false
       doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0,0,0)
+      const subt = [scope?.marca ? `Marca: ${scope.marca}` : null, scope?.dep ? `Depósito: ${scope.dep}` : null].filter(Boolean).join(' · ')
       doc.text(`Conteo de Stock — ${fam}`, 10, 15)
       doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
-      doc.text(new Date().toLocaleDateString('es-AR'), 10, 21)
+      doc.text([new Date().toLocaleDateString('es-AR'), subt].filter(Boolean).join('  ·  '), 10, 21)
       const cols = [10, 50, 120, 145, 165, 190]
       const headers = ['Código','Descripción','Cant. sistema','Conteo','Diferencia','Obs.']
       doc.setFillColor(220,220,220); doc.rect(10, 25, 190, 7, 'FD')
@@ -862,7 +875,109 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(100,100,100)
       doc.text(`Total: ${arts.length} artículos`, 10, y+5)
     })
-    doc.save('conteo-stock.pdf')
+    const nombre = ['conteo-stock', scope?.fam, scope?.marca, scope?.dep]
+      .filter(Boolean).join('-').toLowerCase().replace(/\s+/g,'_')
+    doc.save(`${nombre}-${new Date().toISOString().slice(0,10)}.pdf`)
+  }
+
+  function generarConteoCSV(scope?: { fam?: string; marca?: string; dep?: string }) {
+    const fams = scope?.fam ? [scope.fam] : FAMS
+    const marcaUp = (scope?.marca || '').trim().toUpperCase()
+    const arts = items.filter(s =>
+      s.activo && s.cantidad >= 0
+      && fams.includes(FAM_MAP[normPos(s.pos)])
+      && (!scope?.dep || (s.deposito || 'Principal') === scope.dep)
+      && (!marcaUp || (s.marca || '').toUpperCase().includes(marcaUp))
+    )
+    if (!arts.length) { alert('No hay art\u00edculos en ese alcance.'); return }
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const headers = ['id','codigo','descripcion','marca','posicion','deposito','cantidad_sistema','conteo','observaciones']
+    const lineas = arts.map(s => [
+      s.id, s.codigo || '', s.descripcion || '', s.marca || '',
+      POS_LABEL[s.pos ?? ''] ?? s.pos ?? '', s.deposito || 'Principal',
+      s.cantidad, '', ''
+    ].map(esc).join(';'))
+    // BOM + separador ; para que Excel (es-AR) lo abra en columnas directo
+    const csv = '\ufeff' + [headers.join(';'), ...lineas].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const nombre = ['conteo', scope?.fam, scope?.marca, scope?.dep].filter(Boolean).join('-').toLowerCase().replace(/\s+/g,'_')
+    a.href = url; a.download = `${nombre}-${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  function parseCsvConteo(texto: string) {
+    // Parser simple con soporte de comillas; detecta separador ; o , seg\u00fan el header
+    const limpio = texto.replace(/^\ufeff/, '')
+    const lineas = limpio.split(/\r?\n/).filter(l => l.trim() !== '')
+    if (lineas.length < 2) return null
+    const sep = (lineas[0].split(';').length >= lineas[0].split(',').length) ? ';' : ','
+    const parseLinea = (l: string) => {
+      const out: string[] = []; let cur = ''; let q = false
+      for (let i = 0; i < l.length; i++) {
+        const ch = l[i]
+        if (q) { if (ch === '"') { if (l[i+1] === '"') { cur += '"'; i++ } else q = false } else cur += ch }
+        else { if (ch === '"') q = true; else if (ch === sep) { out.push(cur); cur = '' } else cur += ch }
+      }
+      out.push(cur); return out
+    }
+    const head = parseLinea(lineas[0]).map(h => h.trim().toLowerCase())
+    const iId = head.indexOf('id'), iCod = head.indexOf('codigo'), iCon = head.indexOf('conteo')
+    if (iCon < 0 || (iId < 0 && iCod < 0)) return null
+    return lineas.slice(1).map(parseLinea).map(cols => ({
+      id: iId >= 0 ? (cols[iId] || '').trim() : '',
+      codigo: iCod >= 0 ? (cols[iCod] || '').trim().toUpperCase() : '',
+      conteo: (cols[iCon] || '').trim(),
+    }))
+  }
+
+  function importarConteoCSV(file: File) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const filas = parseCsvConteo(String(reader.result || ''))
+      if (!filas) { alert('No pude leer el CSV. Tiene que tener las columnas "conteo" y "id" (o "codigo").'); return }
+      const porId = new Map(items.map(s => [s.id, s]))
+      const porCodigo = new Map(items.filter(s => s.codigo).map(s => [(s.codigo as string).toUpperCase(), s]))
+      const rows: {id:string;codigo:string;descripcion:string;sistema:number;contado:number;delta:number}[] = []
+      let sinConteo = 0, sinCambio = 0, noEncontrados = 0
+      for (const f of filas) {
+        if (f.conteo === '') { sinConteo++; continue }
+        const contado = parseInt(f.conteo.replace(',', '.'), 10)
+        if (isNaN(contado) || contado < 0) { sinConteo++; continue }
+        const s = (f.id && porId.get(f.id)) || (f.codigo && porCodigo.get(f.codigo)) || null
+        if (!s) { noEncontrados++; continue }
+        const delta = contado - s.cantidad  // contra la cantidad ACTUAL del sistema, no la del CSV
+        if (delta === 0) { sinCambio++; continue }
+        rows.push({ id: s.id, codigo: s.codigo || '', descripcion: s.descripcion || '', sistema: s.cantidad, contado, delta })
+      }
+      setConteoImportOmitidos({ sinConteo, sinCambio, noEncontrados })
+      setConteoImportRows(rows)
+      setConteoImportLeyenda(`Conteo f\u00edsico ${new Date().toLocaleDateString('es-AR')}`)
+    }
+    reader.readAsText(file, 'utf-8')
+  }
+
+  async function aplicarConteoImportado() {
+    if (!conteoImportRows || !conteoImportRows.length) return
+    setAplicandoConteo(true)
+    const errores: string[] = []
+    for (const r of conteoImportRows) {
+      const { error } = await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: r.id,
+        p_tipo: r.delta > 0 ? 'entrada' : 'salida',
+        p_cantidad: Math.abs(r.delta),
+        p_fecha: new Date().toISOString().slice(0,10),
+        p_descripcion: `Conteo confirmado \u00b7 ${conteoImportLeyenda.trim() || 'Conteo f\u00edsico'}`,
+        p_user_id: userId || null,
+      })
+      if (error) errores.push(`${r.codigo}: ${error.message}`)
+    }
+    setAplicandoConteo(false)
+    if (errores.length) alert(`\u26a0 ${errores.length} ajuste(s) fallaron:\n${errores.join('\n')}`)
+    else alert(`\u2713 Conteo aplicado: ${conteoImportRows.length} ajuste(s) registrados.`)
+    setConteoImportRows(null); setConteoModalOpen(false)
+    load()
   }
 
   async function generarEtiqueta(s: typeof items[0]) {
@@ -1205,9 +1320,16 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📥 Cargar mercadería
         </button>
-        {isAdmin && <button onClick={generarConteo}
+        {isAdmin && <button onClick={() => {
+            setConteoForm({ fam: '', marca: '', dep: depositos.length === 1 ? depositos[0] : (depositos.includes('Principal') ? 'Principal' : (depositos[0] || 'Principal')) })
+            setConteoModalOpen(true)
+          }}
           style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📋 Conteo
+        </button>}
+        {isAdmin && <button onClick={exportarCSV}
+          style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          📅 CSV
         </button>}
         {isAdmin && <button onClick={()=>{setAjusteMasivoOpen(true);setAjusteMasivoLista([]);setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0);setAjusteMasivoNota('')}}
           style={{background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
@@ -1243,10 +1365,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                   }`}>
                   <div className={`font-saira font-bold text-xl min-w-[32px] text-center ${s.cantidad > 0 ? 'text-p-green' : 'text-red-400'}`}>{s.cantidad}</div>
                   <div className="flex-1 min-w-0">
-        <button onClick={exportarCSV}
-          style={{background:'#0891b2',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
-          📅 CSV
-        </button>
                     <p className="font-medium text-sm text-p-ink truncate">{s.descripcion}{s.anio ? ' · ' + s.anio : ''}</p>
                     <p className="text-xs text-p-ink2 truncate">{[s.marca, POS_LABEL[s.pos ?? ''] ?? s.pos, s.codigo ? 'cód ' + s.codigo : null, '📦 ' + (s.deposito || 'Principal'), !(s as any).articulo_id ? '⚠ sin vincular' : null].filter(Boolean).join(' · ')}</p>
                   </div>
@@ -1579,6 +1697,94 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               opacity:(ajusteMasivoLoading||!ajusteMasivoLeyenda.trim()||!ajusteMasivoLista.length)?0.5:1}}>
             {ajusteMasivoLoading?'Guardando…':`✓ Guardar ${ajusteMasivoLista.length} ajuste(s)`}
           </button>
+        </div>
+      </Modal>
+
+      {/* Modal de alcance del conteo */}
+      <Modal open={conteoModalOpen} onClose={() => setConteoModalOpen(false)} title="📋 Generar planilla de conteo">
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-semibold text-p-ink2 uppercase">Posición</label>
+            <select value={conteoForm.fam} onChange={e => setConteoForm(p => ({...p, fam: e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm mt-1 bg-white focus:outline-none focus:border-p-green">
+              <option value="">Todas las posiciones</option>
+              {FAMS.map(f => <option key={f} value={f}>{FAM_ICON[f]} {f}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-p-ink2 uppercase">Marca <span className="normal-case font-normal">(opcional)</span></label>
+            <select value={conteoForm.marca} onChange={e => setConteoForm(p => ({...p, marca: e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm mt-1 bg-white focus:outline-none focus:border-p-green">
+              <option value="">Todas las marcas</option>
+              {marcas.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-p-ink2 uppercase">Depósito</label>
+            <select value={conteoForm.dep} onChange={e => setConteoForm(p => ({...p, dep: e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm mt-1 bg-white focus:outline-none focus:border-p-green">
+              {depositos.map(d => <option key={d} value={d}>📦 {d}</option>)}
+            </select>
+          </div>
+          <p className="text-[11px] text-p-ink2">
+            Generá la planilla del alcance elegido: <b>CSV</b> para completar la columna "conteo" en Excel y reimportarla acá, o <b>PDF</b> para contar en papel.
+          </p>
+          <div className="flex gap-2 mt-1">
+            <button onClick={() => setConteoModalOpen(false)}
+              style={{flex:1,background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:13,cursor:'pointer'}}>Cancelar</button>
+            <button onClick={() => generarConteo({ fam: conteoForm.fam || undefined, marca: conteoForm.marca || undefined, dep: conteoForm.dep || undefined })}
+              style={{flex:1,background:'#374151',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              📄 PDF
+            </button>
+            <button onClick={() => generarConteoCSV({ fam: conteoForm.fam || undefined, marca: conteoForm.marca || undefined, dep: conteoForm.dep || undefined })}
+              style={{flex:2,background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              📊 CSV para contar
+            </button>
+          </div>
+
+          {/* Importar conteo completado */}
+          <div className="border-t border-p-line2 pt-3 mt-1">
+            <p className="text-xs font-semibold text-p-ink2 uppercase mb-1">¿Ya contaste?</p>
+            <p className="text-[11px] text-p-ink2 mb-2">Subí el mismo CSV con la columna "conteo" completa. Las diferencias contra el sistema se aplican como ajustes con su movimiento.</p>
+            <input type="file" accept=".csv,text/csv" id="conteo-csv-input" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) importarConteoCSV(f); e.target.value = '' }} />
+            <label htmlFor="conteo-csv-input"
+              className="inline-block text-xs font-bold px-3 py-2 rounded-lg border border-p-line text-p-ink cursor-pointer hover:bg-p-light">
+              📥 Elegir CSV de conteo…
+            </label>
+
+            {conteoImportRows !== null && (
+              <div className="mt-3">
+                {conteoImportRows.length === 0 ? (
+                  <p className="text-sm text-p-green font-semibold">✓ Sin diferencias contra el sistema — stock al día.</p>
+                ) : (<>
+                  <p className="text-xs font-semibold text-p-ink mb-1">{conteoImportRows.length} diferencia(s) a aplicar:</p>
+                  <div className="max-h-40 overflow-y-auto border border-p-line rounded-lg divide-y divide-p-line2 mb-2">
+                    {conteoImportRows.map(r => (
+                      <div key={r.id} className="flex items-center justify-between px-2 py-1 text-xs">
+                        <span className="truncate max-w-[180px]" title={r.descripcion}>{r.codigo || r.descripcion}</span>
+                        <span className="font-mono shrink-0 ml-2">{r.sistema} → {r.contado}
+                          <b className={r.delta > 0 ? 'text-green-600 ml-1' : 'text-red-500 ml-1'}>({r.delta > 0 ? '+' : ''}{r.delta})</b>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="text-[10px] font-semibold text-p-ink2 uppercase">Leyenda del conteo</label>
+                  <input value={conteoImportLeyenda} onChange={e => setConteoImportLeyenda(e.target.value)}
+                    className="w-full border border-p-line rounded-lg px-2 py-1.5 text-xs mt-0.5 mb-2 focus:outline-none focus:border-p-green" />
+                  <button onClick={aplicarConteoImportado} disabled={aplicandoConteo}
+                    style={{width:'100%',background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:aplicandoConteo?0.6:1}}>
+                    {aplicandoConteo ? 'Aplicando…' : `✓ Aplicar ${conteoImportRows.length} ajuste(s)`}
+                  </button>
+                </>)}
+                {(conteoImportOmitidos.sinConteo > 0 || conteoImportOmitidos.sinCambio > 0 || conteoImportOmitidos.noEncontrados > 0) && (
+                  <p className="text-[10px] text-p-ink2 mt-1">
+                    Omitidos: {conteoImportOmitidos.sinCambio} sin cambio · {conteoImportOmitidos.sinConteo} sin conteo cargado · {conteoImportOmitidos.noEncontrados} no encontrados
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 
