@@ -490,8 +490,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     // Restar de Caja del día (entrada negativa, neta contra el "Facturado" del día de la NC)
+    const ncNumStr = String(nextNum||'').padStart(8,'0')
+    const origNumStr = String(ncComp.nro_cbte_afip ?? ncComp.numero ?? '').padStart(8,'0')
+    const ncDescVenta = `NC-${ncComp.tipo}-0006-${ncNumStr} — devolución ${ncComp.tipo==='A'?'FA':'FB'}-0006-${origNumStr} · ${ncComp.cliente_nombre||ncComp.aseguradora_nombre||''}`
     await supabase.from('ventas').insert({
-      fecha: todayStr(), descripcion: `NC ${nextNum} — devolución Comprobante ${ncComp.numero}`,
+      fecha: todayStr(), descripcion: ncDescVenta,
       precio: -ncTotal, costo: null, pendiente: false,
       comprobante_id: (nc as any).id, user_id: userId,
     })
