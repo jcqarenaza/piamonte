@@ -7,7 +7,7 @@ import { Empty } from '@/components/ui'
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 
-type Fuente = 'ventas'|'compras'|'ops'|'stock'
+type Fuente = 'ventas'|'compras'|'stock'
 
 interface Row {
   _src: Fuente
