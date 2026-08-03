@@ -63,9 +63,9 @@ export default function BusquedaComprobantesClient() {
         .select('id,tipo,numero,nro_cbte_afip,fecha,cliente_nombre,aseguradora_nombre,total,categoria')
         .in('tipo', ['A','B','C'])
         .in('categoria', ['factura','nc','nd'])
-        .gte('fecha', desde || '2000-01-01')
-        .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(100)
+      if (desde) qv = qv.gte('fecha', desde)
+      if (hasta) qv = qv.lte('fecha', hasta)
       if (q) {
         // Buscar por cliente o aseguradora (ilike separado)
         qv = qv.or(`cliente_nombre.ilike.%${q}%,aseguradora_nombre.ilike.%${q}%`)
@@ -86,9 +86,9 @@ export default function BusquedaComprobantesClient() {
       // Cobros de aseguradoras
       let qcob = supabase.from('cobros_aseguradoras')
         .select('id,fecha,forma_cobro,nro_op,monto_bruto,monto_neto,aseguradora_id')
-        .gte('fecha', desde || '2000-01-01')
-        .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(50)
+      if (desde) qcob = (qcob as any).gte('fecha', desde)
+      if (hasta) qcob = (qcob as any).lte('fecha', hasta)
       const { data: cobros } = await qcob
       // Obtener nombres de aseguradoras
       const asegIds = [...new Set((cobros??[]).map((c:any)=>c.aseguradora_id).filter(Boolean))]
@@ -116,9 +116,9 @@ export default function BusquedaComprobantesClient() {
     if (fuente === 'todos' || fuente === 'compras') {
       let qc = supabase.from('comprobantes_compra')
         .select('id,tipo,letra,punto_venta,numero,nro_cbte_afip,fecha,proveedor_nombre,total,estado')
-        .gte('fecha', desde || '2000-01-01')
-        .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(100)
+      if (desde) qc = qc.gte('fecha', desde)
+      if (hasta) qc = qc.lte('fecha', hasta)
       if (q) qc = qc.ilike('proveedor_nombre', `%${q}%`)
       const { data } = await qc
       for (const r of data??[]) {
@@ -139,9 +139,9 @@ export default function BusquedaComprobantesClient() {
     if (fuente === 'todos' || fuente === 'stock') {
       let qs = supabase.from('stock_movimientos')
         .select('id,tipo,cantidad,fecha,descripcion,stock:stock_id(codigo,descripcion)')
-        .gte('fecha', desde || '2000-01-01')
-        .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(100)
+      if (desde) qs = (qs as any).gte('fecha', desde)
+      if (hasta) qs = (qs as any).lte('fecha', hasta)
       if (q) qs = (qs as any).ilike('descripcion', `%${q}%`)
       const { data } = await qs
       for (const r of data??[]) {
