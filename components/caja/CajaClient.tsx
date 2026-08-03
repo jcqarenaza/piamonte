@@ -33,6 +33,8 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const esCajaRol = perfil.rol === 'caja'
   const [reciboVenta, setReciboVenta] = useState<any|null>(null)
   const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number|string;costo:number;stock_id:string|null;cantidad:number}[]>([])
+  const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
+  const [cuentaBancoId, setCuentaBancoId] = useState('')
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cantidad: '1', cliente: '', comprobante: '',
     pago: 'Efectivo', origen: 'compra' as 'stock' | 'compra',
@@ -70,7 +72,8 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       q,
       supabase.from('gastos').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
       supabase.from('recibos_cobro').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
-      supabase.from('cuenta_corriente_proveedores').select('*').eq('fecha', fecha).eq('tipo','pago').order('created_at', { ascending: false }),
+      supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo',true).order('banco').then(({data})=>setCuentasBanco(data??[])),
+    supabase.from('cuenta_corriente_proveedores').select('*').eq('fecha', fecha).eq('tipo','pago').order('created_at', { ascending: false }),
     ])
     setVentas(ventasRes.data ?? [])
     setGastos(gastosRes.data ?? [])
@@ -187,7 +190,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     const { data: ventaIns } = await supabase.from('ventas').insert({
       fecha, descripcion: form.descripcion, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
-      pago: form.pago, origen: form.origen, pendiente: !c,
+      pago: form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''), origen: form.origen, pendiente: !c,
       stock_id: form.stock_id, user_id: userId,
       tipo_cliente_id: form.tipo_id||null,
       tipo_cliente_nombre: form.tipo_nombre||null,
@@ -213,28 +216,30 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         user_id: userId,
       })
     }
-    // Descontar stock
-    if (form.origen === 'stock' && form.stock_id && form.descontarStock) {
-      const s = stockItems.find(x => x.id === form.stock_id)
-      if (s && s.cantidad > 0) {
-        const notaVenta = [
-          form.comprobante ? `Comp. ${form.comprobante}` : null,
-          form.cliente || null,
-          form.pago !== 'Efectivo' ? form.pago : null,
-        ].filter(Boolean).join(' · ') || 'Venta de caja'
-        // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-        const { error: errStock1 } = await supabase.rpc('insertar_movimiento_stock', {
-          p_stock_id: form.stock_id,
-          p_tipo: 'salida',
-          p_cantidad: 1,
-          p_precio_venta_unitario: +form.precio.replace(/[^0-9.]/g, '') || null,
-          p_fecha: fecha,
-          p_descripcion: notaVenta,
-          p_user_id: userId || null,
-        })
-        if (errStock1) { alert(`⚠ Venta guardada pero error al descontar stock: ${errStock1.message}`) }
-        else setStockItems(prev => prev.map(x => x.id === form.stock_id ? { ...x, cantidad: x.cantidad - 1 } : x))
-      }
+    // Descontar stock — iterar todos los ítems con stock
+    const notaVenta = [
+      form.comprobante ? `Comp. ${form.comprobante}` : null,
+      form.cliente || null,
+      form.pago !== 'Efectivo' ? form.pago : null,
+    ].filter(Boolean).join(' · ') || 'Venta de caja'
+    const itemsParaDescontar = itemsCaja.filter(it => it.stock_id)
+    if (itemsParaDescontar.length === 0 && form.origen === 'stock' && form.stock_id && form.descontarStock) {
+      itemsParaDescontar.push({ desc: form.descripcion, codigo: '', precio: form.precio, costo: 0, stock_id: form.stock_id, cantidad: parseInt(form.cantidad)||1 })
+    }
+    for (const it of itemsParaDescontar) {
+      const s = stockItems.find(x => x.id === it.stock_id)
+      if (!s || s.cantidad <= 0) continue
+      const { error: errStockIt } = await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: it.stock_id,
+        p_tipo: 'salida',
+        p_cantidad: it.cantidad || 1,
+        p_precio_venta_unitario: parseFloat(String(it.precio).replace(/[^0-9.]/g,'')) || null,
+        p_fecha: fecha,
+        p_descripcion: notaVenta,
+        p_user_id: userId || null,
+      })
+      if (errStockIt) alert(`⚠ Venta guardada pero error al descontar stock (${it.desc}): ${errStockIt.message}`)
+      else setStockItems(prev => prev.map(x => x.id === it.stock_id ? { ...x, cantidad: x.cantidad - (it.cantidad||1) } : x))
     }
     setOpen(false)
     setItemsCaja([])
@@ -623,6 +628,14 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
                 {PAGOS.map(p => <option key={p}>{p}</option>)}
               </Select>
+            {form.pago === 'Transferencia' && cuentasBanco.length > 0 && (
+              <Field label="Cuenta destino">
+                <Select value={cuentaBancoId} onChange={e => setCuentaBancoId(e.target.value)}>
+                  <option value="">Sin especificar</option>
+                  {cuentasBanco.map(c => <option key={c.id} value={c.id}>{c.banco} · {c.tipo}{c.alias ? ` (${c.alias})` : ''}</option>)}
+                </Select>
+              </Field>
+            )}
             </Field>
             {!esCajaRol && <Field label="Tipo de cliente">
               <select value={form.tipo_id} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setForm(p=>({...p,tipo_id:e.target.value,tipo_nombre:t?.nombre||''}))}}
@@ -844,6 +857,33 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         return (
           <Modal open={!!editId} onClose={() => setEditId(null)} title="Editar venta">
             <div className="flex flex-col gap-3">
+              {/* Vista previa tipo factura */}
+              {(()=>{ const v2=ventas.find(x=>x.id===editId); const sv=v2?.stock_id?stockItems.find(x=>x.id===v2.stock_id):null; return v2 ? (
+              <div style={{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:12,padding:'14px 16px'}}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p style={{fontWeight:800,fontSize:15,color:'#0C1810'}}>{v2.cliente||'Particular'}</p>
+                    <p style={{fontSize:11,color:'#6b7280'}}>{v2.fecha} · {v2.pago}</p>
+                    {v2.comprobante&&<p style={{fontSize:11,color:'#6b7280'}}>Comp: {v2.comprobante}</p>}
+                  </div>
+                  <p style={{fontWeight:800,fontSize:16,color:'#00A550'}}>{moneyARS(v2.precio)}</p>
+                </div>
+                <div style={{background:'#fff',borderRadius:8,padding:'10px 12px',border:'1px solid #e5e7eb'}}>
+                  {sv ? (
+                    <div className="flex items-center justify-between">
+                      <div><span style={{fontFamily:'monospace',fontSize:11,background:'#e5e7eb',padding:'2px 6px',borderRadius:4,marginRight:8}}>{sv.codigo}</span><span style={{fontSize:13,fontWeight:600}}>{sv.descripcion}</span></div>
+                      <span style={{fontSize:13,fontFamily:'monospace',fontWeight:700}}>{moneyARS(v2.precio)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span style={{fontSize:13,color:'#374151'}}>{v2.descripcion}</span>
+                      <span style={{fontSize:13,fontFamily:'monospace',fontWeight:700}}>{moneyARS(v2.precio)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              ) : null })()}
+              <p style={{fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:1}}>Editar datos</p>
               {/* Buscador de stock para edición */}
               <Field label="Buscar pieza en stock (opcional)">
                 <div className="relative">
