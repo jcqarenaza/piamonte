@@ -249,7 +249,6 @@ export default function BusquedaComprobantesClient() {
           </table>
         </div>
       )}
-    </div>
 
       {/* Modal comprobante */}
       {verComp && (
