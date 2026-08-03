@@ -81,28 +81,7 @@ export default function BusquedaComprobantesClient() {
       }
     }
 
-    // 3. Órdenes de pago
-    if (fuente === 'todos' || fuente === 'ops') {
-      const { data } = await supabase.from('ordenes_pago')
-        .select('id,numero,fecha,proveedor_nombre,total_pagado,anulada')
-        .gte('fecha', desde || '2000-01-01')
-        .lte('fecha', hasta || '2099-12-31')
-        .or(q ? `proveedor_nombre.ilike.%${q}%,numero.ilike.%${q}%` : 'id.neq.00000000-0000-0000-0000-000000000000')
-        .order('fecha', { ascending: false }).limit(100)
-      for (const r of data??[]) {
-        all.push({
-          _src: 'ops', id: r.id,
-          tipo: 'OP',
-          numero: r.numero,
-          fecha: r.fecha,
-          contraparte: r.proveedor_nombre,
-          total: r.total_pagado,
-          estado: r.anulada ? 'anulada' : 'emitida',
-        })
-      }
-    }
-
-    // 4. Movimientos de stock
+    // 3. Movimientos de stock
     if (fuente === 'todos' || fuente === 'stock') {
       const { data } = await supabase.from('stock_movimientos')
         .select('id,tipo,cantidad,fecha,descripcion,stock:stock_id(codigo,descripcion)')
@@ -135,13 +114,11 @@ export default function BusquedaComprobantesClient() {
   const srcLabel: Record<Fuente, string> = {
     ventas: '💰 Venta',
     compras: '🛒 Compra',
-    ops: '💳 OP',
     stock: '📦 Stock',
   }
   const srcColor: Record<Fuente, string> = {
     ventas: 'bg-blue-100 text-blue-700',
     compras: 'bg-amber-100 text-amber-700',
-    ops: 'bg-purple-100 text-purple-700',
     stock: 'bg-green-100 text-green-700',
   }
 
@@ -165,7 +142,6 @@ export default function BusquedaComprobantesClient() {
               <option value="todos">Todos</option>
               <option value="ventas">Comprobantes venta</option>
               <option value="compras">Comprobantes compra</option>
-              <option value="ops">Órdenes de pago</option>
               <option value="stock">Movimientos stock</option>
             </select>
           </div>
