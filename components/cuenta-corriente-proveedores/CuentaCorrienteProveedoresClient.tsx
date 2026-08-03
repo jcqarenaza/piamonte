@@ -637,7 +637,7 @@ export default function CuentaCorrienteProveedoresClient() {
                   </p>
                   <div className="flex flex-col gap-1.5">
                     {ajustesPendNC.map((a:any)=>{
-                      const monto = Math.round((a.costo_unitario || 0) * (a.cantidad || 0))
+                      const monto = a.costo_unitario ? Math.round(a.costo_unitario * (a.cantidad || 0)) : null
                       const st = a.stock
                       const fechaStr = a.fecha ? a.fecha.split('-').reverse().join('/') : ''
                       const codigo = st?.codigo || ''
@@ -650,7 +650,12 @@ export default function CuentaCorrienteProveedoresClient() {
                             <span style={{color:'#78350f',fontSize:11,fontWeight:600}} className="font-mono">{fechaStr} · {codigo}</span>
                             <span style={{color:'#92400e',fontSize:10}} className="truncate" title={fullLabel}>{desc}{nota ? ` — ${nota}` : ''}</span>
                           </div>
-                          <span style={{color:'#92400e',fontWeight:600,fontSize:11}} className="font-mono shrink-0">{moneyARS(monto)}</span>
+                          <div className="flex flex-col items-end shrink-0">
+                            <span style={{color:'#92400e',fontWeight:700,fontSize:11}} className="font-mono">
+                              {monto !== null ? moneyARS(monto) : <span style={{color:'#b45309',fontSize:10}}>sin costo</span>}
+                            </span>
+                            <span style={{color:'#92400e',fontSize:10}} className="font-mono">×{a.cantidad||1} u.</span>
+                          </div>
                         </div>
                       )
                     })}
