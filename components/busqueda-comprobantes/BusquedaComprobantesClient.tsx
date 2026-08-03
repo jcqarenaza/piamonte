@@ -115,7 +115,7 @@ export default function BusquedaComprobantesClient() {
     // 2. Comprobantes de compra
     if (fuente === 'todos' || fuente === 'compras') {
       let qc = supabase.from('comprobantes_compra')
-        .select('id,tipo,letra,punto_venta,numero,nro_cbte_afip,fecha,proveedor_nombre,total,estado')
+        .select('id,tipo,letra,punto_venta,numero,fecha,proveedor_nombre,total,estado')
         .order('fecha', { ascending: false }).limit(100)
       if (desde) qc = qc.gte('fecha', desde)
       if (hasta) qc = qc.lte('fecha', hasta)
