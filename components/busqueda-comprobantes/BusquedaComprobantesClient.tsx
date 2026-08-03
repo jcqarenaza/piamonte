@@ -59,14 +59,15 @@ export default function BusquedaComprobantesClient() {
 
     // 1. Comprobantes de venta (facturas, NC, ND — no presupuestos/OS/adas/remitos)
     if (fuente === 'todos' || fuente === 'ventas') {
-      const { data } = await supabase.from('comprobantes')
+      let qv = supabase.from('comprobantes')
         .select('id,tipo,numero,nro_cbte_afip,fecha,cliente_nombre,aseguradora_nombre,total,categoria')
         .in('tipo', ['A','B','C'])
         .in('categoria', ['factura','nc','nd'])
         .gte('fecha', desde || '2000-01-01')
         .lte('fecha', hasta || '2099-12-31')
-        .or(q ? `cliente_nombre.ilike.%${q}%,aseguradora_nombre.ilike.%${q}%,numero::text.ilike.%${q}%` : 'id.neq.00000000-0000-0000-0000-000000000000')
         .order('fecha', { ascending: false }).limit(100)
+      if (q) qv = qv.or(`cliente_nombre.ilike.%${q}%,aseguradora_nombre.ilike.%${q}%`)
+      const { data } = await qv
       for (const r of data??[]) {
         const nro = r.nro_cbte_afip || r.numero
         const tipoLabel = r.categoria === 'nc' ? 'NC' : r.categoria === 'nd' ? 'ND' : 'FC'
@@ -79,16 +80,44 @@ export default function BusquedaComprobantesClient() {
           total: r.total,
         })
       }
+      // Cobros de aseguradoras
+      let qcob = supabase.from('cobros_aseguradoras')
+        .select('id,fecha,forma_cobro,nro_op,monto_bruto,monto_neto,aseguradora_id')
+        .gte('fecha', desde || '2000-01-01')
+        .lte('fecha', hasta || '2099-12-31')
+        .order('fecha', { ascending: false }).limit(50)
+      const { data: cobros } = await qcob
+      // Obtener nombres de aseguradoras
+      const asegIds = [...new Set((cobros??[]).map((c:any)=>c.aseguradora_id).filter(Boolean))]
+      const asegMap: Record<string,string> = {}
+      if (asegIds.length) {
+        const { data: asegs } = await supabase.from('aseguradoras').select('id,nombre').in('id', asegIds)
+        for (const a of asegs??[]) asegMap[(a as any).id] = (a as any).nombre
+      }
+      for (const c of cobros??[]) {
+        const nombre = asegMap[c.aseguradora_id] || c.aseguradora_id
+        if (q && !nombre.toLowerCase().includes(q.toLowerCase()) && !(c.nro_op||'').includes(q)) continue
+        all.push({
+          _src: 'ventas', id: c.id,
+          tipo: 'Cobro Aseg.',
+          numero: c.nro_op || 'S/N',
+          fecha: c.fecha,
+          contraparte: nombre,
+          total: c.monto_neto,
+          estado: 'cobrado',
+        })
+      }
     }
 
     // 2. Comprobantes de compra
     if (fuente === 'todos' || fuente === 'compras') {
-      const { data } = await supabase.from('comprobantes_compra')
+      let qc = supabase.from('comprobantes_compra')
         .select('id,tipo,letra,punto_venta,numero,nro_cbte_afip,fecha,proveedor_nombre,total,estado')
         .gte('fecha', desde || '2000-01-01')
         .lte('fecha', hasta || '2099-12-31')
-        .or(q ? `proveedor_nombre.ilike.%${q}%,numero.ilike.%${q}%` : 'id.neq.00000000-0000-0000-0000-000000000000')
         .order('fecha', { ascending: false }).limit(100)
+      if (q) qc = qc.or(`proveedor_nombre.ilike.%${q}%,numero.ilike.%${q}%`)
+      const { data } = await qc
       for (const r of data??[]) {
         const tipoLabel = r.tipo === 'nc' ? 'NC' : r.tipo === 'nd' ? 'ND' : 'FC'
         all.push({
@@ -105,12 +134,13 @@ export default function BusquedaComprobantesClient() {
 
     // 3. Movimientos de stock
     if (fuente === 'todos' || fuente === 'stock') {
-      const { data } = await supabase.from('stock_movimientos')
+      let qs = supabase.from('stock_movimientos')
         .select('id,tipo,cantidad,fecha,descripcion,stock:stock_id(codigo,descripcion)')
         .gte('fecha', desde || '2000-01-01')
         .lte('fecha', hasta || '2099-12-31')
-        .or(q ? `descripcion.ilike.%${q}%` : 'id.neq.00000000-0000-0000-0000-000000000000')
         .order('fecha', { ascending: false }).limit(100)
+      if (q) qs = (qs as any).ilike('descripcion', `%${q}%`)
+      const { data } = await qs
       for (const r of data??[]) {
         const st = (r as any).stock
         all.push({
