@@ -1164,7 +1164,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
     const esCuentaCorriente = c.pagos?.every((p:Pago) => p.metodo?.toLowerCase().includes('corriente') || p.metodo?.toLowerCase().includes('cta'))
-    const pagoY = 257
+    const pagoY = 262
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)

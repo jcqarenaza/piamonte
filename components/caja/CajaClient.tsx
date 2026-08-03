@@ -68,12 +68,12 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     }
     // Gerencial ve todo (sin filtro)
 
+    supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo',true).order('banco').then(({data})=>setCuentasBanco(data??[]))
     const [ventasRes, gastosRes, recibosRes, pagosProvRes] = await Promise.all([
       q,
       supabase.from('gastos').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
       supabase.from('recibos_cobro').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
-      supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo',true).order('banco').then(({data})=>setCuentasBanco(data??[])),
-    supabase.from('cuenta_corriente_proveedores').select('*').eq('fecha', fecha).eq('tipo','pago').order('created_at', { ascending: false }),
+      supabase.from('cuenta_corriente_proveedores').select('*').eq('fecha', fecha).eq('tipo','pago').order('created_at', { ascending: false }),
     ])
     setVentas(ventasRes.data ?? [])
     setGastos(gastosRes.data ?? [])

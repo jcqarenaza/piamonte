@@ -299,13 +299,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   async function del(id:string) {
     // Verificar si tiene estado realizado o turno asignado
     const { data: os } = await supabase.from('ordenes_servicio')
-      .select('estado, turno_fecha, turno_hora, convertido_comp')
+      .select('estado, turno_id, convertido_comp')
       .eq('id', id).single()
     if (!os) return
     if (os.estado === 'realizado') {
       alert('No se puede borrar una orden ya realizada.'); return
     }
-    if (os.turno_fecha || os.turno_hora) {
+    if (os.turno_id) {
       alert('No se puede borrar una orden con turno asignado. Primero eliminá el turno.'); return
     }
     if (os.convertido_comp) {
