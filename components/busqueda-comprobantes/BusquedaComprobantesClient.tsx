@@ -66,7 +66,10 @@ export default function BusquedaComprobantesClient() {
         .gte('fecha', desde || '2000-01-01')
         .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(100)
-      if (q) qv = qv.or(`cliente_nombre.ilike.%${q}%,aseguradora_nombre.ilike.%${q}%`)
+      if (q) {
+        // Buscar por cliente o aseguradora (ilike separado)
+        qv = qv.or(`cliente_nombre.ilike.%${q}%,aseguradora_nombre.ilike.%${q}%`)
+      }
       const { data } = await qv
       for (const r of data??[]) {
         const nro = r.nro_cbte_afip || r.numero
@@ -116,7 +119,7 @@ export default function BusquedaComprobantesClient() {
         .gte('fecha', desde || '2000-01-01')
         .lte('fecha', hasta || '2099-12-31')
         .order('fecha', { ascending: false }).limit(100)
-      if (q) qc = qc.or(`proveedor_nombre.ilike.%${q}%,numero.ilike.%${q}%`)
+      if (q) qc = qc.ilike('proveedor_nombre', `%${q}%`)
       const { data } = await qc
       for (const r of data??[]) {
         const tipoLabel = r.tipo === 'nc' ? 'NC' : r.tipo === 'nd' ? 'ND' : 'FC'
