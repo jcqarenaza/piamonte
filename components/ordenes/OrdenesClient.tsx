@@ -669,9 +669,26 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                           load()
                         }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
+                      {(o as any).cristal_colocado && !(o as any).convertido_comp && (
+                        <button onClick={async()=>{
+                          if (!confirm('¿Retirar el vidrio? Esto devolverá las unidades al stock.')) return
+                          const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
+                          const fecha = todayStr()
+                          for (const it of stockItems) {
+                            const { error: errRet } = await supabase.rpc('insertar_movimiento_stock', {
+                              p_stock_id: it.stock_id, p_tipo: 'entrada',
+                              p_cantidad: it.c||1, p_fecha: fecha,
+                              p_descripcion: `Retiro vidrio OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                              p_user_id: userId,
+                            })
+                            if (errRet) { alert(`⚠ Error al devolver stock: ${errRet.message}`); return }
+                          }
+                          await supabase.from('ordenes_servicio').update({ cristal_colocado: false }).eq('id', o.id)
+                          load()
+                        }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Retirar vidrio</button>
                       )}
-                      {(o as any).cristal_colocado && (
-                        <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">🔩 Colocado ✓</span>
+                      {(o as any).cristal_colocado && (o as any).convertido_comp && (
+                        <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">🔧 Colocado ✓</span>
                       )}
                       {!(o as any).convertido_comp && (
                         o.aseguradora==='Sancor Seguros' ? (
