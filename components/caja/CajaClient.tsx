@@ -187,7 +187,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     if (!form.descripcion || !form.precio) { alert('Cargá descripción y precio.'); return }
     const c = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
     const p = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
-    const { data: ventaIns } = await supabase.from('ventas').insert({
+    const { data: ventaIns, error: errVenta } = await supabase.from('ventas').insert({
       fecha, descripcion: form.descripcion, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
       pago: form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''), origen: form.origen, pendiente: !c,
@@ -196,6 +196,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       tipo_cliente_nombre: form.tipo_nombre||null,
       es_caja2: perfil.rol === 'caja'
     }).select('id').single()
+    if (errVenta || !ventaIns) { alert(`⚠ Error al guardar la venta: ${errVenta?.message || 'desconocido'}`); return }
 
     // Si viene de una OS de aseguradora (Mercantil/Sancor), marcarla como procesada
     if (osSelCaja?.id) {
@@ -237,6 +238,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         p_fecha: fecha,
         p_descripcion: notaVenta,
         p_user_id: userId || null,
+        p_venta_id: ventaIns.id,  // ata cada descuento a SU venta — la reversa lee esto
       })
       if (errStockIt) alert(`⚠ Venta guardada pero error al descontar stock (${it.desc}): ${errStockIt.message}`)
       else setStockItems(prev => prev.map(x => x.id === it.stock_id ? { ...x, cantidad: x.cantidad - (it.cantidad||1) } : x))
@@ -247,23 +249,36 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     loadVentas()
   }
 
+  // Devuelve el stock de una venta revirtiendo SUS movimientos registrados (multi-ítem incluido).
+  // Fallback para ventas anteriores a venta_id: origen='stock' + stock_id → 1 unidad (comportamiento viejo).
+  async function revertirStockVenta(v: Venta): Promise<boolean> {
+    const { data: movs, error: errMovs } = await supabase.from('stock_movimientos')
+      .select('stock_id, cantidad')
+      .eq('venta_id', v.id)
+      .eq('tipo', 'salida')
+    if (errMovs) { alert(`⚠ No pude leer los movimientos de la venta: ${errMovs.message}`); return false }
+    const lista = (movs && movs.length > 0)
+      ? movs
+      : (v.origen === 'stock' && v.stock_id ? [{ stock_id: v.stock_id, cantidad: 1 }] : [])
+    for (const m of lista) {
+      const { error } = await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: m.stock_id, p_tipo: 'entrada', p_cantidad: m.cantidad || 1,
+        p_fecha: v.fecha || fecha,
+        p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
+        p_user_id: userId || null,
+      })
+      if (error) { alert(`⚠ Error al devolver stock: ${error.message}. La venta NO se borró — reintentá.`); return false }
+      setStockItems(prev => prev.map(x => x.id === m.stock_id ? { ...x, cantidad: x.cantidad + (m.cantidad||1) } : x))
+    }
+    return true
+  }
+
   async function delVenta(v: Venta) {
     if (!confirm('¿Borrar venta?')) return
-    if (v.origen === 'stock' && v.stock_id) {
-      const s = stockItems.find(x => x.id === v.stock_id)
-      if (s) {
-        // Movimiento + devolución de stock en una sola transacción (RPC atómico)
-        const { error: errStock2 } = await supabase.rpc('insertar_movimiento_stock', {
-          p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1,
-          p_fecha: v.fecha || fecha,
-          p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`,
-          p_user_id: userId || null,
-        })
-        if (errStock2) { alert(`⚠ Venta borrada pero error al devolver stock: ${errStock2.message}`) }
-        else setStockItems(prev => prev.map(x => x.id === v.stock_id ? { ...x, cantidad: x.cantidad + 1 } : x))
-      }
-    }
-    await supabase.from('ventas').delete().eq('id', v.id)
+    const ok = await revertirStockVenta(v)
+    if (!ok) return
+    const { error: errDel } = await supabase.from('ventas').delete().eq('id', v.id)
+    if (errDel) alert(`⚠ Stock devuelto pero la venta no se pudo borrar: ${errDel.message}`)
     loadVentas()
   }
 
@@ -321,15 +336,10 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
   async function delVentaAudit(v: Venta) {
     if (!confirm('¿Borrar venta?')) return
     await registrarAuditoria(v.id, 'eliminar', 'venta', JSON.stringify({ descripcion: v.descripcion, precio: v.precio, cliente: v.cliente }), '')
-    if (v.origen === 'stock' && v.stock_id) {
-      const s = stockItems.find(x => x.id === v.stock_id)
-      if (s) {
-        // Movimiento + devolución de stock en una sola transacción (RPC atómico)
-        const { error: errStock3 } = await supabase.rpc('insertar_movimiento_stock', { p_stock_id: v.stock_id, p_tipo: 'entrada', p_cantidad: 1, p_fecha: v.fecha || fecha, p_descripcion: `Devolución — venta borrada (${(v.descripcion||'Caja').slice(0,40)})`, p_user_id: userId || null })
-        if (errStock3) alert(`⚠ Error al devolver stock: ${errStock3.message}`)
-      }
-    }
-    await supabase.from('ventas').delete().eq('id', v.id)
+    const ok = await revertirStockVenta(v)
+    if (!ok) return
+    const { error: errDel } = await supabase.from('ventas').delete().eq('id', v.id)
+    if (errDel) alert(`⚠ Stock devuelto pero la venta no se pudo borrar: ${errDel.message}`)
     loadVentas()
   }
 
