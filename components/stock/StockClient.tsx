@@ -384,6 +384,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!ajusteForm.desc || !ajusteForm.cant) return
     const cant = +ajusteForm.cant || 0
     const costo = ajusteForm.costo ? +ajusteForm.costo.replace(/[^0-9.]/g,'') : null
+    let stockIdFinal: string | null = ajusteStockId
     if (ajusteStockId) {
       const { error } = await supabase.rpc('insertar_movimiento_stock', {
         p_stock_id: ajusteStockId,
@@ -396,17 +397,33 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       if (error) { alert(`⚠ Error al guardar ajuste: ${error.message}`); return }
       if (costo) await supabase.rpc('actualizar_costo_stock', { p_stock_id: ajusteStockId, p_costo: costo })
     } else {
-      await supabase.from('stock').insert({
-        descripcion: ajusteForm.desc, cantidad: cant, costo,
+      // Alta de artículo nuevo: nace con cantidad 0 y la cantidad entra SOLO por el RPC
+      // (movimiento incluido — así no se fabrican más artículos sin historia)
+      const { data: nuevo, error: errIns } = await supabase.from('stock').insert({
+        descripcion: ajusteForm.desc, cantidad: 0, costo,
         deposito: 'Principal', activo: true
-      })
+      }).select('id').single()
+      if (errIns || !nuevo) { alert(`⚠ Error al crear el artículo: ${errIns?.message || 'desconocido'}`); return }
+      stockIdFinal = nuevo.id
+      if (cant > 0) {
+        const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
+          p_stock_id: nuevo.id,
+          p_tipo: 'entrada',
+          p_cantidad: cant,
+          p_fecha: new Date().toISOString().slice(0,10),
+          p_descripcion: ajusteForm.nota || 'Carga de mercadería',
+          p_user_id: userId || null,
+        })
+        if (errMov) { alert(`⚠ Artículo creado pero NO se cargó la cantidad: ${errMov.message}. Cargala con ⚖ Ajustar.`); return }
+      }
     }
-    await supabase.from('ajustes_stock').insert({
-      tipo: 'entrada', stock_id: ajusteStockId || null,
+    const { error: errAj } = await supabase.from('ajustes_stock').insert({
+      tipo: 'entrada', stock_id: stockIdFinal,
       descripcion: ajusteForm.desc, cantidad: cant,
       costo_unitario: costo, proveedor: ajusteForm.prov || null,
       nota: ajusteForm.nota || null
     })
+    if (errAj) alert(`⚠ Stock actualizado, pero falló el registro del ajuste: ${errAj.message}`)
     setAjusteOpen(false)
     setAjusteForm({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
     setAjusteSearch(''); setAjusteStockId(null)
