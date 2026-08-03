@@ -496,9 +496,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       articuloId = nuevo?.id || null
     }
 
+    // OJO: cantidad NUNCA va en el payload. En el alta entra por el RPC (movimiento + suma);
+    // en la edición la cantidad solo se cambia con ⚖ Ajustar (movimientos), jamás con UPDATE directo.
     const payload = {
       descripcion: form.desc, codigo: form.cod || null, marca: form.marca || null,
-      pos: form.pos || null, anio: form.anio || null, cantidad: +form.cant || 0,
+      pos: form.pos || null, anio: form.anio || null,
       precio_venta: form.precio ? +form.precio.replace(/[^0-9.]/g, '') : null,
       costo: form.costo ? +form.costo.replace(/[^0-9.]/g, '') : null,
       deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
@@ -506,11 +508,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       stock_minimo: +form.minimo || 0,
     }
     if (editId) {
-      await supabase.from('stock').update(payload).eq('id', editId)
+      const { error: errUpd } = await supabase.from('stock').update(payload).eq('id', editId)
+      if (errUpd) { alert(`⚠ Error al guardar: ${errUpd.message}`); return }
     } else {
-      const { data: newStock } = await supabase.from('stock').insert(payload).select('id').single()
-      // Si tiene cantidad inicial, registrar movimiento de alta via RPC
-      if (newStock && +form.cant > 0) {
+      // Alta: la fila nace con cantidad 0 y la cantidad inicial entra SOLO por el RPC
+      const { data: newStock, error: errIns } = await supabase.from('stock')
+        .insert({ ...payload, cantidad: 0, activo: true }).select('id').single()
+      if (errIns || !newStock) { alert(`⚠ Error al crear el artículo: ${errIns?.message || 'desconocido'}`); return }
+      if (+form.cant > 0) {
         const { error: errMov } = await supabase.rpc('insertar_movimiento_stock', {
           p_stock_id: newStock.id,
           p_tipo: 'entrada',
@@ -519,7 +524,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           p_descripcion: form.leyenda.trim() || 'Alta manual de stock',
           p_user_id: userId || null,
         })
-        if (errMov) alert(`⚠ Stock creado pero error en movimiento: ${errMov.message}`)
+        if (errMov) alert(`⚠ Artículo creado pero NO se cargó la cantidad: ${errMov.message}. Cargala con ⚖ Ajustar.`)
       }
       }
     setOpen(false)
@@ -1906,7 +1911,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             <Field label="Año"><Input value={form.anio} onChange={e => setForm(p => ({ ...p, anio: e.target.value }))} placeholder="2015-2020" /></Field>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Cantidad"><Input type="number" value={form.cant} onChange={e => setForm(p => ({ ...p, cant: e.target.value }))} min="0" /></Field>
+            <Field label={editId ? 'Cantidad (solo con ⚖ Ajustar)' : 'Cantidad'}>
+              <Input type="number" value={form.cant} onChange={e => setForm(p => ({ ...p, cant: e.target.value }))} min="0" disabled={!!editId} />
+            </Field>
             <Field label="Precio venta"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
             <Field label="Costo de venta"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
           </div>
