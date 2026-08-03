@@ -140,7 +140,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   },[stockQ,supabase])
 
   const neto  = items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0), 0)
-  const iva   = ivaOn ? Math.round(neto*IVA_RATE) : 0
+  const iva   = ivaOn ? neto*IVA_RATE : 0
   const total = neto + iva
 
   function addItem() {
