@@ -29,7 +29,29 @@ export default function BusquedaComprobantesClient() {
   const [results, setResults] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const [buscado, setBuscado] = useState(false)
+  const [verComp, setVerComp] = useState<any>(null)
+  const [loadingComp, setLoadingComp] = useState(false)
   const supabase = createClient()
+
+  async function verComprobante(r: Row) {
+    setLoadingComp(true)
+    let comp: any = null
+    if (r._src === 'ventas') {
+      const { data } = await supabase.from('comprobantes')
+        .select('*').eq('id', r.id).single()
+      comp = { ...data, _src: 'ventas' }
+    } else if (r._src === 'compras') {
+      const { data } = await supabase.from('comprobantes_compra')
+        .select('*').eq('id', r.id).single()
+      comp = { ...data, _src: 'compras' }
+    } else if (r._src === 'stock') {
+      const { data } = await supabase.from('stock_movimientos')
+        .select('*, stock:stock_id(codigo,descripcion)').eq('id', r.id).single()
+      comp = { ...data, _src: 'stock' }
+    }
+    setVerComp(comp)
+    setLoadingComp(false)
+  }
 
   async function buscar() {
     setLoading(true); setBuscado(true)
@@ -188,7 +210,7 @@ export default function BusquedaComprobantesClient() {
             </thead>
             <tbody>
               {results.map((r,i)=>(
-                <tr key={r.id+i} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'} hover:bg-p-light/50`}>
+                <tr key={r.id+i} onClick={()=>r._src!=='ops'&&verComprobante(r)} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'} hover:bg-p-light/50 cursor-pointer`}>
                   <td className="px-4 py-3">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${srcColor[r._src]}`}>
                       {srcLabel[r._src]}
@@ -225,6 +247,83 @@ export default function BusquedaComprobantesClient() {
               </tr>
             </tfoot>
           </table>
+        </div>
+      )}
+    </div>
+
+      {/* Modal comprobante */}
+      {verComp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setVerComp(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-saira font-bold text-lg text-p-ink">
+                  {verComp._src === 'ventas' ? `${verComp.categoria?.toUpperCase()} ${verComp.tipo} 0006-${String(verComp.nro_cbte_afip||verComp.numero||'').padStart(8,'0')}` :
+                   verComp._src === 'compras' ? `${verComp.tipo?.toUpperCase()} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}` :
+                   `Movimiento stock`}
+                </p>
+                <p className="text-sm text-p-ink2">{verComp.fecha?.split('-').reverse().join('/')}</p>
+              </div>
+              <button onClick={()=>setVerComp(null)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#6b7280'}}>✕</button>
+            </div>
+
+            {/* Datos principales */}
+            <div className="bg-p-light rounded-xl p-4 mb-4 text-sm">
+              {verComp._src === 'ventas' && (
+                <>
+                  <p><span className="text-p-ink2">Cliente:</span> <span className="font-semibold">{verComp.cliente_nombre || verComp.aseguradora_nombre || '—'}</span></p>
+                  {verComp.vehiculo && <p><span className="text-p-ink2">Vehículo:</span> {verComp.vehiculo}</p>}
+                  {verComp.patente && <p><span className="text-p-ink2">Patente:</span> {verComp.patente}</p>}
+                </>
+              )}
+              {verComp._src === 'compras' && (
+                <p><span className="text-p-ink2">Proveedor:</span> <span className="font-semibold">{verComp.proveedor_nombre}</span></p>
+              )}
+              {verComp._src === 'stock' && (
+                <>
+                  <p><span className="text-p-ink2">Código:</span> <span className="font-mono font-bold">{(verComp.stock as any)?.codigo}</span></p>
+                  <p><span className="text-p-ink2">Artículo:</span> {(verComp.stock as any)?.descripcion}</p>
+                  <p><span className="text-p-ink2">Tipo:</span> {verComp.tipo} · {verComp.cantidad} u.</p>
+                  <p><span className="text-p-ink2">Descripción:</span> {verComp.descripcion}</p>
+                </>
+              )}
+            </div>
+
+            {/* Ítems */}
+            {verComp.items && Array.isArray(verComp.items) && verComp.items.length > 0 && (
+              <table className="w-full text-xs mb-4">
+                <thead className="bg-p-light">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Código</th>
+                    <th className="text-left px-3 py-2 font-semibold text-p-ink2">Descripción</th>
+                    <th className="text-center px-3 py-2 font-semibold text-p-ink2">Cant.</th>
+                    <th className="text-right px-3 py-2 font-semibold text-p-ink2">Precio</th>
+                    <th className="text-right px-3 py-2 font-semibold text-p-ink2">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verComp.items.map((it:any, i:number) => (
+                    <tr key={i} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/20'}`}>
+                      <td className="px-3 py-2 font-mono text-[10px]">{it.codigo || it.c_codigo || '—'}</td>
+                      <td className="px-3 py-2">{it.d || it.descripcion || '—'}</td>
+                      <td className="px-3 py-2 text-center">{it.c || it.cantidad || 1}</td>
+                      <td className="px-3 py-2 text-right font-mono">{moneyARS(it.p || it.precio || 0)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold">{moneyARS((it.p || it.precio || 0) * (it.c || it.cantidad || 1))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Totales */}
+            {(verComp.total || verComp.neto) && (
+              <div className="flex flex-col items-end gap-1 text-sm border-t border-p-line pt-3">
+                {verComp.neto && <p><span className="text-p-ink2 mr-4">Neto:</span><span className="font-mono">{moneyARS(verComp.neto)}</span></p>}
+                {verComp.iva > 0 && <p><span className="text-p-ink2 mr-4">IVA {verComp.iva_pct}%:</span><span className="font-mono">{moneyARS(verComp.iva)}</span></p>}
+                <p className="font-bold text-base"><span className="text-p-ink2 mr-4">Total:</span><span className="font-mono text-p-dark">{moneyARS(verComp.total)}</span></p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
