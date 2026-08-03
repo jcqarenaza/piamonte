@@ -184,14 +184,39 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
   }
 
   async function save() {
-    if (!form.descripcion || !form.precio) { alert('Cargá descripción y precio.'); return }
-    const c = +form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
-    const p = +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    // Modo multi-ítem: si hay ítems cargados, la venta ES esos ítems — el ítem manual es opcional.
+    // Sin ítems: se exige descripción y precio del ítem manual (comportamiento clásico).
+    const hayItems = itemsCaja.length > 0
+    const manualCompleto = !!(form.descripcion && form.precio)
+    if (!hayItems && !manualCompleto) { alert('Cargá descripción y precio, o agregá ítems desde stock.'); return }
+    // Si hay ítems Y el manual está a medias (descripción sin precio o viceversa), avisar para no perderlo
+    if (hayItems && !manualCompleto && (form.descripcion || form.precio)) {
+      if (!confirm('El ítem manual está incompleto y NO se va a incluir. ¿Registrar solo los ítems de la lista?')) return
+    }
+
+    const precioManual = manualCompleto ? +form.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '') : 0
+    const costoManual = manualCompleto ? (+form.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || 0) : 0
+    const totalItems = itemsCaja.reduce((a, it) => a + (parseFloat(String(it.precio).replace(',', '.')) || 0) * (it.cantidad || 1), 0)
+    const costoItems = itemsCaja.reduce((a, it) => a + (it.costo || 0) * (it.cantidad || 1), 0)
+
+    const descripcionVenta = hayItems
+      ? [
+          ...itemsCaja.map(it => `${it.desc}${(it.cantidad || 1) > 1 ? ` x${it.cantidad}` : ''}`),
+          ...(manualCompleto ? [form.descripcion] : []),
+        ].join(' + ')
+      : form.descripcion
+    const p = hayItems ? Math.round((totalItems + precioManual) * 100) / 100 : precioManual
+    const cTot = (hayItems ? costoItems : 0) + costoManual
+    const c = cTot > 0 ? cTot : null
+
     const { data: ventaIns, error: errVenta } = await supabase.from('ventas').insert({
-      fecha, descripcion: form.descripcion, costo: c, precio: p,
+      fecha, descripcion: descripcionVenta, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
-      pago: form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''), origen: form.origen, pendiente: !c,
-      stock_id: form.stock_id, user_id: userId,
+      pago: form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''),
+      origen: hayItems ? (itemsCaja.some(it => it.stock_id) ? 'stock' : form.origen) : form.origen,
+      pendiente: !c,
+      stock_id: hayItems ? (itemsCaja.find(it => it.stock_id)?.stock_id || null) : form.stock_id,
+      user_id: userId,
       tipo_cliente_id: form.tipo_id||null,
       tipo_cliente_nombre: form.tipo_nombre||null,
       es_caja2: perfil.rol === 'caja'
@@ -209,7 +234,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
         cliente_nombre: form.cliente,
         fecha,
         tipo: 'venta',
-        descripcion: form.descripcion,
+        descripcion: descripcionVenta,
         debe: p,
         haber: 0,
         saldo: p,
