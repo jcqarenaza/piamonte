@@ -210,7 +210,7 @@ export default function BusquedaComprobantesClient() {
             </thead>
             <tbody>
               {results.map((r,i)=>(
-                <tr key={r.id+i} onClick={()=>r._src!=='ops'&&verComprobante(r)} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'} hover:bg-p-light/50 cursor-pointer`}>
+                <tr key={r.id+i} onClick={()=>verComprobante(r)} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/30'} hover:bg-p-light/50 cursor-pointer`}>
                   <td className="px-4 py-3">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${srcColor[r._src]}`}>
                       {srcLabel[r._src]}
