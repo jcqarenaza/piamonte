@@ -643,6 +643,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       {!(o as any).convertido_comp && esAdmin && (
                         <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                       )}
+                      {esAdmin && (
+                        <button onClick={()=>del(o.id)} style={{...btnSm,background:'#ef4444'}}>🗑 Borrar</button>
+                      )}
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
                       <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
                         style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>

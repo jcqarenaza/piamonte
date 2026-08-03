@@ -1161,16 +1161,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
     const esCuentaCorriente = c.pagos?.every((p:Pago) => p.metodo?.toLowerCase().includes('corriente') || p.metodo?.toLowerCase().includes('cta'))
-    const pagoY = 255
+    const pagoY = 257
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)
       doc.setFont('helvetica','normal')
-      let py = pagoY + 4
-      c.pagos.forEach((p:Pago)=>{
-        doc.text(`${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`, pad+3, py)
-        py+=4
-      })
+      const pagoTexto = c.pagos.map((p:Pago)=>
+        `${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`
+      ).join('  |  ')
+      doc.text(pagoTexto, pad + 28, pagoY)
     }
 
     // ─── CAE COMPACTO — posición fija ───
