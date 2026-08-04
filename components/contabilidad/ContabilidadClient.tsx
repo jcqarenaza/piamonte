@@ -534,6 +534,9 @@ export default function ContabilidadClient() {
                 }} style={{marginTop:12,background:'#92400e',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%'}}>
                   📋 Copiar resumen completo
                 </button>
+                <button onClick={generarPDFContador} style={{marginTop:8,background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:12,cursor:'pointer',width:'100%'}}>
+                  ⬇ Descargar PDF Contador
+                </button>
               </div>
             </div>
           )}
