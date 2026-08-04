@@ -391,9 +391,10 @@ export default function ComprasClient() {
     // costo = precio_lista × (1 - dto%) — lo que realmente pagamos
     if (form.tipo === 'factura') {
       const alertas: string[] = []
+      const dtoFacturaUpd = (comp as any).descuento_pct || descuentoPct || 0
       for (const it of items) {
         if (it.d.trim().toUpperCase() === 'FLETE') continue
-        const dtoPct = (it.dto ?? descuentoPct) / 100
+        const dtoPct = (it.dto !== null && it.dto !== undefined ? it.dto : dtoFacturaUpd) / 100
         const costoNuevo = Math.round(it.p * (1 - dtoPct))
         if (!costoNuevo) continue
 
@@ -444,12 +445,14 @@ export default function ComprasClient() {
       const itemsActualizados = [...items]
       const sinVincular: string[] = []
 
+      // Usar descuento del comprobante ya guardado como fuente de verdad (evita que el estado React esté en 0)
+      const dtoFactura = (comp as any).descuento_pct || descuentoPct || 0
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx]
         if ((it.d||'').toUpperCase().trim() === 'FLETE' || (it as any).codigo === 'FL') continue
 
         const codigo = (it as any).codigo || null
-        const dtoPct = (it.dto ?? descuentoPct) / 100
+        const dtoPct = (it.dto !== null && it.dto !== undefined ? it.dto : dtoFactura) / 100
         const costoUnit = Math.round(it.p * (1 - dtoPct) * 100) / 100
 
         // Resolver articulo_id contra el catálogo maestro
