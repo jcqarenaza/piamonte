@@ -291,6 +291,14 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       stock_codigo: stockSel?.codigo || null,
     })
     // Stock se descuenta solo al facturar, NO al guardar la OS
+    // Si viene de un turno, actualizar turnos.os_id con la nueva OS
+    if (form.turno_id && !editMode) {
+      const { data: newOs } = await supabase.from('ordenes_servicio')
+        .select('id').eq('turno_id', form.turno_id).order('created_at', {ascending:false}).limit(1).maybeSingle()
+      if (newOs?.id) {
+        await supabase.from('turnos').update({ os_id: newOs.id }).eq('id', form.turno_id)
+      }
+    }
     }
 
     setOpen(false); setItems([]); setForm({aseg:'',sin:'',pol:'',cli:'',tel:'',veh:'',pat:'',obs:'',estado:'pendiente',turno_id:'',colaborador_id:''})
