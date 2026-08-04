@@ -125,7 +125,7 @@ export default function ContabilidadClient() {
       ivaVentas.map(r => [
         r.fecha?.split('-').reverse().join('/') || '',
         r.tipo || '',
-        r.numero || '',
+        String(r.numero || ''),
         (r.cliente_nombre || r.aseguradora_nombre || 'CF').slice(0,22),
         moneyARS(r.neto),
         moneyARS(r.iva),
@@ -141,7 +141,7 @@ export default function ContabilidadClient() {
       ivaCompras.map(r => [
         r.fecha?.split('-').reverse().join('/') || '',
         r.tipo || '',
-        r.numero || '',
+        String(r.numero || ''),
         (r.proveedor_nombre || '').slice(0,22),
         moneyARS(r.neto),
         moneyARS(r.iva),
