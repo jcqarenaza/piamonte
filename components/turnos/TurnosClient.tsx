@@ -33,6 +33,7 @@ function Toast({ msg, ok }: { msg: string; ok: boolean }) {
 
 export default function TurnosClient({ initialTurnos, userId }: { initialTurnos: Turno[]; userId: string }) {
   const [turnos, setTurnos]   = useState<Turno[]>(initialTurnos)
+  const [buscarCliente, setBuscarCliente] = useState('')
   const [fecha, setFecha]     = useState(todayStr())
   const [loading, setLoading] = useState(false)
   const [open, setOpen]       = useState(false)
@@ -252,6 +253,11 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
         <button onClick={openNew} style={{ background:"#00A550", color:"#fff", border:"none", borderRadius:10, padding:"10px 20px", fontWeight:700, fontSize:14, cursor:"pointer" }}>+ Nuevo turno</button>
       </div>
 
+      <div className="mb-3">
+        <input value={buscarCliente} onChange={e=>setBuscarCliente(e.target.value)}
+          placeholder="Buscar por cliente..."
+          className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white"/>
+      </div>
       <p className="text-sm text-p-ink2 mb-4">{fmtFecha(fecha)} · {turnos.length} {turnos.length === 1 ? "turno" : "turnos"}</p>
 
       {loading ? (
@@ -260,7 +266,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
         <Empty msg="Sin turnos para este día. ¡Agendá uno!" />
       ) : (
         <div className="flex flex-col gap-3">
-          {turnos.map(t => {
+          {turnos.filter(t => !buscarCliente.trim() || (t.cliente||'').toLowerCase().includes(buscarCliente.toLowerCase())).map(t => {
             const esTentativo = String(t.id).startsWith('offline_')
             return (
             <div key={t.id} onDoubleClick={()=>!esTentativo && openEdit(t)} title={esTentativo?undefined:"Doble click para editar"}
