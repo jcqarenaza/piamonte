@@ -99,6 +99,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [precioEditStr, setPrecioEditStr] = useState<Record<number,string>>({})
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
+  const [cuentasBancoComp, setCuentasBancoComp] = useState<any[]>([])
+  const [cuentaBancoIds, setCuentaBancoIds] = useState<Record<number,string>>({})
   // Un ChequeData por cada fila de pago (mismo índice). Solo se usa cuando metodo==='Cheque'.
   const [chequesPago, setChequesPago] = useState<Record<number,ChequeData>>({})
   const [toast, setToast]       = useState('')
@@ -714,7 +716,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       items, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
       iva_negro_pct: esNegro ? ivaNegroP : null,
-      pagos: modo==='aseguradora' && !pagos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagos.filter(p=>p.monto),
+      pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto),
       observaciones: obs||null,
       user_id: userId,
     }).select().single()
@@ -725,7 +727,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       return
     }
 
-    const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    // Enriquecer transferencias con la cuenta bancaria seleccionada
+    const pagosEnriquecidos = pagos.map((p,i) => {
+      if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
+        const cb = cuentasBancoComp.find(c=>c.id===cuentaBancoIds[i])
+        return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
+      }
+      return p
+    })
+    const pagosCCMonto = pagosEnriquecidos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp) {
       if (modo==='cliente' && cliEfectivo?.id) {
@@ -860,9 +870,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const clienteVenta = modo==='aseguradora' ? (asegSel?.nombre||clienteAseg||null)
         : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null)
         : (cfNombre||null)
+      // Calcular costo desde stock de los ítems facturados
+      let costoVenta = 0
+      for (const it of items.filter(it=>(it as any).stock_id)) {
+        const { data: stkData } = await supabase.from('stock').select('costo').eq('id',(it as any).stock_id).maybeSingle()
+        costoVenta += (stkData?.costo||0) * (it.c||1)
+      }
       await supabase.from('ventas').insert({
         fecha:todayStr(), descripcion:`${nroFormateado} - ${nombreVenta||'CF'}`,
-        precio:total, costo:null, pendiente:true,
+        precio:total, costo:costoVenta||null, pendiente:true,
         comprobante_id:(comp as any).id,
         tipo_cliente_id:fiscal.tipo_cliente_id||null,
         tipo_cliente_nombre:tipoC?.nombre||null,
@@ -1933,6 +1949,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   {p.metodo==='Cheque'&&(
                     <div className="mt-1.5">
                       <ChequeFields value={chequesPago[i]||EMPTY_CHEQUE} onChange={v=>setChequesPago(prev=>({...prev,[i]:v}))}/>
+                    </div>
+                  )}
+                  {p.metodo==='Transferencia'&&cuentasBancoComp.length>0&&(
+                    <div className="mt-1.5">
+                      <Select value={cuentaBancoIds[i]||''} onChange={e=>setCuentaBancoIds(prev=>({...prev,[i]:e.target.value}))}>
+                        <option value="">Cuenta destino (opcional)</option>
+                        {cuentasBancoComp.map(c=><option key={c.id} value={c.id}>{c.banco} · {c.tipo}{c.alias?` (${c.alias})`:''}</option>)}
+                      </Select>
                     </div>
                   )}
                 </div>
