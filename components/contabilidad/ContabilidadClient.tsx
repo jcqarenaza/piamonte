@@ -68,7 +68,8 @@ export default function ContabilidadClient() {
 
   const [y, m] = mes.split('-')
 
-  function generarPDFContador() {
+  async function generarPDFContador() {
+    const { default: jsPDF } = await import('jspdf')
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = 210, pad = 14
     let y2 = 15
