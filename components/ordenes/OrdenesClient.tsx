@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
+import { moneyARS, todayStr } from '@/lib/utils/format'
 const moneyARS2 = (n:number) => '$' + n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
 
 const IVA_RATE = 0.21
