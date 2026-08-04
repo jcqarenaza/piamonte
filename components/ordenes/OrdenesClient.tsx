@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
-import { moneyARS, todayStr } from '@/lib/utils/format'
+import { moneyARS, moneyARS2, todayStr } from '@/lib/utils/format'
 const moneyARS2 = (n:number) => '$' + n.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
 
 const IVA_RATE = 0.21
@@ -234,7 +234,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setSancorOS(os)
     const sel: Record<string,boolean> = {}
     const tots: Record<string,number> = {}
-    os.forEach((o:any) => { sel[o.id] = true; tots[o.id] = o.total || 0 })
+    os.forEach((o:any) => { sel[o.id] = true; tots[o.id] = parseFloat(String(o.total||0)) || 0 })
     setSancorSel(sel)
     setSancorTotales(tots)
     const txts: Record<string,string> = {}
@@ -1067,7 +1067,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex justify-between items-center">
                 <span className="text-sm font-semibold text-purple-800">Total seleccionado:</span>
                 <span className="font-mono font-bold text-purple-800">
-                  {moneyARS(Object.entries(sancorSel).filter(([,v])=>v).reduce((acc,[id])=>acc+(sancorTotales[id]||0),0))}
+                  {moneyARS2(Object.entries(sancorSel).filter(([,v])=>v).reduce((acc,[id])=>acc+(sancorTotales[id]||0),0))}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3">
