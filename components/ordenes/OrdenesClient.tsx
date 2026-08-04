@@ -292,7 +292,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     })
     // Stock se descuenta solo al facturar, NO al guardar la OS
     // Si viene de un turno, actualizar turnos.os_id con la nueva OS
-    if (form.turno_id && !editMode) {
+    if (form.turno_id && !editId) {
       const { data: newOs } = await supabase.from('ordenes_servicio')
         .select('id').eq('turno_id', form.turno_id).order('created_at', {ascending:false}).limit(1).maybeSingle()
       if (newOs?.id) {
@@ -646,6 +646,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   <div onClick={e=>e.stopPropagation()} className="px-3.5 pb-3 pt-2 border-t border-p-line2 bg-p-light/30">
                     {o.aseguradora && <p className="text-xs text-p-ink2 mb-2">🏢 {o.aseguradora}</p>}
                     <div className="flex gap-2 flex-wrap">
+                      {/* Botones siempre visibles */}
                       <button onClick={()=>enviarWA(o)} style={btnWa}>📱 WhatsApp</button>
                       <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
                         📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
@@ -659,70 +660,86 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
                       <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
                         style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
-                      {(o as any).estado==='pendiente' && (
+
+                      {/* JERARQUÍA DE ESTADO */}
+                      {(o as any).convertido_comp ? (
+                        <span className="text-[10px] text-p-ink2 bg-green-50 border border-green-200 rounded-lg px-2 py-1">🔒 Facturada</span>
+                      ) : (o as any).cristal_colocado ? (
+                        <>
+                          {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
+                            <button onClick={async()=>{
+                              if (!confirm('¿Retirar el vidrio? Esto devolverá las unidades al stock.')) return
+                              const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
+                              const fecha = todayStr()
+                              for (const it of stockItems) {
+                                const { error: errRet } = await supabase.rpc('insertar_movimiento_stock', {
+                                  p_stock_id: it.stock_id, p_tipo: 'entrada',
+                                  p_cantidad: it.c||1, p_fecha: fecha,
+                                  p_descripcion: `Retiro vidrio OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                                  p_user_id: userId,
+                                })
+                                if (errRet) { alert(`⚠ Error al devolver stock: ${errRet.message}`); return }
+                              }
+                              await supabase.from('ordenes_servicio').update({ cristal_colocado: false }).eq('id', o.id)
+                              load()
+                            }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Retirar vidrio</button>
+                          )}
+                          {o.aseguradora==='Sancor Seguros' ? (
+                            <button onClick={()=>{ setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()}) }}
+                              style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
+                          ) : (
+                            <button onClick={()=>{
+                              if ((o as any).convertido_comp) { alert('⚠ Esta OS ya tiene comprobante emitido.'); return }
+                              const params = new URLSearchParams({
+                                cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
+                                items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                                ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
+                                ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
+                              })
+                              router.push(`/comprobantes?${params.toString()}`)
+                            }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                          )}
+                        </>
+                      ) : (o as any).estado==='realizado' ? (
+                        <>
+                          {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
+                            <button onClick={async()=>{
+                              if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
+                              const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
+                              const fecha = todayStr()
+                              for (const it of stockItems) {
+                                const { error: errStockOS } = await supabase.rpc('insertar_movimiento_stock', {
+                                  p_stock_id: it.stock_id, p_tipo: 'salida',
+                                  p_cantidad: it.c||1, p_fecha: fecha,
+                                  p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                                  p_user_id: userId,
+                                })
+                                if (errStockOS) { alert(`⚠ Error al descontar stock: ${errStockOS.message}`); return }
+                              }
+                              await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
+                              load()
+                            }} style={{...btnSm,background:'#0891b2'}}>🔧 Colocada</button>
+                          )}
+                          {o.aseguradora==='Sancor Seguros' ? (
+                            <button onClick={()=>{ setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()}) }}
+                              style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
+                          ) : (
+                            <button onClick={()=>{
+                              if ((o as any).convertido_comp) { alert('⚠ Esta OS ya tiene comprobante emitido.'); return }
+                              const params = new URLSearchParams({
+                                cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
+                                items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                                ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
+                                ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
+                              })
+                              router.push(`/comprobantes?${params.toString()}`)
+                            }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
+                          )}
+                        </>
+                      ) : (
                         <button onClick={async()=>{
                           await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
                         }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
-                      )}
-                      {!(o as any).cristal_colocado && !(o as any).convertido_comp && (o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
-                        <button onClick={async()=>{
-                          if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
-                          const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
-                          const fecha = todayStr()
-                          for (const it of stockItems) {
-                            // Movimiento + descuento de stock en una sola transacción (RPC atómico)
-                            const { error: errStockOS } = await supabase.rpc('insertar_movimiento_stock', {
-                              p_stock_id: it.stock_id, p_tipo: 'salida',
-                              p_cantidad: it.c||1, p_fecha: fecha,
-                              p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
-                              p_user_id: userId,
-                            })
-                            if (errStockOS) { alert(`⚠ Error al descontar stock: ${errStockOS.message}`); return }
-                          }
-                          await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
-                          load()
-                        }} style={{...btnSm,background:'#0891b2'}}>🔩 Colocada</button>
-                      )}
-                      {(o as any).cristal_colocado && !(o as any).convertido_comp && (
-                        <button onClick={async()=>{
-                          if (!confirm('¿Retirar el vidrio? Esto devolverá las unidades al stock.')) return
-                          const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
-                          const fecha = todayStr()
-                          for (const it of stockItems) {
-                            const { error: errRet } = await supabase.rpc('insertar_movimiento_stock', {
-                              p_stock_id: it.stock_id, p_tipo: 'entrada',
-                              p_cantidad: it.c||1, p_fecha: fecha,
-                              p_descripcion: `Retiro vidrio OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
-                              p_user_id: userId,
-                            })
-                            if (errRet) { alert(`⚠ Error al devolver stock: ${errRet.message}`); return }
-                          }
-                          await supabase.from('ordenes_servicio').update({ cristal_colocado: false }).eq('id', o.id)
-                          load()
-                        }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Retirar vidrio</button>
-                      )}
-                      {(o as any).cristal_colocado && (o as any).convertido_comp && (
-                        <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">🔧 Colocado ✓</span>
-                      )}
-                      {!(o as any).convertido_comp && (
-                        o.aseguradora==='Sancor Seguros' ? (
-                          <button onClick={()=>{ if((o as any).convertido_comp){alert('⚠ Esta OS ya tiene comprobante emitido.');return} setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()}) }}
-                            style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
-                        ) : (
-                          <button onClick={()=>{
-                            const params = new URLSearchParams({
-                              cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
-                              items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
-                              ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
-                              ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
-                            })
-                            router.push(`/comprobantes?${params.toString()}`)
-                          }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
-                        )
-                      )}
-
-                      {(o as any).convertido_comp && (
-                        <span className="text-[10px] text-p-ink2 bg-green-50 border border-green-200 rounded-lg px-2 py-1">🔒 Facturada</span>
                       )}
                     </div>
                   </div>
