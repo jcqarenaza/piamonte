@@ -658,8 +658,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         <button onClick={()=>del(o.id)} style={{...btnSm,background:'#ef4444'}}>🗑 Borrar</button>
                       )}
                       <button onClick={()=>descargarPDF(o)} style={btnSm}>⬇ PDF</button>
-                      <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
-                        style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
 
                       {/* JERARQUÍA DE ESTADO */}
                       {(o as any).convertido_comp ? (
@@ -737,9 +735,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           )}
                         </>
                       ) : (
-                        <button onClick={async()=>{
-                          await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
-                        }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
+                        <>
+                          <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
+                            style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
+                          <button onClick={async()=>{
+                            await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
+                          }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
+                        </>
                       )}
                     </div>
                   </div>
