@@ -696,7 +696,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       )}
                       {!(o as any).convertido_comp && (
                         o.aseguradora==='Sancor Seguros' ? (
-                          <button onClick={()=>{setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()})}}
+                          <button onClick={()=>{ if((o as any).convertido_comp){alert('⚠ Esta OS ya tiene comprobante emitido.');return} setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()}) }}
                             style={{...btnSm,background:'#7c3aed'}}>📋 Fact. manual</button>
                         ) : (
                           <button onClick={()=>{
@@ -976,6 +976,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             <button onClick={()=>setTurnoModal(null)} style={{...btnGray}}>Cancelar</button>
             <button onClick={async()=>{
               if(!turnoModal) return
+              // Verificar que la OS no tenga ya un turno
+              if (turnoModal.turno_id) {
+                alert('⚠ Esta OS ya tiene un turno asignado. Primero eliminá el turno existente.')
+                return
+              }
               const { data: nuevoTurno } = await supabase.from('turnos').insert({
                 fecha: turnoForm.fecha, hora: turnoForm.hora,
                 cliente: turnoModal.cliente||null, telefono: turnoModal.telefono||null,

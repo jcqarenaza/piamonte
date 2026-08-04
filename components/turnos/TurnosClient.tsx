@@ -323,16 +323,20 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                   style={{background:'#fff',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
                   ✏
                 </button>
-                {/* Generar OS desde este turno */}
+                {/* OS: si ya tiene OS → navegar, sino → crear nueva */}
                 <button onClick={()=>{
-                  const params = new URLSearchParams({
-                    cli: t.cliente||'', tel: t.telefono||'', veh: t.vehiculo||'',
-                    pat: t.patente||'', turno_id: t.id,
-                  })
-                  router.push(`/ordenes?${params.toString()}`)
-                }} style={{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:11,cursor:'pointer'}}
-                title="Generar Orden de Servicio desde este turno">
-                  📋 OS
+                  if ((t as any).os_id) {
+                    router.push(`/ordenes?id=${(t as any).os_id}`)
+                  } else {
+                    const params = new URLSearchParams({
+                      cli: t.cliente||'', tel: t.telefono||'', veh: t.vehiculo||'',
+                      pat: t.patente||'', turno_id: t.id,
+                    })
+                    router.push(`/ordenes?${params.toString()}`)
+                  }
+                }} style={{background:(t as any).os_id?'#059669':'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'6px 10px',fontWeight:700,fontSize:11,cursor:'pointer'}}
+                title={(t as any).os_id ? 'Ver Orden de Servicio' : 'Generar Orden de Servicio'}>
+                  {(t as any).os_id ? '📋 OS →' : '📋 OS'}
                 </button>
                 <button onClick={() => del(t.id)}
                   style={{background:'#fff',color:'#ef4444',border:'1px solid #fecaca',borderRadius:8,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>
