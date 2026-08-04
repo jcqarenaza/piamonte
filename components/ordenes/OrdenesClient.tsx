@@ -654,7 +654,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           await supabase.from('ordenes_servicio').update({estado:'realizado'}).eq('id',o.id); load()
                         }} style={{...btnSm,background:'#16a34a'}}>✅ Realizado</button>
                       )}
-                      {!(o as any).cristal_colocado && (o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
+                      {!(o as any).cristal_colocado && !(o as any).convertido_comp && (o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
                         <button onClick={async()=>{
                           if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
                           const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
