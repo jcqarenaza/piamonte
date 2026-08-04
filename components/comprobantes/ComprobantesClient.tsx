@@ -715,6 +715,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       orden_id: oid||osSelId||null,
       items, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
+    // Enriquecer transferencias con la cuenta bancaria seleccionada
+    const pagosEnriquecidos = pagos.map((p,i) => {
+      if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
+        const cb = cuentasBancoComp.find(c=>c.id===cuentaBancoIds[i])
+        return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
+      }
+      return p
+    })
       iva_negro_pct: esNegro ? ivaNegroP : null,
       pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto),
       observaciones: obs||null,
