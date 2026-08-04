@@ -697,7 +697,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
-    // Enriquecer transferencias con la cuenta bancaria seleccionada
     const pagosEnriquecidos = pagos.map((p:any, i:number) => {
       if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
         const cb = cuentasBancoComp.find((c:any)=>c.id===cuentaBancoIds[i])
@@ -705,7 +704,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
       return p
     })
-
     const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
@@ -736,15 +734,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       return
     }
 
-    // Enriquecer transferencias con la cuenta bancaria seleccionada
-    const pagosEnriquecidos = pagos.map((p,i) => {
-      if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
-        const cb = cuentasBancoComp.find(c=>c.id===cuentaBancoIds[i])
-        return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
-      }
-      return p
-    })
-    const pagosCCMonto = pagosEnriquecidos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp) {
       if (modo==='cliente' && cliEfectivo?.id) {
@@ -881,9 +871,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         : (cfNombre||null)
       // Calcular costo desde stock de los ítems facturados
       let costoVenta = 0
-      for (const it of items.filter(it=>(it as any).stock_id)) {
+      for (const it of items.filter((it:any)=>it.stock_id)) {
         const { data: stkData } = await supabase.from('stock').select('costo').eq('id',(it as any).stock_id).maybeSingle()
-        costoVenta += (stkData?.costo||0) * (it.c||1)
+        costoVenta += ((stkData as any)?.costo||0) * ((it as any).c||1)
       }
       await supabase.from('ventas').insert({
         fecha:todayStr(), descripcion:`${nroFormateado} - ${nombreVenta||'CF'}`,
