@@ -67,6 +67,128 @@ export default function ContabilidadClient() {
   const saldoIva = totVentas.iva - totCompras.iva - retIva
 
   const [y, m] = mes.split('-')
+
+  function generarPDFContador() {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const W = 210, pad = 14
+    let y2 = 15
+
+    // Header
+    doc.setFillColor(0, 165, 80)
+    doc.rect(0, 0, W, 18, 'F')
+    doc.setTextColor(255,255,255)
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(13)
+    doc.text('EL PIAMONTE — Informe Mensual Contable', pad, 11)
+    doc.setFontSize(9)
+    doc.text(`Período: ${MESES[+m-1]} ${y}`, W-pad, 11, {align:'right'})
+    y2 = 25
+
+    doc.setTextColor(30,30,30)
+
+    // Función para tabla
+    function tabla(titulo: string, cols: string[], rows: string[][], totales?: string[]) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      doc.setFillColor(240,240,240)
+      doc.rect(pad, y2-4, W-pad*2, 6, 'F')
+      doc.text(titulo, pad+1, y2)
+      y2 += 5
+      // Cabecera cols
+      doc.setFontSize(7.5); doc.setFont('helvetica','bold')
+      const colW = (W-pad*2) / cols.length
+      cols.forEach((c,i) => doc.text(c, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
+      y2 += 4
+      doc.setLineWidth(0.2); doc.setDrawColor(200,200,200)
+      doc.line(pad, y2-1, W-pad, y2-1)
+      // Filas
+      doc.setFont('helvetica','normal'); doc.setFontSize(7)
+      rows.forEach(row => {
+        row.forEach((cell,i) => doc.text(cell, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
+        y2 += 4
+        if (y2 > 270) { doc.addPage(); y2 = 15 }
+      })
+      // Totales
+      if (totales) {
+        doc.line(pad, y2-1, W-pad, y2-1)
+        doc.setFont('helvetica','bold')
+        totales.forEach((cell,i) => doc.text(cell, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
+        y2 += 6
+      }
+      y2 += 3
+    }
+
+    // LIBRO IVA VENTAS
+    tabla(
+      'LIBRO IVA VENTAS',
+      ['Fecha','Tipo','N°','Cliente','Neto','IVA','Total'],
+      ivaVentas.map(r => [
+        r.fecha?.split('-').reverse().join('/') || '',
+        r.tipo || '',
+        r.numero || '',
+        (r.cliente_nombre || r.aseguradora_nombre || 'CF').slice(0,22),
+        moneyARS(r.neto),
+        moneyARS(r.iva),
+        moneyARS(r.total),
+      ]),
+      ['TOTAL','','','',moneyARS(totVentas.neto),moneyARS(totVentas.iva),moneyARS(totVentas.total)]
+    )
+
+    // LIBRO IVA COMPRAS
+    tabla(
+      'LIBRO IVA COMPRAS',
+      ['Fecha','Tipo','N°','Proveedor','Neto','IVA','Total'],
+      ivaCompras.map(r => [
+        r.fecha?.split('-').reverse().join('/') || '',
+        r.tipo || '',
+        r.numero || '',
+        (r.proveedor_nombre || '').slice(0,22),
+        moneyARS(r.neto),
+        moneyARS(r.iva),
+        moneyARS(r.total),
+      ]),
+      ['TOTAL','','','',moneyARS(totCompras.neto),moneyARS(totCompras.iva),moneyARS(totCompras.total)]
+    )
+
+    // RETENCIONES
+    if (retenciones.length > 0) {
+      tabla(
+        'RETENCIONES SUFRIDAS',
+        ['Fecha','Tipo','Aseguradora','Monto'],
+        retenciones.map(r => [
+          r.fecha?.split('-').reverse().join('/') || '',
+          r.tipo || '',
+          ((r as any).aseguradoras?.nombre || '').slice(0,30),
+          moneyARS(r.monto),
+        ]),
+        ['TOTAL','','',moneyARS(totalRetenciones)]
+      )
+    }
+
+    // BALANCE IVA
+    doc.setFillColor(240,240,240)
+    doc.rect(pad, y2-4, W-pad*2, 6, 'F')
+    doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    doc.text('POSICIÓN IVA', pad+1, y2)
+    y2 += 6
+    doc.setFont('helvetica','normal'); doc.setFontSize(8)
+    doc.text(`Débito fiscal (IVA ventas):`, pad, y2); doc.text(moneyARS(totVentas.iva), W-pad, y2, {align:'right'}); y2+=5
+    doc.text(`Crédito fiscal (IVA compras):`, pad, y2); doc.text(`- ${moneyARS(totCompras.iva)}`, W-pad, y2, {align:'right'}); y2+=5
+    if (retIva > 0) { doc.text('Ret. IVA aseguradoras:', pad, y2); doc.text(`- ${moneyARS(retIva)}`, W-pad, y2, {align:'right'}); y2+=5 }
+    doc.line(pad, y2-1, W-pad, y2-1)
+    doc.setFont('helvetica','bold'); doc.setFontSize(9)
+    doc.text('SALDO IVA A PAGAR:', pad, y2+3); doc.text(moneyARS(saldoIva), W-pad, y2+3, {align:'right'})
+
+    // Footer
+    const pages = (doc as any).internal.getNumberOfPages()
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(150,150,150)
+      doc.text(`Página ${i} de ${pages}`, W/2, 290, {align:'center'})
+      doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, pad, 290)
+    }
+
+    doc.save(`informe-contador-${mes}.pdf`)
+  }
   const [periodoCerrado, setPeriodoCerrado] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 

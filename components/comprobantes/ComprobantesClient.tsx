@@ -697,6 +697,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const pid = searchParams.get('pid'), oid = searchParams.get('oid')
     const tipoC = tipos.find(t=>t.id===fiscal.tipo_cliente_id)
 
+    // Enriquecer transferencias con la cuenta bancaria seleccionada
+    const pagosEnriquecidos = pagos.map((p:any, i:number) => {
+      if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
+        const cb = cuentasBancoComp.find((c:any)=>c.id===cuentaBancoIds[i])
+        return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
+      }
+      return p
+    })
+
     const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
@@ -715,14 +724,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       orden_id: oid||osSelId||null,
       items, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
-    // Enriquecer transferencias con la cuenta bancaria seleccionada
-    const pagosEnriquecidos = pagos.map((p,i) => {
-      if (p.metodo==='Transferencia' && cuentaBancoIds[i]) {
-        const cb = cuentasBancoComp.find(c=>c.id===cuentaBancoIds[i])
-        return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
-      }
-      return p
-    })
       iva_negro_pct: esNegro ? ivaNegroP : null,
       pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto),
       observaciones: obs||null,
