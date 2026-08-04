@@ -75,6 +75,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
     const pat = searchParams.get('pat'), turnoId = searchParams.get('turno_id')
     const editOsId = searchParams.get('edit')
+    const qParam = searchParams.get('q')
+    if (qParam) setBuscarNombre(decodeURIComponent(qParam))
     const itemsStr = searchParams.get('items')
     if (editOsId) {
       // Abrir directamente en modo edición la OS indicada

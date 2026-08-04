@@ -326,7 +326,7 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
                 {/* OS: si ya tiene OS → navegar, sino → crear nueva */}
                 <button onClick={()=>{
                   if ((t as any).os_id) {
-                    router.push(`/ordenes?id=${(t as any).os_id}`)
+                    router.push(`/ordenes?q=${encodeURIComponent(t.cliente||'')}`)
                   } else {
                     const params = new URLSearchParams({
                       cli: t.cliente||'', tel: t.telefono||'', veh: t.vehiculo||'',
