@@ -1056,7 +1056,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       onChange={e=>{
                         const txt = e.target.value
                         setSancorTextos(p=>({...p,[o.id]:txt}))
-                        const v = parseFloat(txt.replace(/\./g,'').replace(',','.'))
+                        const v = // Acepta punto o coma como decimal
+                        const norm = txt.includes(',') ? txt.replace(/\./g,'').replace(',','.') : txt
+                        const v = parseFloat(norm)
                         if (!isNaN(v)) setSancorTotales(p=>({...p,[o.id]:v}))
                       }}
                       className="w-28 border border-p-line rounded-lg px-2 py-1 text-sm font-mono text-right focus:outline-none focus:border-purple-400"
