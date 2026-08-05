@@ -135,7 +135,7 @@ export default function ContabilidadClient() {
     posItems.forEach(item => {
       checkPage(7)
       doc.text(item.label, pad+2, y2)
-      doc.text((item.signo ? item.signo+' ' : '') + item.val, W-pad, y2, {align:'right'})
+      doc.text(item.signo ? `- ${item.val}` : item.val, W-pad, y2, {align:'right'})
       y2 += 6
     })
     doc.setLineWidth(0.4); doc.setDrawColor(0,165,80)
