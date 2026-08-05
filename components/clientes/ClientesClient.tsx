@@ -144,7 +144,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
             </button>
           ))}
         </div>
-        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' }); setSelected(null); setOpen(true) }}
+        <button onClick={()=>{ setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'', formato_factura:'interno' }); setSelected(null); setOpen(true) }}
           style={btn}>+ Nuevo cliente</button>
       </div>
 
