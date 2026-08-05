@@ -63,6 +63,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [sancorTotales, setSancorTotales] = useState<Record<string,number>>({})
   const [sancorForm, setSancorForm] = useState({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
   const [sancorLoading, setSancorLoading] = useState(false)
+  const [sancorTipo, setSancorTipo] = useState<'FC'|'FCE'>('FC')
+  const [sancorTipoTocado, setSancorTipoTocado] = useState(false)
+  const [umbralFce, setUmbralFce] = useState<number>(0)
   const [sancorTextos, setSancorTextos] = useState<Record<string,string>>({})
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
   // Turno desde OS
@@ -241,6 +244,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     os.forEach((o:any) => { txts[o.id] = String(o.total||0).replace('.',',') })
     setSancorTextos(txts)
     setSancorForm({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
+    // Umbral FCE MiPyME desde config (editable sin deploy)
+    const { data: cfg } = await supabase.from('config_fce').select('umbral').eq('id',1).maybeSingle()
+    const umbral = parseFloat(String(cfg?.umbral ?? 0)) || 0
+    setUmbralFce(umbral)
+    const totalInicial = os.reduce((acc:number,o:any)=>acc+(parseFloat(String(o.total||0))||0),0)
+    setSancorTipo(umbral > 0 && totalInicial >= umbral ? 'FCE' : 'FC')
+    setSancorTipoTocado(false)
     setSancorModal(true)
   }
 
@@ -1093,12 +1103,42 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   </div>
                 ))}
               </div>
+              {(() => {
+                const totalSel = Object.entries(sancorSel).filter(([,v])=>v).reduce((acc,[id])=>acc+(sancorTotales[id]||0),0)
+                const sugerido: 'FC'|'FCE' = (umbralFce > 0 && totalSel >= umbralFce) ? 'FCE' : 'FC'
+                const tipoEfectivo = sancorTipoTocado ? sancorTipo : sugerido
+                if (!sancorTipoTocado && sancorTipo !== sugerido) setTimeout(() => setSancorTipo(sugerido), 0)
+                return (<>
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex justify-between items-center">
                 <span className="text-sm font-semibold text-purple-800">Total seleccionado:</span>
-                <span className="font-mono font-bold text-purple-800">
-                  {moneyARS2(Object.entries(sancorSel).filter(([,v])=>v).reduce((acc,[id])=>acc+(sancorTotales[id]||0),0))}
-                </span>
+                <span className="font-mono font-bold text-purple-800">{moneyARS2(totalSel)}</span>
               </div>
+              {umbralFce > 0 && totalSel >= umbralFce && (
+                <div className="border rounded-xl p-2.5 text-xs font-semibold"
+                  style={{background:'#fffbeb',borderColor:'#fcd34d',color:'#92400e'}}>
+                  ⚠ Supera el tope MiPyME ({moneyARS2(umbralFce)}) — corresponde <b>FCE</b>: emitila como Factura de Crédito Electrónica en el portal de ARCA y registrala acá con ese número.
+                </div>
+              )}
+              <Field label="Tipo de comprobante emitido en ARCA">
+                <div className="flex gap-2">
+                  {(['FC','FCE'] as const).map(t => (
+                    <button key={t} type="button"
+                      onClick={() => { setSancorTipo(t); setSancorTipoTocado(true) }}
+                      className="flex-1 rounded-lg px-3 py-2 text-sm font-bold border transition-colors"
+                      style={tipoEfectivo === t
+                        ? {background:'#7c3aed',color:'#fff',borderColor:'#7c3aed'}
+                        : {background:'#fff',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                      {t === 'FC' ? 'Factura A común' : 'FCE MiPyME'}
+                      {sugerido === t ? ' ★' : ''}
+                    </button>
+                  ))}
+                </div>
+                {sancorTipoTocado && tipoEfectivo !== sugerido && (
+                  <p className="text-[10px] mt-1" style={{color:'#b45309'}}>Elegiste distinto a lo sugerido (★) — confirmá que corresponde.</p>
+                )}
+              </Field>
+                </>)
+              })()}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Punto de venta"><Input value={sancorForm.pv} onChange={e=>setSancorForm(p=>({...p,pv:e.target.value}))} placeholder="00001"/></Field>
                 <Field label="N° Factura"><Input value={sancorForm.nro} onChange={e=>setSancorForm(p=>({...p,nro:e.target.value}))} placeholder="00000001"/></Field>
@@ -1116,28 +1156,37 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   if (!sancorForm.cae||!sancorForm.nro) { alert('Completá CAE y N° Factura'); return }
                   setSancorLoading(true)
                   const total = selIds.reduce((acc,id)=>acc+(sancorTotales[id]||0),0)
-                  const neto = Math.round(total/1.21*100)/100
-                  const iva = Math.round((total-neto)*100)/100
-                  const desc = `FCE Sancor ${sancorForm.pv}-${sancorForm.nro} · ${selIds.length} OS`
+                  const sugerido: 'FC'|'FCE' = (umbralFce > 0 && total >= umbralFce) ? 'FCE' : 'FC'
+                  const tipoFinal = sancorTipoTocado ? sancorTipo : sugerido
+                  // Doble confirmación si supera el umbral y eligió FC común igual
+                  if (tipoFinal === 'FC' && umbralFce > 0 && total >= umbralFce) {
+                    if (!confirm(`El total (${moneyARS2(total)}) supera el tope MiPyME (${moneyARS2(umbralFce)}) y elegiste Factura común.\n¿Confirmás que NO corresponde FCE?`)) { setSancorLoading(false); return }
+                  }
+                  const desc = `${tipoFinal} Sancor ${sancorForm.pv}-${sancorForm.nro} · ${selIds.length} OS`
 
                   // Registrar en CC aseguradoras
-                  await supabase.from('cuenta_corriente_aseguradoras').insert({
+                  const { error: errCC } = await supabase.from('cuenta_corriente_aseguradoras').insert({
                     aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
                     fecha: sancorForm.fecha, tipo: 'factura',
                     descripcion: desc, debe: total, haber: 0,
                   })
+                  if (errCC) { alert(`⚠ Error al registrar en CC: ${errCC.message}`); setSancorLoading(false); return }
 
                   // Marcar cada OS como facturada
+                  const errsOS: string[] = []
                   for (const id of selIds) {
-                    await supabase.from('ordenes_servicio').update({
+                    const { error: errOS } = await supabase.from('ordenes_servicio').update({
                       convertido_comp: true, estado: 'facturada',
                       factura_manual_cae: sancorForm.cae,
                       factura_manual_nro: sancorForm.nro,
                       factura_manual_pv: sancorForm.pv,
                       factura_manual_fecha: sancorForm.fecha,
                       factura_manual_vto: sancorForm.vto||null,
+                      factura_manual_tipo: tipoFinal,
                     }).eq('id', id)
+                    if (errOS) errsOS.push(`OS ${id.slice(0,8)}: ${errOS.message}`)
                   }
+                  if (errsOS.length) alert(`⚠ Factura registrada en CC pero ${errsOS.length} OS no se marcaron:\n${errsOS.join('\n')}`)
 
                   setSancorLoading(false)
                   setSancorModal(false)
