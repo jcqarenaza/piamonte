@@ -511,29 +511,36 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!articuloId) {
       // 1) Buscar por código de referencia si se cargó uno
       if (form.cod) {
+        // Código SIEMPRE en mayúsculas para el match (la BD guarda upper por trigger)
+        const codUp = form.cod.trim().toUpperCase()
         const { data: byCode } = await supabase.from('articulos_maestro')
-          .select('id,descripcion').eq('codigo_referencia', form.cod.trim()).eq('activo', true).maybeSingle()
-        if (byCode) {
-          articuloId = byCode.id
-          // Actualizar descripción si la del maestro es diferente
-        }
+          .select('id,descripcion').eq('codigo_referencia', codUp).eq('activo', true).maybeSingle()
+        if (byCode) articuloId = byCode.id
       }
       // 2) Buscar por descripción exacta (case-insensitive) si aún no encontramos
+      //    limit(1): si hubiera más de un maestro con la misma descripción, tomar el primero
+      //    en vez de fallar en silencio (maybeSingle con 2+ filas tira error)
       if (!articuloId) {
-        const { data: byDesc } = await supabase.from('articulos_maestro')
-          .select('id').ilike('descripcion', form.desc.trim()).eq('activo', true).maybeSingle()
-        if (byDesc) articuloId = byDesc.id
+        const { data: byDescArr } = await supabase.from('articulos_maestro')
+          .select('id').ilike('descripcion', form.desc.trim()).eq('activo', true).limit(1)
+        if (byDescArr?.[0]) articuloId = byDescArr[0].id
       }
-      // 3) Si no existe → crear
+      // 3) Si no existe → crear (con error visible; si choca el índice único de código,
+      //    reintentar la búsqueda en upper — significa que ya existía)
       if (!articuloId) {
-        const { data: nuevo } = await supabase.from('articulos_maestro')
+        const { data: nuevo, error: errMaestro } = await supabase.from('articulos_maestro')
           .insert({
             descripcion: form.desc, marca: form.marca || null,
             pos: form.pos || null, anio: form.anio || null,
-            codigo_referencia: form.cod || null, activo: true,
+            codigo_referencia: form.cod ? form.cod.trim().toUpperCase() : null, activo: true,
           })
           .select('id').single()
-        articuloId = nuevo?.id || null
+        if (errMaestro) {
+          const { data: retry } = await supabase.from('articulos_maestro')
+            .select('id').eq('codigo_referencia', form.cod.trim().toUpperCase()).eq('activo', true).maybeSingle()
+          if (retry) articuloId = retry.id
+          else alert(`⚠ El artículo se crea igual, pero no se pudo vincular al maestro: ${errMaestro.message}`)
+        } else articuloId = nuevo?.id || null
       }
     }
 
