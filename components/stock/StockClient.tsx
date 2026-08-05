@@ -507,10 +507,32 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     let articuloId = articuloSel?.id || null
     if (!articuloId) {
-      const { data: nuevo } = await supabase.from('articulos_maestro')
-        .insert({ descripcion: form.desc, marca: form.marca || null, pos: form.pos || null, anio: form.anio || null })
-        .select('id').single()
-      articuloId = nuevo?.id || null
+      // 1) Buscar por código de referencia si se cargó uno
+      if (form.cod) {
+        const { data: byCode } = await supabase.from('articulos_maestro')
+          .select('id,descripcion').eq('codigo_referencia', form.cod.trim()).eq('activo', true).maybeSingle()
+        if (byCode) {
+          articuloId = byCode.id
+          // Actualizar descripción si la del maestro es diferente
+        }
+      }
+      // 2) Buscar por descripción exacta (case-insensitive) si aún no encontramos
+      if (!articuloId) {
+        const { data: byDesc } = await supabase.from('articulos_maestro')
+          .select('id').ilike('descripcion', form.desc.trim()).eq('activo', true).maybeSingle()
+        if (byDesc) articuloId = byDesc.id
+      }
+      // 3) Si no existe → crear
+      if (!articuloId) {
+        const { data: nuevo } = await supabase.from('articulos_maestro')
+          .insert({
+            descripcion: form.desc, marca: form.marca || null,
+            pos: form.pos || null, anio: form.anio || null,
+            codigo_referencia: form.cod || null, activo: true,
+          })
+          .select('id').single()
+        articuloId = nuevo?.id || null
+      }
     }
 
     // OJO: cantidad NUNCA va en el payload. En el alta entra por el RPC (movimiento + suma);
