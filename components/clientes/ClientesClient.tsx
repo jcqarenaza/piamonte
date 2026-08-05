@@ -35,7 +35,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
   const [historial, setHistorial] = useState<Historial|null>(null)
   const [loadingHist, setLoadingHist] = useState(false)
   const [saving, setSaving]     = useState(false)
-  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', direccion:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
+  const [form, setForm] = useState({ nombre:'', telefono:'', email:'', notas:'', cuit:'', direccion:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'', formato_factura:'interno' })
   const supabase = createClient()
   const router   = useRouter()
 
@@ -79,11 +79,11 @@ export default function ClientesClient({ userId }: { userId:string }) {
     if (!form.nombre.trim()) return
     if (form.cuit && !validarCuit(form.cuit).ok) { alert('El CUIT/CUIL ingresado no es válido.'); return }
     setSaving(true)
-    const payload = { nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tipo_fiscal:form.tipo_fiscal||'consumidor_final', tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null }
+    const payload = { nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tipo_fiscal:form.tipo_fiscal||'consumidor_final', tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null, formato_factura:form.formato_factura||'interno' }
     if (selected?.id) await supabase.from('clientes').update(payload).eq('id', selected.id)
     else await supabase.from('clientes').insert({ ...payload, user_id:userId })
     setSaving(false); setOpen(false)
-    setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'' })
+    setForm({ nombre:'', telefono:'', email:'', cuit:'', direccion:'', notas:'', tipo_cliente_id:'', tipo_fiscal:'consumidor_final', tiene_cuenta_corriente:false, plazo_cc_dias:30, tope_credito:'', formato_factura:'interno' })
     load()
   }
 
@@ -158,7 +158,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
             <div key={c.id}>
               <div className={`bg-white border rounded-xl px-3.5 py-2.5 shadow-sm flex items-center gap-3 flex-wrap cursor-pointer ${selected?.id===c.id ? 'border-p-green bg-p-light/30' : 'border-p-line hover:border-p-green'}`}
                 onClick={() => loadHistorial(c)}
-                onDoubleClick={() => { setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tipo_fiscal:c.tipo_fiscal??'consumidor_final', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }}>
+                onDoubleClick={() => { setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tipo_fiscal:c.tipo_fiscal??'consumidor_final', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'', formato_factura:(c as any).formato_factura||'interno' }); setSelected(c); setOpen(true) }}>
                 <div className="w-7 h-7 rounded-full bg-p-green flex items-center justify-center text-white font-saira font-bold text-xs shrink-0">
                   {c.nombre.charAt(0).toUpperCase()}
                 </div>
@@ -168,7 +168,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
                 {c.telefono && <span className="text-xs text-p-ink2 shrink-0 hidden md:inline">{c.telefono}</span>}
                 <div className="flex gap-1.5 ml-auto shrink-0" onClick={e=>e.stopPropagation()}>
                   <button onClick={()=>irAFacturar(c)} style={btnBlue}>🧾 Factura</button>
-                  <button onClick={()=>{ setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tipo_fiscal:c.tipo_fiscal??'consumidor_final', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'' }); setSelected(c); setOpen(true) }} style={btnGray}>✏</button>
+                  <button onClick={()=>{ setForm({ nombre:c.nombre, telefono:c.telefono??'', email:c.email??'', cuit:c.cuit??'', direccion:(c as any).direccion??'', notas:c.notas??'', tipo_cliente_id:c.tipo_cliente_id??'', tipo_fiscal:c.tipo_fiscal??'consumidor_final', tiene_cuenta_corriente:c.tiene_cuenta_corriente??false, plazo_cc_dias:c.plazo_cc_dias??30, tope_credito:c.tope_credito?String(c.tope_credito):'', formato_factura:(c as any).formato_factura||'interno' }); setSelected(c); setOpen(true) }} style={btnGray}>✏</button>
                   <button onClick={()=>del(c.id)} style={{...btnGray,background:'#ef4444'}}>✕</button>
                 </div>
               </div>
@@ -299,6 +299,13 @@ export default function ClientesClient({ userId }: { userId:string }) {
             {form.tiene_cuenta_corriente && (<>
               <Field label="Plazo en días"><Input type="number" value={String(form.plazo_cc_dias)} onChange={e=>setForm(p=>({...p,plazo_cc_dias:+e.target.value||30}))} placeholder="30"/></Field>
               <Field label="Tope de crédito ($)"><Input type="number" value={form.tope_credito} onChange={e=>setForm(p=>({...p,tope_credito:e.target.value}))} placeholder="Sin límite"/></Field>
+              <Field label="Formato de factura (PDF)">
+                <select value={form.formato_factura} onChange={e=>setForm(p=>({...p,formato_factura:e.target.value}))}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                  <option value="interno">Interno (El Piamonte)</option>
+                  <option value="arca">Formato ARCA</option>
+                </select>
+              </Field>
             </>)}
           </div>
           <div className="flex justify-end gap-2 pt-1">

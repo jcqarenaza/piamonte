@@ -57,7 +57,7 @@ export default function AseguradorasClient() {
 
   const [form, setForm] = useState({
     nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'',
-    contacto:'', telefono:'', plazo_pago_dias:'30'
+    contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno'
   })
   const cuitCheck = validarCuit(form.cuit)
 
@@ -72,7 +72,7 @@ export default function AseguradorasClient() {
   useEffect(() => { load() }, [load])
 
   function openNuevo() {
-    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'', contacto:'', telefono:'', plazo_pago_dias:'30' })
+    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'', contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno' })
     setSelected(null)
     setOpen(true)
   }
@@ -81,7 +81,8 @@ export default function AseguradorasClient() {
     setForm({
       nombre: a.nombre, razon_social: a.razon_social||'', cuit: a.cuit||'', condicion_iva: a.condicion_iva||'',
       direccion: a.direccion||'', contacto: a.contacto||'', telefono: a.telefono||'',
-      plazo_pago_dias: String(a.plazo_pago_dias ?? 30)
+      plazo_pago_dias: String(a.plazo_pago_dias ?? 30),
+      formato_factura: (a as any).formato_factura || 'interno'
     })
     setSelected(a)
     setOpen(true)
@@ -96,6 +97,7 @@ export default function AseguradorasClient() {
       condicion_iva: form.condicion_iva||null, direccion: form.direccion||null,
       contacto: form.contacto||null, telefono: form.telefono||null,
       plazo_pago_dias: parseInt(form.plazo_pago_dias) || 30,
+      formato_factura: form.formato_factura || 'interno',
     }
     if (selected?.id) {
       await supabase.from('aseguradoras').update(payload).eq('id', selected.id)
@@ -262,6 +264,13 @@ export default function AseguradorasClient() {
             </div>
             <Input type="number" value={form.plazo_pago_dias} onChange={e=>setForm(p=>({...p,plazo_pago_dias:e.target.value}))} placeholder="30"/>
             <p className="text-[11px] text-p-ink2 mt-1">Se usa para calcular cuándo vence cada factura y avisar antes de que pase.</p>
+          </Field>
+          <Field label="Formato de factura (PDF)">
+            <select value={form.formato_factura} onChange={e=>setForm(p=>({...p,formato_factura:e.target.value}))}
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+              <option value="interno">Interno (El Piamonte)</option>
+              <option value="arca">Formato ARCA (plantilla oficial)</option>
+            </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Contacto">
