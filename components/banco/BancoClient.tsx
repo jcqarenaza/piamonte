@@ -13,17 +13,18 @@ const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
 interface Cuenta { id:string; banco:string; tipo:string; nro_cuenta:string|null; alias:string|null; cbu:string|null; saldo_inicial:number; fecha_saldo_inicial:string; activo:boolean }
 interface Movimiento { id:string; cuenta_id:string; fecha:string; tipo:'credito'|'debito'; concepto:string; monto:number; origen_tipo:string|null; conciliado:boolean; nro_extracto:string|null; notas:string|null; cheque_id:string|null; saldo?:number }
 
-const TIPOS_CUENTA = ['Cuenta Corriente','Caja de Ahorro','Cuenta Inversión','Billetera Virtual']
-const BANCOS_ARG = ['Banco de La Pampa','Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco Macro','Banco Credicoop','Banco Patagonia','Banco del Sol','ICBC','Brubank','Naranja X','Otro']
+const TIPOS_CUENTA = ['Cuenta Corriente','Caja de Ahorro','Cuenta Inversión','Billetera Virtual','Mercado Pago']
+const BANCOS_ARG = ['Banco de La Pampa','Banco Nación','Banco Provincia','Banco Galicia','Banco Santander','Banco BBVA','Banco Macro','Banco Credicoop','Banco Patagonia','Banco del Sol','ICBC','Brubank','Naranja X','Mercado Pago','Otro']
 const ORIG_LABEL: Record<string,string> = {
   cheque_tercero:'Cheque tercero', cheque_propio:'Cheque propio',
   tarjeta:'Liquidación tarjeta', transferencia_venta:'Transferencia (venta)',
-  transferencia_pago:'Transferencia (pago)', deposito_manual:'Depósito manual',
-  debito_bancario:'Débito bancario', otro:'Otro'
+  transferencia_pago:'Transferencia (pago)', transferencia_entre_cuentas:'Transferencia entre cuentas',
+  deposito_manual:'Depósito manual', debito_bancario:'Débito bancario', cheque_emitido:'Cheque emitido', otro:'Otro'
 }
 
 const emptyMov = { tipo:'credito' as 'credito'|'debito', concepto:'', monto:'', origen_tipo:'deposito_manual', fecha:todayStr(), notas:'', nro_extracto:'' }
 const emptyCuenta = { banco:'Banco de La Pampa', tipo:'Cuenta Corriente', nro_cuenta:'', alias:'', cbu:'', saldo_inicial:'0', fecha_saldo_inicial:todayStr() }
+const emptyTransf = { fecha:todayStr(), monto:'', concepto:'', destino_tipo:'tercero' as 'tercero'|'cuenta_propia', cuenta_destino_id:'', notas:'' }
 
 export default function BancoClient() {
   const [cuentas, setCuentas]   = useState<Cuenta[]>([])
@@ -40,6 +41,11 @@ export default function BancoClient() {
   const [pendConcil, setPendConcil] = useState<Movimiento[]>([])
   const [selConcil, setSelConcil]   = useState<Record<string,boolean>>({})
   const [nroExtracto, setNroExtracto] = useState('')
+  // Transferencia
+  const [transfModal, setTransfModal] = useState(false)
+  const [formTransf, setFormTransf] = useState(emptyTransf)
+  const [savingTransf, setSavingTransf] = useState(false)
+
   const supabase = createClient()
   const { usdStr } = useDolar()
 
@@ -84,6 +90,41 @@ export default function BancoClient() {
     setMovModal(false); if(selCuenta) loadMovs(selCuenta)
   }
 
+  async function guardarTransferencia() {
+    if (!selCuenta||!formTransf.monto||!formTransf.concepto) return
+    setSavingTransf(true)
+    try {
+      const monto = +formTransf.monto
+      // Débito en cuenta origen
+      await supabase.from('movimientos_banco').insert({
+        cuenta_id: selCuenta.id,
+        fecha: formTransf.fecha,
+        tipo: 'debito',
+        concepto: formTransf.concepto,
+        monto,
+        origen_tipo: 'transferencia_pago',
+        notas: formTransf.notas||null,
+      })
+      // Si es entre cuentas propias → crédito en destino
+      if (formTransf.destino_tipo === 'cuenta_propia' && formTransf.cuenta_destino_id) {
+        const cuentaDest = cuentas.find(c=>c.id===formTransf.cuenta_destino_id)
+        await supabase.from('movimientos_banco').insert({
+          cuenta_id: formTransf.cuenta_destino_id,
+          fecha: formTransf.fecha,
+          tipo: 'credito',
+          concepto: `Transferencia desde ${selCuenta.banco} (${selCuenta.tipo==='Cuenta Corriente'?'CC':'CA'})${formTransf.concepto ? ` — ${formTransf.concepto}` : ''}`,
+          monto,
+          origen_tipo: 'transferencia_entre_cuentas',
+          notas: formTransf.notas||null,
+        })
+      }
+      setTransfModal(false)
+      setFormTransf(emptyTransf)
+      if(selCuenta) loadMovs(selCuenta)
+    } catch(e) { console.error(e); alert('Error al guardar transferencia') }
+    finally { setSavingTransf(false) }
+  }
+
   async function conciliar() {
     const ids = Object.entries(selConcil).filter(([,v])=>v).map(([k])=>k)
     if (!ids.length) return
@@ -103,7 +144,7 @@ export default function BancoClient() {
           {cuentas.map(c=>(
             <button key={c.id} onClick={()=>setSelCuenta(c)}
               style={{background:selCuenta?.id===c.id?'#00A550':'#fff',color:selCuenta?.id===c.id?'#fff':'#374151',border:`1.5px solid ${selCuenta?.id===c.id?'#00A550':'#e5e7eb'}`,borderRadius:10,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
-              🏦 {c.alias||c.banco} {c.tipo==='Cuenta Corriente'?'(CC)':c.tipo==='Caja de Ahorro'?'(CA)':''}
+              🏦 {c.banco} {c.tipo==='Cuenta Corriente'?'(CC)':c.tipo==='Caja de Ahorro'?'(CA)':c.tipo==='Mercado Pago'?'(MP)':''}
               {(c.cbu||c.nro_cuenta) && <span className="text-[10px] font-mono text-p-ink2 ml-1">···{(c.cbu||c.nro_cuenta||'').slice(-5)}</span>}
             </button>
           ))}
@@ -117,68 +158,73 @@ export default function BancoClient() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className={`border rounded-2xl p-4 shadow-sm col-span-2 md:col-span-1 ${saldoActual>=0?'bg-white border-p-line':'bg-red-50 border-red-300'}`}>
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Saldo actual</p>
-          <p className={`font-saira font-bold text-2xl mt-1 ${saldoActual>=0?'text-p-ink':'text-red-600'}`}>{moneyARS(saldoActual)}</p>
-          <p className="text-[10px] text-p-ink2 mt-0.5">{usdStr(Math.abs(saldoActual),'oficial')} BNA</p>
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Saldo actual</p>
+          <p className={`font-saira font-bold text-2xl ${saldoActual>=0?'text-p-dark':'text-red-600'}`}>{moneyARS(saldoActual)}</p>
+          <p className="text-[10px] text-p-ink2">{usdStr(saldoActual)}</p>
         </div>
         <div className="bg-white border border-p-line rounded-2xl p-4 shadow-sm">
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Créditos del mes</p>
-          <p className="font-saira font-bold text-xl text-green-600 mt-1">+ {moneyARS(credMes)}</p>
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Créditos del mes</p>
+          <p className="font-saira font-bold text-base text-green-600">+ {moneyARS(credMes)}</p>
         </div>
         <div className="bg-white border border-p-line rounded-2xl p-4 shadow-sm">
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Débitos del mes</p>
-          <p className="font-saira font-bold text-xl text-red-500 mt-1">− {moneyARS(debMes)}</p>
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Débitos del mes</p>
+          <p className="font-saira font-bold text-base text-red-500">− {moneyARS(debMes)}</p>
         </div>
-        <div className={`border rounded-2xl p-4 shadow-sm ${sinConciliar>0?'bg-amber-50 border-amber-300':'bg-white border-p-line'}`}>
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Sin conciliar</p>
-          <p className={`font-saira font-bold text-2xl mt-1 ${sinConciliar>0?'text-amber-600':'text-p-ink'}`}>{sinConciliar}</p>
+        <div className="bg-white border border-p-line rounded-2xl p-4 shadow-sm">
+          <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Sin conciliar</p>
+          <p className="font-saira font-bold text-base text-p-dark">{sinConciliar}</p>
           <p className="text-[10px] text-p-ink2">movimiento(s)</p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex border-b border-p-line">
+      {/* Tabs + acciones */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex gap-1">
           {([['libro','📒 Libro de banco'],['conciliacion','🔍 Conciliación']] as const).map(([v,l])=>(
             <button key={v} onClick={()=>setTab(v)}
-              style={{padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',borderBottom:tab===v?'3px solid #00A550':'3px solid transparent',color:tab===v?'#00A550':'#6b7280'}}>
-              {l}{v==='conciliacion'&&sinConciliar>0&&<span className="ml-1.5 text-[9px] font-bold bg-amber-500 text-white rounded-full px-1.5">{sinConciliar}</span>}
+              style={{padding:'7px 16px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
+                background:tab===v?'#00A550':'transparent',color:tab===v?'#fff':'#6b7280',
+                borderBottom:tab===v?'2px solid #00A550':'2px solid transparent',border:'none'}}>
+              {l}
             </button>
           ))}
         </div>
-        {tab==='libro'&&<button onClick={()=>{ setEditMovId(null); setFormMov(emptyMov); setMovModal(true) }} style={btn}>+ Movimiento manual</button>}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={()=>{ setFormTransf(emptyTransf); setTransfModal(true) }} style={btnBlue}>↗ + Transferencia</button>
+          <button onClick={()=>{ setEditMovId(null); setFormMov(emptyMov); setMovModal(true) }} style={btn}>+ Movimiento manual</button>
+        </div>
       </div>
 
       {/* LIBRO */}
       {tab==='libro'&&(
-        loading ? <p className="text-sm text-center py-8 text-p-gray">Cargando…</p> :
+        loading ? <p className="text-center text-p-ink2 py-8">Cargando…</p> :
         movs.length===0 ? <Empty msg="Sin movimientos todavía. Agregá uno manualmente o depositá un cheque."/> : (
-          <div className="bg-white border border-p-line rounded-2xl overflow-hidden shadow-sm">
-            <table className="w-full text-xs">
-              <thead className="bg-p-light sticky top-0">
+          <div className="overflow-x-auto rounded-2xl border border-p-line shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-p-light text-p-ink2 text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="text-left px-4 py-3 font-bold text-p-ink2">Fecha</th>
-                  <th className="text-left px-4 py-3 font-bold text-p-ink2">Concepto</th>
-                  <th className="text-left px-4 py-3 font-bold text-p-ink2 hidden md:table-cell">Origen</th>
-                  <th className="text-right px-4 py-3 font-bold text-green-600">Crédito</th>
-                  <th className="text-right px-4 py-3 font-bold text-red-500">Débito</th>
-                  <th className="text-right px-4 py-3 font-bold text-p-dark">Saldo</th>
-                  <th className="px-2 py-3 w-8"/>
+                  <th className="px-4 py-3 text-left">Fecha</th>
+                  <th className="px-4 py-3 text-left">Concepto</th>
+                  <th className="px-4 py-3 text-left hidden md:table-cell">Origen</th>
+                  <th className="px-4 py-3 text-right text-green-600">Crédito</th>
+                  <th className="px-4 py-3 text-right text-red-500">Débito</th>
+                  <th className="px-4 py-3 text-right">Saldo</th>
+                  <th className="px-4 py-3"/>
                 </tr>
               </thead>
-              <tbody>
-                {movs.map((m,i)=>(
-                  <tr key={m.id} className={`border-t border-p-line2 ${i%2===0?'':'bg-p-light/20'}`}>
-                    <td className="px-4 py-2.5 font-mono text-p-ink2 whitespace-nowrap">{m.fecha.split('-').reverse().join('/')}</td>
-                    <td className="px-4 py-2.5 text-p-ink max-w-[200px] truncate">
+              <tbody className="divide-y divide-p-line">
+                {movs.map(m=>(
+                  <tr key={m.id} className={`hover:bg-p-light/50 transition-colors ${!m.conciliado?'bg-amber-50/40':''}`}>
+                    <td className="px-4 py-2.5 font-mono text-xs text-p-ink2 whitespace-nowrap">{m.fecha.split('-').reverse().join('/')}</td>
+                    <td className="px-4 py-2.5 text-p-ink">
                       {m.concepto}
-                      {m.conciliado&&<span className="ml-1.5 text-[9px] bg-green-100 text-green-700 font-bold px-1 rounded">✓</span>}
+                      {!m.conciliado && <span className="ml-1.5 text-[9px] bg-amber-100 text-amber-700 rounded px-1 py-0.5 font-bold">PEND</span>}
                     </td>
                     <td className="px-4 py-2.5 text-p-ink2 hidden md:table-cell">{m.origen_tipo?ORIG_LABEL[m.origen_tipo]||m.origen_tipo:'—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-bold text-green-600">{m.tipo==='credito'?moneyARS(m.monto):'—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-bold text-red-500">{m.tipo==='debito'?moneyARS(m.monto):'—'}</td>
                     <td className={`px-4 py-2.5 text-right font-mono font-bold ${(m.saldo??0)>=0?'text-p-dark':'text-red-600'}`}>{moneyARS(m.saldo??0)}</td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-4 py-2.5 text-right">
                       {!m.conciliado&&<button onClick={()=>{ setEditMovId(m.id); setFormMov({tipo:m.tipo,concepto:m.concepto,monto:String(m.monto),origen_tipo:m.origen_tipo||'otro',fecha:m.fecha,notas:m.notas||'',nro_extracto:m.nro_extracto||''}); setMovModal(true) }} className="text-p-ink2 hover:text-p-ink text-[10px]">✏</button>}
                     </td>
                   </tr>
@@ -259,9 +305,46 @@ export default function BancoClient() {
         </div>
       </Modal>
 
+      {/* Modal cheque emitido */}
+      {/* Modal transferencia */}
+      <Modal open={transfModal} onClose={()=>setTransfModal(false)} title="Nueva transferencia">
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha"><Input type="date" value={formTransf.fecha} onChange={e=>setFormTransf(p=>({...p,fecha:e.target.value}))}/></Field>
+            <Field label="Monto *"><Input value={formTransf.monto} onChange={e=>setFormTransf(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
+          </div>
+          <Field label="Concepto / Destinatario *"><Input value={formTransf.concepto} onChange={e=>setFormTransf(p=>({...p,concepto:e.target.value}))} placeholder="Ej: Pago proveedor GAMMA…"/></Field>
+          <Field label="Destino">
+            <select value={formTransf.destino_tipo} onChange={e=>setFormTransf(p=>({...p,destino_tipo:e.target.value as 'tercero'|'cuenta_propia',cuenta_destino_id:''}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="tercero">Tercero (proveedor, etc.)</option>
+              <option value="cuenta_propia">Cuenta propia</option>
+            </select>
+          </Field>
+          {formTransf.destino_tipo==='cuenta_propia' && (
+            <Field label="Cuenta destino">
+              <select value={formTransf.cuenta_destino_id} onChange={e=>setFormTransf(p=>({...p,cuenta_destino_id:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">Seleccioná cuenta…</option>
+                {cuentas.filter(c=>c.id!==selCuenta?.id).map(c=>(
+                  <option key={c.id} value={c.id}>
+                    {c.banco} ({c.tipo==='Cuenta Corriente'?'CC':c.tipo==='Caja de Ahorro'?'CA':'MP'}) ···{(c.cbu||c.nro_cuenta||'').slice(-5)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Notas"><Input value={formTransf.notas} onChange={e=>setFormTransf(p=>({...p,notas:e.target.value}))} placeholder="Opcional…"/></Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setTransfModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={guardarTransferencia} disabled={savingTransf||!formTransf.monto||!formTransf.concepto} style={{...btn,opacity:(savingTransf||!formTransf.monto||!formTransf.concepto)?.5:1}}>
+              {savingTransf?'Guardando…':'Registrar transferencia'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       </>)}
 
-      {/* Modal cuenta — siempre renderizado, independiente de si hay cuentas cargadas */}
+      {/* Modal cuenta */}
       <Modal open={cuentaModal} onClose={()=>setCuentaModal(false)} title={editCuentaId?'Editar cuenta':'Nueva cuenta bancaria'}>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">

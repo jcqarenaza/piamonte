@@ -139,8 +139,24 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       estado:form.estado, destino:form.destino||null, notas:form.notas||null,
       updated_at:new Date().toISOString()
     }
-    if (editId) await supabase.from('cheques').update(payload).eq('id',editId)
-    else        await supabase.from('cheques').insert(payload)
+    if (editId) {
+      await supabase.from('cheques').update(payload).eq('id',editId)
+    } else {
+      const { data: chequeIns } = await supabase.from('cheques').insert(payload).select('id').single()
+      // Si es cheque propio nuevo → débito automático en CC Banco de La Pampa
+      if (form.tipo === 'propio' && chequeIns?.id) {
+        await supabase.from('movimientos_banco').insert({
+          cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
+          fecha: form.fecha_emision,
+          tipo: 'debito',
+          concepto: `Cheque propio N° ${form.numero}${form.contraparte ? ` — ${form.contraparte}` : ''}`,
+          monto: +form.monto,
+          origen_tipo: 'cheque_emitido',
+          cheque_id: chequeIns.id,
+          notas: form.notas || null,
+        })
+      }
+    }
     setOpen(false); load()
   }
   async function cambiarEstado(id:string, estado:Estado) {

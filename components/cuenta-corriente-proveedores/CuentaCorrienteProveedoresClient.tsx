@@ -291,14 +291,27 @@ export default function CuentaCorrienteProveedoresClient() {
       if (pago.tipo !== 'Cheque nuevo') continue
       const montoPago = parseFloat(pago.monto) || 0
       if (pago.chequeNuevo.numero) {
-        await supabase.from('cheques').insert({
+        const { data: chequeOpIns } = await supabase.from('cheques').insert({
           tipo:'propio', formato:pago.chequeNuevo.formato, modalidad:pago.chequeNuevo.modalidad,
           numero:pago.chequeNuevo.numero, banco:pago.chequeNuevo.banco,
           fecha_emision: fechaOp, fecha_cobro: pago.chequeNuevo.modalidad==='al_dia'?fechaOp:pago.chequeNuevo.fecha_cobro,
           monto: montoPago, contraparte: sel.proveedor_nombre, estado:'emitido',
           proveedor_id: sel.proveedor_id,
           notas: `Orden de Pago Nº ${numero}`,
-        })
+        }).select('id').single()
+        // Débito automático en CC Banco de La Pampa
+        if (chequeOpIns?.id) {
+          await supabase.from('movimientos_banco').insert({
+            cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
+            fecha: fechaOp,
+            tipo: 'debito',
+            concepto: `Cheque N° ${pago.chequeNuevo.numero} — ${sel.proveedor_nombre} (OP Nº ${numero})`,
+            monto: montoPago,
+            origen_tipo: 'cheque_emitido',
+            cheque_id: chequeOpIns.id,
+            notas: `Orden de Pago Nº ${numero}`,
+          })
+        }
       }
     }
 
