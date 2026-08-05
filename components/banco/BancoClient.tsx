@@ -160,7 +160,7 @@ export default function BancoClient() {
         <div className={`border rounded-2xl p-4 shadow-sm col-span-2 md:col-span-1 ${saldoActual>=0?'bg-white border-p-line':'bg-red-50 border-red-300'}`}>
           <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Saldo actual</p>
           <p className={`font-saira font-bold text-2xl ${saldoActual>=0?'text-p-dark':'text-red-600'}`}>{moneyARS(saldoActual)}</p>
-          <p className="text-[10px] text-p-ink2">{usdStr(saldoActual)}</p>
+          <p className="text-[10px] text-p-ink2">{usdStr(Math.abs(saldoActual),'oficial')} BNA</p>
         </div>
         <div className="bg-white border border-p-line rounded-2xl p-4 shadow-sm">
           <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-1">Créditos del mes</p>
