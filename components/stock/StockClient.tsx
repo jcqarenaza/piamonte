@@ -11,10 +11,10 @@ const FAM_MAP: Record<string, string> = {
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
-  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros',
+  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros', ACCESORIOS: 'Accesorios',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Accesorios', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Accesorios: '🔧', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -306,7 +306,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (p.startsWith('ALETA') || p === 'ALETA_I' || p === 'ALETA_D') return 'ALETA'
     if (p.startsWith('ESCOBILLA') || p.startsWith('PLUMILLA') || p.startsWith('LIMPIAPARABRISAS')) return 'ESCOBILLA'
     if (p.startsWith('VIDRIO') || p.startsWith('TECHO')) return 'VIDRIO'
-    return p
+    if (p.startsWith('ACCESORIO') || p === 'ACCESORIOS') return 'ACCESORIOS'
+    // Todo lo que no matchea ninguna categoría conocida cae en Otros
+    return 'VIDRIO'
   }
 
   const resumen = FAMS.map(fam => {
