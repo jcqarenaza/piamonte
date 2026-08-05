@@ -74,112 +74,227 @@ export default function ContabilidadClient() {
     const W = 210, pad = 14
     let y2 = 15
 
-    // Header
-    doc.setFillColor(0, 165, 80)
-    doc.rect(0, 0, W, 18, 'F')
-    doc.setTextColor(255,255,255)
-    doc.setFont('helvetica','bold')
-    doc.setFontSize(13)
-    doc.text('EL PIAMONTE — Informe Mensual Contable', pad, 11)
-    doc.setFontSize(9)
-    doc.text(`Período: ${MESES[+m-1]} ${y}`, W-pad, 11, {align:'right'})
-    y2 = 25
+    function addHeader() {
+      doc.setFillColor(0, 165, 80)
+      doc.rect(0, 0, W, 18, 'F')
+      doc.setTextColor(255,255,255)
+      doc.setFont('helvetica','bold')
+      doc.setFontSize(13)
+      doc.text('EL PIAMONTE — Informe Mensual Contable', pad, 11)
+      doc.setFontSize(9)
+      doc.text(`Período: ${MESES[+m-1]} ${y}`, W-pad, 11, {align:'right'})
+      doc.setTextColor(30,30,30)
+    }
+    addHeader()
+    y2 = 26
 
-    doc.setTextColor(30,30,30)
+    function checkPage(needed = 10) {
+      if (y2 + needed > 278) { doc.addPage(); addHeader(); y2 = 26 }
+    }
 
-    // Función para tabla
-    function tabla(titulo: string, cols: string[], rows: string[][], totales?: string[]) {
+    function seccionTitulo(titulo: string) {
+      checkPage(12)
       doc.setFont('helvetica','bold'); doc.setFontSize(9)
       doc.setFillColor(240,240,240)
       doc.rect(pad, y2-4, W-pad*2, 6, 'F')
       doc.text(titulo, pad+1, y2)
-      y2 += 5
-      // Cabecera cols
-      doc.setFontSize(7.5); doc.setFont('helvetica','bold')
-      const colW = (W-pad*2) / cols.length
-      cols.forEach((c,i) => doc.text(c, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
+      y2 += 7
+    }
+
+    // Anchos fijos para tablas de 7 columnas (ventas/compras)
+    const COL7 = [22, 12, 18, 48, 34, 26, 28] // Fecha Tipo N° Nombre Neto IVA Total
+    const xOf7 = COL7.reduce((acc: number[], w, i) => { acc.push((acc[i-1]||pad) + (i===0?0:COL7[i-1])); return acc }, [] as number[])
+
+    function cabecera7(cols: string[]) {
+      doc.setFontSize(7); doc.setFont('helvetica','bold')
+      cols.forEach((c,i) => doc.text(c, xOf7[i] + (i>=4?COL7[i]:0), y2, {align: i>=4?'right':'left'}))
+      y2 += 3
+      doc.setLineWidth(0.2); doc.setDrawColor(180,180,180)
+      doc.line(pad, y2, W-pad, y2); y2 += 3
+    }
+
+    function fila7(cells: string[], bold = false) {
+      checkPage(5)
+      doc.setFont('helvetica', bold?'bold':'normal'); doc.setFontSize(6.5)
+      cells.forEach((c,i) => doc.text(c, xOf7[i] + (i>=4?COL7[i]:0), y2, {align: i>=4?'right':'left'}))
       y2 += 4
+    }
+
+    // ─── SECCIÓN 1: POSICIÓN IVA (destacada al inicio) ───
+    seccionTitulo('POSICIÓN IVA')
+    const retIvaTotal = totRet['iva'] || 0
+    const saldoIvaFinal = totVentas.iva - totCompras.iva - retIvaTotal
+
+    const posItems = [
+      { label: 'Débito fiscal (IVA ventas)', val: moneyARS(totVentas.iva), signo: '' },
+      { label: 'Crédito fiscal (IVA compras)', val: moneyARS(totCompras.iva), signo: '−' },
+    ]
+    if (retIvaTotal > 0) posItems.push({ label: 'Ret. IVA sufrida (aseguradoras)', val: moneyARS(retIvaTotal), signo: '−' })
+
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
+    posItems.forEach(item => {
+      checkPage(7)
+      doc.text(item.label, pad+2, y2)
+      doc.text((item.signo ? item.signo+' ' : '') + item.val, W-pad, y2, {align:'right'})
+      y2 += 6
+    })
+    doc.setLineWidth(0.4); doc.setDrawColor(0,165,80)
+    doc.line(pad, y2-1, W-pad, y2-1)
+    doc.setFont('helvetica','bold'); doc.setFontSize(11)
+    const saldoLabel = saldoIvaFinal >= 0 ? 'SALDO IVA A PAGAR' : 'SALDO IVA A FAVOR'
+    doc.setTextColor(saldoIvaFinal >= 0 ? 180 : 0, saldoIvaFinal >= 0 ? 0 : 150, 0)
+    doc.text(saldoLabel, pad+2, y2+5)
+    doc.text(moneyARS(Math.abs(saldoIvaFinal)), W-pad, y2+5, {align:'right'})
+    doc.setTextColor(30,30,30)
+    y2 += 12
+
+    // ─── SECCIÓN 2: RESUMEN RETENCIONES POR TIPO ───
+    if (retenciones.length > 0) {
+      seccionTitulo('RETENCIONES SUFRIDAS — Resumen por tipo')
+      const RET_ORDEN: [string, string][] = [
+        ['iva',       'Ret. IVA'],
+        ['iibb',      'Ret. IIBB'],
+        ['ganancias', 'Ret. Ganancias'],
+        ['suss',      'Ret. SUSS'],
+        ['otras',     'Otras retenciones'],
+      ]
+      doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
+      RET_ORDEN.forEach(([tipo, label]) => {
+        const monto = totRet[tipo] || 0
+        if (monto <= 0) return
+        checkPage(7)
+        doc.text(label, pad+2, y2)
+        doc.text(moneyARS(monto), W-pad, y2, {align:'right'})
+        y2 += 6
+      })
       doc.setLineWidth(0.2); doc.setDrawColor(200,200,200)
       doc.line(pad, y2-1, W-pad, y2-1)
-      // Filas
-      doc.setFont('helvetica','normal'); doc.setFontSize(7)
-      rows.forEach(row => {
-        row.forEach((cell,i) => doc.text(cell, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
-        y2 += 4
-        if (y2 > 270) { doc.addPage(); y2 = 15 }
-      })
-      // Totales
-      if (totales) {
-        doc.line(pad, y2-1, W-pad, y2-1)
-        doc.setFont('helvetica','bold')
-        totales.forEach((cell,i) => doc.text(cell, pad + i*colW + (i>0?colW:0), y2, {align: i===0?'left':'right'}))
-        y2 += 6
-      }
-      y2 += 3
+      doc.setFont('helvetica','bold')
+      doc.text('Total retenciones sufridas', pad+2, y2+4)
+      doc.text(moneyARS(totalRetenciones), W-pad, y2+4, {align:'right'})
+      y2 += 10
     }
 
-    // LIBRO IVA VENTAS
-    tabla(
-      'LIBRO IVA VENTAS',
-      ['Fecha','Tipo','N°','Cliente','Neto','IVA','Total'],
-      ivaVentas.map(r => [
+    // ─── SECCIÓN 3: TOTALES DEL MES ───
+    seccionTitulo('TOTALES DEL MES')
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
+    const totItems = [
+      { label: 'Ventas netas (sin IVA)', val: moneyARS(totVentas.neto) },
+      { label: 'IVA débito (ventas)',     val: moneyARS(totVentas.iva) },
+      { label: 'Total ventas',            val: moneyARS(totVentas.total), bold: true },
+      { label: 'Compras netas (sin IVA)', val: moneyARS(totCompras.neto) },
+      { label: 'IVA crédito (compras)',   val: moneyARS(totCompras.iva) },
+      { label: 'Total compras',           val: moneyARS(totCompras.total), bold: true },
+    ]
+    totItems.forEach(item => {
+      checkPage(7)
+      doc.setFont('helvetica', item.bold ? 'bold' : 'normal')
+      doc.text(item.label, pad+2, y2)
+      doc.text(item.val, W-pad, y2, {align:'right'})
+      y2 += item.bold ? 7 : 5.5
+    })
+    y2 += 4
+
+    // ─── SECCIÓN 4: LIBRO IVA VENTAS (ordenado por fecha) ───
+    const ventasOrdenadas = [...ivaVentas].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'') || (a.numero||0)-(b.numero||0))
+    seccionTitulo('LIBRO IVA VENTAS')
+    cabecera7(['Fecha','Tipo','N°','Cliente','Neto','IVA','Total'])
+    ventasOrdenadas.forEach(r => {
+      fila7([
         r.fecha?.split('-').reverse().join('/') || '',
         r.tipo || '',
         String(r.numero || ''),
-        (r.cliente_nombre || r.aseguradora_nombre || 'CF').slice(0,22),
-        moneyARS(r.neto),
-        moneyARS(r.iva),
-        moneyARS(r.total),
-      ]),
-      ['TOTAL','','','',moneyARS(totVentas.neto),moneyARS(totVentas.iva),moneyARS(totVentas.total)]
-    )
-
-    // LIBRO IVA COMPRAS
-    tabla(
-      'LIBRO IVA COMPRAS',
-      ['Fecha','Tipo','N°','Proveedor','Neto','IVA','Total'],
-      ivaCompras.map(r => [
-        r.fecha?.split('-').reverse().join('/') || '',
-        r.tipo || '',
-        String(r.numero || ''),
-        (r.proveedor_nombre || '').slice(0,22),
-        moneyARS(r.neto),
-        moneyARS(r.iva),
-        moneyARS(r.total),
-      ]),
-      ['TOTAL','','','',moneyARS(totCompras.neto),moneyARS(totCompras.iva),moneyARS(totCompras.total)]
-    )
-
-    // RETENCIONES
-    if (retenciones.length > 0) {
-      tabla(
-        'RETENCIONES SUFRIDAS',
-        ['Fecha','Tipo','Aseguradora','Monto'],
-        retenciones.map(r => [
-          r.fecha?.split('-').reverse().join('/') || '',
-          r.tipo || '',
-          ((r as any).aseguradoras?.nombre || '').slice(0,30),
-          moneyARS(r.monto),
-        ]),
-        ['TOTAL','','',moneyARS(totalRetenciones)]
-      )
-    }
-
-    // BALANCE IVA
-    doc.setFillColor(240,240,240)
-    doc.rect(pad, y2-4, W-pad*2, 6, 'F')
-    doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    doc.text('POSICIÓN IVA', pad+1, y2)
-    y2 += 6
-    doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text(`Débito fiscal (IVA ventas):`, pad, y2); doc.text(moneyARS(totVentas.iva), W-pad, y2, {align:'right'}); y2+=5
-    doc.text(`Crédito fiscal (IVA compras):`, pad, y2); doc.text(`- ${moneyARS(totCompras.iva)}`, W-pad, y2, {align:'right'}); y2+=5
-    if (retIva > 0) { doc.text('Ret. IVA aseguradoras:', pad, y2); doc.text(`- ${moneyARS(retIva)}`, W-pad, y2, {align:'right'}); y2+=5 }
+        (r.cliente_nombre || r.aseguradora_nombre || 'CF').slice(0,26),
+        moneyARS(Number(r.neto)||0),
+        moneyARS(Number(r.iva)||0),
+        moneyARS(Number(r.total)||0),
+      ])
+    })
+    checkPage(6)
+    doc.setLineWidth(0.2); doc.setDrawColor(180,180,180)
     doc.line(pad, y2-1, W-pad, y2-1)
-    doc.setFont('helvetica','bold'); doc.setFontSize(9)
-    doc.text('SALDO IVA A PAGAR:', pad, y2+3); doc.text(moneyARS(saldoIva), W-pad, y2+3, {align:'right'})
+    fila7(['TOTAL','','','',moneyARS(totVentas.neto),moneyARS(totVentas.iva),moneyARS(totVentas.total)], true)
+    y2 += 4
 
-    // Footer
+    // ─── SECCIÓN 5: LIBRO IVA COMPRAS (ordenado por fecha) ───
+    const comprasOrdenadas = [...ivaCompras].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''))
+    seccionTitulo('LIBRO IVA COMPRAS')
+    cabecera7(['Fecha','Tipo','N°','Proveedor','Neto','IVA','Total'])
+    comprasOrdenadas.forEach(r => {
+      fila7([
+        r.fecha?.split('-').reverse().join('/') || '',
+        r.tipo || '',
+        String(r.numero || ''),
+        (r.proveedor_nombre || '').slice(0,26),
+        moneyARS(Number(r.neto)||0),
+        moneyARS(Number(r.iva)||0),
+        moneyARS(Number(r.total)||0),
+      ])
+    })
+    checkPage(6)
+    doc.setLineWidth(0.2); doc.setDrawColor(180,180,180)
+    doc.line(pad, y2-1, W-pad, y2-1)
+    fila7(['TOTAL','','','',moneyARS(totCompras.neto),moneyARS(totCompras.iva),moneyARS(totCompras.total)], true)
+    y2 += 4
+
+    // ─── SECCIÓN 6: DETALLE RETENCIONES POR TIPO ───
+    if (retenciones.length > 0) {
+      const RET_ORDEN_DET: [string, string][] = [
+        ['iva',       'RETENCIONES IVA'],
+        ['iibb',      'RETENCIONES IIBB'],
+        ['ganancias', 'RETENCIONES GANANCIAS'],
+        ['suss',      'RETENCIONES SUSS'],
+        ['otras',     'OTRAS RETENCIONES'],
+      ]
+      // Anchos fijos: Fecha | Aseguradora | N° Certificado | Monto
+      const COLR = [22, 80, 50, 30]
+      const xOfR = COLR.reduce((acc: number[], w, i) => { acc.push((acc[i-1]||pad) + (i===0?0:COLR[i-1])); return acc }, [] as number[])
+
+      RET_ORDEN_DET.forEach(([tipo, tituloGrupo]) => {
+        const grupo = retenciones.filter(r => r.tipo === tipo).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''))
+        if (grupo.length === 0) return
+        const subtotal = grupo.reduce((s,r) => s + Number(r.monto), 0)
+
+        seccionTitulo(tituloGrupo)
+        // Cabecera
+        doc.setFontSize(7); doc.setFont('helvetica','bold')
+        doc.text('Fecha',         xOfR[0], y2)
+        doc.text('Aseguradora',   xOfR[1], y2)
+        doc.text('N° Certificado',xOfR[2], y2)
+        doc.text('Monto',         xOfR[3]+COLR[3], y2, {align:'right'})
+        y2 += 3
+        doc.setLineWidth(0.2); doc.setDrawColor(180,180,180)
+        doc.line(pad, y2, W-pad, y2); y2 += 3
+
+        grupo.forEach(r => {
+          checkPage(5)
+          doc.setFont('helvetica','normal'); doc.setFontSize(6.5)
+          doc.text(r.fecha?.split('-').reverse().join('/') || '', xOfR[0], y2)
+          doc.text(((r as any).aseguradoras?.nombre || '').slice(0,38), xOfR[1], y2)
+          doc.text(r.nro_certificado || '—', xOfR[2], y2)
+          doc.text(moneyARS(Number(r.monto)), xOfR[3]+COLR[3], y2, {align:'right'})
+          y2 += 4
+        })
+        checkPage(6)
+        doc.setLineWidth(0.2); doc.setDrawColor(180,180,180)
+        doc.line(pad, y2-1, W-pad, y2-1)
+        doc.setFont('helvetica','bold'); doc.setFontSize(7)
+        doc.text('Subtotal', xOfR[2], y2+3)
+        doc.text(moneyARS(subtotal), xOfR[3]+COLR[3], y2+3, {align:'right'})
+        y2 += 8
+      })
+
+      // Total general retenciones
+      checkPage(8)
+      doc.setLineWidth(0.4); doc.setDrawColor(0,165,80)
+      doc.line(pad, y2-1, W-pad, y2-1)
+      doc.setFont('helvetica','bold'); doc.setFontSize(9)
+      doc.text('TOTAL RETENCIONES SUFRIDAS', pad+2, y2+4)
+      doc.text(moneyARS(totalRetenciones), W-pad, y2+4, {align:'right'})
+      y2 += 10
+    }
+
+    // Footer en todas las páginas
     const pages = (doc as any).internal.getNumberOfPages()
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i)
