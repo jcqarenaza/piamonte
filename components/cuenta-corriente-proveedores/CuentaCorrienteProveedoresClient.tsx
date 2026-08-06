@@ -179,19 +179,34 @@ export default function CuentaCorrienteProveedoresClient() {
     if (!sel) return
     const motivo = prompt(`Motivo de anulación de OP Nº ${op.numero}:`)
     if (motivo === null) return
+    if (!confirm(`Se va a anular la OP Nº ${op.numero} por ${'$'+Number(op.total_pagado).toLocaleString('es-AR')}:\n· Se elimina su pago de la CC (las facturas vuelven a pendientes)\n· Los cheques asociados vuelven a su estado anterior\n· La OP queda marcada como anulada (auditoría)\n¿Confirmás?`)) return
     setBorrandoOp(op.id)
     const fecha = new Date().toISOString().slice(0,10)
-    // 1. Contramovimiento en CC
-    await supabase.from('cuenta_corriente_proveedores').insert({
-      proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
-      fecha, tipo: 'ajuste',
-      descripcion: `Anulación OP Nº ${op.numero}`,
-      debe: op.total_pagado, haber: 0,
-      notas: `anulacion_op · ${motivo || 'Sin motivo'}`,
-    })
-    // 2. Cheques vuelven a disponible
-    const chNros = Array.from((op.forma_pago||'').matchAll(/Cheque (\d+)/g)).map((m:any)=>m[1])
-    if (chNros.length) await supabase.from('cheques').update({ estado: 'disponible' }).in('numero', chNros)
+    // 1. ELIMINAR el movimiento de pago original de la CC (no contramovimiento):
+    //    la vista de imputación libera las facturas sola al desaparecer el haber.
+    if (op.cuenta_corriente_id) {
+      await supabase.from('cuenta_corriente_proveedores').delete().eq('id', op.cuenta_corriente_id)
+    } else {
+      // OPs viejas sin vínculo: por descripción exacta + tipo + proveedor
+      await supabase.from('cuenta_corriente_proveedores').delete()
+        .eq('proveedor_id', sel.proveedor_id).eq('tipo','pago')
+        .eq('descripcion', `Orden de Pago Nº ${op.numero}`)
+    }
+    // 2. Cheques asociados a esta OP (vinculados por notas al crearla)
+    const { data: chequesOP } = await supabase.from('cheques')
+      .select('id,tipo,estado,numero,monto').eq('notas', `Orden de Pago Nº ${op.numero}`)
+    for (const ch of (chequesOP ?? [])) {
+      if (ch.tipo === 'propio' && ch.estado === 'emitido') {
+        // Cheque propio emitido PARA esta OP: se anula y se revierte su débito bancario
+        await supabase.from('cheques').update({ estado: 'anulado', notas: `Anulado con OP Nº ${op.numero} · ${motivo||'Sin motivo'}` }).eq('id', ch.id)
+        await supabase.from('movimientos_banco').delete()
+          .eq('origen_tipo','cheque_emitido')
+          .ilike('concepto', `%Cheque N° ${ch.numero}%OP Nº ${op.numero}%`)
+      } else {
+        // Cheque preexistente seleccionado en la OP: se desvincula y vuelve a disponible
+        await supabase.from('cheques').update({ estado: 'disponible', notas: null }).eq('id', ch.id)
+      }
+    }
     // 3. Facturas vuelven a saldado=false
     const { data: opItems } = await supabase.from('orden_pago_items')
       .select('comprobante_compra_id').eq('orden_pago_id', op.id)
@@ -199,7 +214,7 @@ export default function CuentaCorrienteProveedoresClient() {
       await supabase.from('comprobantes_compra').update({ saldado: false })
         .in('id', opItems.map((i:any)=>i.comprobante_compra_id))
     }
-    // 4. Marcar OP anulada (sin borrar)
+    // 4. Marcar OP anulada (sin borrar — auditoría)
     await supabase.from('ordenes_pago').update({
       anulada: true, fecha_anulacion: fecha, motivo_anulacion: motivo||'Sin motivo'
     }).eq('id', op.id)
