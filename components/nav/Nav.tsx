@@ -190,8 +190,15 @@ export default function Nav({ rol, fase = 1 }: { rol?: string; fase?: number }) 
         </div>
       </Link>
 
-      {/* Grupos de links */}
-      <nav style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+      {/* Grupos de links — el scroll se conserva entre navegaciones */}
+      <nav ref={el => {
+          if (el && !el.dataset.scrollRestored) {
+            el.dataset.scrollRestored = '1'
+            el.scrollTop = Number(sessionStorage.getItem('nav-scroll') || 0)
+          }
+        }}
+        onScroll={e => sessionStorage.setItem('nav-scroll', String((e.target as HTMLElement).scrollTop))}
+        style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
         {visibleGrupos.map(g => (
           <div key={g.label} style={{marginBottom:4}}>
             <div style={{padding:'8px 16px 4px',fontSize:10,fontWeight:700,color:C.sectionTxt,fontFamily:'Arial',letterSpacing:'0.08em'}}>

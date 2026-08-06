@@ -44,9 +44,16 @@ export async function buscarCatalogo(
 
   // --- Búsqueda por código ---
   if (esCodigoDirecto) {
+    // Regla GAMMA: los 6 dígitos iniciales identifican el vidrio; el resto es la
+    // variante (tonalidad/origen). Buscar 420833DSLP debe mostrar también 420833VSLI.
+    const qUp = q.toUpperCase()
+    const base6 = qUp.length >= 9 && /^\d{6}/.test(qUp) ? qUp.slice(0, 6) : null
+    const codigoFilter = base6
+      ? `codigo.ilike.%${q}%,codigo.ilike.${base6}%`
+      : `codigo.ilike.%${q}%`
     let cq = supabase.from('catalogo')
       .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
-      .ilike('codigo', `%${query.trim()}%`)
+      .or(codigoFilter)
     // Filtro proveedor
     if (proveedor) cq = cq.ilike('proveedor', `%${proveedor.split(' ')[0]}%`)
     cq = cq.order('proveedor').limit(limit * 3)
@@ -56,7 +63,7 @@ export async function buscarCatalogo(
     if (proveedor && (!porCodigo || porCodigo.length === 0)) {
       const { data: sinFiltro } = await supabase.from('catalogo')
         .select('id,descripcion,codigo,proveedor,costo_neto,precio_lista,pos,marca')
-        .ilike('codigo', `%${query.trim()}%`)
+        .or(codigoFilter)
         .order('proveedor').limit(limit * 3)
       porCodigo = sinFiltro
     }
@@ -65,11 +72,11 @@ export async function buscarCatalogo(
       // Para búsqueda por código NO deduplicamos — mostramos todas las variantes (DSLP, DSLI, VSLP, etc.)
       const resultados = (porCodigo as ResultadoCatalogo[]).slice(0, limit)
 
-      // Agregar stock físico si disponible
+      // Agregar stock físico si disponible — también con match por base de 6 dígitos
       if (incluirStock) {
         const { data: stockData } = await supabase.from('stock')
           .select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
-          .ilike('codigo', `%${query.trim()}%`).gt('cantidad', 0).eq('activo', true).limit(4)
+          .or(codigoFilter).gt('cantidad', 0).eq('activo', true).limit(6)
         const stockItems: ResultadoCatalogo[] = (stockData||[]).map(s => ({
           id: s.id, descripcion: s.descripcion, codigo: s.codigo,
           proveedor: null, costo_neto: s.costo,
@@ -80,6 +87,19 @@ export async function buscarCatalogo(
         return resultados
       }
       return resultados
+    }
+    // Catálogo sin resultados: revisar igual el stock físico (puede existir la variante)
+    if (incluirStock) {
+      const { data: stockSolo } = await supabase.from('stock')
+        .select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
+        .or(codigoFilter).gt('cantidad', 0).eq('activo', true).limit(6)
+      if (stockSolo && stockSolo.length > 0) {
+        return stockSolo.map(s => ({
+          id: s.id, descripcion: s.descripcion, codigo: s.codigo,
+          proveedor: null, costo_neto: s.costo, pos: null, marca: null,
+          stock_id: s.id, cantidad: s.cantidad, precio_venta: s.precio_venta, articulo_id: s.articulo_id
+        }))
+      }
     }
     // Si no encontró por código exacto, caer en búsqueda por descripción
   }

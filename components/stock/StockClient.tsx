@@ -255,6 +255,17 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }, [supabase])
 
   useEffect(() => { load() }, [load])
+  // Refrescar al volver a la pestaña: si quedó abierta mientras otro usuario
+  // cargaba facturas/movía stock, al volver el foco se recarga sola.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [load])
   useEffect(() => {
     supabase.from('proveedores_compra').select('id,nombre').eq('activo', true).order('nombre')
       .then(({ data }) => setProveedoresLista(data ?? []))
@@ -341,8 +352,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       Object.entries(abreviaturas).forEach(([abr, exp]) => {
         expandida = expandida.split(abr).join(exp.toUpperCase())
       })
-      // Todas las palabras deben estar presentes (no necesariamente juntas)
-      return palabras.every(p => base.includes(p) || expandida.includes(p))
+      const codigoUp = (s.codigo ?? '').toUpperCase()
+      // Todas las palabras deben estar presentes (no necesariamente juntas).
+      // Regla GAMMA: si la palabra parece código (6 dígitos + variante), matchea
+      // también por la base de 6 dígitos — buscar 420833DSLP encuentra 420833VSLI.
+      return palabras.every(p =>
+        base.includes(p) || expandida.includes(p) ||
+        (p.length >= 9 && /^\d{6}/.test(p) && codigoUp.startsWith(p.slice(0, 6)))
+      )
     })
   }
   if (soloSinCosto) visible = visible.filter(s => !s.costo && s.cantidad > 0)
