@@ -130,12 +130,15 @@ export default function ChequesClient({ userId }: { userId?: string }) {
         return
       }
     }
+    // Vincular proveedor real: si la contraparte matchea un proveedor del selector, guardar su id
+    const provMatch = proveedores.find(p => p.nombre === form.contraparte)
     const payload = {
       tipo:form.tipo, modalidad:form.modalidad, formato:form.formato,
       numero:form.numero, banco:form.banco,
       fecha_emision:form.fecha_emision,
       fecha_cobro:form.modalidad==='al_dia'?form.fecha_emision:form.fecha_cobro,
       monto:+form.monto, contraparte:form.contraparte||null,
+      proveedor_id: provMatch?.id ?? null,
       estado:form.estado, destino:form.destino||null, notas:form.notas||null,
       updated_at:new Date().toISOString()
     }
@@ -144,10 +147,11 @@ export default function ChequesClient({ userId }: { userId?: string }) {
     } else {
       const { data: chequeIns } = await supabase.from('cheques').insert(payload).select('id').single()
       // Si es cheque propio nuevo → débito automático en CC Banco de La Pampa
+      // (fecha del débito = fecha de cobro: es cuando golpea la cuenta, y es la fecha del extracto)
       if (form.tipo === 'propio' && chequeIns?.id) {
         await supabase.from('movimientos_banco').insert({
           cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
-          fecha: form.fecha_emision,
+          fecha: payload.fecha_cobro,
           tipo: 'debito',
           concepto: `Cheque propio N° ${form.numero}${form.contraparte ? ` — ${form.contraparte}` : ''}`,
           monto: +form.monto,
