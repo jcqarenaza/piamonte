@@ -442,15 +442,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const ncItemsSel = ncComp ? ncComp.items
     .map((it, i) => ({ it, i, cant: ncSel[i]?.cant ?? it.c }))
     .filter((x) => ncSel[x.i]?.on && x.cant > 0) : []
-  const ncNeto = ncItemsSel.reduce((a, x) => {
+  // ¿La selección cubre el comprobante completo? → usar los totales exactos del original
+  // (evita el corrimiento por redondeo en cadena: FA $100 / NC $99,99)
+  const ncEsTotal = !!ncComp && ncItemsSel.length === ncComp.items.length
+    && ncItemsSel.every(x => x.cant === x.it.c)
+  const ncNetoCalc = ncItemsSel.reduce((a, x) => {
     // Para FA (discrimina IVA): el precio ya incluye IVA → neto = p/1.21
     // Para FB/NC sin IVA: el precio es el total directamente
     const tasaNc = ncComp && ncComp.neto > 0 ? ncComp.neto / ncComp.total : (1/1.21)
     return a + Math.round(x.it.p * x.cant * tasaNc * 100) / 100
   }, 0)
   const ncIvaRate = ncComp && ncComp.neto > 0 ? ncComp.iva / ncComp.neto : 0
-  const ncIva = Math.round(ncNeto * ncIvaRate * 100) / 100
-  const ncTotal = Math.round((ncNeto + ncIva) * 100) / 100
+  const ncIvaCalc = Math.round(ncNetoCalc * ncIvaRate * 100) / 100
+  const ncNeto  = ncEsTotal ? ncComp!.neto  : ncNetoCalc
+  const ncIva   = ncEsTotal ? ncComp!.iva   : ncIvaCalc
+  const ncTotal = ncEsTotal ? ncComp!.total : Math.round((ncNetoCalc + ncIvaCalc) * 100) / 100
 
   async function confirmarNC() {
     if (!ncComp) return
@@ -2003,7 +2009,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       </Modal>
 
       {/* Modal Nota de Crédito */}
-      <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — Comprobante ${ncComp?.numero}`}>
+      <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — ${ncComp?.tipo??''}-0006-${String(ncComp?.nro_cbte_afip ?? ncComp?.numero ?? '').padStart(8,'0')}`}>
         {ncComp && (
           <div className="flex flex-col gap-3">
             {/* Info del comprobante original */}
