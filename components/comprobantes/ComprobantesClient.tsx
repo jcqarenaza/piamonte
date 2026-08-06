@@ -153,10 +153,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       ? Math.round(subtotalItems / (1 + IVA) * 100) / 100  // neto sin IVA para libro IVA
       : subtotalItems
   // IVA: discriminado en A (RI), calculado internamente en B/C para libro IVA, 0 en negro/exento
+  // B/C: por DIFERENCIA (total − neto) para que neto+IVA cierre exacto contra el total
   const iva = esNegro
     ? (ivaNegroP > 0 ? Math.round((neto * ivaNegroP / 100) * IVA * 100) / 100 : 0)
     : esExento ? 0
-    : Math.round(neto * IVA * 100) / 100  // tanto A como B/C llevan IVA calculado
+    : esCFoB ? Math.round((subtotalItems - neto) * 100) / 100
+    : Math.round(neto * IVA * 100) / 100  // A: IVA calculado sobre neto (total sale de la suma)
   const total = esCFoB
     ? subtotalItems  // para B/C el total es el precio original (IVA incluido)
     : Math.round((neto + iva) * 100) / 100
