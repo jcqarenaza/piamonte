@@ -45,6 +45,7 @@ export default function CuentaCorrienteProveedoresClient() {
   // NC: reemplazar ajuste pendiente
   const [ajustesPendNC, setAjustesPendNC] = useState<any[]>([])
   const [ordenesPago, setOrdenesPago] = useState<any[]>([])
+  const [opItemsCache, setOpItemsCache] = useState<Record<string, any[]>>({})
   const [verOPs, setVerOPs] = useState<string|null>(null)
   const [borrandoOp, setBorrandoOp] = useState<string|null>(null)
   const [vistaMovs, setVistaMovs] = useState(false)  // false=saldos, true=movimientos
@@ -94,9 +95,9 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id)
         .order('fecha')
         .then(({data})=>setAjustesPendNC(data??[]))
-      // Cargar OPs del proveedor
+      // Cargar OPs del proveedor (todas: activas y anuladas — auditoría)
       supabase.from('ordenes_pago')
-        .select('id,numero,fecha,total_pagado,total_facturas,total_nc,forma_pago,notas,cuenta_corriente_id')
+        .select('id,numero,fecha,total_pagado,total_facturas,total_nc,forma_pago,notas,cuenta_corriente_id,anulada,fecha_anulacion,motivo_anulacion')
         .eq('proveedor_id', sel.proveedor_id)
         .order('fecha', { ascending: false })
         .then(({data})=>setOrdenesPago(data??[]))
@@ -182,7 +183,13 @@ export default function CuentaCorrienteProveedoresClient() {
     if (!confirm(`Se va a anular la OP Nº ${op.numero} por ${'$'+Number(op.total_pagado).toLocaleString('es-AR')}:\n· Se elimina su pago de la CC (las facturas vuelven a pendientes)\n· Los cheques asociados vuelven a su estado anterior\n· La OP queda marcada como anulada (auditoría)\n¿Confirmás?`)) return
     setBorrandoOp(op.id)
     const fecha = new Date().toISOString().slice(0,10)
-    // 1. ELIMINAR el movimiento de pago original de la CC (no contramovimiento):
+    // 1. Marcar OP anulada Y soltar el FK al movimiento (ordenes_pago.cuenta_corriente_id
+    //    referencia la fila de CC — si no se suelta primero, el DELETE viola el constraint)
+    await supabase.from('ordenes_pago').update({
+      anulada: true, fecha_anulacion: fecha, motivo_anulacion: motivo||'Sin motivo',
+      cuenta_corriente_id: null,
+    }).eq('id', op.id)
+    // 2. ELIMINAR el movimiento de pago original de la CC (no contramovimiento):
     //    la vista de imputación libera las facturas sola al desaparecer el haber.
     if (op.cuenta_corriente_id) {
       await supabase.from('cuenta_corriente_proveedores').delete().eq('id', op.cuenta_corriente_id)
@@ -192,7 +199,7 @@ export default function CuentaCorrienteProveedoresClient() {
         .eq('proveedor_id', sel.proveedor_id).eq('tipo','pago')
         .eq('descripcion', `Orden de Pago Nº ${op.numero}`)
     }
-    // 2. Cheques asociados a esta OP (vinculados por notas al crearla)
+    // 3. Cheques asociados a esta OP (vinculados por notas al crearla)
     const { data: chequesOP } = await supabase.from('cheques')
       .select('id,tipo,estado,numero,monto').eq('notas', `Orden de Pago Nº ${op.numero}`)
     for (const ch of (chequesOP ?? [])) {
@@ -214,12 +221,9 @@ export default function CuentaCorrienteProveedoresClient() {
       await supabase.from('comprobantes_compra').update({ saldado: false })
         .in('id', opItems.map((i:any)=>i.comprobante_compra_id))
     }
-    // 4. Marcar OP anulada (sin borrar — auditoría)
-    await supabase.from('ordenes_pago').update({
-      anulada: true, fecha_anulacion: fecha, motivo_anulacion: motivo||'Sin motivo'
-    }).eq('id', op.id)
+    // (la OP ya quedó marcada anulada en el paso 1)
     setBorrandoOp(null)
-    setOrdenesPago(prev=>prev.filter(o=>o.id!==op.id))
+    setOrdenesPago(prev=>prev.map(o=>o.id===op.id?{...o,anulada:true,motivo_anulacion:motivo||'Sin motivo',fecha_anulacion:fecha}:o))
     load(); loadMovs(sel.proveedor_nombre)
   }
 
@@ -626,26 +630,62 @@ export default function CuentaCorrienteProveedoresClient() {
                   <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Órdenes de pago</p>
                   <div className="flex flex-col gap-1.5">
                     {ordenesPago.map(op=>(
-                      <div key={op.id} className="flex flex-col text-xs border border-p-line rounded-lg overflow-hidden">
+                      <div key={op.id} className="flex flex-col text-xs border border-p-line rounded-lg overflow-hidden"
+                        style={op.anulada?{opacity:.75,background:'#fafafa'}:undefined}>
                         <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-p-light/50"
-                          onClick={()=>setVerOPs(v=>v===op.id?null:op.id)}>
+                          onClick={async ()=>{
+                            const abrir = verOPs===op.id?null:op.id
+                            setVerOPs(abrir)
+                            if (abrir && !opItemsCache[op.id]) {
+                              const { data: its } = await supabase.from('orden_pago_items')
+                                .select('tipo,numero,monto').eq('orden_pago_id', op.id).order('tipo')
+                              setOpItemsCache(prev=>({...prev,[op.id]:its??[]}))
+                            }
+                          }}>
                           <div>
                             <span className="font-semibold text-p-ink">OP Nº {op.numero}</span>
+                            {op.anulada && <span className="ml-1.5 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-1 py-0.5">ANULADA</span>}
                             <span className="text-p-ink2 ml-1">· {op.fecha?.split('-').reverse().join('/')} · {op.forma_pago}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="font-mono font-bold text-green-700">{moneyARS(op.total_pagado)}</span>
+                            <span className="font-mono font-bold" style={{color:op.anulada?'#9ca3af':'#15803d',textDecoration:op.anulada?'line-through':undefined}}>{moneyARS(op.total_pagado)}</span>
                             <span className="text-p-ink2 text-[10px]">{verOPs===op.id ? '▲' : '▼'}</span>
                           </div>
                         </div>
                         {verOPs===op.id && (
-                          <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between gap-3">
-                            <p className="text-[10px] text-red-600">Eliminar esta OP revertirá las facturas a pendientes de pago.</p>
-                            <button onClick={()=>{anularOrdenPago(op)}}
-                              disabled={borrandoOp===op.id}
-                              className="text-[11px] font-bold text-red-600 border border-red-300 bg-white rounded px-2 py-1 hover:bg-red-100 shrink-0">
-                              {borrandoOp===op.id ? '…' : 'Anular OP'}
-                            </button>
+                          <div className="border-t border-p-line">
+                            {/* Qué imputó esta OP */}
+                            <div className="px-3 py-2 bg-p-light/40 flex flex-col gap-1">
+                              {(opItemsCache[op.id]??[]).length===0
+                                ? <p className="text-[10px] text-p-ink2">Cargando imputaciones…</p>
+                                : (opItemsCache[op.id]??[]).map((it:any,i:number)=>(
+                                  <div key={i} className="flex items-center justify-between">
+                                    <span className="text-[11px]">{it.tipo==='nc'?'NC':'FC'} {it.numero}</span>
+                                    <span className="font-mono text-[11px]" style={{color:it.tipo==='nc'?'#b45309':'#374151'}}>{it.tipo==='nc'?'−':''}{moneyARS(it.monto)}</span>
+                                  </div>
+                                ))}
+                              {(op.total_nc>0 || op.total_facturas>0) && (
+                                <div className="flex items-center justify-between border-t border-p-line pt-1 mt-0.5 text-[10px] text-p-ink2">
+                                  <span>Facturas {moneyARS(op.total_facturas)}{op.total_nc>0?` − NC ${moneyARS(op.total_nc)}`:''}</span>
+                                  <span>Pagado {moneyARS(op.total_pagado)}</span>
+                                </div>
+                              )}
+                              {op.notas && <p className="text-[10px] text-p-ink2 italic">{op.notas}</p>}
+                            </div>
+                            {op.anulada ? (
+                              <div className="px-3 py-2 bg-red-50 border-t border-red-100">
+                                <p className="text-[10px] text-red-600">Anulada el {op.fecha_anulacion?.split('-').reverse().join('/')} — {op.motivo_anulacion}</p>
+                              </div>
+                            ) : (
+                              <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between gap-3">
+                                <p className="text-[10px] text-red-600">Anular esta OP elimina su pago de la CC y las facturas vuelven a pendientes.</p>
+                                <button onClick={()=>{anularOrdenPago(op)}}
+                                  disabled={borrandoOp===op.id}
+                                  className="text-[11px] font-bold text-red-600 border border-red-300 bg-white rounded px-2 py-1 hover:bg-red-100 shrink-0">
+                                  {borrandoOp===op.id ? '…' : 'Anular OP'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
