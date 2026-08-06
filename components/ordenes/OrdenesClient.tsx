@@ -67,6 +67,12 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [sancorTipoTocado, setSancorTipoTocado] = useState(false)
   const [umbralFce, setUmbralFce] = useState<number>(0)
   const [sancorTextos, setSancorTextos] = useState<Record<string,string>>({})
+  // Emisión FCE directa contra ARCA
+  const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
+  const [sancorCbuId, setSancorCbuId] = useState<string>('')
+  const [sancorVtoPago, setSancorVtoPago] = useState<string>('')
+  const [sancorCuitReceptor, setSancorCuitReceptor] = useState<string>('')
+  const [sancorEmitiendo, setSancorEmitiendo] = useState(false)
   const [factManualForm, setFactManualForm] = useState({ cae:'', nro:'', pv:'', vto:'', fecha:'' })
   // Turno desde OS
   const [turnoModal, setTurnoModal] = useState<any|null>(null)
@@ -244,14 +250,94 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     os.forEach((o:any) => { txts[o.id] = String(o.total||0).replace('.',',') })
     setSancorTextos(txts)
     setSancorForm({pv:'',nro:'',cae:'',fecha:todayStr(),vto:''})
-    // Umbral FCE MiPyME desde config (editable sin deploy)
-    const { data: cfg } = await supabase.from('config_fce').select('umbral').eq('id',1).maybeSingle()
+    // Umbral FCE MiPyME + CUIT receptor desde config (editable sin deploy)
+    const { data: cfg } = await supabase.from('config_fce').select('umbral,cuit_receptor').eq('id',1).maybeSingle()
     const umbral = parseFloat(String(cfg?.umbral ?? 0)) || 0
     setUmbralFce(umbral)
+    setSancorCuitReceptor(String(cfg?.cuit_receptor ?? ''))
+    // Cuentas bancarias con CBU para la FCE (default: cbu_default_fce)
+    const { data: ctas } = await supabase.from('cuentas_banco')
+      .select('id,banco,tipo,cbu,cbu_default_fce').eq('activo',true).not('cbu','is',null)
+    setCuentasBanco(ctas ?? [])
+    setSancorCbuId((ctas ?? []).find((c:any)=>c.cbu_default_fce)?.id ?? (ctas?.[0]?.id ?? ''))
+    setSancorVtoPago('')
     const totalInicial = os.reduce((acc:number,o:any)=>acc+(parseFloat(String(o.total||0))||0),0)
     setSancorTipo(umbral > 0 && totalInicial >= umbral ? 'FCE' : 'FC')
     setSancorTipoTocado(false)
     setSancorModal(true)
+  }
+
+  // Emite la FCE MiPyME directo contra ARCA vía edge function arca-facturar.
+  // Flujo: comprobante borrador → ARCA (CAE + nro) → completar comprobante → CC con comprobante_id → marcar OS.
+  // Si ARCA rechaza, se elimina el borrador y no queda nada a medias.
+  async function emitirFce() {
+    const selIds = Object.entries(sancorSel).filter(([,v])=>v).map(([id])=>id)
+    if (!selIds.length) { alert('Seleccioná al menos una OS'); return }
+    if (!sancorVtoPago) { alert('Completá la fecha de vencimiento de pago (obligatoria en FCE)'); return }
+    const cta = cuentasBanco.find((c:any)=>c.id===sancorCbuId)
+    if (!cta?.cbu || !/^\d{22}$/.test(String(cta.cbu))) { alert('La cuenta seleccionada no tiene un CBU válido de 22 dígitos'); return }
+    if (!/^\d{11}$/.test(sancorCuitReceptor)) { alert('Falta el CUIT de Sancor en config_fce.cuit_receptor (11 dígitos)'); return }
+    const total = selIds.reduce((acc,id)=>acc+(sancorTotales[id]||0),0)
+    const neto = Math.round((total/1.21)*100)/100
+    const iva = Math.round((total-neto)*100)/100
+    if (!confirm(`Se va a emitir una FCE MiPyME en ARCA por ${moneyARS2(total)} (${selIds.length} OS).\nCBU informado: ${cta.banco} ${cta.tipo}\nVto de pago: ${sancorVtoPago.split('-').reverse().join('/')}\n¿Confirmás?`)) return
+    setSancorEmitiendo(true)
+    // 1) Comprobante borrador (necesario: la edge function lo referencia en facturacion_electronica)
+    const { data: comp, error: errComp } = await supabase.from('comprobantes').insert({
+      fecha: todayStr(), tipo: 'FCE', letra: 'A',
+      aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
+      aseguradora_nombre: 'Sancor Seguros',
+      neto, iva_pct: 21, iva, total,
+      cbu_informado: String(cta.cbu), fce_vto_pago: sancorVtoPago,
+    }).select('id').single()
+    if (errComp || !comp) { alert(`⚠ Error al crear comprobante: ${errComp?.message}`); setSancorEmitiendo(false); return }
+    // 2) Emisión en ARCA
+    let resp: any
+    try {
+      const { data, error } = await supabase.functions.invoke('arca-facturar', { body: {
+        comprobante_id: comp.id, tipoCbte: 201,
+        impTotal: total, impNeto: neto, impIva: iva,
+        concepto: 1, docTipo: 80, docNro: sancorCuitReceptor, ivaAlicuota: 5,
+        fceVtoPago: sancorVtoPago, fceCbu: String(cta.cbu), fceTransmision: 'SCA',
+      }})
+      resp = error ? { ok:false, error: error.message } : data
+    } catch (e:any) { resp = { ok:false, error: e?.message ?? 'Error de red' } }
+    if (!resp?.ok) {
+      await supabase.from('comprobantes').delete().eq('id', comp.id)
+      alert(`⚠ ARCA rechazó la FCE:\n${resp?.error ?? 'sin detalle'}\n\nNo se registró nada. Podés reintentar o usar el registro manual.`)
+      setSancorEmitiendo(false); return
+    }
+    // 3) Completar comprobante con lo que devolvió ARCA
+    const pvStr = String(resp.punto_venta).padStart(5,'0')
+    const nroStr = String(resp.nro_cbte).padStart(8,'0')
+    await supabase.from('comprobantes').update({
+      nro_cbte_afip: resp.nro_cbte, cae_emitido: resp.cae,
+      cae_vencimiento: resp.cae_vencimiento || null,
+    }).eq('id', comp.id)
+    // 4) CC aseguradoras — con comprobante_id desde el arranque
+    const { error: errCC } = await supabase.from('cuenta_corriente_aseguradoras').insert({
+      aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
+      comprobante_id: comp.id,
+      fecha: todayStr(), tipo: 'factura',
+      descripcion: `FCE Sancor ${pvStr}-${nroStr} · ${selIds.length} OS`,
+      debe: total, haber: 0,
+    })
+    if (errCC) alert(`⚠ FCE emitida (CAE ${resp.cae}) pero falló el registro en CC: ${errCC.message}\nCargala a mano en la CC de Sancor.`)
+    // 5) Marcar OS
+    const errsOS: string[] = []
+    for (const id of selIds) {
+      const { error: errOS } = await supabase.from('ordenes_servicio').update({
+        convertido_comp: true, estado: 'facturada',
+        factura_manual_cae: resp.cae, factura_manual_nro: nroStr,
+        factura_manual_pv: pvStr, factura_manual_fecha: todayStr(),
+        factura_manual_vto: resp.cae_vencimiento || null,
+        factura_manual_tipo: 'FCE',
+      }).eq('id', id)
+      if (errOS) errsOS.push(`OS ${id.slice(0,8)}: ${errOS.message}`)
+    }
+    if (errsOS.length) alert(`⚠ ${errsOS.length} OS no se marcaron:\n${errsOS.join('\n')}`)
+    alert(`✓ FCE ${pvStr}-${nroStr} emitida\nCAE: ${resp.cae}`)
+    setSancorEmitiendo(false); setSancorModal(false); load()
   }
 
   async function save() {
@@ -1137,6 +1223,28 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   <p className="text-[10px] mt-1" style={{color:'#b45309'}}>Elegiste distinto a lo sugerido (★) — confirmá que corresponde.</p>
                 )}
               </Field>
+              {tipoEfectivo === 'FCE' && (
+                <div className="border border-purple-200 rounded-xl p-3 flex flex-col gap-3" style={{background:'#faf5ff'}}>
+                  <p className="text-xs font-bold text-purple-800">Emisión FCE directa en ARCA</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Cuenta de cobro (CBU informado)">
+                      <Select value={sancorCbuId} onChange={e=>setSancorCbuId(e.target.value)}>
+                        {cuentasBanco.map((c:any)=>(
+                          <option key={c.id} value={c.id}>{c.banco} {c.tipo}{c.cbu_default_fce?' ★':''}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Vencimiento de pago">
+                      <Input type="date" value={sancorVtoPago} onChange={e=>setSancorVtoPago(e.target.value)}/>
+                    </Field>
+                  </div>
+                  <button disabled={sancorEmitiendo} onClick={emitirFce}
+                    style={{...btn,background:'#7c3aed',opacity:sancorEmitiendo?0.6:1}}>
+                    {sancorEmitiendo?'Emitiendo en ARCA…':'⚡ Emitir FCE en ARCA'}
+                  </button>
+                  <p className="text-[10px] text-p-ink2">ARCA devuelve N° y CAE automáticamente. Si falla, usá el registro manual de abajo con lo emitido en el portal.</p>
+                </div>
+              )}
                 </>)
               })()}
               <div className="grid grid-cols-2 gap-3">
