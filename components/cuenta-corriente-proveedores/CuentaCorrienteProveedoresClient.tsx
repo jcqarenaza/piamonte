@@ -509,6 +509,9 @@ export default function CuentaCorrienteProveedoresClient() {
             <div className="flex items-start justify-between mb-1">
               <p className="font-saira font-bold text-p-ink text-2xl flex-1">{sel.proveedor_nombre}</p>
               <div className="flex items-center gap-2 shrink-0 ml-3">
+                <button onClick={()=>setOpenAjuste(true)} style={{background:'#fff',color:'#b45309',border:'1px solid #fcd34d',borderRadius:10,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  ± Ajuste
+                </button>
                 {sel.saldo_actual > 0 && (
                   <button onClick={abrirOrdenPago} style={{...btnBlue,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
                     🧾 Nueva OP
