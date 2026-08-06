@@ -453,12 +453,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const ncTotal = Math.round((ncNeto + ncIva) * 100) / 100
 
   async function confirmarNC() {
-    if (!ncComp || ncItemsSel.length === 0) return
+    if (!ncComp) return
+    // NC de aseguradora: SIEMPRE por el total del comprobante, sin tocar stock.
+    // El stock solo se mueve con "Retirar productos" en la OS (acción física explícita).
+    const esAsegNC = !!(ncComp as any).aseguradora_id
+    if (!esAsegNC && ncItemsSel.length === 0) return
     setNcLoading(true)
     const { data: nextNumDataNC } = await supabase.rpc('siguiente_numero_comprobante', { p_tipo: ncComp.tipo, p_categoria: 'nc' })
     const nextNum = nextNumDataNC as number
 
-    const itemsNc: ItemVenta[] = ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
+    const itemsNc: ItemVenta[] = esAsegNC
+      ? (ncComp.items as any[]).map(it => ({ ...it }))
+      : ncItemsSel.map(x => ({ ...x.it, c: x.cant }))
+    const ncNetoF  = esAsegNC ? ncComp.neto  : ncNeto
+    const ncIvaF   = esAsegNC ? ncComp.iva   : ncIva
+    const ncTotalF = esAsegNC ? ncComp.total : ncTotal
     const { data: nc } = await supabase.from('comprobantes').insert({
       numero: nextNum, fecha: todayStr(), tipo: ncComp.tipo, categoria: 'nc',
       cliente_id: (ncComp as any).cliente_id ?? null, cliente_nombre: ncComp.cliente_nombre,
@@ -466,7 +475,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_tipo_fiscal: ncComp.cliente_tipo_fiscal, vehiculo: ncComp.vehiculo,
       aseguradora_id: (ncComp as any).aseguradora_id ?? null,
       aseguradora_nombre: ncComp.aseguradora_nombre ?? null,
-      items: itemsNc, neto: ncNeto, iva: ncIva, total: ncTotal, pagos: [],
+      items: itemsNc, neto: ncNetoF, iva: ncIvaF, total: ncTotalF, pagos: [],
       comprobante_original_id: ncComp.id, motivo_nc: ncMotivo || null,
       es_negro: ncComp.es_negro || false,
     }).select('*').single()
@@ -474,7 +483,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (!nc) { setNcLoading(false); return }
 
     // Devolver stock de los ítems que sí tenían unidad física vinculada
-    for (const x of ncItemsSel) {
+    // (solo NC de cliente común: en aseguradoras el stock lo maneja "Retirar productos" en la OS)
+    if (!esAsegNC) for (const x of ncItemsSel) {
       if (x.it.stock_id && x.cant > 0) {
         // Movimiento + devolución de stock en una sola transacción (RPC atómico)
         const { error: errStockNC } = await supabase.rpc('insertar_movimiento_stock', {
@@ -497,7 +507,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const ncDescVenta = `NC-${ncComp.tipo}-0006-${ncNumStr} — devolución ${ncComp.tipo==='A'?'FA':'FB'}-0006-${origNumStr} · ${ncComp.cliente_nombre||ncComp.aseguradora_nombre||''}`
     await supabase.from('ventas').insert({
       fecha: todayStr(), descripcion: ncDescVenta,
-      precio: -ncTotal, costo: null, pendiente: false,
+      precio: -ncTotalF, costo: null, pendiente: false,
       comprobante_id: (nc as any).id, user_id: userId,
     })
 
@@ -508,7 +518,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         aseguradora_id: (ncComp as any).aseguradora_id,
         fecha: todayStr(), tipo: 'nc',
         descripcion: ncDesc,
-        debe: 0, haber: ncTotal,
+        debe: 0, haber: ncTotalF,
         comprobante_id: ncComp.id, user_id: userId,  // ID de la factura original para cancelar su saldo
       })
     } else if ((ncComp as any).cliente_id) {
@@ -517,14 +527,20 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         cliente_nombre: ncComp.cliente_nombre,
         fecha: todayStr(), tipo: 'nc',
         descripcion: ncDesc,
-        debe: 0, haber: ncTotal,
+        debe: 0, haber: ncTotalF,
         comprobante_id: (nc as any).id, user_id: userId,
       })
     }
 
-    // Si la factura original vino de una OS, liberarla para poder refacturar
-    if (ncComp.orden_id) {
-      await supabase.from('ordenes_servicio').update({ convertido_comp: false }).eq('id', ncComp.orden_id)
+    // Liberar las OS de la factura original para poder refacturar
+    // (el cristal sigue colocado: la NC es contable; lo físico se maneja con "Retirar productos")
+    const osIdsLiberar = new Set<string>()
+    if (ncComp.orden_id) osIdsLiberar.add(ncComp.orden_id)
+    for (const it of (ncComp.items as any[])) if (it.os_id) osIdsLiberar.add(it.os_id)
+    if (osIdsLiberar.size > 0) {
+      await supabase.from('ordenes_servicio')
+        .update({ convertido_comp: false, estado: 'realizado' })
+        .in('id', Array.from(osIdsLiberar))
     }
 
     // Emitir con CAE propio en AFIP si el original era fiscal — necesita el comprobante asociado
@@ -2011,11 +2027,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </div>
             </div>
             <p className="text-[11px] text-p-ink2">
-              Destildá lo que no se devuelve o ajustá la cantidad. Al confirmar: se devuelve el stock de lo seleccionado,
-              se resta de Caja del día de hoy{!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo) ? ', y se emite con su propio CAE en AFIP.' : '.'}
+              {(ncComp as any).aseguradora_id
+                ? <>NC de aseguradora: <b>siempre por el total</b> del comprobante. Al confirmar: se acredita el total en la CC de la aseguradora, se resta del Facturado del día, se liberan las OS para refacturar{!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo) ? ', y se emite con su propio CAE en AFIP' : ''}. <b>No toca stock</b> — si además se retira material del vehículo, usá "Retirar productos" en la OS.</>
+                : <>Destildá lo que no se devuelve o ajustá la cantidad. Al confirmar: se devuelve el stock de lo seleccionado,
+              se resta de Caja del día de hoy{!ncComp.es_negro && ['A','B','C'].includes(ncComp.tipo) ? ', y se emite con su propio CAE en AFIP.' : '.'}</>}
             </p>
             <div className="flex flex-col gap-1.5">
-              {ncComp.items.map((it, i) => (
+              {(ncComp as any).aseguradora_id ? (
+                ncComp.items.map((it, i) => (
+                  <div key={i} className="flex items-center gap-3 border border-p-line rounded-lg px-3 py-2 bg-p-light/40">
+                    <span className="flex-1 text-sm truncate">{it.d}</span>
+                    <span className="text-xs text-p-ink2">x {it.c}</span>
+                    <span className="font-mono font-bold text-sm w-24 text-right">{moneyARS(it.p * it.c)}</span>
+                  </div>
+                ))
+              ) : ncComp.items.map((it, i) => (
                 <label key={i} className={`flex items-center gap-3 border rounded-lg px-3 py-2 ${ncSel[i]?.on ? 'border-amber-400 bg-amber-50' : 'border-p-line'}`}>
                   <input type="checkbox" checked={!!ncSel[i]?.on}
                     onChange={()=>setNcSel(p=>({...p, [i]:{ on: !p[i]?.on, cant: p[i]?.cant ?? it.c }}))}
@@ -2031,10 +2057,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               ))}
             </div>
             <div className="bg-p-light rounded-xl p-3 flex flex-col gap-1.5">
-              <div className="flex justify-between text-sm"><span className="text-p-ink2">Neto</span><span className="font-mono">{moneyARS(ncNeto)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-p-ink2">IVA</span><span className="font-mono">{moneyARS(ncIva)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">Neto</span><span className="font-mono">{moneyARS((ncComp as any).aseguradora_id ? ncComp.neto : ncNeto)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-p-ink2">IVA</span><span className="font-mono">{moneyARS((ncComp as any).aseguradora_id ? ncComp.iva : ncIva)}</span></div>
               <div className="flex justify-between font-saira font-bold text-lg border-t border-p-line mt-1 pt-1">
-                <span>TOTAL NC</span><span>{moneyARS(ncTotal)}</span>
+                <span>TOTAL NC</span><span>{moneyARS((ncComp as any).aseguradora_id ? ncComp.total : ncTotal)}</span>
               </div>
             </div>
             <Field label="Motivo">
@@ -2042,8 +2068,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </Field>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={()=>setNcComp(null)} style={btnGray}>Cancelar</button>
-              <button onClick={confirmarNC} disabled={ncLoading || ncItemsSel.length===0}
-                style={{...btn,background:'#d97706',opacity:(ncLoading || ncItemsSel.length===0)?.5:1}}>
+              <button onClick={confirmarNC} disabled={ncLoading || (!(ncComp as any).aseguradora_id && ncItemsSel.length===0)}
+                style={{...btn,background:'#d97706',opacity:(ncLoading || (!(ncComp as any).aseguradora_id && ncItemsSel.length===0))?.5:1}}>
                 {ncLoading ? 'Generando…' : '🧾 Confirmar Nota de Crédito'}
               </button>
             </div>

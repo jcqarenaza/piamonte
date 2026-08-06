@@ -260,7 +260,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       .select('id,banco,tipo,cbu,cbu_default_fce').eq('activo',true).not('cbu','is',null)
     setCuentasBanco(ctas ?? [])
     setSancorCbuId((ctas ?? []).find((c:any)=>c.cbu_default_fce)?.id ?? (ctas?.[0]?.id ?? ''))
-    setSancorVtoPago('')
+    // Vencimiento de pago por defecto: hoy + 30 días
+    const vto30 = new Date(); vto30.setDate(vto30.getDate() + 30)
+    setSancorVtoPago(vto30.toISOString().slice(0,10))
     const totalInicial = os.reduce((acc:number,o:any)=>acc+(parseFloat(String(o.total||0))||0),0)
     setSancorTipo(umbral > 0 && totalInicial >= umbral ? 'FCE' : 'FC')
     setSancorTipoTocado(false)
@@ -288,13 +290,17 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setSancorEmitiendo(true)
     const osSel = sancorOS.filter((o:any)=>selIds.includes(o.id))
     // 1) Comprobante borrador (necesario: la edge function lo referencia en facturacion_electronica)
+    const { data: nextNumData } = await supabase.rpc('siguiente_numero_comprobante', { p_tipo: esFce ? 'FCE' : 'A', p_categoria: 'factura' })
     const { data: comp, error: errComp } = await supabase.from('comprobantes').insert({
+      numero: nextNumData ?? null,
       fecha: todayStr(), tipo: esFce ? 'FCE' : 'A', categoria: 'factura',
       aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
       aseguradora_nombre: 'Sancor Seguros',
       cliente_nombre: 'Sancor Seguros', cliente_cuit: sancorCuitReceptor,
-      items: osSel.map((o:any)=>({ descripcion: `OS-${String(o.numero).padStart(4,'0')} · ${o.cliente} · ${o.vehiculo||''}`.trim(), cantidad: 1, precio: sancorTotales[o.id]||0 })),
-      pagos: [], es_negro: false, es_nc: false,
+      cliente_tipo_fiscal: 'responsable_inscripto',
+      items: osSel.map((o:any)=>({ d: `OS-${String(o.numero).padStart(4,'0')} · ${o.cliente} · ${o.vehiculo||''}`.trim(), c: 1, p: sancorTotales[o.id]||0, os_id: o.id })),
+      pagos: [{ metodo:'Cuenta corriente', monto:String(total) }],
+      es_negro: false, es_nc: false,
       neto, iva_pct: 21, iva, total,
       cbu_informado: esFce ? String(cta!.cbu) : null,
       fce_vto_pago: esFce ? sancorVtoPago : null,
@@ -332,6 +338,23 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       debe: total, haber: 0,
     })
     if (errCC) alert(`⚠ ${etiqueta} emitida (CAE ${resp.cae}) pero falló el registro en CC: ${errCC.message}\nCargala a mano en la CC de Sancor.`)
+    // 4b) Facturado del día — misma convención que las demás facturas de aseguradora
+    // Costo: suma de costos de stock de los items reales de las OS incluidas
+    let costoVenta = 0
+    for (const o of osSel) for (const it of (o.items||[])) {
+      if (it.stock_id) {
+        const { data: stk } = await supabase.from('stock').select('costo').eq('id', it.stock_id).maybeSingle()
+        costoVenta += ((stk as any)?.costo||0) * (it.c||1)
+      }
+    }
+    await supabase.from('ventas').insert({
+      fecha: todayStr(),
+      descripcion: `${esFce?'FCE':'FA'}-${pvStr}-${nroStr} - Sancor Seguros`,
+      precio: total, costo: costoVenta||null, pendiente: true,
+      comprobante_id: comp.id,
+      pago: 'Cuenta corriente', cliente: 'Sancor Seguros',
+      origen: 'compra', user_id: userId,
+    })
     // 5) Marcar OS
     const errsOS: string[] = []
     for (const id of selIds) {
@@ -771,21 +794,21 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         <>
                           {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
                             <button onClick={async()=>{
-                              if (!confirm('¿Retirar el vidrio? Esto devolverá las unidades al stock.')) return
+                              if (!confirm('¿Retirar los productos? Esto devolverá al stock todas las unidades con stock vinculado de esta OS.')) return
                               const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
                               const fecha = todayStr()
                               for (const it of stockItems) {
                                 const { error: errRet } = await supabase.rpc('insertar_movimiento_stock', {
                                   p_stock_id: it.stock_id, p_tipo: 'entrada',
                                   p_cantidad: it.c||1, p_fecha: fecha,
-                                  p_descripcion: `Retiro vidrio OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                                  p_descripcion: `Retiro productos OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
                                   p_user_id: userId,
                                 })
                                 if (errRet) { alert(`⚠ Error al devolver stock: ${errRet.message}`); return }
                               }
                               await supabase.from('ordenes_servicio').update({ cristal_colocado: false }).eq('id', o.id)
                               load()
-                            }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Retirar vidrio</button>
+                            }} style={{...btnSm,background:'#f59e0b',color:'#fff'}}>↩ Retirar productos</button>
                           )}
                           {o.aseguradora==='Sancor Seguros' ? (
                             <button onClick={()=>{ setFactManualModal(o);setFactManualForm({cae:'',nro:'',pv:'',vto:'',fecha:todayStr()}) }}
