@@ -122,6 +122,26 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
   async function guardar() {
     if(!form.dest_nombre.trim()) { alert('Ingresá el destinatario.'); return }
     if(items.length === 0) { alert('Agregá al menos un artículo.'); return }
+    // REGLA: un remito de salida mueve mercadería física — todo item debe tener
+    // stock vinculado y cantidad suficiente. Nada de emitir sin mover stock.
+    if (!editRemito) {
+      const sinStock = items.filter(it=>!it.stock_id)
+      if (sinStock.length) {
+        alert(`⛔ Estos artículos no están en stock (solo en catálogo):\n${sinStock.map(it=>`· ${it.codigo||''} ${it.d}`).join('\n')}\n\nCargalos en Stock primero (o quitalos del remito).`)
+        return
+      }
+      const ids = items.map(it=>it.stock_id!)
+      const { data: stkRows } = await supabase.from('stock').select('id,codigo,descripcion,cantidad').in('id', ids)
+      const faltantes = items.map(it=>{
+        const s = (stkRows??[]).find((r:any)=>r.id===it.stock_id)
+        const disp = s ? Number(s.cantidad) : 0
+        return disp < it.c ? `· ${it.codigo||s?.codigo||''} ${it.d}: pedís ${it.c}, hay ${disp}` : null
+      }).filter(Boolean)
+      if (faltantes.length) {
+        alert(`⛔ Stock insuficiente:\n${faltantes.join('\n')}\n\nAjustá cantidades o cargá mercadería antes de remitir.`)
+        return
+      }
+    }
     setGuardando(true)
 
     const payload = {
@@ -146,7 +166,7 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
       generarPDF(updated as any)
     } else {
       // Nuevo — descontar stock
-      const { data: remito } = await supabase.from('remitos_salida').insert(payload).select('id,numero').single()
+      const { data: remito, error: errRemito } = await supabase.from('remitos_salida').insert(payload).select('id,numero').single()
       if(remito) {
         for(const it of items) {
           if(it.stock_id) {
@@ -164,7 +184,7 @@ export default function RemitosSalidaClient({ userId }:{ userId:string }) {
         await load()
         generarPDF({ ...payload, id:remito.id, numero:remito.numero, created_at:new Date().toISOString() } as any)
       } else {
-        setGuardando(false); alert('Error al guardar.')
+        setGuardando(false); alert(`⚠ Error al guardar: ${errRemito?.message ?? 'sin detalle'}`)
       }
     }
   }
