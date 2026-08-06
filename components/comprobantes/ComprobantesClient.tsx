@@ -534,9 +534,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // Liberar las OS de la factura original para poder refacturar
     // (el cristal sigue colocado: la NC es contable; lo físico se maneja con "Retirar productos")
+    // Leemos el comprobante fresco de la DB: los items en memoria pueden estar desactualizados
+    const { data: compFresco } = await supabase.from('comprobantes')
+      .select('orden_id,items').eq('id', ncComp.id).maybeSingle()
     const osIdsLiberar = new Set<string>()
-    if (ncComp.orden_id) osIdsLiberar.add(ncComp.orden_id)
-    for (const it of (ncComp.items as any[])) if (it.os_id) osIdsLiberar.add(it.os_id)
+    if ((compFresco as any)?.orden_id) osIdsLiberar.add((compFresco as any).orden_id)
+    else if (ncComp.orden_id) osIdsLiberar.add(ncComp.orden_id)
+    for (const it of (((compFresco as any)?.items ?? ncComp.items) as any[])) if (it.os_id) osIdsLiberar.add(it.os_id)
     if (osIdsLiberar.size > 0) {
       await supabase.from('ordenes_servicio')
         .update({ convertido_comp: false, estado: 'realizado' })
