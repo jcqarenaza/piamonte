@@ -164,7 +164,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const diferencia  = total - totalPagado
 
   useEffect(() => {
-    supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
+    supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
@@ -420,7 +420,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     setNdComp(null); setNdConcepto(''); setNdMonto(''); setNdIvaOn(true)
     setNdLoading(false)
-    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false})
+    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
     setComps(comps2??[])
   }
   const [caeLoading, setCaeLoading] = useState<string|null>(null)
@@ -562,7 +562,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     setNcComp(null)
     setNcLoading(false)
-    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false})
+    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
     setComps(comps2??[])
   }
 
@@ -677,7 +677,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
     setTimeout(()=>setToast(''), 5000)
     setCaeLoading(null)
-    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false})
+    const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
     setComps(comps2??[])
   }
 
@@ -925,7 +925,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setOidParam(null)
     if (volverAOS) { router.push('/ordenes'); return }
     router.push('/comprobantes')
-    const {data}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false})
+    const {data}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
     setComps(data??[])
     setSaving(false)
   }
