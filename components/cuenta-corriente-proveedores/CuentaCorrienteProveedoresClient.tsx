@@ -954,24 +954,19 @@ export default function CuentaCorrienteProveedoresClient() {
                     {(() => {
                       const disponibles = chequesDisp.filter(ch=>!chequesSelIds.has(ch.id) && (!chequeQ||ch.numero?.includes(chequeQ.replace(/\s/g,''))))
                       return disponibles.length > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <select value={chequeSelId} onChange={e=>setChequeSelId(e.target.value)}
-                            className="flex-1 border border-p-line rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
-                            <option value="">— Elegir cheque —</option>
-                            {disponibles.map(ch=>(
-                              <option key={ch.id} value={ch.id}>
-                                {ch.numero} · vto {ch.fecha_cobro?.split('-').reverse().join('/')} · ${Number(ch.monto).toLocaleString('es-AR')}
-                              </option>
-                            ))}
-                          </select>
-                          <button onClick={()=>{
-                              if (!chequeSelId) return
-                              setChequesSelIds(prev=>new Set(prev).add(chequeSelId))
-                              setChequeSelId('')
-                            }}
-                            disabled={!chequeSelId}
-                            className="bg-p-green text-white text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-40">+ Agregar</button>
-                        </div>
+                        <select value=""
+                          onChange={e=>{
+                            if (!e.target.value) return
+                            setChequesSelIds(prev=>new Set(prev).add(e.target.value))
+                          }}
+                          className="border border-p-line rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                          <option value="">— Elegir cheque para agregar —</option>
+                          {disponibles.map(ch=>(
+                            <option key={ch.id} value={ch.id}>
+                              {ch.numero} · vto {ch.fecha_cobro?.split('-').reverse().join('/')} · ${Number(ch.monto).toLocaleString('es-AR')}
+                            </option>
+                          ))}
+                        </select>
                       ) : chequesSelIds.size === 0 ? (
                         <p className="text-xs text-p-ink2">No hay cheques disponibles emitidos a este proveedor.</p>
                       ) : null
