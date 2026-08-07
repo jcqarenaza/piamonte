@@ -979,9 +979,10 @@ export default function CuentaCorrienteProveedoresClient() {
                       <Input value={chComposer.numero} onChange={e=>setChComposer(p=>({...p,numero:e.target.value}))} placeholder="65715343"/>
                     </Field>
                     <Field label="Cuenta">
-                      <Select value={chComposer.cuenta_id} onChange={e=>setChComposer(p=>({...p,cuenta_id:e.target.value}))}>
+                      <select value={chComposer.cuenta_id} onChange={e=>setChComposer(p=>({...p,cuenta_id:e.target.value}))}
+                        className="w-full border border-p-line rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-p-green">
                         {cuentasPropias.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo}</option>)}
-                      </Select>
+                      </select>
                     </Field>
                     <Field label="Monto $">
                       <Input value={chComposer.monto} onChange={e=>setChComposer(p=>({...p,monto:e.target.value}))} placeholder="1456086.50"/>
