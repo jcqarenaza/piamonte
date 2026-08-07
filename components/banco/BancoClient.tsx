@@ -2,7 +2,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
-import { moneyARS, todayStr } from '@/lib/utils/format'
+import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
+
+// Parseo robusto de montos: acepta "1234.56", "1234,56" y "1.234,56"
+function parseMonto(s: string): number {
+  const t = String(s ?? '').trim()
+  if (!t) return 0
+  if (t.includes(',')) return parseFloat(t.replace(/\./g,'').replace(',','.')) || 0
+  return parseFloat(t) || 0
+}
 import { useDolar } from '@/components/dolar/DolarBar'
 
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -84,7 +92,7 @@ export default function BancoClient() {
 
   async function guardarMov() {
     if (!selCuenta||!formMov.monto||!formMov.concepto) return
-    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:+formMov.monto, origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
+    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:parseMonto(formMov.monto), origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
     if (editMovId) await supabase.from('movimientos_banco').update(payload).eq('id',editMovId)
     else await supabase.from('movimientos_banco').insert(payload)
     setMovModal(false); if(selCuenta) loadMovs(selCuenta)
@@ -94,7 +102,7 @@ export default function BancoClient() {
     if (!selCuenta||!formTransf.monto||!formTransf.concepto) return
     setSavingTransf(true)
     try {
-      const monto = +formTransf.monto
+      const monto = parseMonto(formTransf.monto)
       // Débito en cuenta origen
       await supabase.from('movimientos_banco').insert({
         cuenta_id: selCuenta.id,

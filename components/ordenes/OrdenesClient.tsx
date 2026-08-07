@@ -54,7 +54,56 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   // Aseguradoras — cargadas desde la base, no hardcodeadas, para que se puedan agregar nuevas
   // (Allianz, Mapfre, etc.) sin tocar código, y siempre desde un registro real, no texto libre.
   const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])
-  const [colaboradores, setColaboradores] = useState<{id:string;nombre:string}[]>([])
+  const [colaboradores, setColaboradores] = useState<{id:string;nombre:string;es_colocador?:boolean}[]>([])
+  // ── Envío a colocador externo (tercerización de colocación) ──
+  const [colocModal, setColocModal] = useState(false)
+  const [colocSel, setColocSel] = useState('')            // colaborador colocador elegido
+  const [colocOSSel, setColocOSSel] = useState<Record<string,boolean>>({})
+  const [colocEnviando, setColocEnviando] = useState(false)
+
+  // OS candidatas: con items de stock, cristal no colocado, no enviadas ya a colocador
+  const colocCandidatas = ordenes.filter((o:any) =>
+    !o.cristal_colocado && !o.stock_via_remito && !o.convertido_comp &&
+    (o.items||[]).some((it:any)=>it.stock_id))
+
+  async function confirmarEnvioColocador() {
+    const colocador = colaboradores.find(c=>c.id===colocSel)
+    if (!colocador) { alert('Elegí el colocador.'); return }
+    const osSel = colocCandidatas.filter((o:any)=>colocOSSel[o.id])
+    if (!osSel.length) { alert('Seleccioná al menos una OS.'); return }
+    const itemsRemito = osSel.flatMap((o:any)=>(o.items||[]).filter((it:any)=>it.stock_id).map((it:any)=>({
+      d: `${it.d} — OT-${String(o.numero).padStart(4,'0')} ${o.cliente||''}`.trim(),
+      c: it.c||1, codigo: it.codigo||null, stock_id: it.stock_id, os_id: o.id,
+    })))
+    if (!confirm(`Se va a generar UN remito a ${colocador.nombre} con ${itemsRemito.length} artículo(s) de ${osSel.length} OS.\nEl stock se descuenta AHORA (salida física del depósito). Al marcar las OS como colocadas, NO se vuelve a descontar.\n¿Confirmás?`)) return
+    setColocEnviando(true)
+    // 1) Remito consolidado
+    const { data: remito, error: errRem } = await supabase.from('remitos_salida').insert({
+      fecha: todayStr(), destinatario_nombre: colocador.nombre,
+      tipo_destinatario: 'colocador',
+      items: itemsRemito, estado: 'emitido',
+      notas: `Envío a colocador — ${osSel.map((o:any)=>`OS-${String(o.numero).padStart(4,'0')}`).join(', ')}`,
+      user_id: userId,
+    }).select('id,numero').single()
+    if (errRem || !remito) { alert(`⚠ Error al crear el remito: ${errRem?.message}`); setColocEnviando(false); return }
+    // 2) Descontar stock (única vez, acá — la colocación después no re-descuenta)
+    const errsStk: string[] = []
+    for (const it of itemsRemito) {
+      const { error: errS } = await supabase.rpc('insertar_movimiento_stock', {
+        p_stock_id: it.stock_id, p_tipo: 'salida', p_cantidad: it.c, p_fecha: todayStr(),
+        p_descripcion: `Remito R-${String(remito.numero||0).padStart(4,'0')} a colocador ${colocador.nombre}`,
+        p_user_id: userId,
+      })
+      if (errS) errsStk.push(`${it.codigo||it.d}: ${errS.message}`)
+    }
+    if (errsStk.length) alert(`⚠ Remito creado pero ${errsStk.length} item(s) no descontaron stock:\n${errsStk.join('\n')}\nRevisalos a mano.`)
+    // 3) Marcar OS: stock ya salió por remito + asignar colocador
+    await supabase.from('ordenes_servicio')
+      .update({ stock_via_remito: true, colaborador_id: colocador.id })
+      .in('id', osSel.map((o:any)=>o.id))
+    alert(`✓ Remito R-${String(remito.numero||0).padStart(4,'0')} generado para ${colocador.nombre}.\nImprimilo desde la pantalla de Remitos.`)
+    setColocEnviando(false); setColocModal(false); setColocOSSel({}); load()
+  }
   // Factura manual (Sancor)
   const [factManualModal, setFactManualModal] = useState<any|null>(null)
   const [sancorModal, setSancorModal] = useState(false)
@@ -125,7 +174,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
     supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
     supabase.from('aseguradoras').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setAseguradoras(data??[]))
-    supabase.from('colaboradores').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
+    supabase.from('colaboradores').select('id,nombre,es_colocador').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
   }, [supabase])
 
   useEffect(() => { load() }, [load])
@@ -702,6 +751,10 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           {buscarNombre && <button onClick={()=>setBuscarNombre('')} className="text-p-ink2 text-xs hover:text-p-ink">✕</button>}
         </div>
         {esAdmin && <>
+          <button onClick={()=>{ setColocSel(colaboradores.find(c=>c.es_colocador)?.id||''); setColocOSSel({}); setColocModal(true) }}
+            className="bg-amber-500 hover:bg-amber-600 text-white font-saira font-bold text-sm px-4 py-2 rounded-xl transition-colors">
+            🚚 A colocador
+          </button>
           <button onClick={abrirSancor}
             className="bg-purple-600 hover:bg-purple-700 text-white font-saira font-bold text-sm px-4 py-2 rounded-xl transition-colors">
             🏢 Factura Sancor
@@ -760,6 +813,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   )}
                   {(o as any).cristal_colocado && (
                     <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">🔩 Colocada ✓</span>
+                  )}
+                  {(o as any).stock_via_remito && !(o as any).cristal_colocado && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">🚚 En colocador</span>
                   )}
                   {(() => {
                     const colab = colaboradores.find(c => c.id === (o as any).colaborador_id)
@@ -833,17 +889,22 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         <>
                           {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
                             <button onClick={async()=>{
-                              if (!confirm('¿Confirmar cristal colocado? Esto descontará el stock.')) return
-                              const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
-                              const fecha = todayStr()
-                              for (const it of stockItems) {
-                                const { error: errStockOS } = await supabase.rpc('insertar_movimiento_stock', {
-                                  p_stock_id: it.stock_id, p_tipo: 'salida',
-                                  p_cantidad: it.c||1, p_fecha: fecha,
-                                  p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
-                                  p_user_id: userId,
-                                })
-                                if (errStockOS) { alert(`⚠ Error al descontar stock: ${errStockOS.message}`); return }
+                              const viaRemito = !!(o as any).stock_via_remito
+                              if (!confirm(viaRemito
+                                ? '¿Confirmar cristal colocado? El stock ya salió por remito al colocador — NO se descuenta de nuevo.'
+                                : '¿Confirmar cristal colocado? Esto descontará el stock.')) return
+                              if (!viaRemito) {
+                                const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
+                                const fecha = todayStr()
+                                for (const it of stockItems) {
+                                  const { error: errStockOS } = await supabase.rpc('insertar_movimiento_stock', {
+                                    p_stock_id: it.stock_id, p_tipo: 'salida',
+                                    p_cantidad: it.c||1, p_fecha: fecha,
+                                    p_descripcion: `Colocado OT-${String((o as any).numero||0).padStart(4,'0')} · ${o.aseguradora||o.cliente||''}`,
+                                    p_user_id: userId,
+                                  })
+                                  if (errStockOS) { alert(`⚠ Error al descontar stock: ${errStockOS.message}`); return }
+                                }
                               }
                               await supabase.from('ordenes_servicio').update({ cristal_colocado: true }).eq('id', o.id)
                               load()
@@ -1186,6 +1247,40 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               }).eq('id', factManualModal.id)
               setFactManualModal(null); load()
             }} style={{...btn,background:'#7c3aed'}}>✓ Registrar factura</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Envío a colocador externo */}
+      <Modal open={colocModal} onClose={()=>setColocModal(false)} title="🚚 Enviar a colocador">
+        <div className="flex flex-col gap-3">
+          <Field label="Colocador">
+            <Select value={colocSel} onChange={e=>setColocSel(e.target.value)}>
+              <option value="">— Elegir colocador —</option>
+              {colaboradores.filter(c=>c.es_colocador).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </Select>
+          </Field>
+          {colaboradores.filter(c=>c.es_colocador).length===0 && (
+            <p className="text-xs" style={{color:'#b45309'}}>No hay colaboradores marcados como colocador — tildá "colocador" en la ficha del colaborador.</p>
+          )}
+          <p className="text-[11px] text-p-ink2">Seleccioná las OS: se genera <b>un solo remito</b> con todos los vidrios, el stock se descuenta ahora (salida del depósito) y al marcar "Colocada" no se vuelve a descontar.</p>
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+            {colocCandidatas.length===0 && <p className="text-xs text-p-ink2">No hay OS con artículos de stock pendientes de colocar.</p>}
+            {colocCandidatas.map((o:any)=>(
+              <label key={o.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer ${colocOSSel[o.id]?'border-amber-400 bg-amber-50':'border-p-line'}`}>
+                <input type="checkbox" checked={!!colocOSSel[o.id]} onChange={e=>setColocOSSel(p=>({...p,[o.id]:e.target.checked}))}/>
+                <span className="text-sm font-semibold shrink-0">OS-{String(o.numero).padStart(4,'0')}</span>
+                <span className="text-xs text-p-ink2 truncate">{o.cliente} · {o.vehiculo||''} {o.aseguradora?`· ${o.aseguradora}`:''}</span>
+                <span className="ml-auto text-[10px] font-mono text-p-ink2 shrink-0">{(o.items||[]).filter((it:any)=>it.stock_id).map((it:any)=>it.codigo).join(', ')}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setColocModal(false)} style={btnGray}>Cancelar</button>
+            <button onClick={confirmarEnvioColocador} disabled={colocEnviando}
+              style={{...btn,background:'#f59e0b',opacity:colocEnviando?.6:1}}>
+              {colocEnviando?'Generando…':'🚚 Generar remito y enviar'}
+            </button>
           </div>
         </div>
       </Modal>

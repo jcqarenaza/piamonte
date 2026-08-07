@@ -46,6 +46,11 @@ export default function CuentaCorrienteProveedoresClient() {
   const [ajustesPendNC, setAjustesPendNC] = useState<any[]>([])
   const [ordenesPago, setOrdenesPago] = useState<any[]>([])
   const [opItemsCache, setOpItemsCache] = useState<Record<string, any[]>>({})
+  // ── Cheques nuevos en serie dentro de la OP ──
+  const CUENTA_PAMPA_CC = 'e7369b4b-4697-44ca-9303-a077a877e643'
+  const [cuentasPropias, setCuentasPropias] = useState<any[]>([])
+  const [opChequesNuevos, setOpChequesNuevos] = useState<any[]>([])
+  const [chComposer, setChComposer] = useState({ numero:'', cuenta_id: CUENTA_PAMPA_CC, monto:'', fecha_cobro:'', formato:'fisico', modalidad:'diferido' })
   const [verOPs, setVerOPs] = useState<string|null>(null)
   const [borrandoOp, setBorrandoOp] = useState<string|null>(null)
   const [vistaMovs, setVistaMovs] = useState(false)  // false=saldos, true=movimientos
@@ -88,6 +93,11 @@ export default function CuentaCorrienteProveedoresClient() {
         .or(`proveedor_id.eq.${sel.proveedor_id},contraparte.ilike.${sel.proveedor_nombre}`)
         .in('estado',['emitido','pendiente']).order('fecha_cobro')
         .then(({data})=>setChequesDisp((data??[]).filter((ch:any)=>!(ch.notas||'').startsWith('Orden de Pago'))))
+      // Cuentas bancarias propias para elegir de dónde sale cada cheque nuevo
+      supabase.from('cuentas_banco').select('id,banco,tipo').eq('activo',true).order('banco')
+        .then(({data})=>setCuentasPropias(data??[]))
+      setOpChequesNuevos([])
+      setChComposer({ numero:'', cuenta_id: CUENTA_PAMPA_CC, monto:'', fecha_cobro:'', formato:'fisico', modalidad:'diferido' })
       // NC pendientes: fuente única = ajustes_stock.pendiente_nc (la misma que usa el modal de Compras).
       // Se muestran TODOS los pendientes, tengan monto o no.
       supabase.from('ajustes_stock')
@@ -230,15 +240,31 @@ export default function CuentaCorrienteProveedoresClient() {
 
   async function abrirOrdenPago() {
     if (!sel) return
-    const { data } = await supabase.from('comprobantes_compra')
-      .select('id,tipo,letra,punto_venta,numero,fecha,total')
+    // Fuente de verdad: la vista de imputación (no el flag saldado, que puede quedar
+    // desincronizado con pagos parciales u OPs viejas). Cada factura se ofrece por
+    // su PENDIENTE real según la vista.
+    const { data: vrows } = await supabase.from('vista_cc_saldos_detalle')
+      .select('comprobante_compra_id,monto,tipo')
       .eq('proveedor_id', sel.proveedor_id)
-      .in('tipo', ['factura','nc'])
-      .eq('saldado', false)
-      .neq('estado', 'anulado')
-      .or('tipo.eq.nc,es_contado.eq.false')
-      .order('fecha')
-    setPendientes(data ?? [])
+    const pendPorComp: Record<string, number> = {}
+    for (const r of (vrows??[]) as any[]) {
+      if (r.comprobante_compra_id && r.tipo !== 'credito' && +r.monto >= 1)
+        pendPorComp[r.comprobante_compra_id] = (pendPorComp[r.comprobante_compra_id]||0) + +r.monto
+    }
+    const idsPend = Object.keys(pendPorComp)
+    let facturas: any[] = []
+    if (idsPend.length) {
+      const { data: fs } = await supabase.from('comprobantes_compra')
+        .select('id,tipo,letra,punto_venta,numero,fecha,total')
+        .in('id', idsPend).neq('estado','anulado').order('fecha')
+      facturas = (fs??[]).map((f:any)=>({ ...f, total: pendPorComp[f.id] ?? f.total }))
+    }
+    // NC del proveedor aún no aplicadas
+    const { data: ncs } = await supabase.from('comprobantes_compra')
+      .select('id,tipo,letra,punto_venta,numero,fecha,total')
+      .eq('proveedor_id', sel.proveedor_id).eq('tipo','nc')
+      .eq('saldado', false).neq('estado','anulado').order('fecha')
+    setPendientes([...facturas.filter((f:any)=>f.tipo==='factura'), ...(ncs??[])])
     setSeleccion({})
     setOpForm({ fecha: new Date().toISOString().slice(0,10), notas:'' })
     setOpPagos([{tipo:'Transferencia',monto:'',chequeSelId:'',chequeQ:'',chequeNuevo:EMPTY_CHEQUE}])
@@ -268,13 +294,15 @@ export default function CuentaCorrienteProveedoresClient() {
     // Descripción de formas de pago
     const chequesSelArr = chequesDisp.filter(ch=>chequesSelIds.has(ch.id))
     const partesCheques = chequesSelArr.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
+    const partesNuevos = opChequesNuevos.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
     const partesOtros = opPagos.filter(p=>p.monto).map(p=>`${p.tipo} $${Number(p.monto).toLocaleString('es-AR')}`)
-    const formasPagoDesc = [...partesCheques, ...partesOtros].join(' + ') || 'Sin especificar'
+    const formasPagoDesc = [...partesCheques, ...partesNuevos, ...partesOtros].join(' + ') || 'Sin especificar'
 
     // total_pagado = suma real de medios de pago (cheques + otros), NO facturas - NC
     const totalChequesSel = chequesSelArr.reduce((a,ch)=>a+(+ch.monto),0)
+    const totalNuevosSel = opChequesNuevos.reduce((a,ch)=>a+(parseFloat(ch.monto)||0),0)
     const totalOtrosSel = opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0)
-    const totalMedioPago = totalChequesSel + totalOtrosSel
+    const totalMedioPago = totalChequesSel + totalNuevosSel + totalOtrosSel
 
     const { data: mov } = await supabase.from('cuenta_corriente_proveedores').insert({
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
@@ -332,6 +360,33 @@ export default function CuentaCorrienteProveedoresClient() {
             notas: `Orden de Pago Nº ${numero}`,
           })
         }
+      }
+    }
+
+    // Registrar la SERIE de cheques nuevos — el débito va a la cuenta elegida por cheque
+    for (const ch of opChequesNuevos) {
+      const montoCh = parseFloat(ch.monto) || 0
+      const cta = cuentasPropias.find(c=>c.id===ch.cuenta_id)
+      const { data: chIns } = await supabase.from('cheques').insert({
+        tipo:'propio', formato:ch.formato, modalidad:ch.modalidad,
+        numero: ch.numero, banco: cta?.banco || 'Banco de La Pampa',
+        cuenta_id: ch.cuenta_id,
+        fecha_emision: fechaOp, fecha_cobro: ch.fecha_cobro,
+        monto: montoCh, contraparte: sel.proveedor_nombre, estado:'emitido',
+        proveedor_id: sel.proveedor_id,
+        notas: `Orden de Pago Nº ${numero}`,
+      }).select('id').single()
+      if (chIns?.id) {
+        await supabase.from('movimientos_banco').insert({
+          cuenta_id: ch.cuenta_id,
+          fecha: ch.fecha_cobro,
+          tipo: 'debito',
+          concepto: `Cheque N° ${ch.numero} — ${sel.proveedor_nombre} (OP Nº ${numero})`,
+          monto: montoCh,
+          origen_tipo: 'cheque_emitido',
+          cheque_id: chIns.id,
+          notas: `Orden de Pago Nº ${numero}`,
+        })
       }
     }
 
@@ -903,7 +958,53 @@ export default function CuentaCorrienteProveedoresClient() {
                   </div>
                 )}
 
-                {/* ── Otras formas de pago (transferencia, efectivo, cheque nuevo) ── */}
+                {/* ── Cheques nuevos en serie ── */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">🖊 Cheques nuevos</p>
+                  {opChequesNuevos.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      {opChequesNuevos.map((ch,i)=>(
+                        <div key={i} className="flex items-center gap-2 border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 text-xs">
+                          <span className="font-mono font-bold">{ch.numero}</span>
+                          <span className="text-p-ink2">{cuentasPropias.find(c=>c.id===ch.cuenta_id)?.banco||''}</span>
+                          <span className="text-p-ink2">vto {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
+                          <span className="ml-auto font-mono font-bold">{moneyARS(+ch.monto)}</span>
+                          <button onClick={()=>setOpChequesNuevos(p=>p.filter((_,x)=>x!==i))} className="text-red-400 hover:text-red-600 font-bold px-1">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-2.5 grid grid-cols-2 gap-2">
+                    <Field label="N° cheque">
+                      <Input value={chComposer.numero} onChange={e=>setChComposer(p=>({...p,numero:e.target.value}))} placeholder="65715343"/>
+                    </Field>
+                    <Field label="Cuenta">
+                      <Select value={chComposer.cuenta_id} onChange={e=>setChComposer(p=>({...p,cuenta_id:e.target.value}))}>
+                        {cuentasPropias.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Monto $">
+                      <Input value={chComposer.monto} onChange={e=>setChComposer(p=>({...p,monto:e.target.value}))} placeholder="1456086.50"/>
+                    </Field>
+                    <Field label="Fecha de cobro">
+                      <Input type="date" value={chComposer.fecha_cobro} onChange={e=>setChComposer(p=>({...p,fecha_cobro:e.target.value}))}/>
+                    </Field>
+                    <button onClick={()=>{
+                        if (!chComposer.numero || !parseFloat(chComposer.monto) || !chComposer.fecha_cobro) { alert('Completá número, monto y fecha de cobro.'); return }
+                        setOpChequesNuevos(p=>[...p,{...chComposer}])
+                        // Precargar el siguiente de la serie: mismos datos, número +1, vencimiento +1 mes
+                        const sigNum = /^\d+$/.test(chComposer.numero) ? String(BigInt(chComposer.numero)+BigInt(1)).padStart(chComposer.numero.length,'0') : ''
+                        const vto = new Date(chComposer.fecha_cobro+'T12:00:00'); vto.setMonth(vto.getMonth()+1)
+                        setChComposer(p=>({...p, numero: sigNum, fecha_cobro: vto.toISOString().slice(0,10)}))
+                      }}
+                      className="col-span-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg py-2">
+                      + Agregar cheque a la serie
+                    </button>
+                    <p className="col-span-2 text-[10px] text-p-ink2">Al agregar, el próximo queda precargado con el número siguiente y el vencimiento un mes después — editá lo que haga falta.</p>
+                  </div>
+                </div>
+
+                {/* ── Otras formas de pago (transferencia, efectivo) ── */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Otras formas de pago</p>
@@ -917,7 +1018,6 @@ export default function CuentaCorrienteProveedoresClient() {
                           className="border border-p-line rounded-lg px-2 py-1.5 text-sm bg-white flex-1 focus:outline-none focus:border-p-green">
                           <option value="Transferencia">Transferencia</option>
                           <option value="Efectivo">Efectivo</option>
-                          <option value="Cheque nuevo">🖊 Cheque nuevo</option>
                         </select>
                         <input value={pago.monto} onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],monto:e.target.value};setOpPagos(v)}}
                           placeholder="Monto $" className="border border-p-line rounded-lg px-2 py-1.5 text-sm w-32 font-mono focus:outline-none focus:border-p-green"/>
@@ -935,8 +1035,9 @@ export default function CuentaCorrienteProveedoresClient() {
                 {/* ── Resumen total ── */}
                 {(() => {
                   const totalCheques = chequesDisp.filter(ch=>chequesSelIds.has(ch.id)).reduce((a,ch)=>a+(+ch.monto),0)
+                  const totalNuevos = opChequesNuevos.reduce((a,ch)=>a+(parseFloat(ch.monto)||0),0)
                   const totalOtros = opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0)
-                  const totalCargado = totalCheques + totalOtros
+                  const totalCargado = totalCheques + totalNuevos + totalOtros
                   const diff = Math.abs(totalCargado - totalAPagar)
                   return (totalCheques > 0 || totalOtros > 0) ? (
                     <div className={`flex justify-between text-sm px-1 font-bold ${diff < 1 ? 'text-green-600' : 'text-amber-600'}`}>

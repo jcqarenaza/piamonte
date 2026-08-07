@@ -69,6 +69,9 @@ export default function ChequesClient({ userId }: { userId?: string }) {
   const [form, setForm]         = useState(emptyForm)
   // Bancos desde la DB
   const [bancos, setBancos]     = useState<string[]>(BANCOS_DEFAULT)
+  const CUENTA_PAMPA_CC = 'e7369b4b-4697-44ca-9303-a077a877e643'
+  const [cuentasPropias, setCuentasPropias] = useState<any[]>([])
+  const [formCuentaId, setFormCuentaId] = useState<string>(CUENTA_PAMPA_CC)
   const [bancosModal, setBancosModal] = useState(false)
   const [nuevoBanco, setNuevoBanco]   = useState('')
   const [impactoModal, setImpactoModal] = useState(false)
@@ -83,14 +86,16 @@ export default function ChequesClient({ userId }: { userId?: string }) {
 
   async function load() {
     setLoading(true)
-    const [{ data: chData }, { data: bData }, { data: provData }] = await Promise.all([
+    const [{ data: chData }, { data: bData }, { data: provData }, { data: ctasData }] = await Promise.all([
       supabase.from('cheques').select('*').order('fecha_cobro').order('created_at',{ascending:false}),
       supabase.from('bancos_cheque').select('nombre').eq('activo',true).order('nombre'),
       supabase.from('proveedores_compra').select('id,nombre').eq('activo',true).order('nombre'),
+      supabase.from('cuentas_banco').select('id,banco,tipo').eq('activo',true).order('banco'),
     ])
     setCheques(chData??[])
     if (bData && bData.length > 0) setBancos(bData.map(b=>b.nombre))
     setProveedores(provData??[])
+    setCuentasPropias(ctasData??[])
     setLoading(false)
   }
   useEffect(()=>{ load() },[])
@@ -132,12 +137,14 @@ export default function ChequesClient({ userId }: { userId?: string }) {
     }
     // Vincular proveedor real: si la contraparte matchea un proveedor del selector, guardar su id
     const provMatch = proveedores.find(p => p.nombre === form.contraparte)
+    const montoNum = (()=>{ const t=String(form.monto).trim(); return t.includes(',') ? (parseFloat(t.replace(/\./g,'').replace(',','.'))||0) : (parseFloat(t)||0) })()
     const payload = {
       tipo:form.tipo, modalidad:form.modalidad, formato:form.formato,
       numero:form.numero, banco:form.banco,
+      cuenta_id: form.tipo==='propio' ? formCuentaId : null,
       fecha_emision:form.fecha_emision,
       fecha_cobro:form.modalidad==='al_dia'?form.fecha_emision:form.fecha_cobro,
-      monto:+form.monto, contraparte:form.contraparte||null,
+      monto:montoNum, contraparte:form.contraparte||null,
       proveedor_id: provMatch?.id ?? null,
       estado:form.estado, destino:form.destino||null, notas:form.notas||null,
       updated_at:new Date().toISOString()
@@ -146,15 +153,15 @@ export default function ChequesClient({ userId }: { userId?: string }) {
       await supabase.from('cheques').update(payload).eq('id',editId)
     } else {
       const { data: chequeIns } = await supabase.from('cheques').insert(payload).select('id').single()
-      // Si es cheque propio nuevo → débito automático en CC Banco de La Pampa
+      // Si es cheque propio nuevo → débito automático en la cuenta ELEGIDA
       // (fecha del débito = fecha de cobro: es cuando golpea la cuenta, y es la fecha del extracto)
       if (form.tipo === 'propio' && chequeIns?.id) {
         await supabase.from('movimientos_banco').insert({
-          cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
+          cuenta_id: formCuentaId,
           fecha: payload.fecha_cobro,
           tipo: 'debito',
           concepto: `Cheque propio N° ${form.numero}${form.contraparte ? ` — ${form.contraparte}` : ''}`,
-          monto: +form.monto,
+          monto: montoNum,
           origen_tipo: 'cheque_emitido',
           cheque_id: chequeIns.id,
           notas: form.notas || null,
@@ -473,11 +480,22 @@ export default function ChequesClient({ userId }: { userId?: string }) {
                 <option value="diferido">Diferido</option>
               </select>
             </Field>
-            <Field label="Banco *">
-              <select value={form.banco} onChange={e=>setForm(p=>({...p,banco:e.target.value}))}
-                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
-                {bancos.map(b=><option key={b}>{b}</option>)}
-              </select>
+            <Field label={form.tipo==='propio' ? 'Cuenta (de dónde sale) *' : 'Banco *'}>
+              {form.tipo==='propio' ? (
+                <select value={formCuentaId} onChange={e=>{
+                    setFormCuentaId(e.target.value)
+                    const cta = cuentasPropias.find(c=>c.id===e.target.value)
+                    if (cta) setForm(p=>({...p,banco:cta.banco}))
+                  }}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                  {cuentasPropias.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo}</option>)}
+                </select>
+              ) : (
+                <select value={form.banco} onChange={e=>setForm(p=>({...p,banco:e.target.value}))}
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                  {bancos.map(b=><option key={b}>{b}</option>)}
+                </select>
+              )}
             </Field>
           </div>
           <Field label="N° de cheque *"><Input value={form.numero} onChange={e=>setForm(p=>({...p,numero:e.target.value}))} placeholder="12345678"/></Field>
