@@ -585,15 +585,88 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       } : undefined
       await solicitarCAE(c, TIPO_CBTE_NC_AFIP[c.tipo], cbteAsoc)
     } else {
-      await solicitarCAE(c)
+      const ok = await solicitarCAE(c)
+      if (ok && c.categoria !== 'nc') await aplicarEfectosPendientes(c)
     }
   }
 
-  async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}) {
+  // Aplica los efectos de una factura que obtuvo CAE en un reintento y había quedado
+  // como borrador sin efectos (orden nuevo: nada se toca hasta tener CAE).
+  // Idempotente: si ya existe la venta del comprobante, no hace nada (cubre borradores viejos).
+  async function aplicarEfectosPendientes(c: Comprobante) {
+    const { count: yaTieneVenta } = await supabase.from('ventas')
+      .select('id', { count:'exact', head:true }).eq('comprobante_id', c.id)
+    if ((yaTieneVenta||0) > 0) return
+    const { data: fresco } = await supabase.from('comprobantes').select('*').eq('id', c.id).maybeSingle()
+    if (!fresco) return
+    const f: any = fresco
+    const itemsF: any[] = f.items || []
+    const pagosF: any[] = f.pagos || []
+    // 1) Stock (salvo OS ya colocada)
+    let yaColocada = false
+    if (f.orden_id) {
+      const { data: osD } = await supabase.from('ordenes_servicio').select('cristal_colocado').eq('id', f.orden_id).maybeSingle()
+      yaColocada = !!(osD as any)?.cristal_colocado
+    }
+    if (!yaColocada) {
+      for (const it of itemsF) {
+        if (it.stock_id && it.c > 0) {
+          const { data: s } = await supabase.from('stock').select('costo').eq('id', it.stock_id).maybeSingle()
+          const notaMov = `F${f.tipo}-0006-${String(f.nro_cbte_afip||f.numero||'').padStart(8,'0')} · ${f.aseguradora_nombre||f.cliente_nombre||''}`
+          const { error: errStk } = await supabase.rpc('insertar_movimiento_stock', {
+            p_stock_id: it.stock_id, p_tipo: 'salida', p_cantidad: it.c,
+            p_costo_unitario: (s as any)?.costo || null,
+            p_precio_venta_unitario: it.p, p_fecha: todayStr(),
+            p_descripcion: notaMov, p_comprobante_venta_id: c.id,
+            p_user_id: userId || null,
+          })
+          if (errStk) alert(`⚠ CAE obtenido, pero falló el descuento de stock de "${it.d}": ${errStk.message}\nAjustalo a mano.`)
+        }
+      }
+    }
+    // 2) Marcar OS
+    if (f.orden_id) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', f.orden_id)
+    // 3) CC (cliente o aseguradora) por los pagos en cuenta corriente
+    const montoCC = pagosF.filter((p:any)=>p.metodo==='Cuenta corriente').reduce((a:number,p:any)=>a+(parseFloat(String(p.monto).replace(/[^0-9.]/g,''))||0),0)
+    const nroDesc = String(f.nro_cbte_afip||f.numero||'').padStart(8,'0')
+    if (f.aseguradora_id && montoCC > 0) {
+      const { count } = await supabase.from('cuenta_corriente_aseguradoras').select('id',{count:'exact',head:true}).eq('comprobante_id', c.id)
+      if ((count||0) === 0) await supabase.from('cuenta_corriente_aseguradoras').insert({
+        aseguradora_id: f.aseguradora_id, fecha: todayStr(), tipo: 'factura',
+        descripcion: `F${f.tipo}-0006-${nroDesc} — ${f.aseguradora_nombre||''}`,
+        debe: montoCC, haber: 0, comprobante_id: c.id, user_id: userId,
+      })
+    } else if (f.cliente_id && montoCC > 0) {
+      await supabase.from('cuenta_corriente').insert({
+        cliente_id: f.cliente_id, cliente_nombre: f.cliente_nombre, fecha: todayStr(),
+        tipo: 'cargo', descripcion: `F${f.tipo}-0006-${nroDesc}`,
+        debe: montoCC, haber: 0, comprobante_id: c.id, user_id: userId,
+      })
+    }
+    // 4) Venta en Facturado del día
+    let costoVenta = 0
+    for (const it of itemsF.filter((x:any)=>x.stock_id)) {
+      const { data: sk } = await supabase.from('stock').select('costo').eq('id', it.stock_id).maybeSingle()
+      costoVenta += ((sk as any)?.costo||0) * (it.c||1)
+    }
+    await supabase.from('ventas').insert({
+      fecha: todayStr(), descripcion: `F${f.tipo}-0006-${nroDesc} - ${f.aseguradora_nombre||f.cliente_nombre||'CF'}`,
+      precio: f.total, costo: costoVenta||null, pendiente: true,
+      comprobante_id: c.id, tipo_cliente_id: f.tipo_cliente_id||null, tipo_cliente_nombre: f.tipo_cliente_nombre||null,
+      pago: montoCC >= f.total*0.9 ? 'Cuenta corriente' : (pagosF.find((p:any)=>p.metodo!=='Cuenta corriente')?.metodo || 'Efectivo'),
+      cliente: f.aseguradora_nombre||f.cliente_nombre||null,
+      origen: 'compra', user_id: userId,
+    })
+    if (pagosF.some((p:any)=>p.metodo==='Cheque')) {
+      alert('ℹ Este comprobante tenía pago con cheque: registrá el cheque a mano en el Libro de Cheques (el detalle no quedó guardado en el borrador).')
+    }
+  }
+
+  async function solicitarCAE(c: Comprobante, tipoCbteOverride?: number, cbteAsoc?: {tipo:number; ptoVta:number; nro:number}): Promise<boolean> {
     setCaeLoading(c.id)
     try {
       const tipoCbte = tipoCbteOverride ?? TIPO_CBTE_AFIP[c.tipo]
-      if (!tipoCbte) { setCaeLoading(null); return }
+      if (!tipoCbte) { setCaeLoading(null); return false }
 
       // Para facturas a aseguradora, el CUIT receptor es el de la aseguradora (no el del asegurado)
       let cuitReceptor = (c.cliente_cuit||'').replace(/[^0-9]/g,'')
@@ -609,7 +682,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if ([1,51].includes(tipoCbte) && cuitReceptor.length !== 11) {
         setToast('⚠ Para emitir Factura A necesitás cargar el CUIT del cliente o la aseguradora (11 dígitos)')
         setTimeout(()=>setToast(''), 5000)
-        setCaeLoading(null); return
+        setCaeLoading(null); return false
       }
       // Exento: neto = total (sin IVA), iva = 0, sin alícuota
       const esExentoComp = c.cliente_tipo_fiscal === 'exento'
@@ -677,16 +750,27 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             .eq('comprobante_venta_id', c.id)
         }
         setToast(`✓ CAE obtenido: ${data.cae} (N° AFIP ${String(data.nro_cbte).padStart(8,'0')})`)
+        setTimeout(()=>setToast(''), 5000)
+        setCaeLoading(null)
+        const {data:compsOk}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
+        setComps(compsOk??[])
+        return true
       } else {
-        setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${data?.error || error?.message || 'error desconocido'}`)
+        // Distinguir: servidor de ARCA caído/no responde vs rechazo del comprobante
+        const msg = data?.error || error?.message || 'error desconocido'
+        const esServidorCaido = !!error || /WSAA HTTP|Failed to fetch|non-2xx|timeout|fetch failed|network/i.test(msg)
+        setToast(esServidorCaido
+          ? `🔌 No funciona el servidor de ARCA — el comprobante quedó guardado sin CAE. Reintentá más tarde desde "Sin CAE".`
+          : `⚠ ARCA rechazó el comprobante: ${msg}`)
       }
     } catch (e: any) {
-      setToast(`⚠ Comprobante guardado, pero sin CAE (AFIP): ${e?.message || 'error de conexión'}`)
+      setToast(`🔌 No funciona el servidor de ARCA — el comprobante quedó guardado sin CAE. Reintentá más tarde desde "Sin CAE". (${e?.message||'sin conexión'})`)
     }
-    setTimeout(()=>setToast(''), 5000)
+    setTimeout(()=>setToast(''), 7000)
     setCaeLoading(null)
     const {data:comps2}=await supabase.from('comprobantes').select('*').eq('es_negro', esNegro).neq('es_manual', true).order('created_at',{ascending:false})
     setComps(comps2??[])
+    return false
   }
 
   async function save(){
@@ -764,18 +848,45 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
-    if (montoCC > 0 && comp) {
-      if (modo==='cliente' && cliEfectivo?.id) {
-        await supabase.from('cuenta_corriente').insert({
-          cliente_id: cliEfectivo.id, cliente_nombre: cliEfectivo.nombre, fecha: todayStr(),
-          tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
-          debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
-        })
-      } else if (modo==='aseguradora' && asegSel?.id) {
-        // CC aseguradoras se inserta post-CAE para usar el nro_cbte_afip real
-        // Guardamos los datos en el comprobante para usarlos después
-        ;(comp as any)._ccAsegPendiente = { aseguradoraId: asegSel.id, monto: montoCC }
+    if (montoCC > 0 && comp && modo==='aseguradora' && asegSel?.id) {
+      // CC aseguradoras se inserta post-CAE para usar el nro_cbte_afip real
+      ;(comp as any)._ccAsegPendiente = { aseguradoraId: asegSel.id, monto: montoCC }
+    }
+
+    // ══ ORDEN NUEVO: primero el CAE, después los efectos ══
+    // Un comprobante electrónico sin CAE no existe fiscalmente — no debe descontar
+    // stock, ni generar venta, ni CC, ni marcar OS. Si ARCA falla, queda como
+    // borrador "Sin CAE" reintentable, sin tocar nada.
+    const esElectronico = !esNegro && ['A','B','C'].includes(tipoDoc())
+    if (esElectronico) {
+      const caeOk = await solicitarCAE(comp as any)
+      if (!caeOk) {
+        // Borrador queda guardado sin efectos. El toast ya explica el motivo
+        // (servidor caído vs rechazo). Cerrar modal y salir.
+        setSaving(false)
+        setOpen(false)
+        setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
+        cambiarModo('cf')
+        setFiscal(emptyFiscal); setObs('')
+        setClienteAseg(''); setSiniestro(''); setOsSelId(null); setRemitoSel(null); setRemitoItemsSel(new Set())
+        setCfNombre(''); setCfTel(''); setCfDni('')
+        setOidParam(null)
+        router.push('/comprobantes')
+        return
       }
+      // Traer el N° AFIP y CAE recién asignados para usarlos en las descripciones de los efectos
+      const { data: compFresco } = await supabase.from('comprobantes')
+        .select('nro_cbte_afip,cae_emitido,cae_vencimiento').eq('id', (comp as any).id).maybeSingle()
+      if (compFresco) Object.assign(comp as any, compFresco)
+    }
+
+    // ══ EFECTOS (solo con CAE obtenido, o comprobantes no electrónicos) ══
+    if (montoCC > 0 && comp && modo==='cliente' && cliEfectivo?.id) {
+      await supabase.from('cuenta_corriente').insert({
+        cliente_id: cliEfectivo.id, cliente_nombre: cliEfectivo.nombre, fecha: todayStr(),
+        tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
+        debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
+      })
     }
 
     // Cheques: si algún pago fue con cheque, registrarlo en el libro como cheque de tercero "en cartera"
@@ -888,7 +999,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
       const letraDoc = tipoDoc()
       const prefijo = esNegro ? 'Venta' : `F${letraDoc}`
-      const nroFormateado = `${prefijo}-0006-${String(nextNum).padStart(8,'0')}`
+      const nroParaDesc = (comp as any).nro_cbte_afip || nextNum
+      const nroFormateado = `${prefijo}-0006-${String(nroParaDesc).padStart(8,'0')}`
       // Determinar método de pago principal para caja
       const pagosCCTotal = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
       const pagoPrincipal = modo==='aseguradora' ? 'Cuenta corriente'
@@ -916,12 +1028,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
     }
 
-    // Facturación electrónica AFIP/ARCA — solo para A/B/C reales (nunca para ventas "negro",
-    // que son intencionalmente extra-contables). Si falla, la venta ya quedó guardada igual;
-    // se puede reintentar después desde el listado ("⚠ Sin CAE" → Reintentar).
-    if (comp && !esNegro && ['A','B','C'].includes(tipoDoc())) {
-      await solicitarCAE(comp as any)
-    }
+    // (el CAE ya se pidió ANTES de los efectos — ver bloque "ORDEN NUEVO" arriba)
 
     setOpen(false)
     setItems([]); setPagos([{metodo:'Efectivo',monto:''}]); setChequesPago({})
@@ -1303,7 +1410,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       return
     }
     if(!confirm('⚠ Este comprobante no tiene CAE.\n¿Seguro que querés eliminarlo? Esta acción es irreversible.'))return
-    await supabase.from('comprobantes').delete().eq('id',id)
+    // Limpiar dependencias que bloquean el DELETE por FK:
+    // intentos de emisión ARCA (facturacion_electronica), venta del Facturado del día y asientos de CC
+    await supabase.from('facturacion_electronica').delete().eq('comprobante_id', id)
+    await supabase.from('ventas').delete().eq('comprobante_id', id)
+    await supabase.from('cuenta_corriente_aseguradoras').delete().eq('comprobante_id', id)
+    await supabase.from('cuenta_corriente').delete().eq('comprobante_id', id)
+    const { error: errDel } = await supabase.from('comprobantes').delete().eq('id',id)
+    if (errDel) {
+      alert(`⚠ No se pudo eliminar: ${errDel.message}`)
+      return
+    }
     setComps(prev=>prev.filter(c=>c.id!==id))
   }
 
