@@ -936,25 +936,46 @@ export default function CuentaCorrienteProveedoresClient() {
                     <input value={chequeQ} onChange={e=>setChequeQ(e.target.value)}
                       placeholder="Buscar por número…"
                       className="border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
-                    <div className="flex flex-col gap-1 max-h-52 overflow-y-auto">
-                      {chequesDisp.filter(ch=>!chequeQ||ch.numero?.includes(chequeQ.replace(/\s/g,''))).map(ch=>(
-                        <label key={ch.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm ${chequesSelIds.has(ch.id)?'border-p-green bg-green-50':'border-p-line hover:bg-p-light/50'}`}>
-                          <input type="checkbox" checked={chequesSelIds.has(ch.id)}
-                            onChange={()=>{
-                              const next = new Set(chequesSelIds)
-                              next.has(ch.id) ? next.delete(ch.id) : next.add(ch.id)
-                              setChequesSelIds(next)
-                            }} className="accent-p-green w-4 h-4 shrink-0"/>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${ch.formato==='echeq'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>
-                            {ch.formato==='echeq'?'E-Cheq':'Físico'}
-                          </span>
-                          <span className="font-mono font-bold text-xs">{ch.numero}</span>
-                          <span className="text-xs text-p-ink2">{ch.banco}</span>
-                          <span className="text-xs text-p-ink2">vto: {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
+                    {/* Ya agregados */}
+                    {Array.from(chequesSelIds).map(id=>{
+                      const ch = chequesDisp.find(c=>c.id===id); if (!ch) return null
+                      return (
+                        <div key={id} className="flex items-center gap-2 border border-p-green bg-green-50 rounded-lg px-3 py-1.5 text-xs">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${ch.formato==='echeq'?'bg-blue-100 text-blue-700':'bg-gray-100 text-gray-600'}`}>{ch.formato==='echeq'?'E-Cheq':'Físico'}</span>
+                          <span className="font-mono font-bold">{ch.numero}</span>
+                          <span className="text-p-ink2">vto {ch.fecha_cobro?.split('-').reverse().join('/')}</span>
                           <span className="ml-auto font-mono font-bold">{moneyARS(+ch.monto)}</span>
-                        </label>
-                      ))}
-                    </div>
+                          <button onClick={()=>{ const n=new Set(chequesSelIds); n.delete(id); setChequesSelIds(n) }}
+                            className="text-red-400 hover:text-red-600 font-bold px-1">✕</button>
+                        </div>
+                      )
+                    })}
+                    {/* Una sola línea para agregar */}
+                    {(() => {
+                      const disponibles = chequesDisp.filter(ch=>!chequesSelIds.has(ch.id) && (!chequeQ||ch.numero?.includes(chequeQ.replace(/\s/g,''))))
+                      return disponibles.length > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <select value={chequeSelId} onChange={e=>setChequeSelId(e.target.value)}
+                            className="flex-1 border border-p-line rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                            <option value="">— Elegir cheque —</option>
+                            {disponibles.map(ch=>(
+                              <option key={ch.id} value={ch.id}>
+                                {ch.numero} · vto {ch.fecha_cobro?.split('-').reverse().join('/')} · ${Number(ch.monto).toLocaleString('es-AR')}
+                              </option>
+                            ))}
+                          </select>
+                          <button onClick={()=>{
+                              if (!chequeSelId) return
+                              setChequesSelIds(prev=>new Set(prev).add(chequeSelId))
+                              setChequeSelId('')
+                            }}
+                            disabled={!chequeSelId}
+                            className="bg-p-green text-white text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-40">+ Agregar</button>
+                        </div>
+                      ) : chequesSelIds.size === 0 ? (
+                        <p className="text-xs text-p-ink2">No hay cheques disponibles emitidos a este proveedor.</p>
+                      ) : null
+                    })()}
                   </div>
                 )}
 
