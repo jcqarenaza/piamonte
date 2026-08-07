@@ -400,6 +400,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         poliza:form.pol||null, obs:form.obs||null, items, total, iva: iva ?? 0, neto: neto ?? 0,
         posicion_vidrio: posVidrio.length ? posVidrio.join(',') : null,
         stock_codigo: stockSel?.codigo||null,
+        colaborador_id: form.colaborador_id||null,
+        turno_id: form.turno_id||null,
+        productor_id: formProd||null,
       }).eq('id', editId)
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
       setEditId(null)

@@ -1416,6 +1416,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     await supabase.from('ventas').delete().eq('comprobante_id', id)
     await supabase.from('cuenta_corriente_aseguradoras').delete().eq('comprobante_id', id)
     await supabase.from('cuenta_corriente').delete().eq('comprobante_id', id)
+    // Desvincular movimientos de stock (NO se borran: el historial físico queda,
+    // solo se suelta la referencia al comprobante que desaparece)
+    await supabase.from('stock_movimientos').update({ comprobante_venta_id: null }).eq('comprobante_venta_id', id)
     const { error: errDel } = await supabase.from('comprobantes').delete().eq('id',id)
     if (errDel) {
       alert(`⚠ No se pudo eliminar: ${errDel.message}`)
