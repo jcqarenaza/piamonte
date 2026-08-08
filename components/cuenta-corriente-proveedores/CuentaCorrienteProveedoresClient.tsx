@@ -131,9 +131,9 @@ export default function CuentaCorrienteProveedoresClient() {
             for (const c of (comps ?? [])) compMap[(c as any).id] = c
           }
           const withComp = rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null }))
-          // Pendientes (saldo >= 1) + la fila de crédito a favor (negativa) para que
-          // la lista concilie visualmente con el "Debemos" del header
-          setPendientesPago(withComp.filter((r:any) => +r.saldo_acumulado >= 1 || r.tipo === 'credito'))
+          // Pendientes (+), NC/créditos sin aplicar (−) y la fila de saldo a favor:
+          // se muestra todo lo que la vista devuelve, para que la lista concilie con el header
+          setPendientesPago(withComp.filter((r:any) => Math.abs(+r.monto) >= 1 || r.tipo === 'credito'))
         })
       setVistaMovs(false)
     }
