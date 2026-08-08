@@ -34,6 +34,8 @@ export default function CuentaCorrienteClient() {
   const [factsSel, setFactsSel]   = useState<Record<string,boolean>>({})
   const [vistaMovs, setVistaMovs] = useState(false)
   const [pendientes, setPendientes] = useState<any[]>([])
+  const [clientesBuscados, setClientesBuscados] = useState<any[]>([])
+  const [buscandoCliente, setBuscandoCliente] = useState(false)
   // Débito manual
   const [openDebito, setOpenDebito] = useState(false)
   const [formDebito, setFormDebito] = useState({ concepto:'', monto:'', fecha:'' })
@@ -298,6 +300,10 @@ export default function CuentaCorrienteClient() {
     Math.abs(s.saldo_actual) >= 1 && // ocultar saldos de centavos por redondeo
     (!q || s.cliente_nombre.toLowerCase().includes(q.toLowerCase()))
   )
+  // Clientes sin saldo encontrados por búsqueda
+  const clientesSinSaldo = clientesBuscados.filter(c =>
+    !saldos.some(s => s.cliente_id === c.id)
+  )
 
   return (
     <div>
@@ -329,12 +335,23 @@ export default function CuentaCorrienteClient() {
           </div>
         </div>
 
-        <input value={q} onChange={e=>setQ(e.target.value)}
+        <input value={q} onChange={async e=>{
+            const val = e.target.value; setQ(val)
+            if (val.length >= 2) {
+              setBuscandoCliente(true)
+              const { data } = await supabase.from('clientes')
+                .select('id,nombre,telefono').ilike('nombre', `%${val}%`).limit(10)
+              setClientesBuscados(data??[])
+              setBuscandoCliente(false)
+            } else { setClientesBuscados([]) }
+          }}
           placeholder="Buscar cliente…"
           className="w-full border border-p-line rounded-lg px-3 py-2 text-xs mb-1 focus:outline-none focus:border-p-green bg-white"/>
 
         {loading ? <p className="text-sm text-p-gray text-center py-6">Cargando…</p> :
-         filtrados.length===0 ? <Empty msg="Sin clientes con saldo." /> : (
+         filtrados.length===0 && clientesSinSaldo.length===0 ? (
+          q ? <p className="text-xs text-p-ink2 text-center py-4">{buscandoCliente?'Buscando…':'Sin resultados'}</p> : <Empty msg="Sin clientes con saldo." />
+         ) : (
           <div className="flex flex-col gap-1.5 overflow-y-auto" style={{maxHeight:380}}>
             {filtrados.sort((a,b)=>b.saldo_actual-a.saldo_actual).map(s=>{
               const plazo = s.plazo_cc_dias ?? 30
@@ -361,6 +378,18 @@ export default function CuentaCorrienteClient() {
               </div>
             )})}
           </div>
+          {/* Clientes sin saldo en CC encontrados por búsqueda */}
+          {clientesSinSaldo.map(c=>(
+            <div key={c.id}
+              onClick={()=>setSel({ cliente_nombre:c.nombre, cliente_id:c.id, total_debe:0, total_haber:0, saldo_actual:0, ultima_operacion:'', movimientos:0 })}
+              className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.cliente_id===c.id?'border-p-green ring-1 ring-green-200 bg-green-50/30':'border-p-line hover:border-p-green'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold text-p-ink truncate">{c.nombre}</p>
+                <span className="text-[9px] font-bold text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">$0</span>
+              </div>
+              <p className="text-[9px] text-p-ink2 mt-0.5">Sin movimientos en CC</p>
+            </div>
+          ))}
         )}
       </div>
 

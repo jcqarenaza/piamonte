@@ -432,7 +432,7 @@ export default function CuentaCorrienteAseguradorasClient() {
             </button>
 
             <div className="flex flex-col gap-1.5 overflow-y-auto" style={{maxHeight:380}}>
-              {filtrados.filter(s=>s.saldo>0).map(s=>(
+              {filtrados.filter(s=>q ? true : s.saldo>0).map(s=>(
                 <div key={s.aseguradora_id}
                   onClick={()=>seleccionar(s)}
                   className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.aseguradora_id===s.aseguradora_id?'border-p-green ring-1 ring-green-200 bg-green-50/20':'border-p-line hover:border-p-green'}`}>
@@ -445,7 +445,7 @@ export default function CuentaCorrienteAseguradorasClient() {
                   </div>
                 </div>
               ))}
-              {filtrados.filter(s=>s.saldo>0).length===0 && <Empty msg="No hay saldos pendientes."/>}
+              {filtrados.filter(s=>q ? true : s.saldo>0).length===0 && <Empty msg="No hay saldos pendientes."/>}
             </div>
           </div>
 
