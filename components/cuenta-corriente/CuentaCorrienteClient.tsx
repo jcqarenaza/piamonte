@@ -11,6 +11,11 @@ import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheque
 const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 const btnGray = { ...btnSm, background:'#6b7280' } as const
+const btnBlue = { ...btnSm, background:'#1d4ed8' } as const
+
+const EMPTY_RET = { iibb:'', ganancias:'', iva:'', suss:'', otra:'' }
+const EMPTY_RET_CERT = { iibb:'', ganancias:'', iva:'', suss:'', otra:'' }
+const PAMPA_CC_ID = 'e7369b4b-4697-44ca-9303-a077a877e643'
 
 interface Saldo { cliente_nombre:string; cliente_id:string|null; total_debe:number; total_haber:number; saldo_actual:number; ultima_operacion:string; movimientos:number; plazo_cc_dias?:number; tope_credito?:number }
 interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|null; debe:number; haber:number; saldo:number; notas:string|null; created_at:string }
@@ -29,13 +34,26 @@ export default function CuentaCorrienteClient() {
   const [factsSel, setFactsSel]   = useState<Record<string,boolean>>({})
   const [vistaMovs, setVistaMovs] = useState(false)
   const [pendientes, setPendientes] = useState<any[]>([])
+  // Débito manual
+  const [openDebito, setOpenDebito] = useState(false)
+  const [formDebito, setFormDebito] = useState({ concepto:'', monto:'', fecha:'' })
+  // Retenciones en cobro
+  const [retMonto, setRetMonto] = useState(EMPTY_RET)
+  const [retCert, setRetCert]   = useState(EMPTY_RET_CERT)
+  // Cuenta banco para transferencia
+  const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
+  const [cuentaBancoId, setCuentaBancoId] = useState(PAMPA_CC_ID)
   const supabase = createClient()
   const router   = useRouter()
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('vista_saldos_cc').select('*')
+    const [{ data }, { data: bancos }] = await Promise.all([
+      supabase.from('vista_saldos_cc').select('*'),
+      supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo',true).order('banco'),
+    ])
     setSaldos(data??[])
+    setCuentasBanco(bancos??[])
     setLoading(false)
   }
 
@@ -77,6 +95,25 @@ export default function CuentaCorrienteClient() {
     }
   },[sel])
 
+  async function registrarDebito() {
+    if (!sel || !formDebito.concepto || !formDebito.monto) return
+    const fecha = formDebito.fecha || new Date().toISOString().slice(0,10)
+    const { error } = await supabase.from('cuenta_corriente').insert({
+      cliente_id: sel.cliente_id,
+      cliente_nombre: sel.cliente_nombre,
+      fecha,
+      tipo: 'cargo_manual',
+      descripcion: formDebito.concepto,
+      debe: +formDebito.monto,
+      haber: 0,
+      notas: null,
+    })
+    if (error) { alert('Error: ' + error.message); return }
+    setOpenDebito(false)
+    setFormDebito({ concepto:'', monto:'', fecha:'' })
+    load(); loadMovs(sel.cliente_nombre)
+  }
+
   async function abrirCobro() {
     if (!sel?.cliente_id) return
     // Cargar facturas del cliente sin cobro completo
@@ -98,30 +135,70 @@ export default function CuentaCorrienteClient() {
     if(!sel || !formPago.monto || +formPago.monto <= 0) return
     const monto = +formPago.monto
     const fechaPago = formPago.fecha || new Date().toISOString().slice(0,10)
+
+    // Calcular retenciones
+    const retsArr: { tipo:string; monto:number; nro_cert:string }[] = []
+    const TIPOS_RET = ['iibb','ganancias','iva','suss','otra'] as const
+    let totalRet = 0
+    for (const t of TIPOS_RET) {
+      const m = parseFloat((retMonto as any)[t]||'0')
+      if (m > 0) { retsArr.push({ tipo:t, monto:m, nro_cert:(retCert as any)[t]||'' }); totalRet += m }
+    }
+    // El haber en CC = monto transferencia + retenciones (el total del recibo)
+    const haberTotal = monto + totalRet
+
     const { data: mov } = await supabase.from('cuenta_corriente').insert({
       cliente_id: sel.cliente_id,
       cliente_nombre: sel.cliente_nombre,
       fecha: fechaPago,
       tipo: 'pago',
-      descripcion: 'Pago a cuenta',
-      debe: 0, haber: monto,
+      descripcion: totalRet > 0
+        ? `Cobro con retenciones (transf. ${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(monto)} + ret. ${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(totalRet)})`
+        : 'Pago a cuenta',
+      debe: 0, haber: haberTotal,
       notas: formPago.notas||null
     }).select('id').single()
 
-    // Recibo numerado — mismo criterio que los Certificados (contador propio en `contadores`)
+    // Recibo numerado
     const { data: numeroData } = await supabase.rpc('next_recibo_numero')
     const numero = numeroData as string
     await supabase.from('recibos_cobro').insert({
       numero, fecha: fechaPago,
       cliente_id: sel.cliente_id, cliente_nombre: sel.cliente_nombre,
-      monto, forma_pago: formPago.forma_pago,
+      monto: haberTotal, forma_pago: formPago.forma_pago,
       notas: formPago.notas||null,
       cuenta_corriente_id: mov?.id || null,
     })
 
-    setOpenPago(false)
-    imprimirRecibo({ numero, fecha: fechaPago, cliente_nombre: sel.cliente_nombre, monto, forma_pago: formPago.forma_pago, notas: formPago.notas })
-    // Si cobró con cheque de tercero, registrarlo en el libro de cheques
+    // Retenciones de clientes
+    if (retsArr.length > 0) {
+      await supabase.from('retenciones_clientes').insert(
+        retsArr.map(r => ({
+          cliente_id: sel.cliente_id,
+          cliente_nombre: sel.cliente_nombre,
+          fecha: fechaPago,
+          tipo: r.tipo,
+          monto: r.monto,
+          nro_certificado: r.nro_cert || null,
+          cuenta_corriente_id: mov?.id || null,
+        }))
+      )
+    }
+
+    // Si transferencia → débito en movimientos_banco
+    if (formPago.forma_pago === 'Transferencia' && monto > 0) {
+      await supabase.from('movimientos_banco').insert({
+        cuenta_id: cuentaBancoId,
+        fecha: fechaPago,
+        tipo: 'credito',
+        concepto: `Cobro ${sel.cliente_nombre} — Recibo Nº ${numero}`,
+        monto,
+        origen_tipo: 'transferencia_venta',
+        notas: formPago.notas||null,
+      })
+    }
+
+    // Si cheque de tercero → libro de cheques
     if (formPago.forma_pago === 'Cheque' && chequeCobro.numero) {
       await supabase.from('cheques').insert({
         tipo:'tercero', formato:chequeCobro.formato, modalidad:chequeCobro.modalidad,
@@ -131,13 +208,16 @@ export default function CuentaCorrienteClient() {
         notas: `Cobro Cta Cte — Recibo Nº ${numero}`,
       })
     }
+
+    setOpenPago(false)
+    imprimirRecibo({ numero, fecha: fechaPago, cliente_nombre: sel.cliente_nombre, monto: haberTotal, forma_pago: formPago.forma_pago, notas: formPago.notas, retenciones: retsArr })
     setFormPago({ monto:'', fecha:'', notas:'', forma_pago:'Efectivo' })
     setChequeCobro(EMPTY_CHEQUE)
-    load()
-    loadMovs(sel.cliente_nombre)
+    setRetMonto(EMPTY_RET); setRetCert(EMPTY_RET_CERT)
+    load(); loadMovs(sel.cliente_nombre)
   }
 
-  function imprimirRecibo(r: { numero:string; fecha:string; cliente_nombre:string; monto:number; forma_pago:string; notas:string }) {
+  function imprimirRecibo(r: { numero:string; fecha:string; cliente_nombre:string; monto:number; forma_pago:string; notas:string; retenciones?:{tipo:string;monto:number;nro_cert:string}[] }) {
     const fechaFmt = r.fecha.split('-').reverse().join('/')
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Recibo N° ${r.numero}</title>
@@ -298,6 +378,9 @@ export default function CuentaCorrienteClient() {
                 {sel.saldo_actual>0?'Debe ':'A favor '}{moneyARS(Math.abs(sel.saldo_actual))}
               </p>
               <div className="flex gap-2">
+                <button onClick={()=>setOpenDebito(true)} style={{...btnBlue,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
+                  + Débito
+                </button>
                 {sel.saldo_actual > 0 && (
                   <button onClick={abrirCobro} style={{...btn,padding:'7px 14px',fontSize:12,whiteSpace:'nowrap'}}>
                     💰 Cobrar
@@ -420,6 +503,33 @@ export default function CuentaCorrienteClient() {
         </div>
       )}
 
+      {/* Modal débito manual */}
+      <Modal open={openDebito} onClose={()=>setOpenDebito(false)} title={`Débito manual — ${sel?.cliente_nombre}`}>
+        <div className="flex flex-col gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+            Genera un cargo en la CC del cliente (por ejemplo para cargar el importe bruto de un recibo con retenciones).
+          </div>
+          <Field label="Concepto *">
+            <Input value={formDebito.concepto} onChange={e=>setFormDebito(p=>({...p,concepto:e.target.value}))} placeholder="Ej: Recibo N° 001, servicio de instalación…"/>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Monto *">
+              <Input value={formDebito.monto} onChange={e=>setFormDebito(p=>({...p,monto:e.target.value}))} placeholder="$"/>
+            </Field>
+            <Field label="Fecha">
+              <Input type="date" value={formDebito.fecha} onChange={e=>setFormDebito(p=>({...p,fecha:e.target.value}))}/>
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={()=>setOpenDebito(false)} style={btnGray}>Cancelar</button>
+            <button onClick={registrarDebito} disabled={!formDebito.concepto||!formDebito.monto}
+              style={{...btn,opacity:(!formDebito.concepto||!formDebito.monto)?.5:1}}>
+              Cargar débito
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Modal registrar pago */}
       <Modal open={openPago} onClose={()=>setOpenPago(false)} title={`Registrar cobro — ${sel?.cliente_nombre}`}>
         <div className="flex flex-col gap-3">
@@ -479,6 +589,53 @@ export default function CuentaCorrienteClient() {
             </select>
           </Field>
           {formPago.forma_pago==='Cheque'&&<ChequeFields value={chequeCobro} onChange={setChequeCobro}/>}
+          {formPago.forma_pago==='Transferencia'&&(
+            <Field label="Cuenta destino">
+              <select value={cuentaBancoId} onChange={e=>setCuentaBancoId(e.target.value)}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+                {cuentasBanco.map(c=>(
+                  <option key={c.id} value={c.id}>
+                    {c.banco} ({c.tipo==='Cuenta Corriente'?'CC':c.tipo==='Caja de Ahorro'?'CA':'MP'}) ···{(c.cbu||c.nro_cuenta||'').slice(-5)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          {/* Retenciones */}
+          <div>
+            <p className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider mb-2">Retenciones sufridas (opcional)</p>
+            <div className="flex flex-col gap-2">
+              {(['iibb','ganancias','iva','suss','otra'] as const).map(tipo=>(
+                <div key={tipo} className="grid grid-cols-3 gap-2 items-center">
+                  <span className="text-xs font-semibold text-p-ink capitalize col-span-1">
+                    {tipo==='iibb'?'IIBB':tipo==='ganancias'?'Ganancias':tipo==='iva'?'IVA':tipo==='suss'?'SUSS':'Otra'}
+                  </span>
+                  <Input
+                    value={(retMonto as any)[tipo]}
+                    onChange={e=>setRetMonto(p=>({...p,[tipo]:e.target.value}))}
+                    placeholder="$ monto"
+                  />
+                  <Input
+                    value={(retCert as any)[tipo]}
+                    onChange={e=>setRetCert(p=>({...p,[tipo]:e.target.value}))}
+                    placeholder="N° certificado"
+                  />
+                </div>
+              ))}
+            </div>
+            {Object.values(retMonto).some(v=>parseFloat(v||'0')>0) && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs flex justify-between">
+                <span className="text-amber-800 font-semibold">Total retenciones</span>
+                <span className="font-mono font-bold text-amber-900">
+                  {new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(
+                    Object.values(retMonto).reduce((a,v)=>a+parseFloat(v||'0'),0)
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+
           <Field label="Notas">
             <Input value={formPago.notas} onChange={e=>setFormPago(p=>({...p,notas:e.target.value}))} placeholder="Referencia…"/>
           </Field>

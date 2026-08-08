@@ -131,7 +131,9 @@ export default function CuentaCorrienteProveedoresClient() {
             for (const c of (comps ?? [])) compMap[(c as any).id] = c
           }
           const withComp = rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null }))
-          setPendientesPago(withComp.filter((r:any) => +r.saldo_acumulado >= 1))
+          // Pendientes (saldo >= 1) + la fila de crédito a favor (negativa) para que
+          // la lista concilie visualmente con el "Debemos" del header
+          setPendientesPago(withComp.filter((r:any) => +r.saldo_acumulado >= 1 || r.tipo === 'credito'))
         })
       setVistaMovs(false)
     }
@@ -164,13 +166,14 @@ export default function CuentaCorrienteProveedoresClient() {
 
   async function guardarAjuste() {
     if (!sel || !ajusteForm.monto) return
-    const monto = +ajusteForm.monto
+    const monto = (()=>{ const t=String(ajusteForm.monto).trim(); return t.includes(',') ? (parseFloat(t.replace(/\./g,'').replace(',','.'))||0) : (parseFloat(t)||0) })()
+    const esCargo = (ajusteForm as any).direccion === 'cargo'
     await supabase.from('cuenta_corriente_proveedores').insert({
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
       fecha: new Date().toISOString().slice(0,10), tipo: 'ajuste',
-      descripcion: ajusteForm.descripcion || 'Ajuste / Devolución',
-      debe: 0, haber: monto,
-      notas: ajusteForm.pendiente_nc ? `${ajusteForm.notas ? ajusteForm.notas+' ' : ''}pendiente_nc` : (ajusteForm.notas||null)
+      descripcion: ajusteForm.descripcion || (esCargo ? 'Ajuste — cargo' : 'Ajuste / Devolución'),
+      debe: esCargo ? monto : 0, haber: esCargo ? 0 : monto,
+      notas: ajusteForm.pendiente_nc && !esCargo ? `${ajusteForm.notas ? ajusteForm.notas+' ' : ''}pendiente_nc` : (ajusteForm.notas||null)
     })
     setOpenAjuste(false)
     setAjusteForm({ descripcion:'', monto:'', pendiente_nc:false, notas:'' })
@@ -1085,12 +1088,25 @@ export default function CuentaCorrienteProveedoresClient() {
       {/* Modal Ajuste / Pendiente NC */}
       <Modal open={openAjuste} onClose={()=>setOpenAjuste(false)} title={`Ajuste — ${sel?.proveedor_nombre}`}>
         <div className="flex flex-col gap-3">
+          <Field label="Dirección">
+            <div className="flex gap-2">
+              <button onClick={()=>setAjusteForm(p=>({...p,direccion:'credito'} as any))}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold border ${(ajusteForm as any).direccion!=='cargo'?'bg-green-50 border-green-400 text-green-700':'border-p-line text-p-ink2'}`}>
+                − A favor nuestro (crédito)
+              </button>
+              <button onClick={()=>setAjusteForm(p=>({...p,direccion:'cargo'} as any))}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold border ${(ajusteForm as any).direccion==='cargo'?'bg-red-50 border-red-400 text-red-700':'border-p-line text-p-ink2'}`}>
+                + Debemos más (cargo)
+              </button>
+            </div>
+          </Field>
           <Field label="Descripción">
-            <Input value={ajusteForm.descripcion} onChange={e=>setAjusteForm(p=>({...p,descripcion:e.target.value}))} placeholder="Ej: Vidrio roto / devolución…"/>
+            <Input value={ajusteForm.descripcion} onChange={e=>setAjusteForm(p=>({...p,descripcion:e.target.value}))} placeholder={(ajusteForm as any).direccion==='cargo' ? 'Ej: Deuda anterior s/ conciliación 08/2026…' : 'Ej: Vidrio roto / devolución…'}/>
           </Field>
           <Field label="Monto ($)">
             <Input value={ajusteForm.monto} onChange={e=>setAjusteForm(p=>({...p,monto:e.target.value}))} placeholder="0"/>
           </Field>
+          {(ajusteForm as any).direccion !== 'cargo' && (
           <label className="flex items-center gap-2 text-sm cursor-pointer bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
             <input type="checkbox" checked={ajusteForm.pendiente_nc} onChange={e=>setAjusteForm(p=>({...p,pendiente_nc:e.target.checked}))} className="accent-amber-600"/>
             <div>
@@ -1098,6 +1114,7 @@ export default function CuentaCorrienteProveedoresClient() {
               <p className="text-[11px] text-amber-600">El proveedor va a emitir una NC. Este ajuste queda marcado para reemplazarlo cuando llegue.</p>
             </div>
           </label>
+          )}
           <Field label="Notas (opcional)">
             <Input value={ajusteForm.notas} onChange={e=>setAjusteForm(p=>({...p,notas:e.target.value}))} placeholder="Detalle…"/>
           </Field>
