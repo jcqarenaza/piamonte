@@ -62,12 +62,19 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [colocDatos, setColocDatos] = useState({ cuit:'', dir:'', iva:'Responsable Inscripto', trans:'', trans_dni:'' })
   const [colocEnviando, setColocEnviando] = useState(false)
 
-  // OS candidatas: asignadas AL COLOCADOR ELEGIDO, con items de stock,
-  // cristal no colocado, no enviadas ya a colocador. Sin colocador elegido → ninguna.
-  const colocCandidatas = ordenes.filter((o:any) =>
-    colocSel && o.colaborador_id === colocSel &&
-    !o.cristal_colocado && !o.stock_via_remito && !o.convertido_comp &&
-    (o.items||[]).some((it:any)=>it.stock_id))
+  // OS candidatas: SOLO las asignadas al colocador elegido. Se consultan FRESCAS
+  // de la base al elegir colocador (no del estado en memoria, que puede estar viejo).
+  const [colocCandidatas, setColocCandidatas] = useState<any[]>([])
+  useEffect(() => {
+    if (!colocModal || !colocSel) { setColocCandidatas([]); return }
+    supabase.from('ordenes_servicio').select('*')
+      .eq('colaborador_id', colocSel)
+      .or('cristal_colocado.is.null,cristal_colocado.eq.false')
+      .or('convertido_comp.is.null,convertido_comp.eq.false')
+      .or('stock_via_remito.is.null,stock_via_remito.eq.false')
+      .order('numero')
+      .then(({data}) => setColocCandidatas((data??[]).filter((o:any)=>(o.items||[]).some((it:any)=>it.stock_id))))
+  }, [colocModal, colocSel, supabase])
 
   async function confirmarEnvioColocador() {
     const colocador = colaboradores.find(c=>c.id===colocSel)
@@ -1295,8 +1302,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
             {colocCandidatas.length===0 && (
               <p className="text-xs text-p-ink2">{colocSel
-                ? 'Este colocador no tiene OS asignadas pendientes de enviar. Asignale el colaborador a las OS (editar OS → Colaborador) y volvé acá.'
-                : 'Elegí un colocador para ver sus OS pendientes de envío.'}</p>
+                ? 'Este colocador no tiene OS asignadas pendientes de enviar. Asignalo como Colaborador en la OS y volvé acá.'
+                : 'Elegí un colocador para ver sus OS.'}</p>
             )}
             {colocCandidatas.map((o:any)=>(
               <label key={o.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer ${colocOSSel[o.id]?'border-amber-400 bg-amber-50':'border-p-line'}`}>
