@@ -107,14 +107,17 @@ export default function CompararClient() {
     const posWords = words.filter(w => posKws.includes(w))
     const nonPosWs = words.filter(w => !posKws.includes(w))
     const pos = posWords.length > 0 ? POS_MAP[posWords[0]] : null
-    const firstWord = nonPosWs[0] ?? raw
+    const firstWord = nonPosWs[0] ?? null
     const restWords = nonPosWs.slice(1)
 
     let query = supabase.from('catalogo')
       .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo,grupo_id,lista_nombre')
-      .or(`descripcion.ilike.%${firstWord}%,codigo.ilike.%${firstWord}%,marca.ilike.%${firstWord}%`)
       .limit(300)
+    // Si solo escribió la posición ("parabrisas"), filtrar por pos sin exigir el texto
+    // (las descripciones usan abreviaturas como PSAS. y no matchean la palabra completa)
+    if (firstWord) query = query.or(`descripcion.ilike.%${firstWord}%,codigo.ilike.%${firstWord}%,marca.ilike.%${firstWord}%`)
     if (pos) query = query.eq('pos', pos)
+    if (!firstWord && !pos) { setGrupos([]); setLoading(false); return }
 
     const { data: dataRaw } = await query
 
@@ -232,12 +235,12 @@ export default function CompararClient() {
                       {g.pos && <span className="text-[10px] text-p-ink2 bg-p-light px-1.5 py-0.5 rounded-full">{g.pos}</span>}
                     </div>
                     {g.provs[0].marca && <p className="text-xs text-p-ink2 mt-0.5">{g.provs[0].marca}</p>}
-                    {/* Badges de proveedores en resumen */}
+                    {/* Códigos con su costo real, por proveedor */}
                     <div className="flex gap-1.5 flex-wrap mt-1.5">
                       {sorted.map(p => (
                         <span key={p.id} style={{ background: PROV_COLOR[p.proveedor]?.bg ?? '#f3f4f6', color: PROV_COLOR[p.proveedor]?.text ?? '#374151' }}
                           className="text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          {p.proveedor}{p.es_promo ? ' (Oferta)' : ''}
+                          {p.proveedor}{p.codigo ? ` ${p.codigo}` : ''} · {moneyARS(costoReal(p))}{p.es_promo ? ' (Oferta)' : ''}
                         </span>
                       ))}
                     </div>

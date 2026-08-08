@@ -116,6 +116,48 @@ export default function ArticulosClient() {
     }
     setResultadoAplicar(`✓ ${modificados} artículos actualizados`)
     setAplicando(false)
+  }
+
+  // ── Normalizar CATÁLOGO de proveedores (lo que muestra Comparar) ──
+  // Misma expansión de abreviaturas, aplicada a catalogo.descripcion, en lotes.
+  const [aplicandoCat, setAplicandoCat] = useState(false)
+  const [progresoCat, setProgresoCat] = useState('')
+  async function aplicarAbreviaturasCatalogo() {
+    if (!confirm('Se van a reescribir las descripciones del CATÁLOGO de proveedores expandiendo las abreviaturas (PSAS. → Parabrisas, etc.).\nEsto afecta lo que se ve en Comparar y en los buscadores de catálogo.\n¿Continuar?')) return
+    setAplicandoCat(true); setProgresoCat('Cargando abreviaturas…')
+    const { data: abrevs } = await supabase.from('abreviaturas_descripcion').select('abreviatura,expansion').eq('activo', true)
+    if (!abrevs?.length) { setAplicandoCat(false); setProgresoCat('Sin abreviaturas activas.'); return }
+    const ordenadas = [...abrevs].sort((a,b)=>b.abreviatura.length-a.abreviatura.length)
+      .map(ab => ({ regex: new RegExp(ab.abreviatura.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi'), exp: ab.expansion }))
+    // Traer todo el catálogo en páginas
+    setProgresoCat('Leyendo catálogo…')
+    const filas: {id:string; descripcion:string}[] = []
+    for (let desde = 0; ; desde += 1000) {
+      const { data } = await supabase.from('catalogo').select('id,descripcion').range(desde, desde+999)
+      if (!data?.length) break
+      filas.push(...(data as any))
+      if (data.length < 1000) break
+    }
+    // Calcular cambios
+    const cambios: {id:string; nueva:string}[] = []
+    for (const f of filas) {
+      let nueva = f.descripcion || ''
+      for (const ab of ordenadas) nueva = nueva.replace(ab.regex, ab.exp)
+      nueva = nueva.replace(/\s{2,}/g,' ').trim()
+      if (nueva !== f.descripcion) cambios.push({ id: f.id, nueva })
+    }
+    if (!cambios.length) { setAplicandoCat(false); setProgresoCat('✓ El catálogo ya estaba normalizado.'); return }
+    if (!confirm(`Se van a actualizar ${cambios.length} de ${filas.length} descripciones del catálogo.\n\nEjemplo:\n"${filas.find(f=>cambios.some(c=>c.id===f.id))?.descripcion}"\n→ "${cambios[0].nueva}"\n\n¿Aplicar?`)) { setAplicandoCat(false); setProgresoCat(''); return }
+    // Aplicar en lotes de 40 en paralelo
+    let hechos = 0
+    for (let i = 0; i < cambios.length; i += 40) {
+      const lote = cambios.slice(i, i+40)
+      await Promise.all(lote.map(c => supabase.from('catalogo').update({ descripcion: c.nueva }).eq('id', c.id)))
+      hechos += lote.length
+      setProgresoCat(`Actualizando… ${hechos}/${cambios.length}`)
+    }
+    setProgresoCat(`✓ ${cambios.length} descripciones del catálogo normalizadas`)
+    setAplicandoCat(false)
     if (tab !== 'referencias') load()
   }
 
@@ -328,8 +370,13 @@ export default function ArticulosClient() {
             <p className="text-xs text-p-ink2">Aplicá estos reemplazos sobre las descripciones ya cargadas (por si agregaste una abreviatura nueva).</p>
             <div className="flex items-center gap-2">
               {resultadoAplicar && <span className="text-xs font-semibold text-p-green">{resultadoAplicar}</span>}
+              {progresoCat && <span className="text-xs font-semibold text-blue-700">{progresoCat}</span>}
               <button onClick={aplicarAbreviaturas} disabled={aplicando} style={{...btnBlue, opacity:aplicando?.6:1}}>
                 {aplicando ? 'Aplicando…' : '⟳ Aplicar a existentes'}
+              </button>
+              <button onClick={aplicarAbreviaturasCatalogo} disabled={aplicandoCat}
+                style={{...btnBlue, background:'#7c3aed', opacity:aplicandoCat?.6:1}}>
+                {aplicandoCat ? 'Normalizando…' : '🧹 Unificar catálogo (PSAS → Parabrisas)'}
               </button>
             </div>
           </div>

@@ -35,6 +35,7 @@ export default function ConfiguracionClient() {
   const [nuevaCat,     setNuevaCat]     = useState({ nombre:'', color:COLORS[0] })
   const [showNuevaCat, setShowNuevaCat] = useState(false)
   const [nuevoColab,     setNuevoColab]     = useState('')
+  const [nuevoColabColocador, setNuevoColabColocador] = useState(false)
   const [showNuevoColab, setShowNuevoColab] = useState(false)
   const [colabEdit,      setColabEdit]      = useState<Record<string,string>>({})
 
@@ -347,17 +348,22 @@ export default function ConfiguracionClient() {
         </div>
 
         {showNuevoColab && (
-          <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex gap-3 items-end">
+          <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex gap-3 items-end flex-wrap">
             <input value={nuevoColab} onChange={e=>setNuevoColab(e.target.value)}
               placeholder="Nombre del colaborador…"
-              className="border border-p-line rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-p-green"/>
+              className="border border-p-line rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[160px] focus:outline-none focus:border-p-green"/>
+            <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+              <input type="checkbox" checked={nuevoColabColocador} onChange={e=>setNuevoColabColocador(e.target.checked)} className="accent-amber-600 w-4 h-4"/>
+              🚚 Colocador externo <span className="text-[10px] text-p-ink2">(recibe remitos)</span>
+            </label>
             <button onClick={async ()=>{
               if(!nuevoColab.trim()) return
               setSaving(true)
-              await supabase.from('colaboradores').insert({nombre:nuevoColab.trim()})
+              const { error } = await supabase.from('colaboradores').insert({nombre:nuevoColab.trim(), es_colocador: nuevoColabColocador})
+              if (error) { alert(`⚠ No se pudo crear: ${error.message}`); setSaving(false); return }
               const {data}=await supabase.from('colaboradores').select('*').eq('activo',true).order('nombre')
               setColaboradores(data??[])
-              setNuevoColab(''); setShowNuevoColab(false)
+              setNuevoColab(''); setNuevoColabColocador(false); setShowNuevoColab(false)
               setSaving(false); ok('Colaborador creado ✓')
             }} disabled={saving||!nuevoColab.trim()} style={btn}>Guardar</button>
             <button onClick={()=>{setShowNuevoColab(false);setNuevoColab('')}} style={btnGray}>Cancelar</button>
@@ -384,8 +390,20 @@ export default function ConfiguracionClient() {
                 </>
               ) : (
                 <>
-                  <span className="text-lg">👷</span>
-                  <p className="font-semibold text-sm text-p-ink flex-1">{col.nombre}</p>
+                  <span className="text-lg">{(col as any).es_colocador ? '🚚' : '👷'}</span>
+                  <p className="font-semibold text-sm text-p-ink flex-1">{col.nombre}
+                    {(col as any).es_colocador && <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Colocador externo</span>}
+                  </p>
+                  <button onClick={async ()=>{
+                      const nuevo = !(col as any).es_colocador
+                      const { error } = await supabase.from('colaboradores').update({es_colocador: nuevo}).eq('id',col.id)
+                      if (error) { alert(`⚠ ${error.message}`); return }
+                      setColaboradores(prev=>prev.map(c=>c.id===col.id?{...c, es_colocador: nuevo} as any:c))
+                      ok(nuevo ? 'Marcado como colocador externo ✓' : 'Ya no es colocador')
+                    }}
+                    style={{...btnGray,padding:'5px 12px',fontSize:12, background:(col as any).es_colocador?'#b45309':'#6b7280'}}>
+                    🚚 {(col as any).es_colocador ? 'Quitar colocador' : 'Hacer colocador'}
+                  </button>
                   <button onClick={()=>setColabEdit(p=>({...p,[col.id]:col.nombre}))}
                     style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
                   <button onClick={async ()=>{

@@ -59,6 +59,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [colocModal, setColocModal] = useState(false)
   const [colocSel, setColocSel] = useState('')            // colaborador colocador elegido
   const [colocOSSel, setColocOSSel] = useState<Record<string,boolean>>({})
+  const [colocDatos, setColocDatos] = useState({ cuit:'', dir:'', iva:'Responsable Inscripto', trans:'', trans_dni:'' })
   const [colocEnviando, setColocEnviando] = useState(false)
 
   // OS candidatas: con items de stock, cristal no colocado, no enviadas ya a colocador
@@ -80,6 +81,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     // 1) Remito consolidado
     const { data: remito, error: errRem } = await supabase.from('remitos_salida').insert({
       fecha: todayStr(), destinatario_nombre: colocador.nombre,
+      destinatario_cuit: colocDatos.cuit.replace(/\D/g,'') || null,
+      destinatario_direccion: colocDatos.dir || null,
+      destinatario_condicion_iva: colocDatos.iva || null,
+      transportista_nombre: colocDatos.trans || null,
+      transportista_dni: colocDatos.trans_dni.replace(/\D/g,'') || null,
       tipo_destinatario: 'colocador',
       items: itemsRemito, estado: 'emitido',
       notas: `Envío a colocador — ${osSel.map((o:any)=>`OS-${String(o.numero).padStart(4,'0')}`).join(', ')}`,
@@ -1263,6 +1269,26 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           {colaboradores.filter(c=>c.es_colocador).length===0 && (
             <p className="text-xs" style={{color:'#b45309'}}>No hay colaboradores marcados como colocador — tildá "colocador" en la ficha del colaborador.</p>
           )}
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="CUIT del colocador">
+              <Input value={colocDatos.cuit} onChange={e=>setColocDatos(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-3"/>
+            </Field>
+            <Field label="Condición IVA">
+              <Select value={colocDatos.iva} onChange={e=>setColocDatos(p=>({...p,iva:e.target.value}))}>
+                <option>Responsable Inscripto</option><option>Monotributo</option>
+                <option>Consumidor Final</option><option>Exento</option>
+              </Select>
+            </Field>
+            <Field label="Dirección (destino)">
+              <Input value={colocDatos.dir} onChange={e=>setColocDatos(p=>({...p,dir:e.target.value}))} placeholder="Calle 123, Gral. Villegas"/>
+            </Field>
+            <Field label="Transportista">
+              <Input value={colocDatos.trans} onChange={e=>setColocDatos(p=>({...p,trans:e.target.value}))} placeholder="Nombre de quien transporta"/>
+            </Field>
+            <Field label="DNI transportista">
+              <Input value={colocDatos.trans_dni} onChange={e=>setColocDatos(p=>({...p,trans_dni:e.target.value}))} placeholder="30123456"/>
+            </Field>
+          </div>
           <p className="text-[11px] text-p-ink2">Seleccioná las OS: se genera <b>un solo remito</b> con todos los vidrios, el stock se descuenta ahora (salida del depósito) y al marcar "Colocada" no se vuelve a descontar.</p>
           <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
             {colocCandidatas.length===0 && <p className="text-xs text-p-ink2">No hay OS con artículos de stock pendientes de colocar.</p>}
