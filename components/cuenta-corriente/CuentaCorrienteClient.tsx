@@ -377,19 +377,19 @@ export default function CuentaCorrienteClient() {
                 </div>
               </div>
             )})}
-          </div>
-          {/* Clientes sin saldo en CC encontrados por búsqueda */}
-          {clientesSinSaldo.map(c=>(
-            <div key={c.id}
-              onClick={()=>setSel({ cliente_nombre:c.nombre, cliente_id:c.id, total_debe:0, total_haber:0, saldo_actual:0, ultima_operacion:'', movimientos:0 })}
-              className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.cliente_id===c.id?'border-p-green ring-1 ring-green-200 bg-green-50/30':'border-p-line hover:border-p-green'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-p-ink truncate">{c.nombre}</p>
-                <span className="text-[9px] font-bold text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">$0</span>
+            {/* Clientes sin saldo en CC encontrados por búsqueda */}
+            {clientesSinSaldo.map(c=>(
+              <div key={c.id}
+                onClick={()=>setSel({ cliente_nombre:c.nombre, cliente_id:c.id, total_debe:0, total_haber:0, saldo_actual:0, ultima_operacion:'', movimientos:0 })}
+                className={`bg-white border rounded-lg px-3 py-2.5 cursor-pointer transition-all ${sel?.cliente_id===c.id?'border-p-green ring-1 ring-green-200 bg-green-50/30':'border-p-line hover:border-p-green'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-p-ink truncate">{c.nombre}</p>
+                  <span className="text-[9px] font-bold text-p-ink2 bg-p-light px-1.5 py-0.5 rounded">$0</span>
+                </div>
+                <p className="text-[9px] text-p-ink2 mt-0.5">Sin movimientos en CC</p>
               </div>
-              <p className="text-[9px] text-p-ink2 mt-0.5">Sin movimientos en CC</p>
-            </div>
-          ))}
+            ))}
+          </div>
         )}
       </div>
 
