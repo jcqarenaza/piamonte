@@ -62,8 +62,10 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [colocDatos, setColocDatos] = useState({ cuit:'', dir:'', iva:'Responsable Inscripto', trans:'', trans_dni:'' })
   const [colocEnviando, setColocEnviando] = useState(false)
 
-  // OS candidatas: con items de stock, cristal no colocado, no enviadas ya a colocador
+  // OS candidatas: asignadas AL COLOCADOR ELEGIDO, con items de stock,
+  // cristal no colocado, no enviadas ya a colocador. Sin colocador elegido → ninguna.
   const colocCandidatas = ordenes.filter((o:any) =>
+    colocSel && o.colaborador_id === colocSel &&
     !o.cristal_colocado && !o.stock_via_remito && !o.convertido_comp &&
     (o.items||[]).some((it:any)=>it.stock_id))
 
@@ -1291,7 +1293,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           </div>
           <p className="text-[11px] text-p-ink2">Seleccioná las OS: se genera <b>un solo remito</b> con todos los vidrios, el stock se descuenta ahora (salida del depósito) y al marcar "Colocada" no se vuelve a descontar.</p>
           <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
-            {colocCandidatas.length===0 && <p className="text-xs text-p-ink2">No hay OS con artículos de stock pendientes de colocar.</p>}
+            {colocCandidatas.length===0 && (
+              <p className="text-xs text-p-ink2">{colocSel
+                ? 'Este colocador no tiene OS asignadas pendientes de enviar. Asignale el colaborador a las OS (editar OS → Colaborador) y volvé acá.'
+                : 'Elegí un colocador para ver sus OS pendientes de envío.'}</p>
+            )}
             {colocCandidatas.map((o:any)=>(
               <label key={o.id} className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer ${colocOSSel[o.id]?'border-amber-400 bg-amber-50':'border-p-line'}`}>
                 <input type="checkbox" checked={!!colocOSSel[o.id]} onChange={e=>setColocOSSel(p=>({...p,[o.id]:e.target.checked}))}/>
