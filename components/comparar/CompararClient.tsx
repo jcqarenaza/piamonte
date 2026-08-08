@@ -43,6 +43,23 @@ export default function CompararClient() {
   const [loadingSug, setLoadingSug] = useState<string | null>(null)
   const supabase = createClient()
 
+  // Descuento default por proveedor (de Compras) — para mostrar costo REAL además del de lista
+  const [dtoProv, setDtoProv] = useState<Record<string, number>>({})
+  useEffect(() => {
+    supabase.from('proveedores_compra').select('*').eq('activo', true).then(({data}) => {
+      const map: Record<string, number> = {}
+      for (const p of (data ?? []) as any[]) {
+        const dto = Number(p.descuento_pct ?? p.descuento ?? p.dto_default ?? p.descuento_default ?? 0) || 0
+        // Matchear por primera palabra del nombre (Malatesta Sergio → MALATESTA)
+        const key = String(p.nombre || '').toUpperCase().split(' ')[0]
+        if (key) map[key] = dto
+      }
+      setDtoProv(map)
+    })
+  }, [supabase])
+  const dtoDe = (proveedor: string) => dtoProv[String(proveedor||'').toUpperCase().split(' ')[0]] ?? 0
+  const costoReal = (r: CatRow) => r.costo_neto * (1 - dtoDe(r.proveedor)/100)
+
   const POS_MAP: Record<string, string> = {
     'PARA':'PARABRISAS','PARABRISAS':'PARABRISAS','REAR':'LUNETA','LUNETA':'LUNETA',
     'LU':'LUNETA','LA':'LATERAL','LATERAL':'LATERAL',
@@ -53,6 +70,39 @@ export default function CompararClient() {
     if (raw.length < 2) { setGrupos([]); return }
     setLoading(true)
     const words = raw.toUpperCase().split(/\s+/).filter(Boolean)
+
+    // ── Búsqueda por CÓDIGO (con regla PLK base-6): "420934" o "420934VSLI"
+    // trae todas las variantes y todos los proveedores que las tengan
+    const esCodigo = !/\s/.test(raw) && /^\d{4,}/.test(raw)
+    if (esCodigo) {
+      const rawUp = raw.toUpperCase()
+      const base6 = /^\d{6}/.test(rawUp) ? rawUp.slice(0,6) : null
+      const filtro = base6 ? `codigo.ilike.${base6}%` : `codigo.ilike.%${rawUp}%`
+      const { data: dataCod } = await supabase.from('catalogo')
+        .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo,grupo_id,lista_nombre')
+        .or(filtro).limit(300)
+      let rows = (dataCod ?? []) as CatRow[]
+      // Sumar los grupos de equivalencia de lo encontrado (códigos de otras marcas)
+      const gids = Array.from(new Set(rows.map(r=>r.grupo_id).filter(Boolean))) as number[]
+      if (gids.length) {
+        const { data: dataGrp } = await supabase.from('catalogo')
+          .select('id,proveedor,codigo,descripcion,marca,pos,precio_lista,costo_neto,disponible,es_promo,grupo_id,lista_nombre')
+          .in('grupo_id', gids).limit(300)
+        const ya = new Set(rows.map(r=>r.id))
+        for (const r of (dataGrp ?? []) as CatRow[]) if (!ya.has(r.id)) rows.push(r)
+      }
+      // Agrupar por grupo_id; sin grupo, por código exacto (variantes separadas)
+      const mapC = new Map<string, Agrupado>()
+      for (const row of rows) {
+        const key = row.grupo_id ? `g_${row.grupo_id}` : `c_${(row.codigo||row.id).toUpperCase()}`
+        if (!mapC.has(key)) mapC.set(key, { desc: row.descripcion, pos: row.pos, provs: [], grupoId: row.grupo_id || undefined })
+        mapC.get(key)!.provs.push(row)
+      }
+      setGrupos([...mapC.values()].sort((a,b)=>b.provs.length-a.provs.length))
+      setLoading(false); setOpenIdx(null); setSugs({})
+      return
+    }
+
     const posKws = ['PARA','PARABRISAS','REAR','LUNETA','LU','LA','LATERAL']
     const posWords = words.filter(w => posKws.includes(w))
     const nonPosWs = words.filter(w => !posKws.includes(w))
@@ -101,6 +151,32 @@ export default function CompararClient() {
     return () => clearTimeout(t)
   }, [buscar])
 
+  // Confirmar equivalencia: ambas piezas quedan con el MISMO grupo_id.
+  // Si alguna ya pertenecía a un grupo, los grupos SE FUSIONAN → transitividad:
+  // todo lo que era equivalente a una pasa a ser equivalente a la otra.
+  const [vinculando, setVinculando] = useState<string | null>(null)
+  async function vincularEquivalencia(a: CatRow, b: CatRow) {
+    if (!confirm(`¿Confirmar que son el mismo vidrio?\n\n· ${a.proveedor} ${a.codigo||''} — ${a.descripcion}\n· ${b.proveedor} ${b.codigo||''} — ${b.descripcion}\n\nQuedan vinculadas (y todo lo ya vinculado a cada una, también).`)) return
+    setVinculando(b.id)
+    let gid = a.grupo_id ?? b.grupo_id ?? null
+    if (!gid) {
+      const { data: mx } = await supabase.from('catalogo').select('grupo_id').not('grupo_id','is',null).order('grupo_id',{ascending:false}).limit(1).maybeSingle()
+      gid = ((mx as any)?.grupo_id ?? 0) + 1
+    }
+    // Fusionar: todo lo que tenga el grupo de A o de B pasa al grupo final
+    for (const viejo of [a.grupo_id, b.grupo_id]) {
+      if (viejo && viejo !== gid) {
+        const { error } = await supabase.from('catalogo').update({ grupo_id: gid }).eq('grupo_id', viejo)
+        if (error) { alert(`⚠ Error al fusionar grupos: ${error.message}`); setVinculando(null); return }
+      }
+    }
+    const { error: e1 } = await supabase.from('catalogo').update({ grupo_id: gid }).eq('id', a.id)
+    const { error: e2 } = await supabase.from('catalogo').update({ grupo_id: gid }).eq('id', b.id)
+    if (e1 || e2) { alert(`⚠ Error al vincular: ${(e1||e2)?.message}`); setVinculando(null); return }
+    setVinculando(null)
+    buscar()  // refrescar: ahora aparecen agrupadas
+  }
+
   async function cargarSugs(pieza: CatRow) {
     const key = pieza.id
     if (sugs[key] !== undefined) return
@@ -134,16 +210,16 @@ export default function CompararClient() {
           {grupos.map((g, idx) => {
             const isOpen = openIdx === idx
 
-            // Deduplicar por proveedor+lista (un precio por origen)
+            // Deduplicar por proveedor+lista (un precio por origen), ordenar por COSTO REAL (con dto)
             const dedupMap = new Map<string, CatRow>()
             for (const p of g.provs) {
               const k = `${p.proveedor}|${p.lista_nombre||''}`
-              if (!dedupMap.has(k) || p.costo_neto < dedupMap.get(k)!.costo_neto) dedupMap.set(k, p)
+              if (!dedupMap.has(k) || costoReal(p) < costoReal(dedupMap.get(k)!)) dedupMap.set(k, p)
             }
-            const sorted = [...dedupMap.values()].sort((a, b) => a.costo_neto - b.costo_neto)
+            const sorted = [...dedupMap.values()].sort((a, b) => costoReal(a) - costoReal(b))
             const best = sorted[0]
             const worst = sorted[sorted.length - 1]
-            const ahorro = sorted.length > 1 ? worst.costo_neto - best.costo_neto : 0
+            const ahorro = sorted.length > 1 ? costoReal(worst) - costoReal(best) : 0
 
             return (
               <div key={idx} className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
@@ -167,8 +243,8 @@ export default function CompararClient() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-saira font-bold text-lg text-p-ink">{moneyARS(best.costo_neto)}</p>
-                    <p className="text-[10px] text-p-ink2">mejor precio</p>
+                    <p className="font-saira font-bold text-lg text-p-ink">{moneyARS(costoReal(best))}</p>
+                    <p className="text-[10px] text-p-ink2">mejor costo{dtoDe(best.proveedor)>0?` (c/dto ${dtoDe(best.proveedor)}%)`:''}</p>
                     {ahorro > 0 && <p className="text-[10px] text-p-green font-bold">Ahorrás {moneyARS(ahorro)}</p>}
                   </div>
                   <span className="text-p-ink2 text-xs mt-1">{isOpen ? '▲' : '▼'}</span>
@@ -180,8 +256,10 @@ export default function CompararClient() {
                     {/* Tabla comparativa */}
                     <div className="grid grid-cols-1 divide-y divide-p-line2">
                       {sorted.map((p, j) => {
-                        const isBest = p.costo_neto === best.costo_neto
-                        const diff = p.costo_neto - best.costo_neto
+                        const cr = costoReal(p)
+                        const dto = dtoDe(p.proveedor)
+                        const isBest = cr === costoReal(best)
+                        const diff = cr - costoReal(best)
                         return (
                           <div key={p.id} className={`flex items-center gap-4 px-4 py-3 ${isBest ? 'bg-green-50' : ''}`}>
                             <span style={{ background: PROV_COLOR[p.proveedor]?.bg ?? '#f3f4f6', color: PROV_COLOR[p.proveedor]?.text ?? '#374151' }}
@@ -192,9 +270,10 @@ export default function CompararClient() {
                             <div className="flex-1"/>
                             <div className="text-right shrink-0">
                               <p className={`font-mono font-bold text-sm ${isBest ? 'text-p-green' : 'text-p-ink'}`}>
-                                {moneyARS(p.costo_neto)}
+                                {moneyARS(cr)}
                                 {isBest && <span className="ml-1 text-[10px]">✓ más barato</span>}
                               </p>
+                              {dto > 0 && <p className="text-[10px] text-p-ink2 font-mono">lista {moneyARS(p.costo_neto)} − {dto}%</p>}
                               {diff > 0 && <p className="text-[10px] text-red-500 font-mono">+{moneyARS(diff)}</p>}
                             </div>
                           </div>
@@ -223,9 +302,8 @@ export default function CompararClient() {
                       </div>
                     )}
 
-                    {/* Sugerencias de similitud — solo para piezas sin equivalencia confirmada */}
-                    {!g.grupoId && (
-                      <div className="px-4 py-3 border-t border-p-line2 bg-blue-50/40">
+                    {/* Sugerencias de similitud — también para grupos existentes (sumar marcas nuevas) */}
+                    <div className="px-4 py-3 border-t border-p-line2 bg-blue-50/40">
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">
                             🔗 Posibles equivalencias en otros proveedores
@@ -255,17 +333,22 @@ export default function CompararClient() {
                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${sim >= 80 ? 'bg-green-100 text-green-700' : sim >= 65 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
                                       {sim}%
                                     </span>
+                                    <button onClick={() => vincularEquivalencia(g.provs[0], s)}
+                                      disabled={vinculando === s.id}
+                                      className="shrink-0 text-[11px] font-bold text-white rounded-md px-2.5 py-1"
+                                      style={{ background:'#00A550', opacity: vinculando === s.id ? .6 : 1, cursor:'pointer', border:'none' }}>
+                                      {vinculando === s.id ? '…' : '✓ Vincular'}
+                                    </button>
                                   </div>
                                 ))}
                                 <p className="text-[10px] text-p-ink2 mt-0.5">
-                                  Para confirmar como equivalencia, usá el módulo{' '}
+                                  También podés gestionarlas en{' '}
                                   <a href="/equivalencias" className="text-p-green font-semibold">Equivalencias</a>.
                                 </p>
                               </div>
                             )
                         )}
                       </div>
-                    )}
                   </div>
                 )}
               </div>

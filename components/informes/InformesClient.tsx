@@ -66,6 +66,37 @@ export default function InformesClient() {
       .then(({data}) => { setVentas(data??[]); setLoading(false) })
   }, [pIdx, periodos, supabase])
 
+  // ── Ventas por origen del cristal (salidas de stock del período + origen PLK) ──
+  const [porOrigen, setPorOrigen] = useState<{origen:string; unidades:number; monto:number}[]>([])
+  useEffect(() => {
+    const p = periodos[pIdx]
+    ;(async () => {
+      const { data: movs } = await supabase.from('stock_movimientos')
+        .select('stock_id,cantidad,precio_venta_unitario,tipo,fecha')
+        .eq('tipo','salida').gte('fecha', p.desde).lte('fecha', p.hasta).limit(2000)
+      if (!movs?.length) { setPorOrigen([]); return }
+      const ids = Array.from(new Set(movs.map((m:any)=>m.stock_id).filter(Boolean)))
+      const { data: stk } = await supabase.from('stock').select('id,codigo').in('id', ids)
+      const codigoDe: Record<string,string> = {}
+      for (const s of stk??[]) codigoDe[(s as any).id] = ((s as any).codigo||'').toUpperCase()
+      const codigos = Array.from(new Set(Object.values(codigoDe).filter(c=>/^\d{6}/.test(c))))
+      const origenDe: Record<string,string> = {}
+      if (codigos.length) {
+        const { data: pk } = await supabase.from('pilkington_import').select('codigo,origen').in('codigo', codigos)
+        for (const r of pk??[]) origenDe[((r as any).codigo||'').toUpperCase()] = (r as any).origen || 'Sin origen'
+      }
+      const acc: Record<string,{unidades:number; monto:number}> = {}
+      for (const m of movs as any[]) {
+        const cod = codigoDe[m.stock_id] || ''
+        const org = origenDe[cod] || (/^\d{6}/.test(cod) ? 'Otros PLK' : 'Otros artículos')
+        if (!acc[org]) acc[org] = { unidades:0, monto:0 }
+        acc[org].unidades += Number(m.cantidad)||0
+        acc[org].monto += (Number(m.cantidad)||0) * (Number(m.precio_venta_unitario)||0)
+      }
+      setPorOrigen(Object.entries(acc).map(([origen,v])=>({origen,...v})).sort((a,b)=>b.unidades-a.unidades))
+    })()
+  }, [pIdx, periodos, supabase])
+
   // Cargar datos resultado cuando cambia período o se selecciona el tab
   useEffect(() => {
     if(tab !== 'resultado') return
@@ -199,6 +230,29 @@ export default function InformesClient() {
                         <div key={fecha} className="flex flex-col items-center gap-1 flex-shrink-0" style={{minWidth:32}}>
                           <div className="w-full rounded-t-md" style={{height:h,background:'#00A550',minWidth:24}}/>
                           <span className="text-[9px] text-p-ink2 font-mono">{dd}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Gráfico por origen del cristal */}
+              {porOrigen.length > 0 && (
+                <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
+                  <p className="font-saira font-bold text-sm text-p-ink mb-1">Ventas por origen del cristal</p>
+                  <p className="text-[11px] text-p-ink2 mb-3">Salidas de stock del período, según origen de la lista Pilkington</p>
+                  <div className="flex flex-col gap-2.5">
+                    {porOrigen.map((o)=>{
+                      const maxU = porOrigen[0].unidades || 1
+                      return (
+                        <div key={o.origen} className="flex items-center gap-3">
+                          <span className="text-sm text-p-ink w-32 md:w-40 shrink-0 truncate">{o.origen}</span>
+                          <div className="flex-1 bg-p-line rounded-full h-3 overflow-hidden">
+                            <div className="h-full rounded-full" style={{width:`${Math.max(3,Math.round((o.unidades/maxU)*100))}%`,background:'#1565C0'}}/>
+                          </div>
+                          <span className="font-mono text-xs font-bold text-p-ink shrink-0 w-14 text-right">{o.unidades} u.</span>
+                          <span className="font-mono text-[11px] text-p-ink2 shrink-0 w-24 text-right hidden md:inline">{o.monto>0?moneyARS(o.monto):'—'}</span>
                         </div>
                       )
                     })}
