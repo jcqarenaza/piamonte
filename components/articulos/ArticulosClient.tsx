@@ -38,6 +38,11 @@ export default function ArticulosClient() {
   const [tab, setTab] = useState<Tab>('todos')
   const [articulos, setArticulos] = useState<Articulo[]>([])
   const [q, setQ] = useState('')
+  // Si llega ?q= en la URL (ej. desde el link de Comparar), precargar la búsqueda
+  useEffect(() => {
+    const qUrl = new URLSearchParams(window.location.search).get('q')
+    if (qUrl) setQ(qUrl)
+  }, [])
   const [filtroFaltante, setFiltroFaltante] = useState<string>('') // proveedor que falta
   const [loading, setLoading] = useState(false)
   const [catalogFallback, setCatalogFallback] = useState(false)

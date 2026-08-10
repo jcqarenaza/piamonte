@@ -380,8 +380,8 @@ export default function CompararClient() {
                                   </div>
                                 ))}
                                 <p className="text-[10px] text-p-ink2 mt-0.5">
-                                  También podés gestionarlas en{' '}
-                                  <a href="/equivalencias" className="text-p-green font-semibold">Equivalencias</a>.
+                                  El vínculo queda registrado en el maestro — lo ves en{' '}
+                                  <a href={`/articulos?q=${encodeURIComponent(g.provs[0].codigo||g.desc.split(' ').slice(0,3).join(' '))}`} className="text-p-green font-semibold">Artículos</a>.
                                 </p>
                               </div>
                             )
