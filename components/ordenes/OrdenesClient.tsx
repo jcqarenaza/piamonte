@@ -186,7 +186,18 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   const load = useCallback(() => {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
-    supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(({data})=>setOrdenes(data??[]))
+    supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(async ({data})=>{
+      const ords = data??[]
+      // Traer fecha/hora de los turnos vinculados para mostrarlos en la lista
+      const tIds = Array.from(new Set(ords.map((o:any)=>o.turno_id).filter(Boolean)))
+      if (tIds.length) {
+        const { data: ts } = await supabase.from('turnos').select('id,fecha,hora,estado').in('id', tIds)
+        const tMap: Record<string,any> = {}
+        for (const t of ts??[]) tMap[(t as any).id] = t
+        for (const o of ords as any[]) if (o.turno_id && tMap[o.turno_id]) o._turno = tMap[o.turno_id]
+      }
+      setOrdenes(ords)
+    })
     supabase.from('productores').select('id,nombre,telefono').order('nombre').then(({data})=>setProductores(data??[]))
     supabase.from('aseguradoras').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setAseguradoras(data??[]))
     supabase.from('colaboradores').select('id,nombre,es_colocador').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
@@ -825,6 +836,14 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   })()}
                   {(o as any).posicion_vidrio && !(o.items||[]).some((it:any)=>it.stock_id) && (
                     <span className="text-[10px] font-semibold text-p-green shrink-0">{(o as any).posicion_vidrio}</span>
+                  )}
+                  {(o as any)._turno && (
+                    <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5 shrink-0">
+                      📅 {String((o as any)._turno.fecha||'').split('-').reverse().slice(0,2).join('/')} {(o as any)._turno.hora?.slice(0,5)}
+                    </span>
+                  )}
+                  {(o as any).turno_id && !(o as any)._turno && (
+                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 shrink-0">📅 turno eliminado</span>
                   )}
                   {(o as any).cristal_colocado && (
                     <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">🔩 Colocada ✓</span>
