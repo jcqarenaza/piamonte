@@ -17,7 +17,7 @@ const RED_LABEL: Record<string,string> = {
   mp:'Mercado Pago', cabal:'Cabal', amex:'Amex'
 }
 
-interface Terminal { id:string; nombre:string; banco:string|null; red:string|null; nro_terminal:string|null; descuento_pct:number; dias_acreditacion:number; activo:boolean }
+interface Terminal { id:string; nombre:string; banco:string|null; red:string|null; nro_terminal:string|null; descuento_pct:number; dias_acreditacion:number; activo:boolean; cuenta_id?:string|null }
 interface TarjetaConfig { id:string; banco:string; red:string; tipo:string; cuotas:number; recargo_pct:number; retencion_pct:number; dias_acreditacion:number; descripcion:string|null; activo:boolean }
 interface Acreditacion {
   id:string; terminal_nombre:string|null; fecha_cobro:string; fecha_acred:string|null
@@ -34,19 +34,23 @@ export default function TarjetasClient() {
   const [filtroEstado, setFiltroEstado] = useState('')
   const [openTerm, setOpenTerm]   = useState(false)
   const [editTerm, setEditTerm]   = useState<Terminal|null>(null)
-  const [formTerm, setFormTerm]   = useState({ nombre:'', banco:'', red:'visa', nro_terminal:'', descuento_pct:'', dias_acreditacion:'2', notas:'' })
+  const CUENTA_PAMPA_CC = 'e7369b4b-4697-44ca-9303-a077a877e643'
+  const [formTerm, setFormTerm]   = useState({ nombre:'', banco:'', red:'visa', nro_terminal:'', descuento_pct:'', dias_acreditacion:'2', notas:'', cuenta_id: CUENTA_PAMPA_CC })
+  const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
 
   const supabase = createClient()
 
   async function load() {
-    const [t, a, c] = await Promise.all([
+    const [t, a, c, cb] = await Promise.all([
       supabase.from('terminales').select('*').eq('activo',true).order('nombre'),
       supabase.from('acreditaciones_tarjeta').select('*').order('fecha_cobro',{ascending:false}).limit(200),
-      supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('tipo').order('cuotas')
+      supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('tipo').order('cuotas'),
+      supabase.from('cuentas_banco').select('id,banco,tipo').eq('activo',true).order('banco')
     ])
     setTerminales(t.data??[])
     setAcreds(a.data??[])
     setConfigs(c.data??[])
+    setCuentasBanco(cb.data??[])
   }
 
   useEffect(()=>{ load() },[supabase])
@@ -57,17 +61,42 @@ export default function TarjetasClient() {
       nro_terminal: formTerm.nro_terminal||null,
       descuento_pct: +formTerm.descuento_pct||0,
       dias_acreditacion: +formTerm.dias_acreditacion||2,
-      notas: formTerm.notas||null
+      notas: formTerm.notas||null,
+      cuenta_id: formTerm.cuenta_id||null
     }
     if (editTerm) await supabase.from('terminales').update(payload).eq('id',editTerm.id)
     else          await supabase.from('terminales').insert(payload)
     setOpenTerm(false); setEditTerm(null)
-    setFormTerm({nombre:'',banco:'',red:'visa',nro_terminal:'',descuento_pct:'',dias_acreditacion:'2',notas:''})
+    setFormTerm({nombre:'',banco:'',red:'visa',nro_terminal:'',descuento_pct:'',dias_acreditacion:'2',notas:'',cuenta_id:CUENTA_PAMPA_CC})
     load()
   }
 
+  // Acreditar = la plata ENTRÓ al banco: además de marcar el estado,
+  // se registra el crédito en la cuenta de la terminal → queda listo para
+  // conciliar contra el extracto en el módulo Banco.
   async function marcarAcreditado(id:string) {
-    await supabase.from('acreditaciones_tarjeta').update({estado:'acreditado',fecha_acred:new Date().toISOString().slice(0,10)}).eq('id',id)
+    const a = acreds.find(x=>x.id===id); if (!a) return
+    const term = terminales.find(t=>t.nombre===a.terminal_nombre)
+    const cuentaId = (term as any)?.cuenta_id || CUENTA_PAMPA_CC
+    const hoy = new Date().toISOString().slice(0,10)
+    const { error: errUpd } = await supabase.from('acreditaciones_tarjeta')
+      .update({estado:'acreditado',fecha_acred:hoy}).eq('id',id)
+    if (errUpd) { alert(`⚠ ${errUpd.message}`); return }
+    const { error: errBco } = await supabase.from('movimientos_banco').insert({
+      cuenta_id: cuentaId, fecha: hoy, tipo: 'credito',
+      concepto: `Acreditación tarjeta ${a.terminal_nombre||''}${a.lote?` · lote ${a.lote}`:''}${a.cuotas>1?` · ${a.cuotas}c`:''}`.trim(),
+      monto: a.monto_neto,
+      origen_tipo: 'acreditacion_tarjeta',
+      notas: `Bruto ${a.monto_bruto} − desc ${a.descuento}`,
+    })
+    if (errBco) alert(`⚠ Acreditación marcada, pero no se pudo registrar el crédito en Banco: ${errBco.message}\nCargalo a mano en el módulo Banco.`)
+    load()
+  }
+
+  async function marcarRechazado(id:string) {
+    if (!confirm('¿Marcar esta liquidación como RECHAZADA? No genera movimiento en Banco.')) return
+    const { error } = await supabase.from('acreditaciones_tarjeta').update({estado:'rechazado'}).eq('id',id)
+    if (error) alert(`⚠ ${error.message}`)
     load()
   }
 
@@ -165,7 +194,8 @@ export default function TarjetasClient() {
                   </div>
                   {a.estado==='pendiente' && (
                     <div className="mt-2 pt-2 border-t border-p-line2 flex gap-2">
-                      <button onClick={()=>marcarAcreditado(a.id)} style={{...btnSm,background:'#00A550'}}>✓ Marcar acreditado</button>
+                      <button onClick={()=>marcarAcreditado(a.id)} style={{...btnSm,background:'#00A550'}}>✓ Acreditado (deposita en Banco)</button>
+                      <button onClick={()=>marcarRechazado(a.id)} style={{...btnSm,background:'#dc2626'}}>✗ Rechazada</button>
                     </div>
                   )}
                 </div>
@@ -197,7 +227,7 @@ export default function TarjetasClient() {
                   </div>
                   <button onClick={()=>{
                     setEditTerm(t)
-                    setFormTerm({nombre:t.nombre,banco:t.banco||'',red:t.red||'visa',nro_terminal:t.nro_terminal||'',descuento_pct:t.descuento_pct.toString(),dias_acreditacion:t.dias_acreditacion.toString(),notas:''})
+                    setFormTerm({nombre:t.nombre,banco:t.banco||'',red:t.red||'visa',nro_terminal:t.nro_terminal||'',descuento_pct:t.descuento_pct.toString(),dias_acreditacion:t.dias_acreditacion.toString(),notas:'',cuenta_id:(t as any).cuenta_id||CUENTA_PAMPA_CC})
                     setOpenTerm(true)
                   }} style={btnGray}>✏</button>
                 </div>
@@ -305,6 +335,12 @@ export default function TarjetasClient() {
             <Field label="N° Terminal"><Input value={formTerm.nro_terminal} onChange={e=>setFormTerm(p=>({...p,nro_terminal:e.target.value}))} placeholder="12345"/></Field>
             <Field label="Descuento %"><Input value={formTerm.descuento_pct} onChange={e=>setFormTerm(p=>({...p,descuento_pct:e.target.value}))} placeholder="2.35"/></Field>
             <Field label="Días acred."><Input type="number" value={formTerm.dias_acreditacion} onChange={e=>setFormTerm(p=>({...p,dias_acreditacion:e.target.value}))} placeholder="2"/></Field>
+            <Field label="Cuenta donde acredita">
+              <select value={formTerm.cuenta_id} onChange={e=>setFormTerm(p=>({...p,cuenta_id:e.target.value}))}
+                className="w-full border border-p-line rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                {cuentasBanco.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo}</option>)}
+              </select>
+            </Field>
           </div>
           {/* Cuotas de esta red */}
           {editTerm && (()=>{
