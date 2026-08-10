@@ -76,6 +76,44 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
+  // Precios de venta a ASEGURADORAS (lista Pilkington importada) por código PLK
+  const [asegPrecios, setAsegPrecios] = useState<Record<string, any>>({})
+  useEffect(() => {
+    if (!articulos.length) { setAsegPrecios({}); return }
+    ;(async () => {
+      const codes = Array.from(new Set(articulos.flatMap(a =>
+        [a.codigo_referencia, ...a.precios.map(p => p.codigo)]
+          .filter((c): c is string => !!c && /^\d{6}/.test(c)).map(c => c.toUpperCase())
+      )))
+      if (!codes.length) { setAsegPrecios({}); return }
+      // Última vigencia disponible
+      const { data: vig } = await supabase.from('precios_aseguradora')
+        .select('vigencia').eq('lista','comun').order('vigencia',{ascending:false}).limit(1).maybeSingle()
+      const vigencia = (vig as any)?.vigencia
+      if (!vigencia) return
+      const bases = Array.from(new Set(codes.map(c => c.slice(0,6))))
+      const orFiltro = bases.map(b => `codigo.ilike.${b}%`).join(',')
+      const { data: rows } = await supabase.from('precios_aseguradora')
+        .select('codigo,descripcion,precio_siva,instalacion_siva,total_siva')
+        .eq('lista','comun').eq('vigencia', vigencia).or(orFiltro).limit(200)
+      const map: Record<string, any> = {}
+      for (const r of (rows??[]) as any[]) {
+        const cod = String(r.codigo||'').toUpperCase()
+        map[cod] = { ...r, vigencia }                    // match exacto
+        const base = cod.slice(0,6)
+        if (!map[`~${base}`]) map[`~${base}`] = { ...r, vigencia }  // fallback por variante
+      }
+      setAsegPrecios(map)
+    })()
+  }, [articulos, supabase])
+  // Busca el precio de aseguradora de un artículo: código exacto o variante de la misma base
+  function asegDe(a: Articulo): { row:any; exacto:boolean } | null {
+    const codes = [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
+      .filter((c): c is string => !!c && /^\d{6}/.test(c)).map(c=>c.toUpperCase())
+    for (const c of codes) if (asegPrecios[c]) return { row: asegPrecios[c], exacto: true }
+    for (const c of codes) if (asegPrecios[`~${c.slice(0,6)}`]) return { row: asegPrecios[`~${c.slice(0,6)}`], exacto: false }
+    return null
+  }
   const isOnline = useOnlineStatus()
   const router = useRouter()
   const supabase = createClient()
@@ -306,6 +344,24 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                     {articulo.pos} · {articulo.precios.length} {articulo.precios.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
                     {esGerencial && <span className="text-p-green font-semibold">mejor costo {moneyARS(bestCosto)}</span>}
                   </p>
+                  {(() => {
+                    const aseg = asegDe(articulo)
+                    if (!aseg) return null
+                    const total = Number(aseg.row.total_siva)||0
+                    const civa = total * 1.21
+                    const mercantil = civa * 1.06
+                    return (
+                      <div className="mt-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px]">
+                        <span className="font-bold text-teal-800">💼 Aseguradora ({String(aseg.row.vigencia)})</span>
+                        <span className="text-teal-800">Material {moneyARS(Number(aseg.row.precio_siva)||0)}</span>
+                        <span className="text-teal-800">+ Instal. {moneyARS(Number(aseg.row.instalacion_siva)||0)}</span>
+                        <span className="font-bold text-teal-900">Total s/IVA {moneyARS(total)}</span>
+                        <span className="font-bold text-teal-900">c/IVA {moneyARS(civa)}</span>
+                        <span className="font-bold text-teal-900">Mercantil {moneyARS(mercantil)}</span>
+                        {!aseg.exacto && <span className="text-amber-700 font-semibold">variante {aseg.row.codigo}</span>}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 <div className="divide-y divide-p-line2">
