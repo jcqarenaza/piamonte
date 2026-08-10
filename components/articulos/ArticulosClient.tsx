@@ -106,20 +106,29 @@ export default function ArticulosClient() {
     // Ordenar por longitud descendente para que las abreviaturas más largas se reemplacen primero
     const ordenadas = [...abrevs].sort((a,b) => b.abreviatura.length - a.abreviatura.length)
 
-    const { data: arts } = await supabase.from('articulos_maestro').select('id,descripcion').eq('activo', true)
+    // Traer TODOS los artículos activos (paginado — Supabase corta en 1000 por default)
+    const arts: {id:string; descripcion:string}[] = []
+    for (let desde = 0; ; desde += 1000) {
+      const { data: pagina } = await supabase.from('articulos_maestro')
+        .select('id,descripcion').eq('activo', true).range(desde, desde + 999)
+      if (!pagina?.length) break
+      arts.push(...(pagina as any))
+      if (pagina.length < 1000) break
+    }
     let modificados = 0
-    for (const art of (arts ?? [])) {
+    for (const art of arts) {
       let nueva = art.descripcion
       for (const ab of ordenadas) {
         const regex = new RegExp(ab.abreviatura.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
         if (regex.test(nueva)) nueva = nueva.replace(regex, ab.expansion)
       }
+      nueva = nueva.replace(/\s{2,}/g,' ').trim().toUpperCase()  // la secretaria trabaja en MAYÚSCULAS
       if (nueva !== art.descripcion) {
         await supabase.from('articulos_maestro').update({ descripcion: nueva, updated_at: new Date().toISOString() }).eq('id', art.id)
         modificados++
       }
     }
-    setResultadoAplicar(`✓ ${modificados} artículos actualizados`)
+    setResultadoAplicar(`✓ ${modificados} de ${arts.length} artículos actualizados`)
     setAplicando(false)
   }
 
@@ -148,7 +157,7 @@ export default function ArticulosClient() {
     for (const f of filas) {
       let nueva = f.descripcion || ''
       for (const ab of ordenadas) nueva = nueva.replace(ab.regex, ab.exp)
-      nueva = nueva.replace(/\s{2,}/g,' ').trim()
+      nueva = nueva.replace(/\s{2,}/g,' ').trim().toUpperCase()  // siempre MAYÚSCULAS
       if (nueva !== f.descripcion) cambios.push({ id: f.id, nueva })
     }
     if (!cambios.length) { setAplicandoCat(false); setProgresoCat('✓ El catálogo ya estaba normalizado.'); return }
