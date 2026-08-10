@@ -376,12 +376,9 @@ export default function ArticulosClient() {
             <div className="flex items-center gap-2">
               {resultadoAplicar && <span className="text-xs font-semibold text-p-green">{resultadoAplicar}</span>}
               {progresoCat && <span className="text-xs font-semibold text-blue-700">{progresoCat}</span>}
-              <button onClick={aplicarAbreviaturas} disabled={aplicando} style={{...btnBlue, opacity:aplicando?.6:1}}>
-                {aplicando ? 'Aplicando…' : '⟳ Aplicar a existentes'}
-              </button>
-              <button onClick={aplicarAbreviaturasCatalogo} disabled={aplicandoCat}
-                style={{...btnBlue, background:'#7c3aed', opacity:aplicandoCat?.6:1}}>
-                {aplicandoCat ? 'Normalizando…' : '🧹 Unificar catálogo (PSAS → Parabrisas)'}
+              <button onClick={async ()=>{ await aplicarAbreviaturas(); await aplicarAbreviaturasCatalogo() }}
+                disabled={aplicando||aplicandoCat} style={{...btnBlue, opacity:(aplicando||aplicandoCat)?.6:1}}>
+                {(aplicando||aplicandoCat) ? 'Aplicando…' : '⟳ Aplicar a existentes (maestro + catálogo)'}
               </button>
             </div>
           </div>
