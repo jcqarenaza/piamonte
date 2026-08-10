@@ -76,29 +76,6 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
-  // Stock físico por artículo (la feature estrella de la vieja pantalla Buscar)
-  const [stockPorCod, setStockPorCod] = useState<Record<string, number>>({})
-  useEffect(() => {
-    if (!articulos.length || !isOnline) { setStockPorCod({}); return }
-    const codes = Array.from(new Set(articulos.flatMap(a =>
-      [a.codigo_referencia, ...a.precios.map(p=>p.codigo)].filter((c): c is string => !!c).map(c=>c.toUpperCase())
-    )))
-    if (!codes.length) return
-    supabase.from('stock').select('codigo,cantidad').eq('activo', true).gt('cantidad', 0).in('codigo', codes)
-      .then(({data}) => {
-        const m: Record<string, number> = {}
-        for (const s of (data??[]) as any[]) {
-          const c = String(s.codigo||'').toUpperCase()
-          m[c] = (m[c]||0) + Number(s.cantidad||0)
-        }
-        setStockPorCod(m)
-      })
-  }, [articulos, isOnline, supabase])
-  function stockDe(a: Articulo): number {
-    return [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
-      .filter((c): c is string => !!c)
-      .reduce((acc, c) => acc + (stockPorCod[c.toUpperCase()]||0), 0)
-  }
   const supabase = createClient()
 
   // Precios de venta a ASEGURADORAS (lista Pilkington importada) por código PLK
@@ -140,6 +117,30 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     return null
   }
   const isOnline = useOnlineStatus()
+
+  // Stock físico por artículo (la feature estrella de la vieja pantalla Buscar)
+  const [stockPorCod, setStockPorCod] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!articulos.length || !isOnline) { setStockPorCod({}); return }
+    const codes = Array.from(new Set(articulos.flatMap(a =>
+      [a.codigo_referencia, ...a.precios.map(p=>p.codigo)].filter((c): c is string => !!c).map(c=>c.toUpperCase())
+    )))
+    if (!codes.length) return
+    supabase.from('stock').select('codigo,cantidad').eq('activo', true).gt('cantidad', 0).in('codigo', codes)
+      .then(({data}) => {
+        const m: Record<string, number> = {}
+        for (const s of (data??[]) as any[]) {
+          const c = String(s.codigo||'').toUpperCase()
+          m[c] = (m[c]||0) + Number(s.cantidad||0)
+        }
+        setStockPorCod(m)
+      })
+  }, [articulos, isOnline, supabase])
+  function stockDe(a: Articulo): number {
+    return [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
+      .filter((c): c is string => !!c)
+      .reduce((acc, c) => acc + (stockPorCod[c.toUpperCase()]||0), 0)
+  }
   const router = useRouter()
 
   useEffect(() => {
