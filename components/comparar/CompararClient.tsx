@@ -159,8 +159,43 @@ export default function CompararClient() {
   // todo lo que era equivalente a una pasa a ser equivalente a la otra.
   const [vinculando, setVinculando] = useState<string | null>(null)
   async function vincularEquivalencia(a: CatRow, b: CatRow) {
-    if (!confirm(`¿Confirmar que son el mismo vidrio?\n\n· ${a.proveedor} ${a.codigo||''} — ${a.descripcion}\n· ${b.proveedor} ${b.codigo||''} — ${b.descripcion}\n\nQuedan vinculadas (y todo lo ya vinculado a cada una, también).`)) return
+    if (!confirm(`¿Confirmar que son el mismo vidrio?\n\n· ${a.proveedor} ${a.codigo||''} — ${a.descripcion}\n· ${b.proveedor} ${b.codigo||''} — ${b.descripcion}\n\nQueda registrado en el maestro de Articulos (y todo lo ya vinculado, tambien).`)) return
     setVinculando(b.id)
+
+    // ── 1) MAESTRO (fuente de verdad): "este artículo es tal código en tal marca" ──
+    const codes = [a.codigo, b.codigo].filter(Boolean) as string[]
+    let articuloId: string | null = null
+    if (codes.length) {
+      const { data: porRef } = await supabase.from('articulos_maestro')
+        .select('id').in('codigo_referencia', codes).eq('activo', true).limit(1).maybeSingle()
+      articuloId = (porRef as any)?.id ?? null
+      if (!articuloId) {
+        const { data: porEq } = await supabase.from('articulo_equivalencias')
+          .select('articulo_id').in('codigo_proveedor', codes).limit(1).maybeSingle()
+        articuloId = (porEq as any)?.articulo_id ?? null
+      }
+    }
+    if (!articuloId) {
+      // No existe en el maestro: crearlo con el código PLK como referencia si lo hay
+      const codPLK = codes.find(c => /^\d{6}/.test(c)) ?? null
+      const { data: nuevoArt, error: errArt } = await supabase.from('articulos_maestro')
+        .insert({ descripcion: a.descripcion, codigo_referencia: codPLK, activo: true })
+        .select('id').single()
+      if (errArt || !nuevoArt) { alert(`⚠ No se pudo crear el artículo en el maestro: ${errArt?.message}`); setVinculando(null); return }
+      articuloId = nuevoArt.id
+    }
+    for (const p of [a, b]) {
+      if (!p.codigo) continue
+      const { data: ya } = await supabase.from('articulo_equivalencias')
+        .select('id').eq('articulo_id', articuloId).eq('codigo_proveedor', p.codigo).limit(1).maybeSingle()
+      if (!ya) {
+        const { error: errEq } = await supabase.from('articulo_equivalencias')
+          .insert({ articulo_id: articuloId, proveedor: p.proveedor, codigo_proveedor: p.codigo })
+        if (errEq) { alert(`⚠ No se pudo registrar la equivalencia de ${p.codigo}: ${errEq.message}`); setVinculando(null); return }
+      }
+    }
+
+    // ── 2) CATÁLOGO: grupo_id sincronizado (agrupado visual de Comparar) ──
     let gid = a.grupo_id ?? b.grupo_id ?? null
     if (!gid) {
       const { data: mx } = await supabase.from('catalogo').select('grupo_id').not('grupo_id','is',null).order('grupo_id',{ascending:false}).limit(1).maybeSingle()
