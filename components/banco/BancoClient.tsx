@@ -234,6 +234,16 @@ export default function BancoClient() {
                     <td className={`px-4 py-2.5 text-right font-mono font-bold ${(m.saldo??0)>=0?'text-p-dark':'text-red-600'}`}>{moneyARS(m.saldo??0)}</td>
                     <td className="px-4 py-2.5 text-right">
                       {!m.conciliado&&<button onClick={()=>{ setEditMovId(m.id); setFormMov({tipo:m.tipo,concepto:m.concepto,monto:String(m.monto),origen_tipo:m.origen_tipo||'otro',fecha:m.fecha,notas:m.notas||'',nro_extracto:m.nro_extracto||''}); setMovModal(true) }} className="text-p-ink2 hover:text-p-ink text-[10px]">✏</button>}
+                      {!m.conciliado && !m.cheque_id && !['cheque_emitido','acreditacion_tarjeta'].includes(m.origen_tipo||'') && (
+                        <button onClick={async()=>{
+                            const esTransf = (m.origen_tipo||'').startsWith('transferencia')
+                            if(!confirm(`¿Eliminar este movimiento?\n\n${m.fecha.split('-').reverse().join('/')} · ${m.concepto}\n${m.tipo==='credito'?'+':'−'}${moneyARS(m.monto)}${esTransf?'\n\n⚠ Es parte de una transferencia: acordate de eliminar también la otra pata en la otra cuenta.':''}`)) return
+                            const { error } = await supabase.from('movimientos_banco').delete().eq('id', m.id)
+                            if (error) { alert(`⚠ No se pudo eliminar: ${error.message}`); return }
+                            load()
+                          }}
+                          className="text-red-300 hover:text-red-600 text-[10px]" title="Eliminar movimiento">🗑</button>
+                      )}
                     </td>
                   </tr>
                 ))}
