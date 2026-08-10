@@ -233,7 +233,8 @@ export default function BancoClient() {
                     <td className="px-4 py-2.5 text-right font-mono font-bold text-red-500">{m.tipo==='debito'?moneyARS(m.monto):'—'}</td>
                     <td className={`px-4 py-2.5 text-right font-mono font-bold ${(m.saldo??0)>=0?'text-p-dark':'text-red-600'}`}>{moneyARS(m.saldo??0)}</td>
                     <td className="px-4 py-2.5 text-right">
-                      {!m.conciliado&&<button onClick={()=>{ setEditMovId(m.id); setFormMov({tipo:m.tipo,concepto:m.concepto,monto:String(m.monto),origen_tipo:m.origen_tipo||'otro',fecha:m.fecha,notas:m.notas||'',nro_extracto:m.nro_extracto||''}); setMovModal(true) }} className="text-p-ink2 hover:text-p-ink text-[10px]">✏</button>}
+                      {!m.conciliado&&<button onClick={()=>{ setEditMovId(m.id); setFormMov({tipo:m.tipo,concepto:m.concepto,monto:String(m.monto),origen_tipo:m.origen_tipo||'otro',fecha:m.fecha,notas:m.notas||'',nro_extracto:m.nro_extracto||''}); setMovModal(true) }}
+                        className="text-p-ink2 hover:text-p-ink text-xs font-semibold border border-p-line rounded-lg px-2.5 py-1 bg-white hover:bg-gray-50" title="Editar movimiento">✏ Editar</button>}
                       {!m.conciliado && !m.cheque_id && !['cheque_emitido','acreditacion_tarjeta'].includes(m.origen_tipo||'') && (
                         <button onClick={async()=>{
                             const esTransf = (m.origen_tipo||'').startsWith('transferencia')
@@ -242,7 +243,7 @@ export default function BancoClient() {
                             if (error) { alert(`⚠ No se pudo eliminar: ${error.message}`); return }
                             if (selCuenta) loadMovs(selCuenta)
                           }}
-                          className="text-red-300 hover:text-red-600 text-[10px]" title="Eliminar movimiento">🗑</button>
+                          className="text-red-500 hover:text-white hover:bg-red-500 text-xs font-semibold border border-red-200 rounded-lg px-2.5 py-1 bg-red-50" title="Eliminar movimiento">🗑 Eliminar</button>
                       )}
                     </td>
                   </tr>
