@@ -76,6 +76,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
+  const supabase = createClient()
+
   // Precios de venta a ASEGURADORAS (lista Pilkington importada) por código PLK
   const [asegPrecios, setAsegPrecios] = useState<Record<string, any>>({})
   useEffect(() => {
@@ -116,7 +118,6 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   }
   const isOnline = useOnlineStatus()
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
     supabase.from('config_precios').select('*').eq('id', 1).maybeSingle()
