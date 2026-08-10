@@ -107,6 +107,7 @@ export default function ArticulosClient() {
     const ordenadas = [...abrevs].sort((a,b) => b.abreviatura.length - a.abreviatura.length)
 
     // Traer TODOS los artículos activos (paginado — Supabase corta en 1000 por default)
+    setResultadoAplicar('Leyendo maestro…')
     const arts: {id:string; descripcion:string}[] = []
     for (let desde = 0; ; desde += 1000) {
       const { data: pagina } = await supabase.from('articulos_maestro')
@@ -115,20 +116,26 @@ export default function ArticulosClient() {
       arts.push(...(pagina as any))
       if (pagina.length < 1000) break
     }
-    let modificados = 0
+    // Calcular los cambios en memoria
+    const regexes = ordenadas.map(ab => ({ regex: new RegExp(ab.abreviatura.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), exp: ab.expansion }))
+    const cambios: {id:string; nueva:string}[] = []
     for (const art of arts) {
       let nueva = art.descripcion
-      for (const ab of ordenadas) {
-        const regex = new RegExp(ab.abreviatura.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-        if (regex.test(nueva)) nueva = nueva.replace(regex, ab.expansion)
-      }
+      for (const ab of regexes) nueva = nueva.replace(ab.regex, ab.exp)
       nueva = nueva.replace(/\s{2,}/g,' ').trim().toUpperCase()  // la secretaria trabaja en MAYÚSCULAS
-      if (nueva !== art.descripcion) {
-        await supabase.from('articulos_maestro').update({ descripcion: nueva, updated_at: new Date().toISOString() }).eq('id', art.id)
-        modificados++
-      }
+      if (nueva !== art.descripcion) cambios.push({ id: art.id, nueva })
     }
-    setResultadoAplicar(`✓ ${modificados} de ${arts.length} artículos actualizados`)
+    // Aplicar en lotes paralelos con progreso
+    let modificados = 0
+    for (let i = 0; i < cambios.length; i += 40) {
+      const lote = cambios.slice(i, i + 40)
+      await Promise.all(lote.map(c =>
+        supabase.from('articulos_maestro').update({ descripcion: c.nueva, updated_at: new Date().toISOString() }).eq('id', c.id)
+      ))
+      modificados += lote.length
+      setResultadoAplicar(`Maestro: ${modificados}/${cambios.length}…`)
+    }
+    setResultadoAplicar(`✓ Maestro: ${cambios.length} de ${arts.length} artículos actualizados`)
     setAplicando(false)
   }
 
