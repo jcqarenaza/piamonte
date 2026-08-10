@@ -76,6 +76,29 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
+  // Stock físico por artículo (la feature estrella de la vieja pantalla Buscar)
+  const [stockPorCod, setStockPorCod] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!articulos.length || !isOnline) { setStockPorCod({}); return }
+    const codes = Array.from(new Set(articulos.flatMap(a =>
+      [a.codigo_referencia, ...a.precios.map(p=>p.codigo)].filter((c): c is string => !!c).map(c=>c.toUpperCase())
+    )))
+    if (!codes.length) return
+    supabase.from('stock').select('codigo,cantidad').eq('activo', true).gt('cantidad', 0).in('codigo', codes)
+      .then(({data}) => {
+        const m: Record<string, number> = {}
+        for (const s of (data??[]) as any[]) {
+          const c = String(s.codigo||'').toUpperCase()
+          m[c] = (m[c]||0) + Number(s.cantidad||0)
+        }
+        setStockPorCod(m)
+      })
+  }, [articulos, isOnline, supabase])
+  function stockDe(a: Articulo): number {
+    return [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
+      .filter((c): c is string => !!c)
+      .reduce((acc, c) => acc + (stockPorCod[c.toUpperCase()]||0), 0)
+  }
   const supabase = createClient()
 
   // Precios de venta a ASEGURADORAS (lista Pilkington importada) por código PLK
@@ -281,7 +304,9 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     return () => clearTimeout(t)
   }, [buscar])
 
-  const articulosOrdenados = [...articulos].sort((a, b) => b.precios.length - a.precios.length)
+  // Los que TENÉS EN STOCK primero (el criterio de la vieja pantalla Buscar), después por cobertura de proveedores
+  const articulosOrdenados = [...articulos].sort((a, b) =>
+    (stockDe(b) > 0 ? 1 : 0) - (stockDe(a) > 0 ? 1 : 0) || b.precios.length - a.precios.length)
 
   function irAPresupuesto(articulo: Articulo, precio: PrecioProveedor, tipo: TipoCliente) {
     const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, fleteProv[precio.proveedor]||0, configPrecios)
@@ -337,6 +362,9 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                 <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-saira font-bold text-p-ink">{articulo.descripcion}</p>
+                    {stockDe(articulo) > 0 && (
+                      <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-2 py-0.5">✓ En stock ({stockDe(articulo)})</span>
+                    )}
                     {esGerencial && articulo.sku_interno && (
                       <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{articulo.sku_interno}</span>
                     )}

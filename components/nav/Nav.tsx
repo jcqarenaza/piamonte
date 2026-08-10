@@ -18,8 +18,8 @@ const GRUPOS = [
     label: 'CATÁLOGO / ARTÍCULOS',
     items: [
       { id:'articulos', href:'/articulos', label:'Artículos', icon:'🏷️' },
-      { id:'buscar',    href:'/buscar',    label:'Buscar',    icon:'🔍' },
       { id:'comparar',  href:'/comparar',  label:'Comparar',  icon:'⚖️' },
+      { id:'equivalencias', href:'/equivalencias', label:'Equivalencias', icon:'🔗' },
       { id:'ofertas',   href:'/ofertas',   label:'Ofertas',   icon:'⭐' },
     ]
   },
@@ -83,7 +83,7 @@ const GRUPOS = [
 ]
 
 const ALL_MODULES = GRUPOS.flatMap(g => g.items)
-const DEFAULT_FAVS = ['turnos','caja','buscar','presupuestos']
+const DEFAULT_FAVS = ['turnos','caja','precios','presupuestos']
 const SIDEBAR_W = 210
 
 // Colores — estilo MobixERP / QP C&IA
