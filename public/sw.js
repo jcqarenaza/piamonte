@@ -2,7 +2,7 @@
 // Los datos (turnos, precios) se manejan aparte con IndexedDB (ver lib/offline/db.ts).
 // No cachea rutas de API ni de Supabase — esas siempre van a la red cuando hay conexión.
 
-const CACHE_NAME = 'elpiamonte-shell-v2'
+const CACHE_NAME = 'elpiamonte-shell-v3'
 const SHELL_URLS = ['/', '/turnos', '/precios']
 
 self.addEventListener('install', (event) => {
@@ -35,7 +35,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return
 
   // Network-first simple y seguro: intenta la red; si falla, recién ahí busca en cache.
-  // Nunca deja la página sin respuesta — si no hay red NI cache, deja pasar el error normal del navegador.
+  // Si no hay red NI cache: responde 503 "Sin conexión" (NUNCA reintenta el fetch que
+  // acaba de fallar — eso causaba promesas rechazadas y FetchEvents rotos).
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -45,8 +46,15 @@ self.addEventListener('fetch', (event) => {
         }
         return response
       })
-      .catch(() =>
-        caches.match(event.request).then((cached) => cached || fetch(event.request))
-      )
+      .catch(async () => {
+        const cached = await caches.match(event.request).catch(() => null)
+        if (cached) return cached
+        // Navegación sin conexión: servir el shell cacheado de inicio si existe
+        if (event.request.mode === 'navigate') {
+          const shell = await caches.match('/').catch(() => null)
+          if (shell) return shell
+        }
+        return new Response('Sin conexión', { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+      })
   )
 })

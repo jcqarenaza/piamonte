@@ -240,7 +240,7 @@ export default function BancoClient() {
                             if(!confirm(`¿Eliminar este movimiento?\n\n${m.fecha.split('-').reverse().join('/')} · ${m.concepto}\n${m.tipo==='credito'?'+':'−'}${moneyARS(m.monto)}${esTransf?'\n\n⚠ Es parte de una transferencia: acordate de eliminar también la otra pata en la otra cuenta.':''}`)) return
                             const { error } = await supabase.from('movimientos_banco').delete().eq('id', m.id)
                             if (error) { alert(`⚠ No se pudo eliminar: ${error.message}`); return }
-                            load()
+                            if (selCuenta) loadMovs(selCuenta)
                           }}
                           className="text-red-300 hover:text-red-600 text-[10px]" title="Eliminar movimiento">🗑</button>
                       )}
