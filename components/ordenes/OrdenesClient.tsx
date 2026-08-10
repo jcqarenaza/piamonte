@@ -1212,21 +1212,26 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             <button onClick={()=>setTurnoModal(null)} style={{...btnGray}}>Cancelar</button>
             <button onClick={async()=>{
               if(!turnoModal) return
-              // Verificar que la OS no tenga ya un turno
+              // Si ya tiene turno, ofrecer reemplazarlo (cubre también turnos huérfanos/borrados)
               if (turnoModal.turno_id) {
-                alert('⚠ Esta OS ya tiene un turno asignado. Primero eliminá el turno existente.')
-                return
+                const { data: turnoViejo } = await supabase.from('turnos')
+                  .select('id,fecha,hora').eq('id', turnoModal.turno_id).maybeSingle()
+                const detalle = turnoViejo ? `el turno del ${String(turnoViejo.fecha||'').split('-').reverse().join('/')} ${turnoViejo.hora||''}` : 'un turno anterior (ya eliminado del calendario)'
+                if (!confirm(`Esta OS ya tiene ${detalle}.\n¿Reemplazarlo por el nuevo (${turnoForm.fecha.split('-').reverse().join('/')} ${turnoForm.hora})?`)) return
+                if (turnoViejo) await supabase.from('turnos').delete().eq('id', turnoViejo.id)
               }
-              const { data: nuevoTurno } = await supabase.from('turnos').insert({
+              const { data: nuevoTurno, error: errTurno } = await supabase.from('turnos').insert({
                 fecha: turnoForm.fecha, hora: turnoForm.hora,
                 cliente: turnoModal.cliente||null, telefono: turnoModal.telefono||null,
                 vehiculo: turnoModal.vehiculo||null, trabajo: turnoForm.trabajo||null,
                 estado: 'confirmado', user_id: userId,
                 os_id: turnoModal.id,  // vincula el turno a la OS
               }).select('id').single()
+              if (errTurno || !nuevoTurno) { alert(`⚠ No se pudo crear el turno: ${errTurno?.message||'sin detalle'}`); return }
               // Guardar también el turno_id en la OS
-              if(nuevoTurno) await supabase.from('ordenes_servicio').update({ turno_id: nuevoTurno.id }).eq('id', turnoModal.id)
+              await supabase.from('ordenes_servicio').update({ turno_id: nuevoTurno.id }).eq('id', turnoModal.id)
               setTurnoModal(null)
+              load()
             }} style={btn}>✓ Crear turno</button>
           </div>
         </div>
