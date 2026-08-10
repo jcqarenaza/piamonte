@@ -235,7 +235,10 @@ export default function BancoClient() {
                     <td className="px-4 py-2.5 text-right">
                       {!m.conciliado&&<button onClick={()=>{ setEditMovId(m.id); setFormMov({tipo:m.tipo,concepto:m.concepto,monto:String(m.monto),origen_tipo:m.origen_tipo||'otro',fecha:m.fecha,notas:m.notas||'',nro_extracto:m.nro_extracto||''}); setMovModal(true) }}
                         className="text-p-ink2 hover:text-p-ink text-xs font-semibold border border-p-line rounded-lg px-2.5 py-1 bg-white hover:bg-gray-50" title="Editar movimiento">✏ Editar</button>}
-                      {!m.conciliado && !m.cheque_id && !['cheque_emitido','acreditacion_tarjeta'].includes(m.origen_tipo||'') && (
+                      {/* Eliminar: SOLO movimientos cargados a mano (los generados por otros
+                          módulos —cheques, tarjetas, cobros, OPs— se revierten desde su circuito) */}
+                      {!m.conciliado && !m.cheque_id &&
+                        ['deposito_manual','debito_bancario','otro'].includes(m.origen_tipo||'otro') && (
                         <button onClick={async()=>{
                             const esTransf = (m.origen_tipo||'').startsWith('transferencia')
                             if(!confirm(`¿Eliminar este movimiento?\n\n${m.fecha.split('-').reverse().join('/')} · ${m.concepto}\n${m.tipo==='credito'?'+':'−'}${moneyARS(m.monto)}${esTransf?'\n\n⚠ Es parte de una transferencia: acordate de eliminar también la otra pata en la otra cuenta.':''}`)) return
