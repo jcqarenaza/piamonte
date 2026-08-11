@@ -60,17 +60,12 @@ export default function BancoClient() {
     setLoading(true)
     const today = todayStr()
     const { data } = await supabase.from('movimientos_banco').select('*')
-      .eq('cuenta_id', cuenta.id).order('fecha',{ascending:true}).order('created_at',{ascending:true}).limit(500)
-    // Calcular saldo acumulado para todos los movimientos
+      .eq('cuenta_id', cuenta.id).lte('fecha', today)
+      .order('fecha',{ascending:true}).order('created_at',{ascending:true}).limit(500)
     let saldo = cuenta.saldo_inicial ?? 0
-    // Saldo actual = solo hasta hoy
-    let saldoHoy = cuenta.saldo_inicial ?? 0
-    ;(data??[]).forEach(m => {
-      if (m.fecha <= today) saldoHoy += m.tipo==='credito' ? m.monto : -m.monto
-    })
     const conSaldo = (data??[]).map(m=>{ saldo += m.tipo==='credito' ? m.monto : -m.monto; return { ...m, saldo } }).reverse()
     setMovs(conSaldo)
-    setSaldoHoy(saldoHoy)
+    setSaldoHoy(saldo)
     setPendConcil((data??[]).filter(m=>!m.conciliado))
     setLoading(false)
   },[supabase])
