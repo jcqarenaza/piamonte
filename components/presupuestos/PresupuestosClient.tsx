@@ -449,7 +449,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if((p as any).mano_obra_incluida !== false) {
       doc.setFont('helvetica','italic'); doc.setFontSize(8)
       doc.setTextColor(esAseg ? 100 : 0, esAseg ? 50 : 100, esAseg ? 150 : 60)
-      doc.text('✓ Precio incluye mano de obra y colocacion', pad, 272)
+      doc.text('Precio incluye mano de obra y colocacion', pad, 272)
       doc.setTextColor(30,30,30)
     }
 
