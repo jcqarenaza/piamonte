@@ -266,6 +266,30 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setAdjuntos(prev=>prev.filter(a=>a.id!==id))
   }
 
+  // Descargar todos los adjuntos con nombres prolijos (para subir a portales de aseguradoras)
+  const [descargando, setDescargando] = useState(false)
+  async function descargarAdjuntos() {
+    if (!adjModal || !adjuntos.length) return
+    setDescargando(true)
+    const base = `OS-${String(adjModal.numero||'SN').padStart(4,'0')}_${(adjModal.cliente||'').split(',')[0].replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ ]/g,'').trim().replace(/\s+/g,'-')}`
+    let nFoto = 0
+    for (const a of adjuntos) {
+      try {
+        const resp = await fetch(a.url)
+        const blob = await resp.blob()
+        const ext = (a.storage_path||a.nombre||'').split('.').pop() || 'jpg'
+        const nombre = a.tipo === 'os_firmada' ? `${base}_firmada.${ext}` : `${base}_foto${++nFoto}.${ext}`
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = nombre
+        document.body.appendChild(link); link.click(); link.remove()
+        URL.revokeObjectURL(link.href)
+        await new Promise(r=>setTimeout(r, 300))  // que el navegador no se atragante
+      } catch(e) { console.error('Descarga falló:', a.nombre, e) }
+    }
+    setDescargando(false)
+  }
+
   function openEdit(o: any) {
     setEditId(o.id)
     setForm({
@@ -1044,7 +1068,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 )}
               </div>
             </div>
-            <div className="p-4 border-t border-p-line flex justify-end">
+            <div className="p-4 border-t border-p-line flex justify-between items-center">
+              {adjuntos.length > 0 ? (
+                <button onClick={descargarAdjuntos} disabled={descargando}
+                  style={{background:'#1565C0',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:descargando?.6:1}}>
+                  {descargando?'Descargando…':`⬇ Descargar todo (${adjuntos.length})`}
+                </button>
+              ) : <span/>}
               <button onClick={()=>setAdjModal(null)}
                 style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 Cerrar
