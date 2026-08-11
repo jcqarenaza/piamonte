@@ -382,7 +382,7 @@ export default function CuentaCorrienteProveedoresClient() {
         if (chequeOpIns?.id) {
           await supabase.from('movimientos_banco').insert({
             cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
-            fecha: fechaOp,
+            fecha: pago.chequeNuevo.modalidad==='al_dia' ? fechaOp : pago.chequeNuevo.fecha_cobro,
             tipo: 'debito',
             concepto: `Cheque N° ${pago.chequeNuevo.numero} — ${sel.proveedor_nombre} (OP Nº ${numero})`,
             monto: montoPago,
