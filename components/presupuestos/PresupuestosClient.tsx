@@ -593,8 +593,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"}>
-        <div className="flex flex-col gap-3" style={{minWidth:'min(680px,90vw)'}}>
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"} size="lg">
+        <div className="flex flex-col gap-3">
 
           {/* Toggle modo */}
           <div className="flex rounded-xl overflow-hidden border border-p-line">
