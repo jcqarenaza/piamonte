@@ -654,7 +654,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       precio: f.total, costo: costoVenta||null, pendiente: true,
       comprobante_id: c.id, tipo_cliente_id: f.tipo_cliente_id||null, tipo_cliente_nombre: f.tipo_cliente_nombre||null,
       pago: montoCC >= f.total*0.9 ? 'Cuenta corriente' : (pagosF.find((p:any)=>p.metodo!=='Cuenta corriente')?.metodo || 'Efectivo'),
-      cliente: f.aseguradora_nombre||f.cliente_nombre||null,
+      // Abajo va el contexto: el asegurado si es de aseguradora; CF si corresponde
+      cliente: f.aseguradora_nombre ? (f.cliente_nombre||null) : (f.cliente_nombre ? null : 'Consumidor Final'),
       origen: 'compra', user_id: userId,
     })
     if (pagosF.some((p:any)=>p.metodo==='Cheque')) {
@@ -1021,12 +1022,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const pagoPrincipal = modo==='aseguradora' ? 'Cuenta corriente'
         : pagosCCTotal >= total*0.9 ? 'Cuenta corriente'
         : pagos.find(p=>p.metodo!=='Cuenta corriente')?.metodo || pagos[0]?.metodo || 'Efectivo'
-      const clienteVenta = modo==='aseguradora' ? (asegSel?.nombre||clienteAseg||null)
-        : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null)
-        : (cfNombre||null)
-      // El nombre en la descripción de caja: el MISMO que el cliente real
-      // (antes ignoraba el nombre cargado en modo CF y ponía "Consumidor Final")
-      const nombreVenta = clienteVenta || 'Consumidor Final'
+      // Jerarquía en caja: ARRIBA (descripción) el protagonista, ABAJO (cliente) el contexto.
+      //  - CF:          "FA-... - Juan Pérez"           / abajo: "Consumidor Final"
+      //  - Aseguradora: "FA-... - Mercantil Andina"     / abajo: el asegurado
+      //  - Cliente:     "FA-... - Nombre del cliente"   / abajo: (nada)
+      const nombreVenta = modo==='aseguradora' ? (asegSel?.nombre||'Aseguradora')
+        : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||'Cliente')
+        : (cfNombre||'Consumidor Final')
+      const clienteVenta = modo==='aseguradora' ? (clienteAseg||null)
+        : modo==='cf' ? 'Consumidor Final'
+        : null
       // Calcular costo desde stock de los ítems facturados
       let costoVenta = 0
       for (const it of items.filter((it:any)=>it.stock_id)) {
@@ -1343,7 +1348,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
     const esCuentaCorriente = c.pagos?.length && c.pagos.every((p:Pago) => esPagoCC(p.metodo))
-    const pagoY = 257
+    const pagoY = totY + 18  // siempre DEBAJO del recuadro de totales (que termina en totY+13)
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)
