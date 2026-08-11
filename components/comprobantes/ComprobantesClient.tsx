@@ -51,7 +51,7 @@ interface Comprobante {
   presupuesto_id:string|null; orden_id:string|null; created_at:string
   aseguradora_id?:string|null; aseguradora_nombre?:string|null; es_negro?:boolean
   patente?:string|null; siniestro?:string|null
-  cae_emitido?:string|null; cae_vencimiento?:string|null
+  cae_emitido?:string|null; cae_vencimiento?:string|null; observaciones?:string|null
   categoria?:string; comprobante_original_id?:string|null; motivo_nc?:string|null
   nro_cbte_afip?:number|null
 }
