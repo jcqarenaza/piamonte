@@ -61,7 +61,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [cliSugs, setCliSugs] = useState<ClienteMin[]>([])
   const [cliSel, setCliSel]   = useState<ClienteMin|null>(null)
   const [tipoSel, setTipoSel] = useState<TipoCliente|null>(null)
-  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7' })
+  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7', obs:'' })
 
   // Items del presupuesto
   const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
