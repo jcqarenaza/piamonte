@@ -31,6 +31,7 @@ export default function BancoClient() {
   const [selCuenta, setSelCuenta] = useState<Cuenta|null>(null)
   const [movs, setMovs]         = useState<Movimiento[]>([])
   const [loading, setLoading]   = useState(true)
+  const [saldoHoy, setSaldoHoy] = useState(0)
   const [tab, setTab]           = useState<'libro'|'conciliacion'>('libro')
   const [cuentaModal, setCuentaModal] = useState(false)
   const [editCuentaId, setEditCuentaId] = useState<string|null>(null)
@@ -60,13 +61,16 @@ export default function BancoClient() {
     const today = todayStr()
     const { data } = await supabase.from('movimientos_banco').select('*')
       .eq('cuenta_id', cuenta.id).order('fecha',{ascending:true}).order('created_at',{ascending:true}).limit(500)
-    // Saldo actual = solo movimientos hasta hoy
+    // Calcular saldo acumulado para todos los movimientos
     let saldo = cuenta.saldo_inicial ?? 0
-    const conSaldo = (data??[]).map(m=>{
-      if (m.fecha <= today) saldo += m.tipo==='credito' ? m.monto : -m.monto
-      return { ...m, saldo: m.fecha <= today ? saldo : null }
-    }).reverse()
+    // Saldo actual = solo hasta hoy
+    let saldoHoy = cuenta.saldo_inicial ?? 0
+    ;(data??[]).forEach(m => {
+      if (m.fecha <= today) saldoHoy += m.tipo==='credito' ? m.monto : -m.monto
+    })
+    const conSaldo = (data??[]).map(m=>{ saldo += m.tipo==='credito' ? m.monto : -m.monto; return { ...m, saldo } }).reverse()
     setMovs(conSaldo)
+    setSaldoHoy(saldoHoy)
     setPendConcil((data??[]).filter(m=>!m.conciliado))
     setLoading(false)
   },[supabase])
@@ -74,7 +78,7 @@ export default function BancoClient() {
   useEffect(()=>{ loadCuentas() },[loadCuentas])
   useEffect(()=>{ if(selCuenta) loadMovs(selCuenta) },[selCuenta, loadMovs])
 
-  const saldoActual  = movs.length > 0 ? (movs[0].saldo ?? 0) : (selCuenta?.saldo_inicial ?? 0)
+  const saldoActual  = movs.length > 0 ? saldoHoy : (selCuenta?.saldo_inicial ?? 0)
   const mes          = todayStr().slice(0,7)
   const credMes      = movs.filter(m=>m.fecha.startsWith(mes)&&m.tipo==='credito').reduce((a,m)=>a+m.monto,0)
   const debMes       = movs.filter(m=>m.fecha.startsWith(mes)&&m.tipo==='debito').reduce((a,m)=>a+m.monto,0)
