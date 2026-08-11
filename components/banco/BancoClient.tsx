@@ -2,15 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Empty } from '@/components/ui'
-import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
-
-// Parseo robusto de montos: acepta "1234.56", "1234,56" y "1.234,56"
-function parseMonto(s: string): number {
-  const t = String(s ?? '').trim()
-  if (!t) return 0
-  if (t.includes(',')) return parseFloat(t.replace(/\./g,'').replace(',','.')) || 0
-  return parseFloat(t) || 0
-}
+import { moneyARS, todayStr } from '@/lib/utils/format'
 import { useDolar } from '@/components/dolar/DolarBar'
 
 const btn     = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'10px 20px',fontWeight:700,fontSize:14,cursor:'pointer' } as const
@@ -65,10 +57,15 @@ export default function BancoClient() {
 
   const loadMovs = useCallback(async (cuenta: Cuenta) => {
     setLoading(true)
+    const today = todayStr()
     const { data } = await supabase.from('movimientos_banco').select('*')
       .eq('cuenta_id', cuenta.id).order('fecha',{ascending:true}).order('created_at',{ascending:true}).limit(500)
+    // Saldo actual = solo movimientos hasta hoy
     let saldo = cuenta.saldo_inicial ?? 0
-    const conSaldo = (data??[]).map(m=>{ saldo += m.tipo==='credito' ? m.monto : -m.monto; return { ...m, saldo } }).reverse()
+    const conSaldo = (data??[]).map(m=>{
+      if (m.fecha <= today) saldo += m.tipo==='credito' ? m.monto : -m.monto
+      return { ...m, saldo: m.fecha <= today ? saldo : null }
+    }).reverse()
     setMovs(conSaldo)
     setPendConcil((data??[]).filter(m=>!m.conciliado))
     setLoading(false)
@@ -92,7 +89,7 @@ export default function BancoClient() {
 
   async function guardarMov() {
     if (!selCuenta||!formMov.monto||!formMov.concepto) return
-    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:parseMonto(formMov.monto), origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
+    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:+formMov.monto, origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
     if (editMovId) await supabase.from('movimientos_banco').update(payload).eq('id',editMovId)
     else await supabase.from('movimientos_banco').insert(payload)
     setMovModal(false); if(selCuenta) loadMovs(selCuenta)
@@ -102,7 +99,7 @@ export default function BancoClient() {
     if (!selCuenta||!formTransf.monto||!formTransf.concepto) return
     setSavingTransf(true)
     try {
-      const monto = parseMonto(formTransf.monto)
+      const monto = +formTransf.monto
       // Débito en cuenta origen
       await supabase.from('movimientos_banco').insert({
         cuenta_id: selCuenta.id,
@@ -198,7 +195,6 @@ export default function BancoClient() {
           ))}
         </div>
         <div className="flex gap-2 flex-wrap">
-          <a href="/tarjetas" style={{...btnBlue, background:'#7c3aed', textDecoration:'none', display:'inline-block'}}>💳 Ver liquidaciones</a>
           <button onClick={()=>{ setFormTransf(emptyTransf); setTransfModal(true) }} style={btnBlue}>↗ + Transferencia</button>
           <button onClick={()=>{ setEditMovId(null); setFormMov(emptyMov); setMovModal(true) }} style={btn}>+ Movimiento manual</button>
         </div>
