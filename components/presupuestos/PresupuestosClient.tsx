@@ -594,7 +594,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       )}
 
       <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"}>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" style={{minWidth:'min(680px,90vw)'}}>
 
           {/* Toggle modo */}
           <div className="flex rounded-xl overflow-hidden border border-p-line">
@@ -890,18 +890,21 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             </div>
           )}
 
-          <div className="flex justify-between items-center pt-1">
-            <Field label="Observaciones (salen impresas en el presupuesto)">
-              <textarea value={form.obs} onChange={e=>setForm(p=>({...p,obs:e.target.value}))}
-                rows={2} placeholder="Ej: No incluye calibración ADAS · Seña 50% para encargar"
-                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green resize-none"/>
-            </Field>
-            <Field label="Válido por">
-              <div className="flex items-center gap-1">
-                <Input type="number" value={form.dias} onChange={e=>setForm(p=>({...p,dias:e.target.value}))} className="w-16" min="1"/>
-                <span className="text-sm text-p-ink2">días</span>
-              </div>
-            </Field>
+          {/* Observaciones */}
+          <div className="flex flex-col gap-1 pt-1">
+            <label className="text-[11px] font-bold text-p-ink2 uppercase tracking-wider">Observaciones <span className="font-normal normal-case text-p-ink2">(se imprimen en el presupuesto)</span></label>
+            <textarea value={form.obs} onChange={e=>setForm(p=>({...p,obs:e.target.value}))}
+              rows={3} placeholder="Ej: No incluye calibración ADAS · Seña 50% para encargar"
+              className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green resize-none bg-amber-50/40"/>
+          </div>
+
+          {/* Footer: válido por + botones */}
+          <div className="flex items-center justify-between pt-1 border-t border-p-line mt-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-p-ink2 font-semibold">Válido por</span>
+              <Input type="number" value={form.dias} onChange={e=>setForm(p=>({...p,dias:e.target.value}))} className="w-16" min="1"/>
+              <span className="text-xs text-p-ink2">días</span>
+            </div>
             <div className="flex gap-2">
               <button onClick={()=>setOpen(false)} style={btnGray}>Cancelar</button>
               <button onClick={save} style={btn}>Guardar</button>
