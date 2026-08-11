@@ -23,7 +23,7 @@ const btnRed   = { ...btnSm,background:'#ef4444' } as const
 const btnBlue  = { ...btnSm,background:'#1d4ed8' } as const
 const btnWa    = { ...btnSm,background:'#25d366' } as const
 
-const METODOS = ['Efectivo','Transferencia','Débito','Crédito Visa','Crédito Master','Crédito Naranja','Crédito AMEX','Cheque','Cuenta corriente']
+const METODOS = ['Efectivo','Transferencia','Tarjeta','Cheque','Cuenta corriente']
 const CUOTAS  = [1,2,3,6,9,12,18,24]
 const TIPO_FISCAL = [
   { id:'consumidor_final',      label:'Consumidor Final'     },
@@ -100,6 +100,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [pagos, setPagos]       = useState<Pago[]>([{ metodo:'Efectivo', monto:'' }])
   const [cuentasBancoComp, setCuentasBancoComp] = useState<any[]>([])
+  const [tarjetasConf, setTarjetasConf] = useState<any[]>([])
+  const [tarjetaIds, setTarjetaIds] = useState<Record<number,string>>({})
+  const [recargosTarj, setRecargosTarj] = useState<Record<number,string>>({})
   const [cuentaBancoIds, setCuentaBancoIds] = useState<Record<number,string>>({})
   // Un ChequeData por cada fila de pago (mismo índice). Solo se usa cuando metodo==='Cheque'.
   const [chequesPago, setChequesPago] = useState<Record<number,ChequeData>>({})
@@ -129,6 +132,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   useEffect(()=>{
     supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo', true).order('banco')
       .then(({data})=>setCuentasBancoComp(data??[]))
+    supabase.from('tarjetas_config').select('*').eq('activo', true).order('banco').order('red').order('tipo').order('cuotas')
+      .then(({data})=>setTarjetasConf(data??[]))
   },[supabase])
 
   useEffect(()=>{
@@ -821,6 +826,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const cb = cuentasBancoComp.find((c:any)=>c.id===cuentaBancoIds[i])
         return { ...p, metodo: `Transferencia (${cb?.banco||''} ${cb?.tipo||''})` }
       }
+      if (p.metodo==='Tarjeta' && tarjetaIds[i]) {
+        const tc = tarjetasConf.find((t:any)=>t.id===tarjetaIds[i])
+        const rec = parseFloat(recargosTarj[i]||'0')||0
+        return { ...p,
+          metodo: `Tarjeta ${tc?.red||''} ${tc?.tipo||''}${(tc?.cuotas||1)>1?` ${tc.cuotas}c`:''}${rec>0?` +${rec}%`:''}`.trim(),
+          cuotas: tc?.cuotas||1 }
+      }
       return p
     })
     const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
@@ -851,6 +863,29 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       alert(`Error al guardar el comprobante: ${compError?.message || 'Sin respuesta del servidor'}`)
       console.error('Error comprobante:', compError)
       return
+    }
+
+    // ── Tarjetas: generar la liquidación PENDIENTE en el módulo Tarjetas ──
+    // (queda esperando el "✓ Acreditado" manual, que la deposita en el banco configurado)
+    for (let i = 0; i < pagos.length; i++) {
+      const p:any = pagos[i]
+      if (p.metodo === 'Tarjeta' && tarjetaIds[i]) {
+        const tc = tarjetasConf.find((t:any)=>t.id===tarjetaIds[i])
+        const base = parseFloat(String(p.monto).replace(/[^0-9.]/g,'')) || 0
+        const rec = parseFloat(recargosTarj[i]||'0')||0
+        const bruto = base * (1 + rec/100)
+        const desc = bruto * ((tc?.retencion_pct||0)/100)
+        if (bruto > 0) {
+          const { error: errAcr } = await supabase.from('acreditaciones_tarjeta').insert({
+            terminal_nombre: `${tc?.banco||''} ${tc?.red||''}`.trim() || null,
+            fecha_cobro: todayStr(), monto_bruto: Math.round(bruto*100)/100,
+            descuento: Math.round(desc*100)/100, monto_neto: Math.round((bruto-desc)*100)/100,
+            cuotas: tc?.cuotas||1, estado: 'pendiente',
+            notas: `${tipoDoc()} N° ${String(nextNum).padStart(8,'0')}${rec>0?` · recargo ${rec}%`:''}`,
+          })
+          if (errAcr) alert(`⚠ Venta guardada, pero no se generó la liquidación de tarjeta: ${errAcr.message}\nCargala en Tarjetas.`)
+        }
+      }
     }
 
     // ── Transferencias: registrar el crédito en la cuenta de banco elegida ──
@@ -2140,6 +2175,37 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                         <option value="">Cuenta destino (opcional)</option>
                         {cuentasBancoComp.map(c=><option key={c.id} value={c.id}>{c.banco} · {c.tipo}{c.alias?` (${c.alias})`:''}</option>)}
                       </Select>
+                    </div>
+                  )}
+                  {p.metodo==='Tarjeta'&&(
+                    <div className="mt-1.5 flex flex-col gap-1.5">
+                      <Select value={tarjetaIds[i]||''} onChange={e=>{
+                          const id = e.target.value
+                          setTarjetaIds(prev=>({...prev,[i]:id}))
+                          const tc = tarjetasConf.find((t:any)=>t.id===id)
+                          // Prefill del recargo desde la config — editable (a veces lo absorbe el negocio)
+                          setRecargosTarj(prev=>({...prev,[i]: tc ? String(tc.recargo_pct||0) : ''}))
+                        }}>
+                        <option value="">¿Qué tarjeta?</option>
+                        {tarjetasConf.map((t:any)=>(
+                          <option key={t.id} value={t.id}>
+                            {t.banco} {t.red} {t.tipo}{t.cuotas>1?` · ${t.cuotas} cuotas`:''}{t.recargo_pct>0?` (+${t.recargo_pct}%)`:''}
+                          </option>
+                        ))}
+                      </Select>
+                      {tarjetaIds[i] && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-p-ink2">Recargo</span>
+                          <input value={recargosTarj[i]??''} onChange={e=>setRecargosTarj(prev=>({...prev,[i]:e.target.value}))}
+                            className="border border-p-line rounded-lg px-2 py-1 w-16 font-mono text-right focus:outline-none focus:border-p-green"/>
+                          <span className="text-p-ink2">%</span>
+                          {(parseFloat(p.monto)||0) > 0 && (parseFloat(recargosTarj[i]||'0')||0) > 0 && (
+                            <span className="font-bold text-amber-700">
+                              → a cobrar: {moneyARS((parseFloat(p.monto)||0) * (1 + (parseFloat(recargosTarj[i]||'0')||0)/100))}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

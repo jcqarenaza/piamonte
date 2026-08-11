@@ -34,6 +34,9 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [reciboVenta, setReciboVenta] = useState<any|null>(null)
   const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number|string;costo:number;stock_id:string|null;cantidad:number}[]>([])
   const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
+  const [tarjetasConf, setTarjetasConf] = useState<any[]>([])
+  const [tarjetaSelId, setTarjetaSelId] = useState('')
+  const [recargoTarj, setRecargoTarj] = useState('')
   const [cuentaBancoId, setCuentaBancoId] = useState('')
   const [form, setForm] = useState({
     descripcion: '', costo: '', precio: '', cantidad: '1', cliente: '', comprobante: '',
@@ -70,6 +73,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     // Gerencial ve todo (sin filtro)
 
     supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo',true).order('banco').then(({data})=>setCuentasBanco(data??[]))
+    supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjetasConf(data??[]))
     const [ventasRes, gastosRes, recibosRes, pagosProvRes] = await Promise.all([
       q,
       supabase.from('gastos').select('*').eq('fecha', fecha).order('created_at', { ascending: false }),
@@ -213,7 +217,10 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     const { data: ventaIns, error: errVenta } = await supabase.from('ventas').insert({
       fecha, descripcion: descripcionVenta, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
-      pago: form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''),
+      pago: form.pago === 'Tarjeta' && tarjetaSelId
+        ? (()=>{ const tc = tarjetasConf.find((t:any)=>t.id===tarjetaSelId); const rec = parseFloat(recargoTarj)||0
+            return `Tarjeta ${tc?.red||''} ${tc?.tipo||''}${(tc?.cuotas||1)>1?` ${tc.cuotas}c`:''}${rec>0?` +${rec}%`:''}`.trim() })()
+        : form.pago + (form.pago==='Transferencia' && cuentaBancoId ? ` (${cuentasBanco.find(c=>c.id===cuentaBancoId)?.banco||''} ${cuentasBanco.find(c=>c.id===cuentaBancoId)?.tipo||''})` : ''),
       origen: hayItems ? (itemsCaja.some(it => it.stock_id) ? 'stock' : form.origen) : form.origen,
       pendiente: !c,
       stock_id: hayItems ? (itemsCaja.find(it => it.stock_id)?.stock_id || null) : form.stock_id,
@@ -224,6 +231,21 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     }).select('id').single()
     if (errVenta || !ventaIns) { alert(`⚠ Error al guardar la venta: ${errVenta?.message || 'desconocido'}`); return }
 
+    // Tarjeta: generar la liquidación PENDIENTE en el módulo Tarjetas
+    if (form.pago === 'Tarjeta' && tarjetaSelId && p > 0) {
+      const tc = tarjetasConf.find((t:any)=>t.id===tarjetaSelId)
+      const rec = parseFloat(recargoTarj)||0
+      const bruto = p * (1 + rec/100)
+      const desc = bruto * ((tc?.retencion_pct||0)/100)
+      const { error: errAcr } = await supabase.from('acreditaciones_tarjeta').insert({
+        terminal_nombre: `${tc?.banco||''} ${tc?.red||''}`.trim() || null,
+        fecha_cobro: fecha, monto_bruto: Math.round(bruto*100)/100,
+        descuento: Math.round(desc*100)/100, monto_neto: Math.round((bruto-desc)*100)/100,
+        cuotas: tc?.cuotas||1, estado: 'pendiente',
+        notas: `Venta caja — ${form.cliente||descripcionVenta.slice(0,50)}${rec>0?` · recargo ${rec}%`:''}`,
+      })
+      if (errAcr) alert(`⚠ Venta guardada, pero no se generó la liquidación de tarjeta: ${errAcr.message}`)
+    }
     // Transferencia: registrar el crédito en la cuenta de banco elegida
     if (form.pago === 'Transferencia' && cuentaBancoId && p > 0) {
       const { error: errBco } = await supabase.from('movimientos_banco').insert({
@@ -695,6 +717,28 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               <Select value={form.pago} onChange={e => setForm(p => ({ ...p, pago: e.target.value }))}>
                 {PAGOS.map(p => <option key={p}>{p}</option>)}
               </Select>
+            {form.pago === 'Tarjeta' && tarjetasConf.length > 0 && (
+              <Field label="¿Qué tarjeta?">
+                <Select value={tarjetaSelId} onChange={e => {
+                    const id = e.target.value; setTarjetaSelId(id)
+                    const tc = tarjetasConf.find((t:any)=>t.id===id)
+                    setRecargoTarj(tc ? String(tc.recargo_pct||0) : '')
+                  }}>
+                  <option value="">— Elegir tarjeta —</option>
+                  {tarjetasConf.map((t:any)=>(
+                    <option key={t.id} value={t.id}>{t.banco} {t.red} {t.tipo}{t.cuotas>1?` · ${t.cuotas} cuotas`:''}{t.recargo_pct>0?` (+${t.recargo_pct}%)`:''}</option>
+                  ))}
+                </Select>
+                {tarjetaSelId && (
+                  <div className="flex items-center gap-2 text-xs mt-1">
+                    <span className="text-p-ink2">Recargo</span>
+                    <input value={recargoTarj} onChange={e=>setRecargoTarj(e.target.value)}
+                      className="border border-p-line rounded-lg px-2 py-1 w-14 font-mono text-right"/>
+                    <span className="text-p-ink2">% (editable — a veces lo absorbe el negocio)</span>
+                  </div>
+                )}
+              </Field>
+            )}
             {form.pago === 'Transferencia' && cuentasBanco.length > 0 && (
               <Field label="Cuenta destino">
                 <Select value={cuentaBancoId} onChange={e => setCuentaBancoId(e.target.value)}>

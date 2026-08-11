@@ -18,7 +18,7 @@ const RED_LABEL: Record<string,string> = {
 }
 
 interface Terminal { id:string; nombre:string; banco:string|null; red:string|null; nro_terminal:string|null; descuento_pct:number; dias_acreditacion:number; activo:boolean; cuenta_id?:string|null }
-interface TarjetaConfig { id:string; banco:string; red:string; tipo:string; cuotas:number; recargo_pct:number; retencion_pct:number; dias_acreditacion:number; descripcion:string|null; activo:boolean }
+interface TarjetaConfig { id:string; banco:string; red:string; tipo:string; cuotas:number; recargo_pct:number; retencion_pct:number; dias_acreditacion:number; descripcion:string|null; activo:boolean; cuenta_id?:string|null }
 interface Acreditacion {
   id:string; terminal_nombre:string|null; fecha_cobro:string; fecha_acred:string|null
   monto_bruto:number; descuento:number; monto_neto:number; cuotas:number
@@ -77,7 +77,13 @@ export default function TarjetasClient() {
   async function marcarAcreditado(id:string) {
     const a = acreds.find(x=>x.id===id); if (!a) return
     const term = terminales.find(t=>t.nombre===a.terminal_nombre)
-    const cuentaId = (term as any)?.cuenta_id || CUENTA_PAMPA_CC
+    // Cuenta destino: 1º la configurada en la TARJETA (si la red de la terminal
+    // tiene una sola config con cuenta), 2º la de la terminal, 3º Pampa CC
+    // 1º: cuenta configurada en la TARJETA (match por "banco red" del terminal_nombre de la liquidación)
+    const tn = (a.terminal_nombre||'').toLowerCase()
+    const confMatch = configs.find(c=>c.activo && c.cuenta_id && tn && tn === `${c.banco} ${c.red}`.toLowerCase())
+    const confRed = configs.filter(c=>c.activo && c.cuenta_id && term?.red && c.red?.toLowerCase()===term.red.toLowerCase())
+    const cuentaId = confMatch?.cuenta_id || (confRed.length===1 ? confRed[0].cuenta_id : null) || (term as any)?.cuenta_id || CUENTA_PAMPA_CC
     const hoy = new Date().toISOString().slice(0,10)
     const { error: errUpd } = await supabase.from('acreditaciones_tarjeta')
       .update({estado:'acreditado',fecha_acred:hoy}).eq('id',id)
@@ -279,6 +285,7 @@ export default function TarjetasClient() {
                   <th className="text-center px-3 py-3 text-xs uppercase tracking-wider">Recargo %</th>
                   <th className="text-center px-3 py-3 text-xs uppercase tracking-wider">Retención %</th>
                   <th className="text-center px-3 py-3 text-xs uppercase tracking-wider">Acreditación</th>
+                  <th className="text-center px-3 py-3 text-xs uppercase tracking-wider">Acredita en</th>
                 </tr>
               </thead>
               <tbody>
@@ -308,6 +315,18 @@ export default function TarjetasClient() {
                     </td>
                     <td className="px-3 py-2.5 text-center font-bold text-sm text-red-500">{c.retencion_pct}%</td>
                     <td className="px-3 py-2.5 text-center text-xs text-p-ink2">{c.dias_acreditacion}d hábiles</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <select value={c.cuenta_id||''} onChange={async e=>{
+                          const v = e.target.value || null
+                          const { error } = await supabase.from('tarjetas_config').update({cuenta_id: v}).eq('id', c.id)
+                          if (error) { alert(`⚠ ${error.message}`); return }
+                          setConfigs(prev=>prev.map(x=>x.id===c.id?{...x,cuenta_id:v}:x))
+                        }}
+                        className="border border-p-line rounded-lg px-2 py-1 text-xs bg-white focus:outline-none">
+                        <option value="">(de la terminal)</option>
+                        {cuentasBanco.map(cb=><option key={cb.id} value={cb.id}>{cb.banco} {cb.tipo}</option>)}
+                      </select>
+                    </td>
                   </tr>
                 ))}
               </tbody>
