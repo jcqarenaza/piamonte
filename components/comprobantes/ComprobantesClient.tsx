@@ -125,6 +125,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     ? rubros.filter(r => r.nombre.toLowerCase().includes(stockQ.trim().toLowerCase()))
     : []
 
+  // Cargar cuentas de banco (para el selector de cuenta destino en Transferencias)
+  useEffect(()=>{
+    supabase.from('cuentas_banco').select('id,banco,tipo,alias').eq('activo', true).order('banco')
+      .then(({data})=>setCuentasBancoComp(data??[]))
+  },[supabase])
+
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);setArticuloSugs([]);return}
     buscarCatalogo(supabase, stockQ, { incluirStock: true, limit: 8 }).then(resultados=>{
