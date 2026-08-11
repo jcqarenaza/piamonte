@@ -177,7 +177,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const diferencia  = total - totalPagado
 
   useEffect(() => {
-    supabase.from('comprobantes').select('*').eq('es_negro', esNegro).order('created_at',{ascending:false}).then(({data})=>setComps(data??[]))
+    supabase.from('comprobantes').select('*').eq('es_negro', esNegro)
+      .order('fecha',{ascending:false})
+      .order('nro_cbte_afip',{ascending:false, nullsFirst:false})
+      .order('created_at',{ascending:false})
+      .then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
