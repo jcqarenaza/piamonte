@@ -338,9 +338,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       doc.setFontSize(6.5); doc.setFont('helvetica','bold'); doc.setTextColor(0,165,80)
       doc.text('ASEGURADORA', pad+3, y+5)
       doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30,30,30)
-      doc.text((p as any).aseguradora_nombre, pad+3, y+10)
+      const asegNombrePDF = doc.splitTextToSize((p as any).aseguradora_nombre, rw/2 - 8)
+      doc.text(asegNombrePDF.slice(0,2), pad+3, y+10)
+      const ly0 = y+10 + (asegNombrePDF.length > 1 ? 5 : 0)
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(80,80,80)
-      let ly = y+15
+      let ly = ly0+5
       doc.text('IVA: Responsable Inscripto', pad+3, ly); ly+=4
       doc.text('Cond. Vta.: Cuenta Corriente', pad+3, ly)
 
