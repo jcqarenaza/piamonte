@@ -147,6 +147,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   useEffect(() => {
     const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
     const pat = searchParams.get('pat'), turnoId = searchParams.get('turno_id')
+    const obsParam = searchParams.get('obs')
     const editOsId = searchParams.get('edit')
     const qParam = searchParams.get('q')
     if (qParam) setBuscarNombre(decodeURIComponent(qParam))
