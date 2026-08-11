@@ -49,6 +49,7 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   const [pagosProveedores, setPagosProveedores] = useState<any[]>([])
   const [gastoOpen, setGastoOpen] = useState(false)
   const [gastoForm, setGastoForm] = useState({ categoria:'', descripcion:'', monto:'', forma_pago:'Efectivo', comprobante:'' })
+  const [gastoCuentaId, setGastoCuentaId] = useState('')
   const [categoriasGasto, setCategoriasGasto] = useState<{id:string;nombre:string;color:string}[]>([])
 
 const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
@@ -380,17 +381,30 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
 
   async function guardarGasto() {
     if (!gastoForm.categoria || !gastoForm.descripcion || !gastoForm.monto) return
-    await supabase.from('gastos').insert({
+    const montoG = +gastoForm.monto.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    const cuentaSel = cuentasBanco.find(c=>c.id===gastoCuentaId)
+    const { error: errGasto } = await supabase.from('gastos').insert({
       fecha,
       categoria: gastoForm.categoria,
       descripcion: gastoForm.descripcion,
-      monto: +gastoForm.monto.replace(/,/g, '.').replace(/[^0-9.]/g, ''),
-      forma_pago: gastoForm.forma_pago,
+      monto: montoG,
+      forma_pago: gastoForm.forma_pago + (gastoForm.forma_pago==='Transferencia' && cuentaSel ? ` (${cuentaSel.banco} ${cuentaSel.tipo||''})`.trimEnd() : ''),
       comprobante: gastoForm.comprobante || null,
       user_id: userId,
     })
+    if (errGasto) { alert(`⚠ Error al guardar el gasto: ${errGasto.message}`); return }
+    // Transferencia: registrar el débito en la cuenta elegida
+    if (gastoForm.forma_pago === 'Transferencia' && gastoCuentaId && montoG > 0) {
+      const { error: errBco } = await supabase.from('movimientos_banco').insert({
+        cuenta_id: gastoCuentaId, fecha, tipo: 'debito',
+        concepto: `Gasto — ${gastoForm.descripcion.slice(0,70)}`,
+        monto: montoG, origen_tipo: 'gasto_caja',
+      })
+      if (errBco) alert(`⚠ Gasto guardado, pero no se pudo registrar el débito en Banco: ${errBco.message}\nCargalo a mano en el módulo Banco.`)
+    }
     setGastoOpen(false)
     setGastoForm({ categoria:'', descripcion:'', monto:'', forma_pago:'Efectivo', comprobante:'' })
+    setGastoCuentaId('')
     loadVentas()
   }
 
@@ -654,6 +668,14 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               </Select>
             </Field>
           </div>
+          {gastoForm.forma_pago === 'Transferencia' && cuentasBanco.length > 0 && (
+            <Field label="Cuenta desde donde se paga">
+              <Select value={gastoCuentaId} onChange={e=>setGastoCuentaId(e.target.value)}>
+                <option value="">— Elegir cuenta —</option>
+                {cuentasBanco.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo||''}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="N° comprobante (opcional)"><Input value={gastoForm.comprobante} onChange={e=>setGastoForm(p=>({...p,comprobante:e.target.value}))} placeholder="Factura / ticket" /></Field>
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={()=>setGastoOpen(false)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancelar</button>

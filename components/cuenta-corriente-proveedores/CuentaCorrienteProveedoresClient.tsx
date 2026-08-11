@@ -157,6 +157,15 @@ export default function CuentaCorrienteProveedoresClient() {
         notas: formPago.notas||null,
       })
     }
+    // Transferencia: débito en la cuenta elegida
+    if (formPago.forma_pago === 'Transferencia') {
+      const { error: errT } = await supabase.from('movimientos_banco').insert({
+        cuenta_id: (formPago as any).cuenta_id || CUENTA_PAMPA_CC, fecha: fechaPago, tipo: 'debito',
+        concepto: `Transferencia — ${sel.proveedor_nombre} (pago s/OP)`,
+        monto, origen_tipo: 'transferencia_pago', notas: formPago.notas||null,
+      })
+      if (errT) alert(`⚠ Pago registrado, pero no se registró el débito en Banco: ${errT.message}`)
+    }
     setOpenPago(false)
     setFormPago({ monto:'', fecha:'', notas:'', forma_pago:'Transferencia' })
     setChequePago(EMPTY_CHEQUE)
@@ -228,6 +237,10 @@ export default function CuentaCorrienteProveedoresClient() {
         await supabase.from('cheques').update({ estado: 'disponible', notas: null }).eq('id', ch.id)
       }
     }
+    // 2b. Revertir débitos de transferencias de esta OP
+    await supabase.from('movimientos_banco').delete()
+      .eq('origen_tipo','transferencia_pago')
+      .eq('notas', `Orden de Pago Nº ${op.numero}`)
     // 3. Facturas vuelven a saldado=false
     const { data: opItems } = await supabase.from('orden_pago_items')
       .select('comprobante_compra_id').eq('orden_pago_id', op.id)
@@ -339,6 +352,21 @@ export default function CuentaCorrienteProveedoresClient() {
 
     // Registrar nuevos cheques de "otras formas de pago"
     for (const pago of opPagos) {
+      // Transferencias de la OP: débito en la cuenta elegida
+      if (pago.tipo === 'Transferencia') {
+        const montoT = parseFloat(pago.monto) || 0
+        if (montoT > 0) {
+          const ctaT = (pago as any).cuenta_id || CUENTA_PAMPA_CC
+          const { error: errT } = await supabase.from('movimientos_banco').insert({
+            cuenta_id: ctaT, fecha: fechaOp, tipo: 'debito',
+            concepto: `Transferencia — ${sel.proveedor_nombre} (OP Nº ${numero})`,
+            monto: montoT, origen_tipo: 'transferencia_pago',
+            notas: `Orden de Pago Nº ${numero}`,
+          })
+          if (errT) alert(`⚠ OP creada, pero no se registró el débito de la transferencia en Banco: ${errT.message}`)
+        }
+        continue
+      }
       if (pago.tipo !== 'Cheque nuevo') continue
       const montoPago = parseFloat(pago.monto) || 0
       if (pago.chequeNuevo.numero) {
@@ -873,6 +901,15 @@ export default function CuentaCorrienteProveedoresClient() {
             </select>
           </Field>
           {formPago.forma_pago==='Cheque'&&<ChequeFields value={chequePago} onChange={setChequePago}/>}
+          {formPago.forma_pago==='Transferencia' && cuentasPropias.length > 0 && (
+            <Field label="Cuenta desde donde se paga">
+              <select value={(formPago as any).cuenta_id||CUENTA_PAMPA_CC}
+                onChange={e=>setFormPago(p=>({...p,cuenta_id:e.target.value} as any))}
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-p-green">
+                {cuentasPropias.map(c=><option key={c.id} value={c.id}>{c.banco} {c.tipo||''}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="Fecha">
             <Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/>
           </Field>
@@ -1047,6 +1084,13 @@ export default function CuentaCorrienteProveedoresClient() {
                       </div>
                       {pago.tipo==='Cheque nuevo' && (
                         <ChequeFields value={pago.chequeNuevo} onChange={val=>{const v=[...opPagos];v[pi]={...v[pi],chequeNuevo:val};setOpPagos(v)}}/>
+                      )}
+                      {pago.tipo==='Transferencia' && cuentasPropias.length > 0 && (
+                        <select value={(pago as any).cuenta_id||CUENTA_PAMPA_CC}
+                          onChange={e=>{const v=[...opPagos];v[pi]={...v[pi],cuenta_id:e.target.value} as any;setOpPagos(v)}}
+                          className="border border-p-line rounded-lg px-2 py-1.5 text-xs bg-blue-50 focus:outline-none focus:border-p-green">
+                          {cuentasPropias.map(c=><option key={c.id} value={c.id}>Sale de: {c.banco} {c.tipo||''}</option>)}
+                        </select>
                       )}
                     </div>
                   ))}
