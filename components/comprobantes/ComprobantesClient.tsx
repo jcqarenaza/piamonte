@@ -1012,7 +1012,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     if(comp) {
-      const nombreVenta = modo==='aseguradora' ? asegSel?.nombre : (modo==='cliente' ? cliSel?.nombre : 'Consumidor Final')
       const letraDoc = tipoDoc()
       const prefijo = esNegro ? 'Venta' : `F${letraDoc}`
       const nroParaDesc = (comp as any).nro_cbte_afip || nextNum
@@ -1025,6 +1024,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const clienteVenta = modo==='aseguradora' ? (asegSel?.nombre||clienteAseg||null)
         : modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null)
         : (cfNombre||null)
+      // El nombre en la descripción de caja: el MISMO que el cliente real
+      // (antes ignoraba el nombre cargado en modo CF y ponía "Consumidor Final")
+      const nombreVenta = clienteVenta || 'Consumidor Final'
       // Calcular costo desde stock de los ítems facturados
       let costoVenta = 0
       for (const it of items.filter((it:any)=>it.stock_id)) {
