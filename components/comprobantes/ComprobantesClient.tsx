@@ -846,6 +846,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       return
     }
 
+    // ── Transferencias: registrar el crédito en la cuenta de banco elegida ──
+    for (let i = 0; i < pagos.length; i++) {
+      const p:any = pagos[i]
+      if (p.metodo === 'Transferencia' && cuentaBancoIds[i]) {
+        const montoP = parseFloat(String(p.monto).replace(/[^0-9.]/g,'')) || 0
+        if (montoP > 0) {
+          const { error: errBco } = await supabase.from('movimientos_banco').insert({
+            cuenta_id: cuentaBancoIds[i], fecha: todayStr(), tipo: 'credito',
+            concepto: `Cobro ${tipoDoc()} N° ${String(nextNum).padStart(8,'0')} — ${(comp as any).cliente_nombre || (comp as any).aseguradora_nombre || 'Cliente'}`,
+            monto: montoP, origen_tipo: 'cobro_venta',
+          })
+          if (errBco) alert(`⚠ Venta guardada, pero no se pudo registrar la transferencia en Banco: ${errBco.message}\nCargala a mano en el módulo Banco.`)
+        }
+      }
+    }
+
     const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp && modo==='aseguradora' && asegSel?.id) {
@@ -1138,7 +1154,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100); doc.setFontSize(7)
     doc.text('Calle 102 N.366 - General Pico, La Pampa', pad+32, y+7)
     doc.text('Tel: 02302-15595969 / 02302-15464733', pad+32, y+11)
-    doc.text('CUIT: 27-24265717-4 - IVA Responsable Inscripto - Pto. Vta. 0006', pad+32, y+15)
+    doc.text('CUIT: 27-24265717-4 - IVA Responsable Inscripto', pad+32, y+15)
 
     // Tipo comprobante (recuadro)
     const tipoLabel = c.categoria==='nc'
@@ -1183,7 +1199,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ─── DATOS CLIENTE (dos columnas si aseguradora, una si particular) ───
     const esAseg = !!c.aseguradora_nombre
-    const condVta = c.pagos?.some((p:Pago)=>p.metodo?.toLowerCase().includes('contado')) ? 'Contado' : 'Cuenta Corriente'
+    // Regla: TODO es Contado (efectivo, tarjeta, cheque, transferencia) salvo pago
+    // explícito en Cuenta corriente. startsWith evita el falso positivo de
+    // "Transferencia (Banco X Cuenta Corriente)" que contiene la palabra.
+    const esPagoCC = (m?:string)=> (m||'').toLowerCase().startsWith('cuenta corriente')
+    const condVta = c.pagos?.length && c.pagos.every((p:Pago)=>esPagoCC(p.metodo)) ? 'Cuenta Corriente' : 'Contado'
 
     doc.setFillColor(248,251,249); doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
     if (esAseg) {
@@ -1320,16 +1340,19 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     })
 
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
-    const esCuentaCorriente = c.pagos?.every((p:Pago) => p.metodo?.toLowerCase().includes('corriente') || p.metodo?.toLowerCase().includes('cta'))
+    const esCuentaCorriente = c.pagos?.length && c.pagos.every((p:Pago) => esPagoCC(p.metodo))
     const pagoY = 257
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
       doc.text('Forma de pago:', pad, pagoY)
-      doc.setFont('helvetica','normal')
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
       const pagoTexto = c.pagos.map((p:Pago)=>
         `${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`
       ).join('  |  ')
-      doc.text(pagoTexto, pad + 28, pagoY)
+      // Envolver en líneas para que no se pise con el borde ni con el CAE
+      const pagoLines = doc.splitTextToSize(pagoTexto, rw - 32)
+      doc.text(pagoLines.slice(0,2), pad + 28, pagoY)
+      doc.setFontSize(8)
     }
 
     // ─── CAE COMPACTO — posición fija ───

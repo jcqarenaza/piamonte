@@ -223,6 +223,16 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     }).select('id').single()
     if (errVenta || !ventaIns) { alert(`⚠ Error al guardar la venta: ${errVenta?.message || 'desconocido'}`); return }
 
+    // Transferencia: registrar el crédito en la cuenta de banco elegida
+    if (form.pago === 'Transferencia' && cuentaBancoId && p > 0) {
+      const { error: errBco } = await supabase.from('movimientos_banco').insert({
+        cuenta_id: cuentaBancoId, fecha, tipo: 'credito',
+        concepto: `Cobro caja — ${form.cliente || descripcionVenta.slice(0,60)}`,
+        monto: p, origen_tipo: 'cobro_venta',
+      })
+      if (errBco) alert(`⚠ Venta guardada, pero no se pudo registrar la transferencia en Banco: ${errBco.message}\nCargala a mano en el módulo Banco.`)
+    }
+
     // Si viene de una OS de aseguradora (Mercantil/Sancor), marcarla como procesada
     if (osSelCaja?.id) {
       await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', osSelCaja.id)
