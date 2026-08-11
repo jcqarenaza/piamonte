@@ -595,9 +595,19 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         .select('nro_cbte,tipo_cbte,punto_venta')
         .eq('comprobante_id', c.comprobante_original_id).eq('estado','emitida')
         .order('created_at',{ascending:false}).limit(1).maybeSingle()
-      const cbteAsoc = feOriginal?.nro_cbte ? {
+      let cbteAsoc = feOriginal?.nro_cbte ? {
         tipo: (feOriginal as any).tipo_cbte, ptoVta: (feOriginal as any).punto_venta, nro: (feOriginal as any).nro_cbte
       } : undefined
+      // Fallback: originales MANUALES (sin fila en facturacion_electronica) —
+      // el nro AFIP vive en el comprobante mismo (caso FA-73 recuperada de ARCA)
+      if (!cbteAsoc) {
+        const { data: orig } = await supabase.from('comprobantes')
+          .select('nro_cbte_afip,tipo').eq('id', c.comprobante_original_id).maybeSingle()
+        if ((orig as any)?.nro_cbte_afip) {
+          cbteAsoc = { tipo: (orig as any).tipo === 'A' ? 1 : 6, ptoVta: 6, nro: (orig as any).nro_cbte_afip }
+        }
+      }
+      if (!cbteAsoc) { alert('⚠ No se encontró el comprobante asociado (nro AFIP del original) — la NC no puede pedir CAE sin él.'); return }
       await solicitarCAE(c, TIPO_CBTE_NC_AFIP[c.tipo], cbteAsoc)
     } else {
       const ok = await solicitarCAE(c)
