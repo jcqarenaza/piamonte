@@ -215,7 +215,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function openEdit(p: any) {
     setEditId(p.id)
-    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', pat: p.patente||'', dias: String(p.validez_dias||7) })
+    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', pat: p.patente||'', dias: String(p.validez_dias||7), obs: p.observaciones||'' })
     setCliQ(p.cliente||'')
     setCliSugs([])
     setItems(p.items||[])
@@ -239,7 +239,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', p.id)
     const params = new URLSearchParams({
       cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
-      pat: p.patente??'',
+      pat: p.patente??'', obs: (p as any).observaciones??'',
       items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
       pid: p.id,
       ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
@@ -258,7 +258,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(editId) {
       await supabase.from('presupuestos').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
-        items, total:total, iva:iva||null,
+        items, total:total, iva:iva||null, observaciones: form.obs||null,
         tipo_cliente_id:tipoSel?.id||null, tipo_cliente_nombre:tipoSel?.nombre||null,
       }).eq('id', editId)
       setEditId(null)
@@ -274,11 +274,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         aseguradora_id: modoAseg ? asegSel?.id ?? null : null,
         aseguradora_nombre: modoAseg ? asegSel?.nombre ?? null : null,
         mano_obra_incluida: modoAseg ? manoObraIncluida : null,
+        observaciones: form.obs||null,
       })
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
     setModoAseg(false); setAsegSel(null); setAsegQ('')
-    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7'})
+    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:''})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
   }
@@ -422,6 +423,15 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     } else {
       doc.setFont('helvetica','bold')
       doc.text(fmt(p.total), pad+rw/2, totY+11.5, {align:'center'})
+    }
+
+    // Observaciones — impresas debajo de los totales
+    if((p as any).observaciones){
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
+      doc.text('Observaciones:', pad, totY+18)
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(60,60,60)
+      const obsLines = doc.splitTextToSize((p as any).observaciones, rw-26)
+      doc.text(obsLines.slice(0,2), pad+24, totY+18)
     }
 
     // Vencimiento
@@ -881,6 +891,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           )}
 
           <div className="flex justify-between items-center pt-1">
+            <Field label="Observaciones (salen impresas en el presupuesto)">
+              <textarea value={form.obs} onChange={e=>setForm(p=>({...p,obs:e.target.value}))}
+                rows={2} placeholder="Ej: No incluye calibración ADAS · Seña 50% para encargar"
+                className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green resize-none"/>
+            </Field>
             <Field label="Válido por">
               <div className="flex items-center gap-1">
                 <Input type="number" value={form.dias} onChange={e=>setForm(p=>({...p,dias:e.target.value}))} className="w-16" min="1"/>

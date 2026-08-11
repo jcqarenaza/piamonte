@@ -167,7 +167,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     } else if (cli || tel || veh) {
       const asegNombre = searchParams.get('aseg_nombre')
       const esAseg = searchParams.get('es_aseg') === '1'
-      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'', ...(asegNombre?{aseg:asegNombre}:{}) }))
+      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'', obs: obsParam||p.obs, ...(asegNombre?{aseg:asegNombre}:{}) }))
       if (esAseg) setIvaOn(false) // precio aseguradora ya incluye IVA
     }
     if (turnoId) setForm(p => ({ ...p, turno_id: turnoId }))

@@ -203,6 +203,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const oidUrl = searchParams.get('oid')
     if (oidUrl) {
       setOidParam(oidUrl); setOpen(true)
+      // Heredar las observaciones de la OS (que a su vez pueden venir del presupuesto)
+      supabase.from('ordenes_servicio').select('obs').eq('id', oidUrl).maybeSingle()
+        .then(({data}) => { if ((data as any)?.obs) setObs((data as any).obs) })
       // Verificar si esta OS ya tiene venta registrada en caja (sin comprobante = OS directa)
       supabase.from('ventas').select('id').is('comprobante_id', null)
         .eq('fecha', new Date().toISOString().slice(0,10))
@@ -210,6 +213,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           // Si hay ventas hoy sin comprobante, puede haber duplicado — marcamos aviso
           if (data && data.length > 0) setVentaPreviaOS(true)
         })
+    }
+    const pidUrl = searchParams.get('pid')
+    if (pidUrl) {
+      supabase.from('presupuestos').select('observaciones').eq('id', pidUrl).maybeSingle()
+        .then(({data}) => { if ((data as any)?.observaciones) setObs((data as any).observaciones) })
     }
     if (searchParams.get('nuevo') === '1') setOpen(true)
     if (asegNombre) {
@@ -1418,6 +1426,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     // ─── CAE COMPACTO — posición fija ───
+    // Observaciones — impresas debajo de la forma de pago
+    if (c.observaciones) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(30,30,30)
+      doc.text('Obs.:', pad, totY + 24)
+      doc.setFont('helvetica','normal'); doc.setTextColor(70,70,70)
+      const obsLines = doc.splitTextToSize(c.observaciones, rw - 14)
+      doc.text(obsLines.slice(0, 1), pad + 9, totY + 24)
+      doc.setTextColor(30,30,30); doc.setFontSize(8)
+    }
+
     const caeY = 268
     if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido) {
       doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
