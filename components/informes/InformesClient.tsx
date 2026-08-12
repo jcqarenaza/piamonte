@@ -36,9 +36,25 @@ export default function InformesClient() {
   const [pIdx, setPIdx] = useState(0)
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'>('general')
+  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
+
+  // Tab Colaboradores
+  interface ColabRow { colaborador_id:string|null; nombre:string; cantidad:number; total:number; externos:number }
+  const [colabData, setColabData] = useState<ColabRow[]>([])
+  const [colabLoading, setColabLoading] = useState(false)
+
+  // Tab Reclamos
+  interface OSBusq { id:string; numero:string; cliente:string; colaborador_nombre:string|null; fecha:string; total:number }
+  interface Reclamo { id:string; os_numero:string; cliente_nombre:string; colaborador_nombre:string|null; fecha:string; descripcion:string; estado:string; resolucion:string|null; created_at:string }
+  const [osQuery, setOsQuery] = useState('')
+  const [osBusqResults, setOsBusqResults] = useState<OSBusq[]>([])
+  const [osSelReclamo, setOsSelReclamo] = useState<OSBusq|null>(null)
+  const [formReclamo, setFormReclamo] = useState({ descripcion:'', estado:'pendiente' })
+  const [reclamos, setReclamos] = useState<Reclamo[]>([])
+  const [reclamosLoading, setReclamosLoading] = useState(false)
+  const [savingReclamo, setSavingReclamo] = useState(false)
 
   // Tab Resultado
   interface GastoRow { id:string; fecha:string; categoria:string; descripcion:string; monto:number; forma_pago:string|null }
@@ -175,7 +191,78 @@ export default function InformesClient() {
 
   const tipoEntries = Object.entries(byTipo).sort((a,b)=>b[1].facturado-a[1].facturado)
 
-  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado', label:string) => (
+  // Cargar datos colaboradores
+  useEffect(()=>{
+    if(tab !== 'colaboradores') return
+    setColabLoading(true)
+    const p = periodos[pIdx]
+    supabase.from('ordenes_servicio')
+      .select('colaborador_id, total, stock_via_remito, colaboradores(nombre)')
+      .eq('cristal_colocado', true)
+      .gte('fecha', p.desde).lte('fecha', p.hasta)
+      .then(({data})=>{
+        const map = new Map<string, ColabRow>()
+        ;(data??[]).forEach((os:any)=>{
+          const key = os.colaborador_id || '__sin__'
+          const nombre = os.colaboradores?.nombre || 'Sin asignar'
+          if(!map.has(key)) map.set(key,{colaborador_id:os.colaborador_id,nombre,cantidad:0,total:0,externos:0})
+          const r = map.get(key)!
+          r.cantidad++
+          r.total += +(os.total||0)
+          if(os.stock_via_remito) r.externos++
+        })
+        setColabData([...map.values()].sort((a,b)=>b.total-a.total))
+        setColabLoading(false)
+      })
+  },[tab, pIdx, periodos, supabase])
+
+  // Cargar reclamos
+  useEffect(()=>{
+    if(tab !== 'reclamos') return
+    setReclamosLoading(true)
+    supabase.from('reclamos_colocacion').select('*').order('created_at',{ascending:false}).limit(100)
+      .then(({data})=>{ setReclamos(data??[]); setReclamosLoading(false) })
+  },[tab, supabase])
+
+  // Buscar OS para reclamo
+  useEffect(()=>{
+    if(osQuery.length < 2){ setOsBusqResults([]); return }
+    supabase.from('ordenes_servicio')
+      .select('id, numero, cliente, colaborador_id, fecha, total, colaboradores(nombre)')
+      .or(`cliente.ilike.%${osQuery}%,numero.ilike.%${osQuery}%`)
+      .eq('cristal_colocado', true)
+      .order('fecha',{ascending:false}).limit(10)
+      .then(({data})=>{
+        setOsBusqResults((data??[]).map((o:any)=>({
+          id:o.id, numero:o.numero||o.id.slice(0,8),
+          cliente:o.cliente||'', colaborador_nombre:o.colaboradores?.nombre||null,
+          fecha:o.fecha, total:+(o.total||0)
+        })))
+      })
+  },[osQuery, supabase])
+
+  async function guardarReclamo() {
+    if(!osSelReclamo || !formReclamo.descripcion) return
+    setSavingReclamo(true)
+    await supabase.from('reclamos_colocacion').insert({
+      os_id: osSelReclamo.id,
+      os_numero: osSelReclamo.numero,
+      cliente_nombre: osSelReclamo.cliente,
+      colaborador_id: null,
+      colaborador_nombre: osSelReclamo.colaborador_nombre,
+      fecha: new Date().toISOString().slice(0,10),
+      descripcion: formReclamo.descripcion,
+      estado: formReclamo.estado,
+    })
+    setOsSelReclamo(null); setOsQuery(''); setOsBusqResults([])
+    setFormReclamo({descripcion:'',estado:'pendiente'})
+    setSavingReclamo(false)
+    // Recargar reclamos
+    const {data} = await supabase.from('reclamos_colocacion').select('*').order('created_at',{ascending:false}).limit(100)
+    setReclamos(data??[])
+  }
+
+  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos', label:string) => (
     <button onClick={()=>setTab(t)}
       style={{background:tab===t?'#00A550':'#fff', color:tab===t?'#fff':'#4A6655',
         border:`1.5px solid ${tab===t?'#00A550':'#C2DDD0'}`,
@@ -214,6 +301,8 @@ export default function InformesClient() {
             {tabBtn('rentabilidad','💹 Rentabilidad por tipo')}
             {tabBtn('aseguradoras','🏢 Aseguradoras')}
             {tabBtn('resultado','📋 Resultado')}
+            {tabBtn('colaboradores','👷 Por colaborador')}
+            {tabBtn('reclamos','⚠ Reclamos')}
           </div>
 
           {tab === 'general' && (
@@ -602,11 +691,148 @@ export default function InformesClient() {
             </div>
           )}
 
-          {ventas.length === 0 && !loading && tab !== 'aseguradoras' && (
+          {ventas.length === 0 && !loading && tab !== 'aseguradoras' && tab !== 'colaboradores' && tab !== 'reclamos' && (
             <div className="text-center py-16 text-p-gray">
               <p className="text-4xl mb-2">📊</p>
               <p className="font-saira font-bold text-p-ink">Sin ventas en este período</p>
               <p className="text-sm mt-1">Registrá ventas en Caja para ver los informes.</p>
+            </div>
+          )}
+
+          {/* TAB COLABORADORES */}
+          {tab === 'colaboradores' && (
+            <div className="flex flex-col gap-4">
+              {colabLoading ? <p className="text-center text-p-ink2 py-8">Cargando…</p> : colabData.length === 0 ? (
+                <p className="text-center text-p-ink2 py-8">Sin OS colocadas en este período.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-p-line shadow-sm">
+                  <table className="w-full text-sm">
+                    <thead className="bg-p-light text-p-ink2 text-xs uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Colaborador</th>
+                        <th className="px-4 py-3 text-right">OS colocadas</th>
+                        <th className="px-4 py-3 text-right">Vía remito</th>
+                        <th className="px-4 py-3 text-right">Total ARS</th>
+                        <th className="px-4 py-3 text-right">Total USD</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-p-line">
+                      {colabData.map((r,i)=>(
+                        <tr key={i} className="hover:bg-p-light/50">
+                          <td className="px-4 py-3 font-semibold text-p-ink">{r.nombre}</td>
+                          <td className="px-4 py-3 text-right font-mono">{r.cantidad}</td>
+                          <td className="px-4 py-3 text-right font-mono text-p-ink2">{r.externos}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-p-dark">{moneyARS(r.total)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-p-ink2">
+                            {oficialRate ? `US$ ${Math.round(r.total/oficialRate).toLocaleString('es-AR')}` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-p-light font-bold border-t-2 border-p-line">
+                      <tr>
+                        <td className="px-4 py-3">TOTAL</td>
+                        <td className="px-4 py-3 text-right font-mono">{colabData.reduce((a,r)=>a+r.cantidad,0)}</td>
+                        <td className="px-4 py-3 text-right font-mono">{colabData.reduce((a,r)=>a+r.externos,0)}</td>
+                        <td className="px-4 py-3 text-right font-mono">{moneyARS(colabData.reduce((a,r)=>a+r.total,0))}</td>
+                        <td className="px-4 py-3 text-right font-mono">
+                          {oficialRate ? `US$ ${Math.round(colabData.reduce((a,r)=>a+r.total,0)/oficialRate).toLocaleString('es-AR')}` : '—'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB RECLAMOS */}
+          {tab === 'reclamos' && (
+            <div className="flex flex-col gap-5">
+              {/* Nuevo reclamo */}
+              <div className="bg-white border border-p-line rounded-2xl p-4 shadow-sm">
+                <p className="font-saira font-bold text-p-ink mb-3">Registrar reclamo de colocación</p>
+                {/* Buscador OS */}
+                <div className="relative mb-3">
+                  <input value={osQuery} onChange={e=>{setOsQuery(e.target.value);setOsSelReclamo(null)}}
+                    placeholder="Buscar OS por cliente o número…"
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green bg-white"/>
+                  {osBusqResults.length>0 && !osSelReclamo && (
+                    <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-52 overflow-y-auto mt-1">
+                      {osBusqResults.map(o=>(
+                        <button key={o.id} onClick={()=>{setOsSelReclamo(o);setOsQuery(o.cliente);setOsBusqResults([])}}
+                          className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line last:border-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-p-ink">{o.cliente}</p>
+                              <p className="text-xs text-p-ink2">OS #{o.numero} · {o.fecha?.split('-').reverse().join('/')} · {o.colaborador_nombre||'Sin colocador'}</p>
+                            </div>
+                            <span className="font-mono text-xs text-p-dark shrink-0">{moneyARS(o.total)}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {osSelReclamo && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-800">
+                    OS #{osSelReclamo.numero} — <strong>{osSelReclamo.cliente}</strong> · Colocador: {osSelReclamo.colaborador_nombre||'Sin asignar'}
+                  </div>
+                )}
+                <textarea value={formReclamo.descripcion} onChange={e=>setFormReclamo(p=>({...p,descripcion:e.target.value}))}
+                  rows={3} placeholder="Describí el reclamo (defecto de colocación, vidrio roto, filtraciones…)"
+                  className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green resize-none mb-3"/>
+                <div className="flex items-center justify-between gap-3">
+                  <select value={formReclamo.estado} onChange={e=>setFormReclamo(p=>({...p,estado:e.target.value}))}
+                    className="border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="pendiente">Pendiente</option>
+                    <option value="en_proceso">En proceso</option>
+                    <option value="resuelto">Resuelto</option>
+                  </select>
+                  <button onClick={guardarReclamo} disabled={savingReclamo||!osSelReclamo||!formReclamo.descripcion}
+                    style={{background:'#00A550',color:'#fff',border:'none',borderRadius:10,padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer',
+                      opacity:(savingReclamo||!osSelReclamo||!formReclamo.descripcion)?0.5:1}}>
+                    {savingReclamo?'Guardando…':'Registrar reclamo'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista reclamos */}
+              {reclamosLoading ? <p className="text-center text-p-ink2 py-4">Cargando…</p> : reclamos.length === 0 ? (
+                <p className="text-center text-p-ink2 py-4">Sin reclamos registrados.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-p-line shadow-sm">
+                  <table className="w-full text-sm">
+                    <thead className="bg-p-light text-p-ink2 text-xs uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Fecha</th>
+                        <th className="px-4 py-3 text-left">OS / Cliente</th>
+                        <th className="px-4 py-3 text-left">Colocador</th>
+                        <th className="px-4 py-3 text-left">Descripción</th>
+                        <th className="px-4 py-3 text-left">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-p-line">
+                      {reclamos.map(r=>(
+                        <tr key={r.id} className="hover:bg-p-light/50">
+                          <td className="px-4 py-3 font-mono text-xs text-p-ink2 whitespace-nowrap">{r.fecha?.split('-').reverse().join('/')}</td>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-p-ink">{r.cliente_nombre}</p>
+                            <p className="text-xs text-p-ink2">OS #{r.os_numero}</p>
+                          </td>
+                          <td className="px-4 py-3 text-p-ink2">{r.colaborador_nombre||'—'}</td>
+                          <td className="px-4 py-3 text-p-ink max-w-xs truncate">{r.descripcion}</td>
+                          <td className="px-4 py-3">
+                            <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${r.estado==='resuelto'?'bg-green-100 text-green-700':r.estado==='en_proceso'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
+                              {r.estado==='resuelto'?'Resuelto':r.estado==='en_proceso'?'En proceso':'Pendiente'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </>
