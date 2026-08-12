@@ -229,7 +229,7 @@ export default function InformesClient() {
     if(osQuery.length < 2){ setOsBusqResults([]); return }
     supabase.from('ordenes_servicio')
       .select('id, numero, cliente, colaborador_id, fecha, total, colaboradores(nombre)')
-      .or(`cliente.ilike.%${osQuery}%,numero.ilike.%${osQuery}%`)
+      .or(`cliente.ilike.*${osQuery}*,numero.ilike.*${osQuery}*`)
       .eq('cristal_colocado', true)
       .order('fecha',{ascending:false}).limit(10)
       .then(({data})=>{
