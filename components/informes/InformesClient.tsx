@@ -227,9 +227,11 @@ export default function InformesClient() {
   // Buscar OS para reclamo
   useEffect(()=>{
     if(osQuery.length < 2){ setOsBusqResults([]); return }
+    const qNum = parseInt(osQuery)
+    const filtro = !isNaN(qNum) ? `numero.eq.${qNum}` : `cliente.ilike.*${osQuery}*`
     supabase.from('ordenes_servicio')
       .select('id, numero, cliente, colaborador_id, fecha, total, colaboradores(nombre)')
-      .or(`cliente.ilike.*${osQuery}*,numero.ilike.*${osQuery}*`)
+      .or(filtro)
       .eq('cristal_colocado', true)
       .order('fecha',{ascending:false}).limit(10)
       .then(({data})=>{
