@@ -83,11 +83,15 @@ export default function AdasClient({ userId }: { userId: string }) {
   // pero en carga manual el operador lo marca con un simple toggle, no como una categoría aparte.
   const [incluyeAdas, setIncluyeAdas] = useState(false)
 
+  // Búsqueda de OS para autocompletar código de pieza
+  const [osQ, setOsQ] = useState('')
+  const [osSugs, setOsSugs] = useState<any[]>([])
+
   const [form, setForm] = useState({
     fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
     anio: '', dominio: '', vin: '', kilometraje: '', otros_sistemas: '',
     equipo: EQUIPO_MODELO, software: 'Actualizado', protocolos: 'Según fabricante',
-    observaciones: '',
+    observaciones: '', codigo_pieza: '',
   })
   const [sistemas, setSistemas] = useState<string[]>([...SISTEMAS_DEFAULT])
   const [procs, setProcs] = useState<string[]>([...PROCEDIMIENTOS_DEFAULT])
@@ -98,6 +102,18 @@ export default function AdasClient({ userId }: { userId: string }) {
     supabase.from('certificados_instalacion').select('*').order('created_at', { ascending: false })
       .then(({ data }) => setCertsInstalacion((data ?? []) as CertInstalacion[]))
   }, [supabase])
+
+  useEffect(() => {
+    if (osQ.length < 2) { setOsSugs([]); return }
+    const qNum = parseInt(osQ)
+    const filtro = !isNaN(qNum) ? `numero.eq.${qNum}` : `cliente.ilike.*${osQ}*`
+    supabase.from('ordenes_servicio')
+      .select('id, numero, cliente, stock_codigo, marca, modelo, anio, dominio')
+      .or(filtro)
+      .not('stock_codigo', 'is', null)
+      .order('fecha', { ascending: false }).limit(8)
+      .then(({ data }) => setOsSugs(data ?? []))
+  }, [osQ, supabase])
 
   // Buscar comprobantes (facturas) por número o nombre de cliente
   useEffect(() => {
@@ -152,6 +168,7 @@ export default function AdasClient({ userId }: { userId: string }) {
         numero: num, fecha: form.fecha, cliente: form.cliente || null,
         razon_social: form.razon_social || null, marca: form.marca || null,
         modelo: form.modelo || null, anio: form.anio || null,
+        codigo_pieza: form.codigo_pieza || null,
         dominio: form.dominio?.toUpperCase() || null, vin: form.vin || null,
         kilometraje: form.kilometraje || null, sistemas,
         otros_sistemas: form.otros_sistemas || null, procedimientos: procs,
@@ -176,6 +193,7 @@ export default function AdasClient({ userId }: { userId: string }) {
       numero: num, fecha: form.fecha, cliente: form.cliente || null,
       razon_social: form.razon_social || null, marca: form.marca || null,
       modelo: form.modelo || null, anio: form.anio || null,
+      codigo_pieza: form.codigo_pieza || null,
       dominio: form.dominio?.toUpperCase() || null, vin: form.vin || null,
       kilometraje: form.kilometraje || null,
       piezas_instaladas: piezas.length ? piezas : null,
@@ -218,10 +236,13 @@ export default function AdasClient({ userId }: { userId: string }) {
     // Si la factura incluía una pieza de vidrio real, se muestra cuál es. Si el cliente
     // solo pagó la calibración ADAS sin cambiar el vidrio, esta sección no se imprime.
     const piezas = c.piezas_instaladas ?? []
-    const piezaHtml = piezas.length
+    const codigoPiezaHtml = c.codigo_pieza
+      ? `<div style="font-size:10px;color:#555;margin-top:2px">Código: <strong>${c.codigo_pieza}</strong></div>` : ''
+    const piezaHtml = piezas.length || c.codigo_pieza
       ? `<div class="section" style="margin-top:10px">
           <div class="sec-title"><span>🪟</span> VIDRIO INSTALADO</div>
           ${piezas.map(p => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;font-size:11px"><span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('')}
+          ${codigoPiezaHtml}
         </div>`
       : ''
 
@@ -397,11 +418,15 @@ export default function AdasClient({ userId }: { userId: string }) {
   function printCertInstalacion(c: CertInstalacion) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
     const piezas = (c.piezas_instaladas ?? [])
+    const codigoHtmlInst = c.codigo_pieza
+      ? `<div style="font-size:10px;color:#555;margin-top:4px">Código: <strong>${c.codigo_pieza}</strong></div>` : ''
     const piezasHtml = piezas.length
       ? piezas.map((p:any) =>
           `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px">
-            <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('')
-      : '<p style="font-size:11px;color:#888">Sin detalle de pieza</p>'
+            <span>${p.d}</span><span style="font-weight:bold">×${p.c}</span></div>`).join('') + codigoHtmlInst
+      : c.codigo_pieza
+        ? codigoHtmlInst
+        : '<p style="font-size:11px;color:#888">Sin detalle de pieza</p>'
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Certificado N° ${c.numero}</title>
@@ -646,6 +671,32 @@ export default function AdasClient({ userId }: { userId: string }) {
             <Input type="date" value={form.fecha} onChange={e => setForm(p => ({ ...p, fecha: e.target.value }))} />
           </Field>
 
+          {/* Buscar OS para autocompletar código de pieza */}
+          <div className="relative">
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1">Buscar OS (autocompleta código de pieza)</label>
+            <Input value={osQ} onChange={e=>setOsQ(e.target.value)} placeholder="Número de OS o cliente…"/>
+            {osSugs.length > 0 && (
+              <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
+                {osSugs.map((o:any)=>(
+                  <button key={o.id} onClick={()=>{
+                    setForm(p=>({...p,
+                      cliente: o.cliente||p.cliente,
+                      marca: o.marca||p.marca,
+                      modelo: o.modelo||p.modelo,
+                      anio: o.anio||p.anio,
+                      dominio: o.dominio||p.dominio,
+                      codigo_pieza: o.stock_codigo||p.codigo_pieza,
+                    }))
+                    setOsQ(''); setOsSugs([])
+                  }} className="w-full text-left px-3 py-2 hover:bg-p-light border-b border-p-line last:border-0 text-sm">
+                    <span className="font-semibold">OS #{o.numero}</span> — {o.cliente}
+                    {o.stock_codigo && <span className="ml-2 text-xs font-mono text-p-green font-bold">{o.stock_codigo}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Cliente */}
           <div>
             <p className="text-xs font-bold text-p-ink uppercase tracking-wider mb-2">👤 Datos del cliente</p>
@@ -654,6 +705,11 @@ export default function AdasClient({ userId }: { userId: string }) {
               <Field label="Razón social (si factura a empresa)"><Input value={form.razon_social} onChange={e => setForm(p => ({ ...p, razon_social: e.target.value }))} placeholder="Empresa S.A." /></Field>
             </div>
           </div>
+          
+          {/* Código de pieza */}
+          <Field label="Código de pieza (se imprime en el certificado)">
+            <Input value={form.codigo_pieza} onChange={e=>setForm(p=>({...p,codigo_pieza:e.target.value.toUpperCase()}))} placeholder="Ej: 420934VSLI"/>
+          </Field>
 
           {/* Vehículo */}
           <div>
