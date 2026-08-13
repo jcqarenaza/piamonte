@@ -61,7 +61,18 @@ export default function CuentaCorrienteProveedoresClient() {
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('vista_saldos_cc_proveedores').select('*')
-    setSaldos(data??[])
+    // El saldo que se MUESTRA es la suma de pendientes de la vista detalle
+    // (la misma verdad que la columna "Saldo" de la pestaña Saldos) — el crudo
+    // debe−haber puede divergir por imputaciones y queda solo como Cargado/Pagado.
+    const { data: pend } = await supabase.from('vista_cc_saldos_detalle').select('proveedor_nombre,monto')
+    const sumaPend: Record<string, number> = {}
+    for (const p of (pend ?? []) as any[]) {
+      sumaPend[p.proveedor_nombre] = (sumaPend[p.proveedor_nombre] || 0) + Number(p.monto || 0)
+    }
+    setSaldos(((data ?? []) as any[]).map(s => ({
+      ...s,
+      saldo_actual: Math.round((sumaPend[s.proveedor_nombre] ?? 0) * 100) / 100,
+    })))
     setLoading(false)
   }
 
@@ -382,7 +393,7 @@ export default function CuentaCorrienteProveedoresClient() {
         if (chequeOpIns?.id) {
           await supabase.from('movimientos_banco').insert({
             cuenta_id: 'e7369b4b-4697-44ca-9303-a077a877e643',
-            fecha: pago.chequeNuevo.modalidad==='al_dia' ? fechaOp : pago.chequeNuevo.fecha_cobro,
+            fecha: fechaOp,
             tipo: 'debito',
             concepto: `Cheque N° ${pago.chequeNuevo.numero} — ${sel.proveedor_nombre} (OP Nº ${numero})`,
             monto: montoPago,
