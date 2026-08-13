@@ -54,11 +54,12 @@ interface Cert {
   procedimientos:string[];equipo:string;software:string;protocolos:string
   observaciones:string|null;created_at:string;comprobante_id?:string|null
   piezas_instaladas?: {d:string;c:number}[] | null
+  codigo_pieza?: string|null
 }
 interface CertInstalacion {
   id:string;numero:string;fecha:string;cliente:string|null;razon_social:string|null
   marca:string|null;modelo:string|null;anio:string|null;dominio:string|null
-  vin:string|null;kilometraje:string|null;piezas_instaladas:any[]|null
+  vin:string|null;kilometraje:string|null;piezas_instaladas:any[]|null;codigo_pieza?:string|null
   observaciones:string|null;created_at:string;comprobante_id?:string|null
 }
 interface ComprobanteMin {
