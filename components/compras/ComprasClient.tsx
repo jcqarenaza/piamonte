@@ -637,8 +637,9 @@ export default function ComprasClient() {
           const { error: eMov } = await supabase.from('stock_movimientos')
             .update({
               pendiente_nc: false,
-              descripcion: `NC ${numNc} · ${provNombre}`,
+              descripcion: `NC ${numNc} · ${provNombre} · rotura ${pendiente.fecha}`,
               comprobante_compra_id: comp.id,
+              fecha: form.fecha || todayStr(),  // la fecha documental es la de la NC
             })
             .eq('stock_id', pendStockId)
             .eq('pendiente_nc', true)
@@ -871,6 +872,26 @@ export default function ComprasClient() {
 
     // Si afectó stock, revertir movimientos
     if (comp.afecta_stock && comp.estado === 'procesado') {
+      // NC con rotos adoptados: DESVINCULAR esos movimientos antes de la reversión
+      // (el vidrio sigue roto — revertirlos devolvería stock fantasma).
+      // Vuelven a estado "pendiente de NC" con su fecha original de rotura.
+      if (comp.tipo === 'nc') {
+        const { data: adoptados } = await supabase.from('stock_movimientos')
+          .select('id, descripcion').eq('comprobante_compra_id', id).like('descripcion', '%· rotura %')
+        for (const m of (adoptados ?? [])) {
+          const fechaOrig = (m as any).descripcion.match(/· rotura (\d{4}-\d{2}-\d{2})/)?.[1]
+          await supabase.from('stock_movimientos').update({
+            comprobante_compra_id: null, pendiente_nc: true,
+            ...(fechaOrig ? { fecha: fechaOrig } : {}),
+            descripcion: 'Roto — pendiente NC (NC anulada)',
+          }).eq('id', (m as any).id)
+        }
+        // Reabrir los ajustes saldados por esta NC
+        const numNcDel = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
+        await supabase.from('ajustes_stock')
+          .update({ pendiente_nc: true, nota: 'Roto — pendiente NC (NC anulada)' })
+          .eq('nota', `NC ${numNcDel} · ${comp.proveedor_nombre||''}`)
+      }
       // Reversa de stock + borrado de movimientos en una sola transacción (RPC atómico)
       await supabase.rpc('revertir_movimientos_comprobante_compra', { p_comprobante_id: id })
     }
