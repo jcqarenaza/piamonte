@@ -211,7 +211,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   function resetForm() {
     setForm({ fecha: todayStr(), cliente: '', razon_social: '', marca: '', modelo: '',
       anio: '', dominio: '', vin: '', kilometraje: '', otros_sistemas: '',
-      equipo: EQUIPO_MODELO, software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '' })
+      equipo: EQUIPO_MODELO, software: 'Actualizado', protocolos: 'Según fabricante', observaciones: '', codigo_pieza: '' })
     setSistemas([...SISTEMAS_DEFAULT]); setProcs([...PROCEDIMIENTOS_DEFAULT])
     setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setIncluyeAdas(false)
   }
