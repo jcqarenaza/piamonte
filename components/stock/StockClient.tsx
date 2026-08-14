@@ -1052,9 +1052,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function generarEtiqueta(s: typeof items[0]) {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [100, 80], unit: 'mm', putOnlyUsedFonts: true })
+    const doc = new jsPDF({ format: [100, 80], unit: 'mm', orientation: 'landscape', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
-    const W = 80
+    const W = 100
 
     // Logo superior izquierda
     try {
@@ -1065,35 +1065,35 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         r.onload = () => res((r.result as string).split(',')[1])
         r.readAsDataURL(blob)
       })
-      doc.addImage(b64, 'PNG', 2, 2, 18, 12)
+      doc.addImage(b64, 'PNG', 3, 3, 22, 15)
     } catch {}
 
-    // Código grande centrado
-    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0,0,0)
-    doc.text(code, W/2, 10, { align: 'center' })
+    // Código grande — a la derecha del logo
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(0,0,0)
+    doc.text(code, W - 4, 12, { align: 'right' })
 
-    // Código de barras
-    const barH = 22
+    // Código de barras centrado
+    const barH = 26
     type Bar = { x: number; w: number }
     const bars: Bar[] = []
     let totalBarW = 0
     for (let i = 0; i < code.length; i++) {
-      const w = (code.charCodeAt(i) % 3) * 0.4 + 0.8
-      const gap = (code.charCodeAt(i) % 2) === 0 ? 0.8 : 1.2
+      const w = (code.charCodeAt(i) % 3) * 0.5 + 0.9
+      const gap = (code.charCodeAt(i) % 2) === 0 ? 0.9 : 1.3
       bars.push({ x: totalBarW, w })
       totalBarW += w + gap
     }
     const startX = Math.max(4, (W - totalBarW) / 2)
-    const barY = 14
+    const barY = 20
     doc.setFillColor(0,0,0)
     for (const bar of bars) {
       if (startX + bar.x + bar.w > W - 4) break
       doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
     }
 
-    // Descripción
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').slice(0,50), W/2, 42, { align: 'center', maxWidth: 72 })
+    // Descripción centrada abajo
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0,0,0)
+    doc.text((s.descripcion||'').slice(0,55), W/2, 56, { align: 'center', maxWidth: 88 })
 
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
