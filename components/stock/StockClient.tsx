@@ -1052,7 +1052,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function generarEtiqueta(s: typeof items[0]) {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [100, 80], unit: 'mm', orientation: 'landscape', putOnlyUsedFonts: true })
+    const doc = new jsPDF({ format: [100, 80], unit: 'mm', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
     const W = 100
 
@@ -1076,26 +1076,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     doc.setDrawColor(180,180,180); doc.setLineWidth(0.3)
     doc.line(3, 21, W-3, 21)
 
-    // Código de barras — ocupa todo el ancho disponible
+    // Código de barras — llena todo el ancho de la etiqueta
     const barH = 28
-    type Bar = { x: number; w: number }
-    const bars: Bar[] = []
-    let totalBarW = 0
-    const available = W - 6
-    for (let i = 0; i < code.length; i++) {
-      const w = (code.charCodeAt(i) % 3) * 0.8 + 1.4
-      const gap = (code.charCodeAt(i) % 2) === 0 ? 1.1 : 1.6
-      bars.push({ x: totalBarW, w })
-      totalBarW += w + gap
-    }
-    // Escalar para llenar el ancho disponible
-    const scale = Math.min(1.8, available / totalBarW)
-    const scaledW = totalBarW * scale
-    const startX = (W - scaledW) / 2
+    const barMargin = 4
+    const barAvailable = W - barMargin * 2
     const barY = 23
+    // Generar patrón de barras para el código
+    type Bar = { wRatio: number; gapRatio: number }
+    const pattern: Bar[] = []
+    let totalRatio = 0
+    for (let i = 0; i < code.length; i++) {
+      const wR = (code.charCodeAt(i) % 3) + 1      // 1, 2 o 3
+      const gR = (code.charCodeAt(i) % 2) + 1      // 1 o 2
+      pattern.push({ wRatio: wR, gapRatio: gR })
+      totalRatio += wR + gR
+    }
+    // Escalar para que el total ocupe barAvailable
+    const unit = barAvailable / totalRatio
+    let curX = barMargin
     doc.setFillColor(0,0,0)
-    for (const bar of bars) {
-      doc.rect(startX + bar.x * scale, barY, bar.w * scale, barH, 'F')
+    for (const p of pattern) {
+      doc.rect(curX, barY, p.wRatio * unit, barH, 'F')
+      curX += (p.wRatio + p.gapRatio) * unit
     }
 
     // Descripción centrada abajo
