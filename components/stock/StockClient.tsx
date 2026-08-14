@@ -1075,35 +1075,83 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Línea separadora
     doc.setDrawColor(180,180,180); doc.setLineWidth(0.3)
-    doc.line(3, 16, W-3, 16)
+    doc.line(3, 17, W-3, 17)
 
-    // Código de barras — llena todo el ancho de la etiqueta
-    const barH = 30
-    const barMargin = 4
-    const barAvailable = W - barMargin * 2
-    const barY = 18
-    // Generar patrón de barras para el código
-    type Bar = { wRatio: number; gapRatio: number }
-    const pattern: Bar[] = []
-    let totalRatio = 0
-    for (let i = 0; i < code.length; i++) {
-      const wR = (code.charCodeAt(i) % 3) + 1      // 1, 2 o 3
-      const gR = (code.charCodeAt(i) % 2) + 1      // 1 o 2
-      pattern.push({ wRatio: wR, gapRatio: gR })
-      totalRatio += wR + gR
+    // ── Code 128B ──────────────────────────────────────────
+    const C128B: Record<string,string> = {
+      ' ':'11011001100','!':'11001101100','"':'11001100110','#':'10010011000',
+      '$':'10010001100','%':'10001001100','&':'10011001000',"'":'10011000100',
+      '(':'10001100100',')':'11001001000','*':'11001000100','+':'11000100100',
+      ',':'10110011100','-':'10011011100','.':'10011001110','/':'10111001100',
+      '0':'10111000110','1':'10001101100','2':'10001100110','3':'10011000110',
+      '4':'10111011100','5':'10111001110','6':'10001011100','7':'10001011110',
+      '8':'10011010000','9':'10011000010','A':'11001010000','B':'11001000010',
+      'C':'11000010010','D':'10100111000','E':'10100011100','F':'10100001110',
+      'G':'10110111000','H':'10110001110','I':'10001101110','J':'10111011000',
+      'K':'10111000110','L':'11110111010','M':'10100111100','N':'10010111100',
+      'O':'10010011110','P':'10111100100','Q':'10011110100','R':'10011110010',
+      'S':'11110100010','T':'11110010010','U':'11011110100','V':'11011110010',
+      'W':'11110110100','X':'11110110010','Y':'10011010111','Z':'11010011100',
     }
-    // Escalar para que el total ocupe barAvailable
-    const unit = barAvailable / totalRatio
-    let curX = barMargin
+    const START_B = '11010010000'
+    const STOP    = '1100011101011'
+    // Checksum Code 128
+    let checksum = 104 // START B value
+    const C128_VALUES: Record<string,number> = {
+      ' ':0,'!':1,'"':2,'#':3,'$':4,'%':5,'&':6,"'":7,'(':8,')':9,
+      '*':10,'+':11,',':12,'-':13,'.':14,'/':15,'0':16,'1':17,'2':18,
+      '3':19,'4':20,'5':21,'6':22,'7':23,'8':24,'9':25,'A':26,'B':27,
+      'C':28,'D':29,'E':30,'F':31,'G':32,'H':33,'I':34,'J':35,'K':36,
+      'L':37,'M':38,'N':39,'O':40,'P':41,'Q':42,'R':43,'S':44,'T':45,
+      'U':46,'V':47,'W':48,'X':49,'Y':50,'Z':51,
+    }
+    const encodeCode = code.toUpperCase()
+    for (let i = 0; i < encodeCode.length; i++) {
+      const v = C128_VALUES[encodeCode[i]] ?? 0
+      checksum += v * (i + 1)
+    }
+    checksum = checksum % 103
+    // Buscar patrón del checksum (value → pattern)
+    const C128_PATTERNS = [
+      '11011001100','11001101100','11001100110','10010011000','10010001100',
+      '10001001100','10011001000','10011000100','10001100100','11001001000',
+      '11001000100','11000100100','10110011100','10011011100','10011001110',
+      '10111001100','10111000110','10001101100','10001100110','10011000110',
+      '10111011100','10111001110','10001011100','10001011110','10011010000',
+      '10011000010','11001010000','11001000010','11000010010','10100111000',
+      '10100011100','10100001110','10110111000','10110001110','10001101110',
+      '10111011000','10111000110','11110111010','10100111100','10010111100',
+      '10010011110','10111100100','10011110100','10011110010','11110100010',
+      '11110010010','11011110100','11011110010','11110110100','11110110010',
+      '10011010111','11010011100',
+    ]
+    const checksumPattern = C128_PATTERNS[checksum] || '10011000100'
+    // Construir secuencia completa de bits
+    let bits = START_B
+    for (const ch of encodeCode) {
+      bits += C128B[ch] || C128B[' '] || '11011001100'
+    }
+    bits += checksumPattern + STOP
+
+    // Dibujar barras centradas
+    const barH = 36
+    const barY = 19
+    const unitW = 0.55  // ancho fijo por módulo en mm
+    const totalBarW = bits.length * unitW
+    const barStartX = (W - totalBarW) / 2
     doc.setFillColor(0,0,0)
-    for (const p of pattern) {
-      doc.rect(curX, barY, p.wRatio * unit, barH, 'F')
-      curX += (p.wRatio + p.gapRatio) * unit
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] === '1') {
+        doc.rect(barStartX + i * unitW, barY, unitW, barH, 'F')
+      }
     }
 
-    // Descripción centrada abajo
-    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 56, { align: 'center', maxWidth: 94 })
+    // Descripción centrada debajo
+    const desc = (s.descripcion||'').toUpperCase()
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0,0,0)
+    const descLines = doc.splitTextToSize(desc, 90)
+    const descY = barY + barH + 6 + (descLines.length === 1 ? 3 : 0)
+    doc.text(descLines.slice(0,3), W/2, descY, { align: 'center' })
 
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
