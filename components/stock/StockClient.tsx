@@ -1069,35 +1069,38 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     } catch {}
 
     // Código grande — a la derecha del logo
-    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(0,0,0)
-    doc.text(code, W - 3, 13, { align: 'right' })
+    doc.setFont('helvetica','bold'); doc.setFontSize(26); doc.setTextColor(0,0,0)
+    doc.text(code, W - 3, 16, { align: 'right' })
 
     // Línea separadora
-    doc.setDrawColor(200,200,200); doc.setLineWidth(0.3)
-    doc.line(3, 20, W-3, 20)
+    doc.setDrawColor(180,180,180); doc.setLineWidth(0.3)
+    doc.line(3, 21, W-3, 21)
 
-    // Código de barras — ocupa todo el ancho
-    const barH = 30
+    // Código de barras — ocupa todo el ancho disponible
+    const barH = 28
     type Bar = { x: number; w: number }
     const bars: Bar[] = []
     let totalBarW = 0
+    const available = W - 6
     for (let i = 0; i < code.length; i++) {
-      const w = (code.charCodeAt(i) % 3) * 0.6 + 1.0
-      const gap = (code.charCodeAt(i) % 2) === 0 ? 1.0 : 1.4
+      const w = (code.charCodeAt(i) % 3) * 0.8 + 1.4
+      const gap = (code.charCodeAt(i) % 2) === 0 ? 1.1 : 1.6
       bars.push({ x: totalBarW, w })
       totalBarW += w + gap
     }
-    const startX = Math.max(3, (W - totalBarW) / 2)
-    const barY = 22
+    // Escalar para llenar el ancho disponible
+    const scale = Math.min(1.8, available / totalBarW)
+    const scaledW = totalBarW * scale
+    const startX = (W - scaledW) / 2
+    const barY = 23
     doc.setFillColor(0,0,0)
     for (const bar of bars) {
-      if (startX + bar.x + bar.w > W - 3) break
-      doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
+      doc.rect(startX + bar.x * scale, barY, bar.w * scale, barH, 'F')
     }
 
-    // Descripción centrada abajo — grande y negrita
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 60, { align: 'center', maxWidth: 92 })
+    // Descripción centrada abajo
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(0,0,0)
+    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 60, { align: 'center', maxWidth: 94 })
 
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
@@ -1471,7 +1474,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                       <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-300 rounded-lg text-purple-600 hover:bg-purple-50 flex items-center justify-center" title="Imprimir etiqueta" style={{fontSize:15}}>🏷</button>
+                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}}
+  title="Imprimir etiqueta"
+  style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'3px 8px',fontWeight:700,fontSize:11,cursor:'pointer',whiteSpace:'nowrap'}}>
+  🏷 Etiqueta
+</button>
                     </>}
                     <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
                   </div>
