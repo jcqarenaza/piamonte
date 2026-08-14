@@ -1065,22 +1065,22 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         r.onload = () => res((r.result as string).split(',')[1])
         r.readAsDataURL(blob)
       })
-      doc.addImage(b64, 'PNG', 3, 2, 24, 16)
+      doc.addImage(b64, 'PNG', 3, 2, 16, 11)
     } catch {}
 
-    // Código grande — a la derecha del logo
-    doc.setFont('helvetica','bold'); doc.setFontSize(26); doc.setTextColor(0,0,0)
-    doc.text(code, W - 3, 16, { align: 'right' })
+    // Código grande centrado en toda la línea superior
+    doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(0,0,0)
+    doc.text(code, W/2, 13, { align: 'center' })
 
     // Línea separadora
     doc.setDrawColor(180,180,180); doc.setLineWidth(0.3)
-    doc.line(3, 21, W-3, 21)
+    doc.line(3, 16, W-3, 16)
 
     // Código de barras — llena todo el ancho de la etiqueta
-    const barH = 28
+    const barH = 30
     const barMargin = 4
     const barAvailable = W - barMargin * 2
-    const barY = 23
+    const barY = 18
     // Generar patrón de barras para el código
     type Bar = { wRatio: number; gapRatio: number }
     const pattern: Bar[] = []
@@ -1102,7 +1102,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Descripción centrada abajo
     doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 60, { align: 'center', maxWidth: 94 })
+    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 56, { align: 'center', maxWidth: 94 })
 
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
