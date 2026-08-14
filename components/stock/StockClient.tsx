@@ -1052,13 +1052,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function generarEtiqueta(s: typeof items[0]) {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [80, 80], unit: 'mm', putOnlyUsedFonts: true })
+    const doc = new jsPDF({ format: [80, 60], unit: 'mm', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
     const W = 80
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,0,0)
+
+    // Logo superior izquierda
+    try {
+      const resp = await fetch('/logo.png')
+      const blob = await resp.blob()
+      const b64 = await new Promise<string>((res) => {
+        const r = new FileReader()
+        r.onload = () => res((r.result as string).split(',')[1])
+        r.readAsDataURL(blob)
+      })
+      doc.addImage(b64, 'PNG', 2, 2, 18, 12)
+    } catch {}
+
+    // Código grande centrado
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(0,0,0)
     doc.text(code, W/2, 10, { align: 'center' })
-    // Calcular ancho total del barcode para centrarlo
-    const barH = 28
+
+    // Código de barras
+    const barH = 22
     type Bar = { x: number; w: number }
     const bars: Bar[] = []
     let totalBarW = 0
@@ -1075,12 +1090,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       if (startX + bar.x + bar.w > W - 4) break
       doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
     }
+
+    // Descripción
     doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').slice(0,50), W/2, 48, { align: 'center', maxWidth: 70 })
-    if (s.marca) {
-      doc.setFontSize(6); doc.setTextColor(100,100,100)
-      doc.text(s.marca, W/2, 56, { align: 'center' })
-    }
+    doc.text((s.descripcion||'').slice(0,50), W/2, 42, { align: 'center', maxWidth: 72 })
+
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
     const win = window.open(url2, '_blank')
