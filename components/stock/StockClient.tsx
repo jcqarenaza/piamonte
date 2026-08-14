@@ -1052,9 +1052,10 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function generarEtiqueta(s: typeof items[0]) {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [100, 80], unit: 'mm', putOnlyUsedFonts: true })
+    const doc = new jsPDF({ format: [100, 80], unit: 'mm', orientation: 'l', putOnlyUsedFonts: true })
     const code = s.codigo||'000000'
     const W = 100
+    const H = 80
 
     // Logo superior izquierda
     try {
