@@ -1065,35 +1065,39 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
         r.onload = () => res((r.result as string).split(',')[1])
         r.readAsDataURL(blob)
       })
-      doc.addImage(b64, 'PNG', 3, 3, 22, 15)
+      doc.addImage(b64, 'PNG', 3, 2, 24, 16)
     } catch {}
 
     // Código grande — a la derecha del logo
-    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(0,0,0)
-    doc.text(code, W - 4, 12, { align: 'right' })
+    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(0,0,0)
+    doc.text(code, W - 3, 13, { align: 'right' })
 
-    // Código de barras centrado
-    const barH = 26
+    // Línea separadora
+    doc.setDrawColor(200,200,200); doc.setLineWidth(0.3)
+    doc.line(3, 20, W-3, 20)
+
+    // Código de barras — ocupa todo el ancho
+    const barH = 30
     type Bar = { x: number; w: number }
     const bars: Bar[] = []
     let totalBarW = 0
     for (let i = 0; i < code.length; i++) {
-      const w = (code.charCodeAt(i) % 3) * 0.5 + 0.9
-      const gap = (code.charCodeAt(i) % 2) === 0 ? 0.9 : 1.3
+      const w = (code.charCodeAt(i) % 3) * 0.6 + 1.0
+      const gap = (code.charCodeAt(i) % 2) === 0 ? 1.0 : 1.4
       bars.push({ x: totalBarW, w })
       totalBarW += w + gap
     }
-    const startX = Math.max(4, (W - totalBarW) / 2)
-    const barY = 20
+    const startX = Math.max(3, (W - totalBarW) / 2)
+    const barY = 22
     doc.setFillColor(0,0,0)
     for (const bar of bars) {
-      if (startX + bar.x + bar.w > W - 4) break
+      if (startX + bar.x + bar.w > W - 3) break
       doc.rect(startX + bar.x, barY, bar.w, barH, 'F')
     }
 
-    // Descripción centrada abajo
-    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0,0,0)
-    doc.text((s.descripcion||'').slice(0,55), W/2, 56, { align: 'center', maxWidth: 88 })
+    // Descripción centrada abajo — grande y negrita
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0,0,0)
+    doc.text((s.descripcion||'').toUpperCase().slice(0,55), W/2, 60, { align: 'center', maxWidth: 92 })
 
     const blob2 = doc.output('blob')
     const url2 = URL.createObjectURL(blob2)
@@ -1467,7 +1471,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                       <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-200 rounded-lg text-sm text-purple-500 hover:bg-purple-50" title="Imprimir etiqueta">🏷</button>
+                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}} className="w-7 h-7 border border-purple-300 rounded-lg text-purple-600 hover:bg-purple-50 flex items-center justify-center" title="Imprimir etiqueta" style={{fontSize:15}}>🏷</button>
                     </>}
                     <button onClick={e=>{e.stopPropagation();abrirMovimientos(s)}} className="w-7 h-7 border border-p-line rounded-lg text-sm text-p-ink2 hover:bg-p-light" title="Ver movimientos">📊</button>
                   </div>
