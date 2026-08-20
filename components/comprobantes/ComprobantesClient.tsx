@@ -726,6 +726,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const impIva = esExentoComp
         ? 0
         : c.iva > 0 ? c.iva : Math.round((c.total - c.total / 1.21) * 100) / 100
+      // Condición IVA del receptor (RG 5616): 1=RI, 4=Exento, 5=Cons. Final, 6=Monotributo.
+      // Sin esto la edge function adivina "CUIT ⇒ RI", y RI + Factura B = rechazo de ARCA.
+      const MAPA_COND_IVA: Record<string, number> = {
+        responsable_inscripto: 1, exento: 4, consumidor_final: 5,
+        monotributo: 6, monotributista: 6, monotributista_social: 13,
+      }
+      let condIvaReceptor = MAPA_COND_IVA[c.cliente_tipo_fiscal || ''] ?? (docTipo === 80 ? 1 : 5)
+      // Red de seguridad: una Factura B jamás puede declarar receptor RI
+      if (tipoCbte !== 1 && tipoCbte !== 201 && condIvaReceptor === 1) condIvaReceptor = docTipo === 80 ? 4 : 5
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
           comprobante_id: c.id, tipoCbte,
@@ -733,6 +742,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           impNeto,
           impIva,
           docTipo, docNro,
+          condIvaReceptor,
           // Exento: no mandar alícuota IVA (null = exento en AFIP)
           ivaAlicuota: esExentoComp ? null : 5,
           cbteAsoc,
