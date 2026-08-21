@@ -1050,34 +1050,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     load()
   }
 
-  async function generarEtiqueta(s: typeof items[0]) {
-    const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ format: [100, 80], unit: 'mm', orientation: 'l', putOnlyUsedFonts: true })
-    const code = s.codigo||'000000'
-    const W = 100
-    const H = 80
+  function generarEtiqueta(s: typeof items[0]) {
+    const code = (s.codigo||'000000').toUpperCase()
+    const desc = (s.descripcion||'').toUpperCase()
 
-    // Logo superior izquierda
-    try {
-      const resp = await fetch('/logo.png')
-      const blob = await resp.blob()
-      const b64 = await new Promise<string>((res) => {
-        const r = new FileReader()
-        r.onload = () => res((r.result as string).split(',')[1])
-        r.readAsDataURL(blob)
-      })
-      doc.addImage(b64, 'PNG', 3, 2, 16, 11)
-    } catch {}
-
-    // Código grande centrado en toda la línea superior
-    doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(0,0,0)
-    doc.text(code, W/2, 13, { align: 'center' })
-
-    // Línea separadora
-    doc.setDrawColor(180,180,180); doc.setLineWidth(0.3)
-    doc.line(3, 17, W-3, 17)
-
-    // ── Code 128B ──────────────────────────────────────────
+    // ── Code 128B ─────────────────────────────────────────
     const C128B: Record<string,string> = {
       ' ':'11011001100','!':'11001101100','"':'11001100110','#':'10010011000',
       '$':'10010001100','%':'10001001100','&':'10011001000',"'":'10011000100',
@@ -1093,10 +1070,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       'S':'11110100010','T':'11110010010','U':'11011110100','V':'11011110010',
       'W':'11110110100','X':'11110110010','Y':'10011010111','Z':'11010011100',
     }
-    const START_B = '11010010000'
-    const STOP    = '1100011101011'
-    // Checksum Code 128
-    let checksum = 104 // START B value
     const C128_VALUES: Record<string,number> = {
       ' ':0,'!':1,'"':2,'#':3,'$':4,'%':5,'&':6,"'":7,'(':8,')':9,
       '*':10,'+':11,',':12,'-':13,'.':14,'/':15,'0':16,'1':17,'2':18,
@@ -1105,13 +1078,6 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       'L':37,'M':38,'N':39,'O':40,'P':41,'Q':42,'R':43,'S':44,'T':45,
       'U':46,'V':47,'W':48,'X':49,'Y':50,'Z':51,
     }
-    const encodeCode = code.toUpperCase()
-    for (let i = 0; i < encodeCode.length; i++) {
-      const v = C128_VALUES[encodeCode[i]] ?? 0
-      checksum += v * (i + 1)
-    }
-    checksum = checksum % 103
-    // Buscar patrón del checksum (value → pattern)
     const C128_PATTERNS = [
       '11011001100','11001101100','11001100110','10010011000','10010001100',
       '10001001100','10011001000','10011000100','10001100100','11001001000',
@@ -1125,38 +1091,89 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       '11110010010','11011110100','11011110010','11110110100','11110110010',
       '10011010111','11010011100',
     ]
-    const checksumPattern = C128_PATTERNS[checksum] || '10011000100'
-    // Construir secuencia completa de bits
+    const START_B = '11010010000'
+    const STOP    = '1100011101011'
+    let checksum = 104
+    for (let i = 0; i < code.length; i++) checksum += (C128_VALUES[code[i]] ?? 0) * (i + 1)
+    checksum = checksum % 103
     let bits = START_B
-    for (const ch of encodeCode) {
-      bits += C128B[ch] || C128B[' '] || '11011001100'
+    for (const ch of code) bits += C128B[ch] || '11011001100'
+    bits += (C128_PATTERNS[checksum] || '10011000100') + STOP
+
+    // Generar barras SVG
+    const unitPx = 2.2
+    const barH = 60
+    const svgBars = bits.split('').map((b,i) =>
+      b === '1' ? `<rect x="${i*unitPx}" y="0" width="${unitPx}" height="${barH}" fill="black"/>` : ''
+    ).join('')
+    const svgW = bits.length * unitPx
+    const barcodeSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${barH}" viewBox="0 0 ${svgW} ${barH}">${svgBars}</svg>`
+    const barcodeDataUrl = 'data:image/svg+xml;base64,' + btoa(barcodeSVG)
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { margin: 0; size: 100mm 80mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 100mm;
+    height: 80mm;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3mm;
+    overflow: hidden;
+  }
+  .row1 {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2mm;
+  }
+  .logo { height: 12mm; width: auto; }
+  .codigo {
+    font-size: 18pt;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+  .barcode {
+    width: 90mm;
+    height: auto;
+    display: block;
+    margin: 1mm auto;
+  }
+  .descripcion {
+    font-size: 9pt;
+    font-weight: bold;
+    text-align: center;
+    word-wrap: break-word;
+    width: 94mm;
+    max-height: 14mm;
+    overflow: hidden;
+    margin-top: 2mm;
+  }
+</style>
+</head>
+<body>
+  <div class="row1">
+    <img class="logo" src="${window.location.origin}/logo.png" onerror="this.style.display='none'">
+    <span class="codigo">${code}</span>
+  </div>
+  <img class="barcode" src="${barcodeDataUrl}">
+  <div class="descripcion">${desc}</div>
+</body>
+</html>`
+
+    const win = window.open('', '_blank', 'width=500,height=400')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.onload = () => { win.focus(); win.print() }
     }
-    bits += checksumPattern + STOP
-
-    // Dibujar barras centradas
-    const barH = 36
-    const barY = 19
-    const unitW = 0.55  // ancho fijo por módulo en mm
-    const totalBarW = bits.length * unitW
-    const barStartX = (W - totalBarW) / 2
-    doc.setFillColor(0,0,0)
-    for (let i = 0; i < bits.length; i++) {
-      if (bits[i] === '1') {
-        doc.rect(barStartX + i * unitW, barY, unitW, barH, 'F')
-      }
-    }
-
-    // Descripción centrada debajo
-    const desc = (s.descripcion||'').toUpperCase()
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0,0,0)
-    const descLines = doc.splitTextToSize(desc, 90)
-    const descY = barY + barH + 6 + (descLines.length === 1 ? 3 : 0)
-    doc.text(descLines.slice(0,3), W/2, descY, { align: 'center' })
-
-    const blob2 = doc.output('blob')
-    const url2 = URL.createObjectURL(blob2)
-    const win = window.open(url2, '_blank')
-    if (win) { win.onload = () => { win.focus(); win.print() } }
   }
 
   return (
