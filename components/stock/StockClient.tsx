@@ -1115,17 +1115,26 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 0; size: 100mm 80mm; }
+  @page { margin: 0; size: 80mm 100mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    width: 100mm;
-    height: 80mm;
+    width: 80mm;
+    height: 100mm;
     font-family: Arial, sans-serif;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .etiqueta {
+    width: 100mm;
+    height: 78mm;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 3mm;
-    overflow: hidden;
+    transform: rotate(90deg);
+    transform-origin: center center;
   }
   .row1 {
     width: 100%;
@@ -1134,7 +1143,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     justify-content: space-between;
     margin-bottom: 2mm;
   }
-  .logo { height: 12mm; width: auto; }
+  .logo { height: 11mm; width: auto; }
   .codigo {
     font-size: 18pt;
     font-weight: bold;
@@ -1159,12 +1168,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 </style>
 </head>
 <body>
-  <div class="row1">
-    <img class="logo" src="${window.location.origin}/logo.png" onerror="this.style.display='none'">
-    <span class="codigo">${code}</span>
+  <div class="etiqueta">
+    <div class="row1">
+      <img class="logo" src="${window.location.origin}/logo.png" onerror="this.style.display='none'">
+      <span class="codigo">${code}</span>
+    </div>
+    <img class="barcode" src="${barcodeDataUrl}">
+    <div class="descripcion">${desc}</div>
   </div>
-  <img class="barcode" src="${barcodeDataUrl}">
-  <div class="descripcion">${desc}</div>
 </body>
 </html>`
 
