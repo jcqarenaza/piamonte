@@ -77,7 +77,7 @@ export default function InformesClient() {
   useEffect(() => {
     const p = periodos[pIdx]
     setLoading(true)
-    supabase.from('ventas').select('fecha,precio,costo,descripcion,pendiente,tipo_cliente_nombre,aseguradora_nombre')
+    supabase.from('ventas').select('fecha,precio,costo,descripcion,pendiente,tipo_cliente_nombre')
       .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false})
       .then(({data}) => { setVentas(data??[]); setLoading(false) })
   }, [pIdx, periodos, supabase])
@@ -183,7 +183,7 @@ export default function InformesClient() {
   // ── Rentabilidad por tipo de cliente ──────────────────────────────────────
   interface TipoStats { facturado:number; costo:number; ganancia:number; operaciones:number; pendientes:number }
   const byTipo = ventas.reduce((acc,v) => {
-    const k = (v as any).aseguradora_nombre ? 'Aseguradora' : (v.tipo_cliente_nombre || 'Sin tipo')
+    const k = v.tipo_cliente_nombre || 'Sin tipo'
     if(!acc[k]) acc[k] = { facturado:0, costo:0, ganancia:0, operaciones:0, pendientes:0 }
     acc[k].facturado += v.precio
     acc[k].operaciones++

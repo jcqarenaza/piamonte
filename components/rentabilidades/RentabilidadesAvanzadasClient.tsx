@@ -51,7 +51,7 @@ export default function RentabilidadesAvanzadasClient() {
       // descripción "NC ... — devolución ..."), que no son piezas vendidas.
       const map: Record<string,{veces:number;total:number;ganancia:number}> = {}
       for(const v of r2.data??[]) {
-        if (!v.descripcion || v.descripcion.startsWith('NC ')) continue
+        if (!v.descripcion || v.descripcion.startsWith('NC ') || /^FA-\d{4}-\d{8}/i.test(v.descripcion)) continue
         const k = v.descripcion
         if(!map[k]) map[k]={veces:0,total:0,ganancia:0}
         map[k].veces++
@@ -99,7 +99,7 @@ export default function RentabilidadesAvanzadasClient() {
   const porTipo = [
     ...datos.filter(d=>d.mes===meActual),
     ...(cajaMesActual && cajaMesActual.total > 0
-      ? [{ mes:meActual, operaciones:cajaMesActual.operaciones, facturado:cajaMesActual.total, neto:0, iva_total:0, tipo_cliente:'Caja (sin factura)' }]
+      ? [{ mes:meActual, operaciones:cajaMesActual.operaciones, facturado:cajaMesActual.total, neto:0, iva_total:0, tipo_cliente:'Caja' }]
       : [])
   ]
 
@@ -203,7 +203,7 @@ export default function RentabilidadesAvanzadasClient() {
                 const pct  = maxT > 0 ? (t.facturado/maxT)*100 : 0
                 return (
                   <div key={t.tipo_cliente||'sin-tipo'} className="flex items-center gap-3">
-                    <span className="text-xs font-semibold text-p-ink w-28 shrink-0 truncate">{t.tipo_cliente||'Sin tipo'}</span>
+                    <span className="text-xs font-semibold text-p-ink w-28 shrink-0 truncate">{t.tipo_cliente === null ? 'Aseguradora' : t.tipo_cliente}</span>
                     <div className="flex-1 h-3 bg-p-light rounded-full overflow-hidden">
                       <div className="h-full bg-p-green rounded-full" style={{width:`${pct}%`}}/>
                     </div>
