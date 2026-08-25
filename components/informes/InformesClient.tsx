@@ -107,7 +107,7 @@ export default function InformesClient() {
         mapCod[k].veces += m.cantidad||1
         mapCod[k].total += (m.precio_venta_unitario||0)*(m.cantidad||1)
       }
-      setTopPiezasCod(Object.values(mapCod).sort((a,b)=>b.total-a.total).slice(0,10))
+      setTopPiezasCod(Object.values(mapCod).sort((a,b)=>b.veces-a.veces).slice(0,10))
     })()
   },[pIdx, periodos, supabase])
 
@@ -395,7 +395,7 @@ export default function InformesClient() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-p-ink truncate">{p.descripcion}</p>
                             <div className="mt-1 bg-p-line rounded-full h-1.5 overflow-hidden">
-                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.round((p.total/topPiezasCod[0].total)*100)}%`}}/>
+                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.round((p.veces/topPiezasCod[0].veces)*100)}%`}}/>
                             </div>
                           </div>
                           <span className="text-[10px] text-p-ink2 shrink-0">{p.veces}×</span>

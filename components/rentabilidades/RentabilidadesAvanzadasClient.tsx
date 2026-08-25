@@ -63,7 +63,7 @@ export default function RentabilidadesAvanzadasClient() {
         mapCod[k].total += (m.precio_venta_unitario||0)*(m.cantidad||1)
       }
       const top = Object.values(mapCod)
-        .sort((a,b)=>b.total-a.total).slice(0,10)
+        .sort((a,b)=>b.veces-a.veces).slice(0,10)
         .map(v=>({descripcion:`${v.codigo} — ${v.descripcion}`, veces:v.veces, total:v.total, ganancia:v.ganancia}))
       setTopPiezas(top)
       setCompras(r3.data??[])
