@@ -36,31 +36,35 @@ export default function RentabilidadesAvanzadasClient() {
   useEffect(()=>{
     async function load() {
       setLoading(true)
-      const [r1, r2, r3, r4] = await Promise.all([
+      const [r1, r2movs, r3, r4] = await Promise.all([
         supabase.from('vista_rentabilidad_mensual').select('*').limit(100),
-        supabase.from('ventas').select('descripcion,precio,costo').not('descripcion','is',null).limit(500),
+        supabase.from('stock_movimientos').select('stock_id,cantidad,precio_venta_unitario')
+          .eq('tipo','salida').not('precio_venta_unitario','is',null).limit(2000),
         supabase.from('comprobantes_compra').select('fecha,total,proveedor_nombre,tipo').eq('tipo','factura').eq('estado','pendiente').order('fecha',{ascending:false}).limit(50),
-        // Ventas registradas directo en Caja, sin pasar por un comprobante (no llevan factura).
-        // Se excluyen las que sí tienen comprobante_id porque esas ya están contadas en
-        // vista_rentabilidad_mensual — sumarlas de nuevo acá duplicaría el total facturado.
         supabase.from('ventas').select('fecha,precio').is('comprobante_id', null).not('fecha','is',null).limit(2000),
       ])
       setDatos(r1.data??[])
 
-      // Agrupar top piezas — se excluyen las filas de devolución por NC (precio negativo,
-      // descripción "NC ... — devolución ..."), que no son piezas vendidas.
-      const map: Record<string,{veces:number;total:number;ganancia:number}> = {}
-      for(const v of r2.data??[]) {
-        if (!v.descripcion || v.descripcion.startsWith('NC ') || /^FA-\d{4}-\d{8}/i.test(v.descripcion)) continue
-        const k = v.descripcion
-        if(!map[k]) map[k]={veces:0,total:0,ganancia:0}
-        map[k].veces++
-        map[k].total += v.precio||0
-        map[k].ganancia += (v.precio||0)-(v.costo||0)
+      // Top piezas por código de artículo
+      const stockIds = [...new Set((r2movs.data??[]).map((m:any)=>m.stock_id).filter(Boolean))]
+      const { data: stockData } = stockIds.length
+        ? await supabase.from('stock').select('id,codigo,descripcion').in('id', stockIds)
+        : { data: [] }
+      const stockMap: Record<string,{codigo:string;descripcion:string}> = {}
+      for(const s of stockData??[]) stockMap[(s as any).id] = { codigo:(s as any).codigo||'', descripcion:(s as any).descripcion||'' }
+
+      const mapCod: Record<string,{codigo:string;descripcion:string;veces:number;total:number;ganancia:number}> = {}
+      for(const m of r2movs.data??[]) {
+        const st = stockMap[m.stock_id]
+        if (!st?.codigo) continue
+        const k = st.codigo
+        if(!mapCod[k]) mapCod[k]={codigo:st.codigo,descripcion:st.descripcion,veces:0,total:0,ganancia:0}
+        mapCod[k].veces += m.cantidad||1
+        mapCod[k].total += (m.precio_venta_unitario||0)*(m.cantidad||1)
       }
-      const top = Object.entries(map)
-        .map(([d,v])=>({descripcion:d,...v}))
+      const top = Object.values(mapCod)
         .sort((a,b)=>b.total-a.total).slice(0,10)
+        .map(v=>({descripcion:`${v.codigo} — ${v.descripcion}`, veces:v.veces, total:v.total, ganancia:v.ganancia}))
       setTopPiezas(top)
       setCompras(r3.data??[])
 
