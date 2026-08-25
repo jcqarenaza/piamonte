@@ -39,6 +39,7 @@ export default function InformesClient() {
   const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
+  const [topPiezasCod, setTopPiezasCod] = useState<{descripcion:string;veces:number;total:number}[]>([])
 
   // Tab Colaboradores
   interface ColabRow { colaborador_id:string|null; nombre:string; cantidad:number; total:number; externos:number }
@@ -81,6 +82,34 @@ export default function InformesClient() {
       .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false})
       .then(({data}) => { setVentas(data??[]); setLoading(false) })
   }, [pIdx, periodos, supabase])
+
+  // Top piezas por código de artículo (desde stock_movimientos del período)
+  useEffect(()=>{
+    const p = periodos[pIdx]
+    ;(async ()=>{
+      const { data: movs } = await supabase.from('stock_movimientos')
+        .select('stock_id,cantidad,precio_venta_unitario')
+        .eq('tipo','salida').not('precio_venta_unitario','is',null)
+        .gte('fecha', p.desde).lte('fecha', p.hasta).limit(2000)
+      if (!movs?.length) { setTopPiezasCod([]); return }
+      const stockIds = [...new Set(movs.map((m:any)=>m.stock_id).filter(Boolean))]
+      const { data: stockData } = stockIds.length
+        ? await supabase.from('stock').select('id,codigo,descripcion').in('id', stockIds)
+        : { data: [] }
+      const stockMap: Record<string,{codigo:string;descripcion:string}> = {}
+      for(const s of stockData??[]) stockMap[(s as any).id]={codigo:(s as any).codigo||'',descripcion:(s as any).descripcion||''}
+      const mapCod: Record<string,{descripcion:string;veces:number;total:number}> = {}
+      for(const m of movs) {
+        const st = stockMap[m.stock_id]
+        if (!st?.codigo) continue
+        const k = st.codigo
+        if(!mapCod[k]) mapCod[k]={descripcion:`${st.codigo} — ${st.descripcion}`,veces:0,total:0}
+        mapCod[k].veces += m.cantidad||1
+        mapCod[k].total += (m.precio_venta_unitario||0)*(m.cantidad||1)
+      }
+      setTopPiezasCod(Object.values(mapCod).sort((a,b)=>b.total-a.total).slice(0,10))
+    })()
+  },[pIdx, periodos, supabase])
 
   // ── Ventas por origen del cristal (salidas de stock del período + origen PLK) ──
   const [porOrigen, setPorOrigen] = useState<{origen:string; unidades:number; monto:number}[]>([])
@@ -355,21 +384,22 @@ export default function InformesClient() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Top piezas */}
-                {topPiezas.length > 0 && (
+                {/* Top piezas por código */}
+                {topPiezasCod.length > 0 && (
                   <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
                     <p className="font-saira font-bold text-sm text-p-ink mb-3">Top piezas vendidas</p>
                     <div className="flex flex-col gap-2">
-                      {topPiezas.map(([desc,monto],i)=>(
+                      {topPiezasCod.map((p,i)=>(
                         <div key={i} className="flex items-center gap-3">
                           <span className="font-saira font-bold text-p-green w-5">{i+1}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-p-ink truncate">{desc}</p>
+                            <p className="text-sm text-p-ink truncate">{p.descripcion}</p>
                             <div className="mt-1 bg-p-line rounded-full h-1.5 overflow-hidden">
-                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.round((monto/topPiezas[0][1])*100)}%`}}/>
+                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.round((p.total/topPiezasCod[0].total)*100)}%`}}/>
                             </div>
                           </div>
-                          <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(monto)}</span>
+                          <span className="text-[10px] text-p-ink2 shrink-0">{p.veces}×</span>
+                          <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(p.total)}</span>
                         </div>
                       ))}
                     </div>
