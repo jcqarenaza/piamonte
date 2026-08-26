@@ -734,9 +734,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
       let condIvaReceptor = MAPA_COND_IVA[c.cliente_tipo_fiscal || ''] ?? (docTipo === 80 ? 1 : 5)
       // Red de seguridad: una Factura B jamás puede declarar receptor RI
-      // Red bidireccional — la CLASE del comprobante manda:
-      // Factura A (1/201): receptor RI por definición; Factura B: jamás RI.
-      if (tipoCbte === 1 || tipoCbte === 201) condIvaReceptor = 1
+      // Red bidireccional — la LETRA del comprobante manda:
+      // Clase A (FA=1, ND=2, NC=3, FCE=201/202/203): receptor RI por definición.
+      // Clase B: jamás receptor RI.
+      const CLASE_A = [1, 2, 3, 201, 202, 203]
+      if (CLASE_A.includes(tipoCbte)) condIvaReceptor = 1
       else if (condIvaReceptor === 1) condIvaReceptor = docTipo === 80 ? 4 : 5
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
