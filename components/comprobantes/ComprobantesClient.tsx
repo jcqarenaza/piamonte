@@ -1386,9 +1386,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     c.items.forEach((it:any,idx:number)=>{
       const isLast = idx === itemCount - 1
       if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,6,'F') }
-      const codText = (it as any).codigo ? `[${(it as any).codigo}] ` : ''
+      // Fiscales SIN código de artículo (decisión 27/08): solo descripción — el código sigue en pantalla y en presupuesto/OS/remito
       doc.text(String(it.c||1), hx+12, y+4.5, {align:'right'})
-      doc.text((codText + String(it.d||'')).slice(0,45), hx+14, y+4.5)
+      doc.text(String(it.d||'').slice(0,45), hx+14, y+4.5)
       doc.setFont('helvetica','normal'); doc.setFontSize(8)
       // Factura A: precios sin IVA (el IVA se discrimina en el pie)
       const precioUnit = c.tipo==='A' ? Math.round((it.p||0) / 1.21 * 100) / 100 : (it.p||0)
