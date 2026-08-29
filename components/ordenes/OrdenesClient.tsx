@@ -129,6 +129,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [sancorLoading, setSancorLoading] = useState(false)
   const [sancorTipo, setSancorTipo] = useState<'FC'|'FCE'>('FC')
   const [sancorTipoTocado, setSancorTipoTocado] = useState(false)
+  const [sancorObs, setSancorObs] = useState('')
   const [umbralFce, setUmbralFce] = useState<number>(0)
   const [sancorTextos, setSancorTextos] = useState<Record<string,string>>({})
   // Emisión FCE directa contra ARCA
@@ -147,7 +148,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   useEffect(() => {
     const cli = searchParams.get('cli'), tel = searchParams.get('tel'), veh = searchParams.get('veh')
     const pat = searchParams.get('pat'), turnoId = searchParams.get('turno_id')
-    const obsParam = searchParams.get('obs')
     const editOsId = searchParams.get('edit')
     const qParam = searchParams.get('q')
     if (qParam) setBuscarNombre(decodeURIComponent(qParam))
@@ -168,7 +168,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     } else if (cli || tel || veh) {
       const asegNombre = searchParams.get('aseg_nombre')
       const esAseg = searchParams.get('es_aseg') === '1'
-      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'', obs: obsParam||p.obs, ...(asegNombre?{aseg:asegNombre}:{}) }))
+      setForm(p => ({ ...p, cli:cli??'', tel:tel??'', veh:veh??'', pat:pat??'', ...(asegNombre?{aseg:asegNombre}:{}) }))
       if (esAseg) setIvaOn(false) // precio aseguradora ya incluye IVA
     }
     if (turnoId) setForm(p => ({ ...p, turno_id: turnoId }))
@@ -333,6 +333,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   }
 
   async function abrirSancor() {
+    setSancorObs('')
     const { data } = await supabase.from('ordenes_servicio')
       .select('*')
       .eq('aseguradora', 'Sancor Seguros')
@@ -403,6 +404,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       es_negro: false, es_nc: false,
       neto, iva_pct: 21, iva, total,
       cbu_informado: esFce ? String(cta!.cbu) : null,
+      observaciones: sancorObs.trim() || null,
       fce_vto_pago: esFce ? sancorVtoPago : null,
     }).select('id').single()
     if (errComp || !comp) { alert(`⚠ Error al crear comprobante: ${errComp?.message}`); setSancorEmitiendo(false); return }
@@ -1482,6 +1484,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 </>)
               })()}
               <div className="grid grid-cols-2 gap-3">
+                <div style={{gridColumn:'1 / -1'}}>
+                  <Field label="Observaciones (salen impresas en la factura)">
+                    <textarea value={sancorObs} onChange={e=>setSancorObs(e.target.value)} rows={2}
+                      placeholder="Siniestros, patentes, referencias…"
+                      className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </Field>
+                </div>
                 <Field label="Punto de venta"><Input value={sancorForm.pv} onChange={e=>setSancorForm(p=>({...p,pv:e.target.value}))} placeholder="00001"/></Field>
                 <Field label="N° Factura"><Input value={sancorForm.nro} onChange={e=>setSancorForm(p=>({...p,nro:e.target.value}))} placeholder="00000001"/></Field>
               </div>

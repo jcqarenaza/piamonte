@@ -1050,7 +1050,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     load()
   }
 
-  function generarEtiqueta(s: typeof items[0]) {
+  function generarEtiqueta(s: typeof items[0], vertical = false) {
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
 
@@ -1115,11 +1115,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 0; size: 80mm 100mm; }
+  @page { margin: 0; size: ${vertical ? '80mm 100mm' : '100mm 80mm'}; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    width: 80mm;
-    height: 100mm;
+    width: ${vertical ? '80mm' : '100mm'};
+    height: ${vertical ? '100mm' : '80mm'};
     font-family: Arial, sans-serif;
     overflow: hidden;
     display: flex;
@@ -1127,14 +1127,13 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     justify-content: center;
   }
   .etiqueta {
-    width: 100mm;
-    height: 78mm;
+    width: ${vertical ? '76mm' : '96mm'};
+    height: ${vertical ? '96mm' : '76mm'};
     display: flex;
     flex-direction: column;
     align-items: center;
+    ${vertical ? 'justify-content: center;' : ''}
     padding: 3mm;
-    transform: rotate(90deg);
-    transform-origin: center center;
   }
   .row1 {
     width: 100%;
@@ -1150,7 +1149,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     letter-spacing: 1px;
   }
   .barcode {
-    width: 90mm;
+    width: ${vertical ? '72mm' : '88mm'};
     height: auto;
     display: block;
     margin: 1mm auto;
@@ -1160,7 +1159,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
-    width: 94mm;
+    width: ${vertical ? '72mm' : '90mm'};
     max-height: 14mm;
     overflow: hidden;
     margin-top: 2mm;
@@ -1553,7 +1552,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                       <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}}
+                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s,true)}}
+  title="Imprimir etiqueta vertical"
+  className="text-[10px] font-bold bg-p-panel border border-p-line2 rounded px-1.5 py-1 hover:bg-p-line1">
+  ↕
+</button>
+<button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}}
   title="Imprimir etiqueta"
   style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'3px 8px',fontWeight:700,fontSize:11,cursor:'pointer',whiteSpace:'nowrap'}}>
   🏷 Etiqueta
