@@ -1443,12 +1443,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // ─── CAE COMPACTO — posición fija ───
     // Observaciones — impresas debajo de la forma de pago
     if (c.observaciones) {
-      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(30,30,30)
+      // Observaciones destacadas (pedido 28/08: que se lean — clave en facturas Sancor)
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(30,30,30)
       doc.text('Obs.:', pad, totY + 24)
-      doc.setFont('helvetica','normal'); doc.setTextColor(70,70,70)
-      const obsLines = doc.splitTextToSize(c.observaciones, rw - 14)
-      doc.text(obsLines.slice(0, 1), pad + 9, totY + 24)
-      doc.setTextColor(30,30,30); doc.setFontSize(8)
+      doc.setFont('helvetica','normal')
+      const obsLines = doc.splitTextToSize(c.observaciones, rw - 16)
+      doc.text(obsLines.slice(0, 3), pad + 12, totY + 24)
+      doc.setFontSize(8)
     }
 
     const caeY = 268
