@@ -1102,7 +1102,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Generar barras SVG
     const unitPx = 2.2
-    const barH = 60
+    const barH = vertical ? 110 : 90
     const svgBars = bits.split('').map((b,i) =>
       b === '1' ? `<rect x="${i*unitPx}" y="0" width="${unitPx}" height="${barH}" fill="black"/>` : ''
     ).join('')
@@ -1132,19 +1132,20 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     display: flex;
     flex-direction: column;
     align-items: center;
-    ${vertical ? 'justify-content: center;' : ''}
+    justify-content: space-evenly;
     padding: 3mm;
   }
   .row1 {
     width: 100%;
     display: flex;
+    ${vertical ? 'flex-direction: column; gap: 2mm;' : ''}
     align-items: center;
-    justify-content: space-between;
+    justify-content: ${vertical ? 'center' : 'space-between'};
     margin-bottom: 2mm;
   }
-  .logo { height: 11mm; width: auto; }
+  .logo { height: ${vertical ? '14mm' : '11mm'}; width: auto; }
   .codigo {
-    font-size: 18pt;
+    font-size: ${vertical ? '26pt' : '24pt'};
     font-weight: bold;
     letter-spacing: 1px;
   }
@@ -1155,12 +1156,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     margin: 1mm auto;
   }
   .descripcion {
-    font-size: 9pt;
+    font-size: ${vertical ? '14pt' : '13pt'};
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
     width: ${vertical ? '72mm' : '90mm'};
-    max-height: 14mm;
+    max-height: ${vertical ? '30mm' : '20mm'};
     overflow: hidden;
     margin-top: 2mm;
   }
