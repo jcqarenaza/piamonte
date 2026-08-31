@@ -1051,8 +1051,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
   function generarEtiqueta(s: typeof items[0]) {
-    // ⚙ AJUSTE: si la impresora corta el contenido por arriba, subí este número (mm); si sobra arriba, bajalo
-    const OFFSET_TOP_MM = 20
+    // ⚙ AJUSTES DE ETIQUETA — igualar a lo que dice el driver del PC42 (Preferencias → Stock/Media)
+    const ETIQ_ANCHO_MM = 100   // ancho del material según el driver
+    const ETIQ_ALTO_MM  = 80    // alto (avance) según el driver
+    const OFFSET_TOP_MM = 25    // compensa el inicio de impresión del driver (si corta arriba subilo; si sobra arriba bajalo)
+    const APAISADA = ETIQ_ANCHO_MM > ETIQ_ALTO_MM
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
 
@@ -1104,7 +1107,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Generar barras SVG
     const unitPx = 2.2
-    const barH = 95
+    const barH = APAISADA ? 70 : 95
     const svgBars = bits.split('').map((b,i) =>
       b === '1' ? `<rect x="${i*unitPx}" y="0" width="${unitPx}" height="${barH}" fill="black"/>` : ''
     ).join('')
@@ -1117,11 +1120,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 0; size: 80mm 100mm; }
+  @page { margin: 0; size: ${ETIQ_ANCHO_MM}mm ${ETIQ_ALTO_MM}mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    width: 80mm;
-    height: 100mm;
+    width: ${ETIQ_ANCHO_MM}mm;
+    height: ${ETIQ_ALTO_MM}mm;
     font-family: Arial, sans-serif;
     overflow: hidden;
     display: flex;
@@ -1129,30 +1132,30 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     justify-content: center;
   }
   .etiqueta {
-    width: 72mm;
-    height: 96mm;
+    width: ${ETIQ_ANCHO_MM - 8}mm;
+    height: ${ETIQ_ALTO_MM - 4}mm;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-evenly;
-    padding: ${OFFSET_TOP_MM}mm 3mm 4mm; box-sizing: border-box; margin: 0 auto; justify-content: flex-start; gap: 3mm;
+    padding: ${OFFSET_TOP_MM + 3}mm 3mm 3mm; box-sizing: border-box; margin: 0 auto; justify-content: ${APAISADA ? 'space-evenly' : 'flex-start'}; gap: 2mm;
   }
   .row1 {
     width: 100%;
     display: flex;
-    flex-direction: column; gap: 2mm;
+    ${APAISADA ? '' : 'flex-direction: column; gap: 2mm;'}
         align-items: center;
-    justify-content: center;
+    justify-content: ${APAISADA ? 'space-between' : 'center'};
     margin-bottom: 2mm;
   }
-  .logo { height: 12mm; width: auto; }
+  .logo { height: ${APAISADA ? '10mm' : '12mm'}; width: auto; }
   .codigo {
-    font-size: 24pt;
+    font-size: ${APAISADA ? '22pt' : '24pt'};
     font-weight: bold;
     letter-spacing: 1px;
   }
   .barcode {
-    width: 68mm;
+    width: ${ETIQ_ANCHO_MM - 16}mm;
     height: auto;
     display: block;
     margin: 1mm auto;
@@ -1162,8 +1165,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
-    width: 68mm;
-    max-height: 22mm;
+    width: ${ETIQ_ANCHO_MM - 16}mm;
+    max-height: ${APAISADA ? '14mm' : '22mm'};
     overflow: hidden;
     margin-top: 2mm;
   }
