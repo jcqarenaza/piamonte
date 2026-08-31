@@ -1050,7 +1050,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     load()
   }
 
-  function generarEtiqueta(s: typeof items[0], vertical = false) {
+  function generarEtiqueta(s: typeof items[0]) {
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
 
@@ -1102,7 +1102,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Generar barras SVG
     const unitPx = 2.2
-    const barH = vertical ? 110 : 90
+    const barH = 80
     const svgBars = bits.split('').map((b,i) =>
       b === '1' ? `<rect x="${i*unitPx}" y="0" width="${unitPx}" height="${barH}" fill="black"/>` : ''
     ).join('')
@@ -1115,11 +1115,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 0; size: ${vertical ? '80mm 100mm' : '100mm 80mm'}; }
+  @page { margin: 0; size: 100mm 80mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    width: ${vertical ? '80mm' : '100mm'};
-    height: ${vertical ? '100mm' : '80mm'};
+    width: 100mm;
+    height: 80mm;
     font-family: Arial, sans-serif;
     overflow: hidden;
     display: flex;
@@ -1127,41 +1127,40 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     justify-content: center;
   }
   .etiqueta {
-    width: ${vertical ? '76mm' : '96mm'};
-    height: ${vertical ? '96mm' : '76mm'};
+    width: 92mm;
+    height: 70mm;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-evenly;
-    padding: 3mm;
+    padding: 5mm 4mm; box-sizing: border-box; margin: 0 auto;
   }
   .row1 {
     width: 100%;
     display: flex;
-    ${vertical ? 'flex-direction: column; gap: 2mm;' : ''}
-    align-items: center;
-    justify-content: ${vertical ? 'center' : 'space-between'};
+        align-items: center;
+    justify-content: space-between;
     margin-bottom: 2mm;
   }
-  .logo { height: ${vertical ? '14mm' : '11mm'}; width: auto; }
+  .logo { height: 10mm; width: auto; }
   .codigo {
-    font-size: ${vertical ? '26pt' : '24pt'};
+    font-size: 22pt;
     font-weight: bold;
     letter-spacing: 1px;
   }
   .barcode {
-    width: ${vertical ? '72mm' : '88mm'};
+    width: 84mm;
     height: auto;
     display: block;
     margin: 1mm auto;
   }
   .descripcion {
-    font-size: ${vertical ? '14pt' : '13pt'};
+    font-size: 12pt;
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
-    width: ${vertical ? '72mm' : '90mm'};
-    max-height: ${vertical ? '30mm' : '20mm'};
+    width: 84mm;
+    max-height: 16mm;
     overflow: hidden;
     margin-top: 2mm;
   }
@@ -1553,12 +1552,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                       <button onClick={e=>{e.stopPropagation();setAjusteCantModal(s);setAjusteCantForm({tipo:'entrada',cant:'1',nota:'',motivo:'',pendiente_nc:false,proveedor_id:'',proveedor_nombre:''})}}
                         className="text-xs border border-p-line rounded-lg px-2 py-1 text-p-ink hover:bg-p-light font-semibold" title="Ajustar cantidad">⚖ Ajustar</button>
                       <button onClick={e=>{e.stopPropagation();openEditar(s)}} className="w-7 h-7 border border-blue-200 rounded-lg text-sm text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar artículo">✏</button>
-                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s,true)}}
-  title="Imprimir etiqueta vertical"
-  className="text-[10px] font-bold bg-p-panel border border-p-line2 rounded px-1.5 py-1 hover:bg-p-line1">
-  ↕
-</button>
-<button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}}
+                      <button onClick={e=>{e.stopPropagation();generarEtiqueta(s)}}
   title="Imprimir etiqueta"
   style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'3px 8px',fontWeight:700,fontSize:11,cursor:'pointer',whiteSpace:'nowrap'}}>
   🏷 Etiqueta
