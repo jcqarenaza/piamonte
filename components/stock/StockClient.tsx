@@ -1102,7 +1102,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
     // Generar barras SVG
     const unitPx = 2.2
-    const barH = 80
+    const barH = 95
     const svgBars = bits.split('').map((b,i) =>
       b === '1' ? `<rect x="${i*unitPx}" y="0" width="${unitPx}" height="${barH}" fill="black"/>` : ''
     ).join('')
@@ -1115,11 +1115,11 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 0; size: 100mm 80mm; }
+  @page { margin: 0; size: 80mm 100mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    width: 100mm;
-    height: 80mm;
+    width: 80mm;
+    height: 100mm;
     font-family: Arial, sans-serif;
     overflow: hidden;
     display: flex;
@@ -1127,40 +1127,41 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     justify-content: center;
   }
   .etiqueta {
-    width: 92mm;
-    height: 70mm;
+    width: 72mm;
+    height: 88mm;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-evenly;
-    padding: 5mm 4mm; box-sizing: border-box; margin: 0 auto;
+    padding: 6mm 3mm; box-sizing: border-box; margin: 0 auto; justify-content: center; gap: 3mm;
   }
   .row1 {
     width: 100%;
     display: flex;
+    flex-direction: column; gap: 2mm;
         align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     margin-bottom: 2mm;
   }
-  .logo { height: 10mm; width: auto; }
+  .logo { height: 12mm; width: auto; }
   .codigo {
-    font-size: 22pt;
+    font-size: 24pt;
     font-weight: bold;
     letter-spacing: 1px;
   }
   .barcode {
-    width: 84mm;
+    width: 68mm;
     height: auto;
     display: block;
     margin: 1mm auto;
   }
   .descripcion {
-    font-size: 12pt;
+    font-size: 13pt;
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
-    width: 84mm;
-    max-height: 16mm;
+    width: 68mm;
+    max-height: 22mm;
     overflow: hidden;
     margin-top: 2mm;
   }
