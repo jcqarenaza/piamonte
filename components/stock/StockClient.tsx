@@ -1051,6 +1051,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
   function generarEtiqueta(s: typeof items[0]) {
+    // ⚙ AJUSTE: si la impresora corta el contenido por arriba, subí este número (mm); si sobra arriba, bajalo
+    const OFFSET_TOP_MM = 20
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
 
@@ -1128,12 +1130,12 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
   .etiqueta {
     width: 72mm;
-    height: 88mm;
+    height: 96mm;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-evenly;
-    padding: 6mm 3mm; box-sizing: border-box; margin: 0 auto; justify-content: center; gap: 3mm;
+    padding: ${OFFSET_TOP_MM}mm 3mm 4mm; box-sizing: border-box; margin: 0 auto; justify-content: flex-start; gap: 3mm;
   }
   .row1 {
     width: 100%;
