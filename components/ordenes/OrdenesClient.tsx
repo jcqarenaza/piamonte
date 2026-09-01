@@ -50,7 +50,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [stockQ, setStockQ]     = useState('')
   const [stockSugs, setStockSugs] = useState<any[]>([])
   const [stockSel, setStockSel] = useState<any|null>(null)
-  const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'|'facturadas'>('todas')
+  const [filtroEstado, setFiltroEstado] = useState<'todas'|'pendiente'|'realizado'|'facturada'|'facturadas'>('pendiente')  // default: lo que falta hacer (pedido 01/09)
   // Aseguradoras — cargadas desde la base, no hardcodeadas, para que se puedan agregar nuevas
   // (Allianz, Mapfre, etc.) sin tocar código, y siempre desde un registro real, no texto libre.
   const [aseguradoras, setAseguradoras] = useState<{id:string;nombre:string}[]>([])

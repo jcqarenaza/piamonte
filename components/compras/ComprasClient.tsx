@@ -629,21 +629,20 @@ export default function ComprasClient() {
 
         const pendStockId = pendiente.stock_id || (pendiente as any).stock?.id || null
         if (cantRestante <= 0) {
-          // Saldo total — actualizar ajuste_stock con número de NC
+          // Saldo total — ESPEJO EXACTO en los dos libros (misma fecha, texto y vínculo).
+          // La vista de inconsistencias dedupica ajustes_stock vs stock_movimientos por
+          // stock+fecha+cantidad+tipo y (descripcion=nota o misma NC): si se toca uno solo, se rompe.
+          const fechaDoc = form.fecha || todayStr()        // la fecha documental es la de la NC
+          const textoNC = `NC ${numNc} · ${provNombre} · rotura ${pendiente.fecha}`
           const { error: eAj } = await supabase.from('ajustes_stock')
-            .update({ pendiente_nc: false, nota: `NC ${numNc} · ${provNombre}` })
+            .update({ pendiente_nc: false, nota: textoNC, fecha: fechaDoc, comprobante_compra_id: comp.id })
             .eq('id', pendiente.id)
-          // Actualizar stock_movimientos si existe (rotos viejos que se registraron ahí)
           const { error: eMov } = await supabase.from('stock_movimientos')
-            .update({
-              pendiente_nc: false,
-              descripcion: `NC ${numNc} · ${provNombre} · rotura ${pendiente.fecha}`,
-              comprobante_compra_id: comp.id,
-              fecha: form.fecha || todayStr(),  // la fecha documental es la de la NC
-            })
+            .update({ pendiente_nc: false, descripcion: textoNC, comprobante_compra_id: comp.id, fecha: fechaDoc })
             .eq('stock_id', pendStockId)
             .eq('pendiente_nc', true)
             .eq('fecha', pendiente.fecha)
+            .eq('cantidad', pendiente.cantidad)
           if (eAj || eMov) alert(`⚠ NC guardada, pero falló el saldado del pendiente ${(pendiente as any).stock?.codigo || ''}: ${eAj?.message || eMov?.message}`)
           // Los nuevos rotos solo están en ajustes_stock — ya se actualizó arriba
           // Marcar SOLO el ajuste de CC que corresponde a este ajuste usando comprobante_id (vínculo exacto)
@@ -886,11 +885,17 @@ export default function ComprasClient() {
             descripcion: 'Roto — pendiente NC (NC anulada)',
           }).eq('id', (m as any).id)
         }
-        // Reabrir los ajustes saldados por esta NC
-        const numNcDel = `${comp.letra||''}${comp.punto_venta||''}-${comp.numero||''}`
-        await supabase.from('ajustes_stock')
-          .update({ pendiente_nc: true, nota: 'Roto — pendiente NC (NC anulada)' })
-          .eq('nota', `NC ${numNcDel} · ${comp.proveedor_nombre||''}`)
+        // Reabrir los ajustes saldados por esta NC — ESPEJO: mismo texto y misma fecha original que el movimiento
+        const { data: ajSaldados } = await supabase.from('ajustes_stock')
+          .select('id, nota').eq('comprobante_compra_id', id).like('nota', '%· rotura %')
+        for (const a of (ajSaldados ?? [])) {
+          const fechaOrig = (a as any).nota.match(/· rotura (\d{4}-\d{2}-\d{2})/)?.[1]
+          await supabase.from('ajustes_stock').update({
+            comprobante_compra_id: null, pendiente_nc: true,
+            ...(fechaOrig ? { fecha: fechaOrig } : {}),
+            nota: 'Roto — pendiente NC (NC anulada)',
+          }).eq('id', (a as any).id)
+        }
       }
       // Reversa de stock + borrado de movimientos en una sola transacción (RPC atómico)
       await supabase.rpc('revertir_movimientos_comprobante_compra', { p_comprobante_id: id })
