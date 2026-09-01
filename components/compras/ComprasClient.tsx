@@ -120,6 +120,15 @@ export default function ComprasClient() {
 
   // Pendientes NC del proveedor seleccionado
   const [pendientesNC, setPendientesNC] = useState<any[]>([])
+  // Pendientes de NC: se recargan SIEMPRE que cambie tipo/proveedor/filtro (antes solo al clickear "NC" con proveedor ya elegido)
+  useEffect(() => {
+    if (form.tipo !== 'nc' || !open) { setPendientesNC([]); return }
+    let q = supabase.from('ajustes_stock')
+      .select('id, stock_id, descripcion, cantidad, fecha, nota, comprobante_id, proveedor_id, stock:stock_id(id, codigo, descripcion)')
+      .eq('pendiente_nc', true)
+    if (form.proveedor_id) q = q.or(`proveedor_id.eq.${form.proveedor_id},proveedor_id.is.null`)
+    q.order('fecha', { ascending: true }).then(({ data }) => setPendientesNC(data ?? []))
+  }, [form.tipo, form.proveedor_id, open])
   const [pendientesSelNC, setPendientesSelNC] = useState<Record<string,boolean>>({})
 
   const supabase = createClient()
@@ -1481,16 +1490,8 @@ export default function ComprasClient() {
               {TIPOS.map(t=>(
                 <button key={t.id} onClick={async ()=>{ 
                   setForm(p=>({...p,tipo:t.id}))
-                  if (t.id === 'nc' && form.proveedor_id) {
-                    if (form.proveedor_id) {
-                      const { data } = await supabase.from('ajustes_stock')
-                        .select('id, stock_id, descripcion, cantidad, fecha, nota, comprobante_id, proveedor_id, stock:stock_id(id, codigo, descripcion)')
-                        .eq('pendiente_nc', true)
-                        .or(`proveedor_id.eq.${form.proveedor_id},proveedor_id.is.null`)
-                        .order('fecha', { ascending: true })
-                      setPendientesNC(data ?? [])
-                    }
-                    // No preseleccionar — dejar que el usuario elija de a uno
+                  if (t.id === 'nc') {
+                    // La lista de pendientes la carga el useEffect (reacciona a tipo + proveedor)
                     setPendientesSelNC({})
                   } else {
                     setPendientesNC([])
@@ -1506,7 +1507,9 @@ export default function ComprasClient() {
           {/* Pendientes NC del proveedor */}
           {form.tipo === 'nc' && pendientesNC.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-              <p className="text-xs font-bold text-amber-800 mb-2">⏳ {pendientesNC.length} artículo(s) con NC pendiente — hacé click para agregar a esta NC</p>
+              <div className="flex items-center mb-2">
+                <p className="text-xs font-bold text-amber-800">⏳ {pendientesNC.length} artículo(s) con NC pendiente — hacé click para agregar a esta NC</p>
+              </div>
               <div className="flex flex-col gap-1.5">
                 {pendientesNC.map((p:any) => {
                   const yaAgregado = !!pendientesSelNC[p.id]
@@ -1557,7 +1560,8 @@ export default function ComprasClient() {
             </div>
           )}
           {form.tipo === 'nc' && pendientesNC.length === 0 && form.proveedor_id && (
-            <p className="text-xs text-p-ink2 bg-p-light rounded-lg px-3 py-2">Sin artículos pendientes de NC para este proveedor.</p>
+            <div className="text-xs text-p-ink2 bg-p-light rounded-lg px-3 py-2 flex items-center">Sin artículos pendientes de NC para este proveedor.
+            </div>
           )}
 
           {/* Número */}
