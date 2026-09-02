@@ -34,6 +34,20 @@ function Toast({ msg, ok }: { msg: string; ok: boolean }) {
 export default function TurnosClient({ initialTurnos, userId }: { initialTurnos: Turno[]; userId: string }) {
   const [turnos, setTurnos]   = useState<Turno[]>(initialTurnos)
   const [buscarCliente, setBuscarCliente] = useState('')
+  const [resGlobal, setResGlobal] = useState<any[]>([])
+  // Búsqueda global por apellido/patente en TODAS las fechas (no solo el día visible)
+  useEffect(() => {
+    const q = buscarCliente.trim()
+    if (q.length < 2) { setResGlobal([]); return }
+    const t = setTimeout(() => {
+      supabase.from('turnos')
+        .select('id, cliente, vehiculo, patente, fecha, hora, estado, trabajo')
+        .or(`cliente.ilike.%${q}%,patente.ilike.%${q}%`)
+        .order('fecha', { ascending: false }).limit(20)
+        .then(({ data }) => setResGlobal(data ?? []))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [buscarCliente])
   const [fecha, setFecha]     = useState(todayStr())
   const [loading, setLoading] = useState(false)
   const [open, setOpen]       = useState(false)
@@ -258,6 +272,24 @@ export default function TurnosClient({ initialTurnos, userId }: { initialTurnos:
           placeholder="Buscar por cliente..."
           className="w-full border border-p-line rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-p-green bg-white"/>
       </div>
+
+      {buscarCliente.trim().length >= 2 && resGlobal.length > 0 && (
+        <div className="mb-4 bg-white border border-p-line rounded-xl divide-y divide-p-line1 overflow-hidden">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-p-ink2 px-4 py-2 bg-p-light">Resultados en todas las fechas — clic para ir al día</p>
+          {resGlobal.map((t:any) => (
+            <button key={t.id} onClick={() => { setFecha(t.fecha); setBuscarCliente('') }}
+              className="w-full text-left px-4 py-2.5 hover:bg-p-light flex items-center gap-3">
+              <span className="font-mono text-xs text-p-ink2 shrink-0">{t.fecha}{t.hora ? ' · ' + t.hora.slice(0,5) : ''}</span>
+              <span className="font-semibold text-sm">{t.cliente || '—'}</span>
+              <span className="text-xs text-p-ink2 truncate">{t.vehiculo || ''} {t.patente ? '· ' + t.patente : ''}</span>
+              <span className="ml-auto"><Badge label={t.estado} /></span>
+            </button>
+          ))}
+        </div>
+      )}
+      {buscarCliente.trim().length >= 2 && resGlobal.length === 0 && (
+        <p className="mb-4 text-xs text-p-ink2 bg-p-light rounded-lg px-3 py-2">Sin turnos con ese nombre/patente en ninguna fecha.</p>
+      )}
       <p className="text-sm text-p-ink2 mb-4">{fmtFecha(fecha)} · {turnos.length} {turnos.length === 1 ? "turno" : "turnos"}</p>
 
       {loading ? (
