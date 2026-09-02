@@ -945,8 +945,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                               router.push(`/comprobantes?${params.toString()}`)
                             }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                           )}
-                          <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
-                            style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
                         </>
                       ) : (o as any).estado==='realizado' ? (
                         <>
@@ -988,6 +986,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                               router.push(`/comprobantes?${params.toString()}`)
                             }} style={{...btnSm,background:'#00A550'}}>✓ Comprobante</button>
                           )}
+                          <button onClick={()=>{setTurnoModal(o);setTurnoForm({fecha:todayStr(),hora:'09:00',trabajo:o.vehiculo||''})}}
+                            style={{...btnSm,background:'#0891b2'}}>📅 Turno</button>
                         </>
                       ) : (
                         <>
