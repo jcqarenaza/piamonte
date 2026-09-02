@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback , useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Venta, StockItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, KpiCard, Empty, AlarmBar } from '@/components/ui'
@@ -315,6 +315,9 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       .eq('venta_id', v.id)
       .eq('tipo', 'salida')
     if (errMovs) { alert(`⚠ No pude leer los movimientos de la venta: ${errMovs.message}`); return false }
+    // Idempotencia: si la venta ya fue borrada por otro clic/pestaña, no devolver stock otra vez
+    const { data: sigue } = await supabase.from('ventas').select('id').eq('id', v.id).maybeSingle()
+    if (!sigue) return false
     const lista = (movs && movs.length > 0)
       ? movs
       : (v.origen === 'stock' && v.stock_id ? [{ stock_id: v.stock_id, cantidad: 1 }] : [])
@@ -331,13 +334,18 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     return true
   }
 
+  const borrandoRef = useRef<Set<string>>(new Set())
   async function delVenta(v: Venta) {
+    if (borrandoRef.current.has(v.id)) return  // anti doble clic
     if (!confirm('¿Borrar venta?')) return
+    borrandoRef.current.add(v.id)
+    try {
     const ok = await revertirStockVenta(v)
     if (!ok) return
     const { error: errDel } = await supabase.from('ventas').delete().eq('id', v.id)
     if (errDel) alert(`⚠ Stock devuelto pero la venta no se pudo borrar: ${errDel.message}`)
     loadVentas()
+    } finally { borrandoRef.current.delete(v.id) }
   }
 
   async function updateCosto(v: Venta, costo: string) {
