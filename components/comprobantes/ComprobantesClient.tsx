@@ -1481,7 +1481,15 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (cFresh) c = cFresh as Comprobante
 
     // Fetch datos aseguradora
-    let cuitAseg='', dirAseg='', razonSocial=c.aseguradora_nombre||''
+    let cuitAseg='', dirAseg='', razonSocial=c.aseguradora_nombre||c.cliente_nombre||''
+    if (!c.aseguradora_id && (c as any).cliente_id) {
+      const { data: cli } = await supabase.from('clientes').select('cuit,dni,direccion,localidad,nombre,razon_social').eq('id', (c as any).cliente_id).maybeSingle()
+      if (cli) {
+        cuitAseg = c.cliente_cuit || (cli as any).cuit || (cli as any).dni || ''
+        dirAseg = [(cli as any).direccion, (cli as any).localidad].filter(Boolean).join(', ')
+        razonSocial = (cli as any).razon_social || (cli as any).nombre || razonSocial
+      }
+    }
     if (c.aseguradora_id) {
       const { data: aRow } = await supabase.from('aseguradoras').select('cuit,direccion,localidad,razon_social').eq('id', c.aseguradora_id).maybeSingle()
       if (aRow) {
@@ -1501,9 +1509,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function compartirWA(c:Comprobante){
-    const ASEG_ARCA = ['acca4421-1905-4607-ae64-12455574d3f3']
-    const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
-    const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
+    const blob = (await esFormatoArcaDe(c)) ? await generarPDFArca(c) : await generarPDF(c)
     const file = new File([blob],`Comprobante-${c.numero}.pdf`,{type:'application/pdf'})
     if(navigator.canShare?.({files:[file]})){ await navigator.share({files:[file],title:'Comprobante El Piamonte'}); return }
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
@@ -1512,10 +1518,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(txt)}`,'_blank'),800)
   }
 
+  // Formato de PDF según la ficha (aseguradoras.formato_factura / clientes.formato_factura)
+  async function esFormatoArcaDe(c: Comprobante): Promise<boolean> {
+    try {
+      if (c.aseguradora_id) {
+        const { data } = await supabase.from('aseguradoras').select('formato_factura').eq('id', c.aseguradora_id).maybeSingle()
+        return (data as any)?.formato_factura === 'arca'
+      }
+      if ((c as any).cliente_id) {
+        const { data } = await supabase.from('clientes').select('formato_factura').eq('id', (c as any).cliente_id).maybeSingle()
+        return (data as any)?.formato_factura === 'arca'
+      }
+    } catch {}
+    return false
+  }
+
   async function descargar(c:Comprobante){
-    const ASEG_ARCA = ['acca4421-1905-4607-ae64-12455574d3f3']
-    const esFormatoArca = !!(c.aseguradora_id && ASEG_ARCA.includes(c.aseguradora_id))
-    const blob = esFormatoArca ? await generarPDFArca(c) : await generarPDF(c)
+    const blob = (await esFormatoArcaDe(c)) ? await generarPDFArca(c) : await generarPDF(c)
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`0006-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
   }
 
