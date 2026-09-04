@@ -139,6 +139,25 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // ── OBSERVACIONES (destacadas, hasta 3 líneas) ──
+      if (c.observaciones) {
+        iy += 6
+        const obsTxt = String(c.observaciones).replace(/\s+/g, ' ').trim()
+        const lineas: string[] = []
+        let resto = obsTxt
+        while (resto.length > 0 && lineas.length < 3) {
+          if (resto.length <= 80) { lineas.push(resto); break }
+          let corte = resto.lastIndexOf(' ', 80)
+          if (corte < 40) corte = 80
+          lineas.push(resto.slice(0, corte))
+          resto = resto.slice(corte).trim()
+        }
+        for (const ln of lineas) {
+          p.drawText(ln, { x: 57, y: B(iy + 4, 9), font: Bd, size: 9, color: K })
+          iy += 13
+        }
+      }
+
       // ── TOTALES ── (formato ARCA: sin separador de miles)
       cover(p, 187, 524, 392, 145, 1)
       t(187, 533, 'Importe Otros Tributos: $', 9)
