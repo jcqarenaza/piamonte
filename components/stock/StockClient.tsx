@@ -48,7 +48,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [movQ, setMovQ] = useState('')
   const [open, setOpen] = useState(false)
   const [ajusteOpen, setAjusteOpen] = useState(false)
-  const [ajusteForm, setAjusteForm] = useState({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
+  const [ajusteForm, setAjusteForm] = useState({ desc:'', codigo:'', cant:'1', costo:'', prov:'', nota:'' })
   const [ajusteSearch, setAjusteSearch] = useState('')
   const [ajusteSugs, setAjusteSugs] = useState<StockItem[]>([])
   const [ajusteStockId, setAjusteStockId] = useState<string|null>(null)
@@ -418,8 +418,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     } else {
       // Alta de artículo nuevo: nace con cantidad 0 y la cantidad entra SOLO por el RPC
       // (movimiento incluido — así no se fabrican más artículos sin historia)
+      const codigoNuevo = ajusteForm.codigo.trim().toUpperCase() || null
+      if (codigoNuevo) {
+        const { data: dup } = await supabase.from('stock').select('id, descripcion').eq('codigo', codigoNuevo).eq('activo', true).maybeSingle()
+        if (dup) { alert(`⚠ El código ${codigoNuevo} ya existe: "${(dup as any).descripcion}".
+Usá otro código o elegí esa pieza del buscador.`); return }
+      }
       const { data: nuevo, error: errIns } = await supabase.from('stock').insert({
-        descripcion: ajusteForm.desc, cantidad: 0, costo,
+        descripcion: ajusteForm.desc, codigo: codigoNuevo, cantidad: 0, costo,
         deposito: 'Principal', activo: true
       }).select('id').single()
       if (errIns || !nuevo) { alert(`⚠ Error al crear el artículo: ${errIns?.message || 'desconocido'}`); return }
@@ -444,7 +450,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     })
     if (errAj) alert(`⚠ Stock actualizado, pero falló el registro del ajuste: ${errAj.message}`)
     setAjusteOpen(false)
-    setAjusteForm({ desc:'', cant:'1', costo:'', prov:'', nota:'' })
+    setAjusteForm({ desc:'', codigo:'', cant:'1', costo:'', prov:'', nota:'' })
     setAjusteSearch(''); setAjusteStockId(null)
     load()
   }
@@ -2141,10 +2147,18 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">O descripción nueva</label>
-                <input value={ajusteForm.desc} onChange={e=>setAjusteForm(p=>({...p,desc:e.target.value}))}
+                <input value={ajusteForm.desc} onChange={e=>{setAjusteForm(p=>({...p,desc:e.target.value}));if(ajusteStockId){setAjusteStockId(null)}}}
                   placeholder="Descripción de la pieza"
                   className="w-full border border-p-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-p-green"/>
               </div>
+              {!ajusteStockId && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Código (para alta nueva)</label>
+                  <input value={ajusteForm.codigo} onChange={e=>setAjusteForm(p=>({...p,codigo:e.target.value.toUpperCase()}))}
+                    placeholder="Ej: COLOC0003, 429914VNTI…"
+                    className="w-full border border-p-line rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-p-green"/>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Unidades</label>
