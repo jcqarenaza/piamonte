@@ -215,8 +215,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     const c = cTot > 0 ? cTot : null
 
     const { data: ventaIns, error: errVenta } = await supabase.from('ventas').insert({
-      tipo_cliente_nombre: 'Mostrador',
-      fecha, descripcion: descripcionVenta, costo: c, precio: p,
+            fecha, descripcion: descripcionVenta, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
       pago: form.pago === 'Tarjeta' && tarjetaSelId
         ? (()=>{ const tc = tarjetasConf.find((t:any)=>t.id===tarjetaSelId); const rec = parseFloat(recargoTarj)||0
@@ -227,7 +226,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       stock_id: hayItems ? (itemsCaja.find(it => it.stock_id)?.stock_id || null) : form.stock_id,
       user_id: userId,
       tipo_cliente_id: form.tipo_id||null,
-      tipo_cliente_nombre: form.tipo_nombre||null,
+      tipo_cliente_nombre: form.tipo_nombre||'Mostrador',
       es_caja2: perfil.rol === 'caja'
     }).select('id').single()
     if (errVenta || !ventaIns) { alert(`⚠ Error al guardar la venta: ${errVenta?.message || 'desconocido'}`); return }
