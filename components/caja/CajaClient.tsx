@@ -215,6 +215,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     const c = cTot > 0 ? cTot : null
 
     const { data: ventaIns, error: errVenta } = await supabase.from('ventas').insert({
+      tipo_cliente_nombre: 'Mostrador',
       fecha, descripcion: descripcionVenta, costo: c, precio: p,
       cliente: form.cliente || null, comprobante: form.comprobante || null,
       pago: form.pago === 'Tarjeta' && tarjetaSelId
