@@ -685,7 +685,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     await supabase.from('ventas').insert({
       fecha: todayStr(), descripcion: `F${f.tipo}-0006-${nroDesc} - ${f.aseguradora_nombre||f.cliente_nombre||'CF'}`,
       precio: f.total, costo: costoVenta||null, pendiente: true,
-      comprobante_id: c.id, tipo_cliente_id: f.tipo_cliente_id||null, tipo_cliente_nombre: f.tipo_cliente_nombre||null,
+      comprobante_id: c.id, tipo_cliente_id: f.tipo_cliente_id||null, tipo_cliente_nombre: f.tipo_cliente_nombre || (f.aseguradora_id ? 'Aseguradora' : null),
       pago: montoCC >= f.total*0.9 ? 'Cuenta corriente' : (pagosF.find((p:any)=>p.metodo!=='Cuenta corriente')?.metodo || 'Efectivo'),
       // Abajo va el contexto: el asegurado si es de aseguradora; CF si corresponde
       cliente: f.aseguradora_nombre ? (f.cliente_nombre||null) : (f.cliente_nombre ? null : 'Consumidor Final'),

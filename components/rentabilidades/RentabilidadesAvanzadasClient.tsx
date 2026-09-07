@@ -40,7 +40,10 @@ export default function RentabilidadesAvanzadasClient() {
         supabase.from('vista_rentabilidad_mensual').select('*').limit(100),
         supabase.from('stock_movimientos').select('stock_id,cantidad,precio_venta_unitario')
           .eq('tipo','salida').not('precio_venta_unitario','is',null).limit(2000),
-        supabase.from('comprobantes_compra').select('fecha,total,proveedor_nombre,tipo').eq('tipo','factura').eq('estado','pendiente').order('fecha',{ascending:false}).limit(50),
+        supabase.from('comprobantes_compra').select('fecha,total,tipo')
+          .in('tipo',['factura','nc'])
+          .gte('fecha', new Date(new Date().getFullYear(), new Date().getMonth()-11, 1).toISOString().slice(0,10))
+          .order('fecha',{ascending:false}).limit(2000),
         supabase.from('ventas').select('fecha,precio').is('comprobante_id', null).not('fecha','is',null).limit(2000),
       ])
       setDatos(r1.data??[])
@@ -112,8 +115,10 @@ export default function RentabilidadesAvanzadasClient() {
   const totalOps  = porMes.reduce((a,m)=>a+m.operaciones,0)
   const ticketProm = totalOps > 0 ? Math.round(totalFact/totalOps) : 0
 
-  // Compras del período
-  const totalCompras = compras.slice(0,periodo*10).reduce((a,c)=>a+c.total,0)
+  // Compras del período elegido: facturas − notas de crédito, filtradas por fecha real
+  const corteCompras = new Date(new Date().getFullYear(), new Date().getMonth()-(periodo-1), 1).toISOString().slice(0,10)
+  const comprasPeriodo = compras.filter(c=>String(c.fecha) >= corteCompras)
+  const totalCompras = comprasPeriodo.reduce((a,c)=>a + (c.tipo==='nc' ? -(c.total||0) : (c.total||0)), 0)
   const margenBruto  = totalFact > 0 ? Math.round(((totalFact-totalCompras)/totalFact)*100) : 0
 
   if(loading) return <p className="text-sm text-p-gray text-center py-10">Cargando…</p>
@@ -207,7 +212,7 @@ export default function RentabilidadesAvanzadasClient() {
                 const pct  = maxT > 0 ? (t.facturado/maxT)*100 : 0
                 return (
                   <div key={t.tipo_cliente||'sin-tipo'} className="flex items-center gap-3">
-                    <span className="text-xs font-semibold text-p-ink w-28 shrink-0 truncate">{t.tipo_cliente === null ? 'Aseguradora' : t.tipo_cliente}</span>
+                    <span className="text-xs font-semibold text-p-ink w-28 shrink-0 truncate">{t.tipo_cliente || 'Sin tipo'}</span>
                     <div className="flex-1 h-3 bg-p-light rounded-full overflow-hidden">
                       <div className="h-full bg-p-green rounded-full" style={{width:`${pct}%`}}/>
                     </div>
