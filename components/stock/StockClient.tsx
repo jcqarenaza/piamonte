@@ -1060,7 +1060,7 @@ Usá otro código o elegí esa pieza del buscador.`); return }
     // ⚙ AJUSTES DE ETIQUETA — igualar a lo que dice el driver del PC42 (Preferencias → Stock/Media)
     const ETIQ_ANCHO_MM = 80    // ancho del material según el driver (verificado: apaisada gira)
     const ETIQ_ALTO_MM  = 100   // alto (avance) según el driver
-    const OFFSET_TOP_MM = 25    // compensa el inicio de impresión del driver (si corta arriba subilo; si sobra arriba bajalo)
+    const OFFSET_TOP_MM = 38    // compensa el inicio de impresión del driver (si corta arriba subilo; si sobra arriba bajalo)
     const APAISADA = ETIQ_ANCHO_MM > ETIQ_ALTO_MM
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
