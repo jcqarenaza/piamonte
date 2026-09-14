@@ -8,9 +8,10 @@ const btn   = { background:'#00A550',color:'#fff',border:'none',borderRadius:10,
 const btnSm = { ...btn, padding:'6px 14px', fontSize:12 } as const
 
 type Fuente = 'ventas'|'compras'|'stock'
+type RowSrc = Fuente | 'cobro'
 
 interface Row {
-  _src: Fuente
+  _src: RowSrc
   id: string
   tipo?: string
   numero?: string|number|null
