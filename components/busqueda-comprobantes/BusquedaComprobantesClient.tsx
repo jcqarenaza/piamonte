@@ -176,15 +176,15 @@ export default function BusquedaComprobantesClient() {
 
   const fmtFecha = (f:string) => f?.split('-').reverse().join('/')
 
-  const srcLabel: Record<Fuente, string> = {
+  const srcLabel: Record<RowSrc, string> = {
     ventas: '💰 Venta',
     compras: '🛒 Compra',
-    stock: '📦 Stock',
+    stock: '📦 Stock', cobro: '🏦 Cobro',
   }
-  const srcColor: Record<Fuente, string> = {
+  const srcColor: Record<RowSrc, string> = {
     ventas: 'bg-blue-100 text-blue-700',
     compras: 'bg-amber-100 text-amber-700',
-    stock: 'bg-green-100 text-green-700',
+    stock: 'bg-green-100 text-green-700', cobro: 'bg-emerald-100 text-emerald-700',
   }
 
   return (
