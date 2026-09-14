@@ -545,13 +545,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // Saldar CC: la NC acredita (haber) el total en la cuenta del cliente o aseguradora
     const ncDesc = `NC-0006-${String(nextNum).padStart(8,'0')} — devolución FA-0006-${String(ncComp.nro_cbte_afip ?? ncComp.numero ?? 0).padStart(8,'0')}`
     if ((ncComp as any).aseguradora_id) {
-      await supabase.from('cuenta_corriente_aseguradoras').insert({
-        aseguradora_id: (ncComp as any).aseguradora_id,
-        fecha: todayStr(), tipo: 'nc',
-        descripcion: ncDesc,
-        debe: 0, haber: ncTotalF,
-        comprobante_id: ncComp.id, user_id: userId,  // ID de la factura original para cancelar su saldo
-      })
+      // La CC de aseguradoras la acredita el trigger fn_nc_aseguradora_cc en la base ("(auto)").
+      // Acreditar acá también generaba DOBLE haber (caso La Segunda NC 0006-00000001, 07/07).
     } else if ((ncComp as any).cliente_id) {
       await supabase.from('cuenta_corriente').insert({
         cliente_id: (ncComp as any).cliente_id,
