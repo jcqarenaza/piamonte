@@ -81,6 +81,7 @@ export default function CuentaCorrienteAseguradorasClient() {
   const [cobros, setCobros]     = useState<CobroDetalle[]>([])
   const [loadingLiq, setLoadingLiq] = useState(false)
   const [expandedLiq, setExpandedLiq] = useState<string|null>(null)
+  const [expandedAseg, setExpandedAseg] = useState<string|null>(null)
 
   const supabase = createClient()
 
@@ -648,7 +649,32 @@ export default function CuentaCorrienteAseguradorasClient() {
           : cobros.length===0 ? <Empty msg={`Sin liquidaciones en ${MESES[+m2-1]} ${y}`}/>
           : (
             <div className="flex flex-col gap-2">
-              {cobros.map(c=>(
+              {(() => {
+                const grupos: Record<string, { nombre:string; neto:number; ret:number; items:any[] }> = {}
+                for (const c of cobros) {
+                  const k = c.aseguradora_nombre || '—'
+                  if (!grupos[k]) grupos[k] = { nombre:k, neto:0, ret:0, items:[] }
+                  grupos[k].neto += +c.monto_neto || 0
+                  grupos[k].ret  += (+c.ret_ganancias + +c.ret_iva + +c.ret_iibb + +c.ret_suss + +c.ret_otras) || 0
+                  grupos[k].items.push(c)
+                }
+                return Object.values(grupos).sort((a,b)=>b.neto-a.neto).map(g => (
+                  <div key={g.nombre} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-p-light/30"
+                      onClick={()=>{setExpandedAseg(expandedAseg===g.nombre?null:g.nombre);setExpandedLiq(null)}}>
+                      <span className="text-xs text-p-ink2">{expandedAseg===g.nombre?'▼':'▶'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-saira font-bold text-p-ink text-sm">{g.nombre}</p>
+                        <p className="text-[11px] text-p-ink2">{g.items.length} liquidación(es) en el mes</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-mono font-bold text-p-green">{moneyARS(g.neto)}</p>
+                        {g.ret>0 && <p className="text-[10px] text-red-500 font-mono">− {moneyARS(g.ret)} ret.</p>}
+                      </div>
+                    </div>
+                    {expandedAseg===g.nombre && (
+                      <div className="border-t border-p-line2 p-2 bg-p-light/10 flex flex-col gap-2">
+              {g.items.map(c=>(
                 <div key={c.id} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
                   <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-p-light/30"
                     onClick={()=>setExpandedLiq(expandedLiq===c.id?null:c.id)}>
@@ -709,6 +735,11 @@ export default function CuentaCorrienteAseguradorasClient() {
                   )}
                 </div>
               ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              })()}
             </div>
           )}
         </div>
