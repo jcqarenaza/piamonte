@@ -44,6 +44,15 @@ export default function BusquedaComprobantesClient() {
       const { data } = await supabase.from('comprobantes_compra')
         .select('*').eq('id', r.id).single()
       comp = { ...data, _src: 'compras' }
+    } else if (r._src === 'cobro') {
+      const { data } = await supabase.from('cobros_aseguradoras').select('*').eq('id', r.id).single()
+      let asegNombre = ''
+      if ((data as any)?.aseguradora_id) {
+        const { data: a } = await supabase.from('aseguradoras').select('nombre').eq('id', (data as any).aseguradora_id).maybeSingle()
+        asegNombre = (a as any)?.nombre || ''
+      }
+      const { data: fs } = await supabase.from('cobros_aseguradoras_facturas').select('*').eq('cobro_id', r.id)
+      comp = { ...data, _src: 'cobro', aseg_nombre: asegNombre, facturas: fs ?? [] }
     } else if (r._src === 'stock') {
       const { data } = await supabase.from('stock_movimientos')
         .select('*, stock:stock_id(codigo,descripcion)').eq('id', r.id).single()
@@ -101,7 +110,7 @@ export default function BusquedaComprobantesClient() {
         const nombre = asegMap[c.aseguradora_id] || c.aseguradora_id
         if (q && !nombre.toLowerCase().includes(q.toLowerCase()) && !(c.nro_op||'').includes(q)) continue
         all.push({
-          _src: 'ventas', id: c.id,
+          _src: 'cobro', id: c.id,
           tipo: 'Cobro Aseg.',
           numero: c.nro_op || 'S/N',
           fecha: c.fecha,
@@ -272,9 +281,12 @@ export default function BusquedaComprobantesClient() {
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-p-line bg-p-light">
-                <td colSpan={5} className="px-4 py-3 font-bold text-sm text-p-dark">{results.length} resultado(s)</td>
+                <td colSpan={5} className="px-4 py-3 font-bold text-sm text-p-dark">{results.length} resultado(s) · Total neto (facturas − NC − cobros)</td>
                 <td className="px-3 py-3 text-right font-mono font-bold text-p-dark">
-                  {moneyARS(results.filter(r=>r._src!=='stock').reduce((a,r)=>a+(r.total||0),0))}
+                  {moneyARS(results.filter(r=>r._src!=='stock').reduce((a,r)=>{
+                    const esResta = r._src==='cobro' || String(r.tipo||'').startsWith('NC')
+                    return a + (esResta ? -(r.total||0) : (r.total||0))
+                  },0))}
                 </td>
                 <td/>
               </tr>
@@ -292,6 +304,7 @@ export default function BusquedaComprobantesClient() {
                 <p className="font-saira font-bold text-lg text-p-ink">
                   {verComp._src === 'ventas' ? `${verComp.categoria?.toUpperCase()} ${verComp.tipo} 0006-${String(verComp.nro_cbte_afip||verComp.numero||'').padStart(8,'0')}` :
                    verComp._src === 'compras' ? `${verComp.tipo?.toUpperCase()} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}` :
+                   verComp._src === 'cobro' ? `Cobro ${verComp.nro_op ? 'OP ' + verComp.nro_op : 's/n'} — ${verComp.aseg_nombre||''}` :
                    `Movimiento stock`}
                 </p>
                 <p className="text-sm text-p-ink2">{verComp.fecha?.split('-').reverse().join('/')}</p>
@@ -310,6 +323,13 @@ export default function BusquedaComprobantesClient() {
               )}
               {verComp._src === 'compras' && (
                 <p><span className="text-p-ink2">Proveedor:</span> <span className="font-semibold">{verComp.proveedor_nombre}</span></p>
+              )}
+              {verComp._src === 'cobro' && (
+                <>
+                  <p><span className="text-p-ink2">Aseguradora:</span> <span className="font-semibold">{verComp.aseg_nombre || '—'}</span></p>
+                  <p><span className="text-p-ink2">Forma de cobro:</span> {verComp.forma_cobro || '—'}</p>
+                  <p><span className="text-p-ink2">Bruto:</span> {moneyARS(verComp.monto_bruto||0)} · <span className="text-p-ink2">Neto:</span> <span className="font-semibold">{moneyARS(verComp.monto_neto||0)}</span></p>
+                </>
               )}
               {verComp._src === 'stock' && (
                 <>
