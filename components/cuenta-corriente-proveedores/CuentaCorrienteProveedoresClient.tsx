@@ -312,6 +312,15 @@ export default function CuentaCorrienteProveedoresClient() {
 
   async function confirmarOrdenPago() {
     if (!sel || (facturasSel.length === 0 && ncSel.length === 0)) return
+    // Cheque tipeado en el compositor pero sin "+ Agregar": incorporarlo para que no se pierda en silencio
+    let chequesNuevosOp = opChequesNuevos
+    if (chComposer.numero && parseFloat(chComposer.monto) > 0 && chComposer.fecha_cobro) {
+      if (confirm(`El cheque ${chComposer.numero} por $${Number(chComposer.monto).toLocaleString('es-AR')} está tipeado pero no agregado a la serie.
+¿Incluirlo en esta OP?`)) {
+        chequesNuevosOp = [...opChequesNuevos, { ...chComposer }]
+        setOpChequesNuevos(chequesNuevosOp)
+      }
+    }
     setGuardandoOp(true)
     const fechaOp = opForm.fecha || new Date().toISOString().slice(0,10)
 
@@ -321,15 +330,25 @@ export default function CuentaCorrienteProveedoresClient() {
     // Descripción de formas de pago
     const chequesSelArr = chequesDisp.filter(ch=>chequesSelIds.has(ch.id))
     const partesCheques = chequesSelArr.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
-    const partesNuevos = opChequesNuevos.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
+    const partesNuevos = chequesNuevosOp.map(ch=>`Cheque ${ch.numero} $${Number(ch.monto).toLocaleString('es-AR')}`)
     const partesOtros = opPagos.filter(p=>p.monto).map(p=>`${p.tipo} $${Number(p.monto).toLocaleString('es-AR')}`)
     const formasPagoDesc = [...partesCheques, ...partesNuevos, ...partesOtros].join(' + ') || 'Sin especificar'
 
     // total_pagado = suma real de medios de pago (cheques + otros), NO facturas - NC
     const totalChequesSel = chequesSelArr.reduce((a,ch)=>a+(+ch.monto),0)
-    const totalNuevosSel = opChequesNuevos.reduce((a,ch)=>a+(parseFloat(ch.monto)||0),0)
+    const totalNuevosSel = chequesNuevosOp.reduce((a,ch)=>a+(parseFloat(ch.monto)||0),0)
     const totalOtrosSel = opPagos.reduce((a,p)=>a+(parseFloat(p.monto)||0),0)
     const totalMedioPago = totalChequesSel + totalNuevosSel + totalOtrosSel
+    if (totalMedioPago <= 0) {
+      alert('⚠ No cargaste ningún medio de pago (cheques/transferencia). La OP no se creó.')
+      setGuardandoOp(false); return
+    }
+    if (Math.abs(totalMedioPago - totalAPagar) > 1) {
+      if (!confirm(`Los medios de pago suman $${totalMedioPago.toLocaleString('es-AR')} pero lo seleccionado a pagar es $${totalAPagar.toLocaleString('es-AR')}.
+¿Guardar igual?`)) {
+        setGuardandoOp(false); return
+      }
+    }
 
     const { data: mov } = await supabase.from('cuenta_corriente_proveedores').insert({
       proveedor_id: sel.proveedor_id, proveedor_nombre: sel.proveedor_nombre,
@@ -406,7 +425,7 @@ export default function CuentaCorrienteProveedoresClient() {
     }
 
     // Registrar la SERIE de cheques nuevos — el débito va a la cuenta elegida por cheque
-    for (const ch of opChequesNuevos) {
+    for (const ch of chequesNuevosOp) {
       const montoCh = parseFloat(ch.monto) || 0
       const cta = cuentasPropias.find(c=>c.id===ch.cuenta_id)
       const { data: chIns } = await supabase.from('cheques').insert({
@@ -1063,7 +1082,7 @@ export default function CuentaCorrienteProveedoresClient() {
                         // Precargar el siguiente de la serie: mismos datos, número +1, vencimiento +1 mes
                         const sigNum = /^\d+$/.test(chComposer.numero) ? String(BigInt(chComposer.numero)+BigInt(1)).padStart(chComposer.numero.length,'0') : ''
                         const vto = new Date(chComposer.fecha_cobro+'T12:00:00'); vto.setMonth(vto.getMonth()+1)
-                        setChComposer(p=>({...p, numero: sigNum, fecha_cobro: vto.toISOString().slice(0,10)}))
+                        setChComposer(p=>({...p, numero: sigNum, monto: '', fecha_cobro: vto.toISOString().slice(0,10)}))
                       }}
                       className="col-span-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg py-2">
                       + Agregar cheque a la serie
