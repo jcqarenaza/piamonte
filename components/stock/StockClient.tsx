@@ -1060,7 +1060,7 @@ Usá otro código o elegí esa pieza del buscador.`); return }
     // ⚙ AJUSTES DE ETIQUETA — igualar a lo que dice el driver del PC42 (Preferencias → Stock/Media)
     const ETIQ_ANCHO_MM = 80    // ancho del material según el driver (verificado: apaisada gira)
     const ETIQ_ALTO_MM  = 100   // alto (avance) según el driver
-    const OFFSET_TOP_MM = 40    // compensa el inicio de impresión del driver (si corta arriba subilo; si sobra arriba bajalo)
+    const OFFSET_TOP_MM = 42    // compensa el inicio de impresión del driver (si corta arriba subilo; si sobra arriba bajalo) — ya NO genera 2ª página: el contenido se recorta dentro de la única hoja
     const APAISADA = ETIQ_ANCHO_MM > ETIQ_ALTO_MM
     const code = (s.codigo||'000000').toUpperCase()
     const desc = (s.descripcion||'').toUpperCase()
@@ -1128,53 +1128,55 @@ Usá otro código o elegí esa pieza del buscador.`); return }
 <style>
   @page { margin: 0; size: ${ETIQ_ANCHO_MM}mm ${ETIQ_ALTO_MM}mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
+  html, body {
     width: ${ETIQ_ANCHO_MM}mm;
     height: ${ETIQ_ALTO_MM}mm;
     font-family: Arial, sans-serif;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;            /* nada puede generar 2ª página */
+    position: relative;
   }
   .etiqueta {
-    width: ${ETIQ_ANCHO_MM - 8}mm;
-    height: ${ETIQ_ALTO_MM - 4}mm;
+    position: absolute;          /* anclada dentro de la única página */
+    top: ${OFFSET_TOP_MM}mm;
+    left: 3mm;
+    right: 3mm;
+    height: ${ETIQ_ALTO_MM - OFFSET_TOP_MM - 2}mm;  /* solo el espacio real que queda */
+    overflow: hidden;            /* lo que no entra se recorta, jamás empuja página */
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-evenly;
-    padding: ${OFFSET_TOP_MM + 3}mm 3mm 3mm; box-sizing: border-box; margin: 0 auto; justify-content: ${APAISADA ? 'space-evenly' : 'flex-start'}; gap: 2mm;
+    justify-content: flex-start;
+    gap: 1.5mm;
   }
   .row1 {
     width: 100%;
     display: flex;
-    ${APAISADA ? '' : 'flex-direction: column; gap: 2mm;'}
-        align-items: center;
+    ${APAISADA ? '' : 'flex-direction: column; gap: 1.5mm;'}
+    align-items: center;
     justify-content: ${APAISADA ? 'space-between' : 'center'};
-    margin-bottom: 2mm;
+    flex-shrink: 0;
   }
-  .logo { height: ${APAISADA ? '10mm' : '12mm'}; width: auto; }
+  .logo { height: ${APAISADA ? '9mm' : '10mm'}; width: auto; }
   .codigo {
-    font-size: ${APAISADA ? '22pt' : '24pt'};
+    font-size: ${APAISADA ? '20pt' : '22pt'};
     font-weight: bold;
     letter-spacing: 1px;
   }
   .barcode {
     width: ${ETIQ_ANCHO_MM - 16}mm;
+    max-height: 22mm;            /* barras acotadas para dejar lugar a la descripción */
     height: auto;
     display: block;
-    margin: 1mm auto;
+    flex-shrink: 0;
   }
   .descripcion {
-    font-size: 13pt;
+    font-size: 12pt;
     font-weight: bold;
     text-align: center;
     word-wrap: break-word;
-    width: ${ETIQ_ANCHO_MM - 16}mm;
-    max-height: ${APAISADA ? '14mm' : '22mm'};
+    width: 100%;
+    line-height: 1.15;
     overflow: hidden;
-    margin-top: 2mm;
   }
 </style>
 </head>
