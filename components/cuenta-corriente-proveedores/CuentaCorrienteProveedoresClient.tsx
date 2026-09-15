@@ -64,9 +64,13 @@ export default function CuentaCorrienteProveedoresClient() {
     // El saldo que se MUESTRA es la suma de pendientes de la vista detalle
     // (la misma verdad que la columna "Saldo" de la pestaña Saldos) — el crudo
     // debe−haber puede divergir por imputaciones y queda solo como Cargado/Pagado.
-    const { data: pend } = await supabase.from('vista_cc_saldos_detalle').select('proveedor_nombre,monto')
+    const { data: pend } = await supabase.from('vista_cc_saldos_detalle').select('proveedor_nombre,monto,tipo')
     const sumaPend: Record<string, number> = {}
     for (const p of (pend ?? []) as any[]) {
+      // Solo comprobantes reales: facturas pendientes (+) y NC sin aplicar (−).
+      // Las filas sintéticas 'credito' (pagos sin imputar) NO entran al saldo:
+      // el saldo mostrado = exactamente lo que ofrecería una Nueva OP.
+      if (p.tipo === 'credito') continue
       sumaPend[p.proveedor_nombre] = (sumaPend[p.proveedor_nombre] || 0) + Number(p.monto || 0)
     }
     setSaldos(((data ?? []) as any[]).map(s => ({
@@ -142,9 +146,11 @@ export default function CuentaCorrienteProveedoresClient() {
             for (const c of (comps ?? [])) compMap[(c as any).id] = c
           }
           const withComp = rows.map((r:any)=>({ ...r, comp: r.comprobante_compra_id ? (compMap[r.comprobante_compra_id] || null) : null }))
-          // Pendientes (+), NC/créditos sin aplicar (−) y la fila de saldo a favor:
-          // se muestra todo lo que la vista devuelve, para que la lista concilie con el header
-          setPendientesPago(withComp.filter((r:any) => Math.abs(+r.monto) >= 1 || r.tipo === 'credito'))
+          // Solapa Saldos = misma foto que Nueva OP: facturas con pendiente real (+)
+          // y NC sin aplicar (−). Las filas sintéticas 'credito' (pagos sin imputar)
+          // se excluyen — si aparece una, es una OP sin enlazar (dato a reparar),
+          // no un saldo a favor genuino, y rompía la conciliación con Movimientos.
+          setPendientesPago(withComp.filter((r:any) => r.tipo !== 'credito' && Math.abs(+r.monto) >= 1))
         })
       setVistaMovs(false)
     }
