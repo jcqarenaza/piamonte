@@ -272,7 +272,7 @@ export default function InformesClient() {
       const hoy = new Date()
       const desde = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1).toISOString().slice(0,10)
       const { data: comps } = await supabase.from('comprobantes')
-        .select('id,fecha,tipo,numero,cliente_nombre,aseguradora_nombre,total,es_nc,pagos')
+        .select('id,fecha,tipo,numero,cliente_nombre,aseguradora_id,aseguradora_nombre,total,es_nc,pagos')
         .gte('fecha', desde).order('fecha')
       const lista = (comps??[]) as any[]
       // Imputaciones de cobros de aseguradoras, mapeadas por comprobante
@@ -295,10 +295,17 @@ export default function InformesClient() {
         const m = porMes[mes]
         const total = Number(c.total||0)
         const esNC = !!c.es_nc
-        // Cobrado: pagos jsonb (mostrador/caja) + imputaciones de aseguradoras
+        // Cobrado: aseguradoras SOLO vía liquidaciones imputadas (el jsonb pagos trae
+        // "Cta. Cte." al emitir, que es deuda, no cobro). Mostrador: pagos del jsonb
+        // excluyendo formas tipo cuenta corriente.
+        const esAseguradora = !!(c.aseguradora_id || c.aseguradora_nombre)
         let cobrado = cobradoAseg[c.id] || 0
-        if (Array.isArray(c.pagos))
-          for (const p of c.pagos) cobrado += Number((p as any)?.monto ?? (p as any)?.importe ?? 0)
+        if (!esAseguradora && Array.isArray(c.pagos))
+          for (const p of c.pagos) {
+            const forma = String((p as any)?.forma ?? (p as any)?.tipo ?? '').toLowerCase()
+            if (forma.includes('cta') || forma.includes('cuenta corriente')) continue
+            cobrado += Number((p as any)?.monto ?? (p as any)?.importe ?? 0)
+          }
         if (esNC) { m.facturado -= total; continue }   // NC resta facturado; no genera pendiente propio
         m.facturado += total
         cobrado = Math.min(cobrado, total)              // sobrepagos/redondeos no generan negativo
