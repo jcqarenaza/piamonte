@@ -36,7 +36,7 @@ export default function InformesClient() {
   const [pIdx, setPIdx] = useState(0)
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'>('general')
+  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
   const [topPiezasCod, setTopPiezasCod] = useState<{descripcion:string;veces:number;total:number}[]>([])
@@ -256,6 +256,69 @@ export default function InformesClient() {
       .then(({data})=>{ setReclamos(data??[]); setReclamosLoading(false) })
   },[tab, supabase])
 
+  // ── Tab Cobranzas: facturado por mes vs pendiente de cobrar ──────────────
+  // Facturado = comprobantes del mes (facturas − NC). Cobrado = pagos del jsonb
+  // (mostrador) + imputaciones en cobros_aseguradoras_facturas. Pendiente = resto.
+  interface CompCobro { id:string; fecha:string; tipo:string; numero:number|null; cliente:string; total:number; esNC:boolean; cobrado:number; pendiente:number }
+  interface MesCobro { mes:string; label:string; facturado:number; cobrado:number; pendiente:number; impagos:CompCobro[] }
+  const [cobranzas, setCobranzas] = useState<MesCobro[]>([])
+  const [cobranzasLoading, setCobranzasLoading] = useState(false)
+  const [mesAbierto, setMesAbierto] = useState<string|null>(null)
+  useEffect(()=>{
+    if(tab !== 'cobranzas') return
+    setCobranzasLoading(true)
+    ;(async ()=>{
+      // Últimos 12 meses calendario (independiente del selector de período)
+      const hoy = new Date()
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1).toISOString().slice(0,10)
+      const { data: comps } = await supabase.from('comprobantes')
+        .select('id,fecha,tipo,numero,cliente_nombre,aseguradora_nombre,total,es_nc,pagos')
+        .gte('fecha', desde).order('fecha')
+      const lista = (comps??[]) as any[]
+      // Imputaciones de cobros de aseguradoras, mapeadas por comprobante
+      const ids = lista.map(c=>c.id)
+      const cobradoAseg: Record<string, number> = {}
+      for (let i=0; i<ids.length; i+=200) {  // .in() en tandas para no pasar el límite de URL
+        const { data: caf } = await supabase.from('cobros_aseguradoras_facturas')
+          .select('comprobante_id,monto').in('comprobante_id', ids.slice(i,i+200))
+        for (const r of (caf??[]) as any[])
+          cobradoAseg[r.comprobante_id] = (cobradoAseg[r.comprobante_id]||0) + Number(r.monto||0)
+      }
+      const porMes: Record<string, MesCobro> = {}
+      const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+      for (const c of lista) {
+        const mes = String(c.fecha).slice(0,7)
+        if (!porMes[mes]) porMes[mes] = {
+          mes, label: `${MESES[+mes.slice(5,7)-1]} ${mes.slice(0,4)}`,
+          facturado:0, cobrado:0, pendiente:0, impagos:[]
+        }
+        const m = porMes[mes]
+        const total = Number(c.total||0)
+        const esNC = !!c.es_nc
+        // Cobrado: pagos jsonb (mostrador/caja) + imputaciones de aseguradoras
+        let cobrado = cobradoAseg[c.id] || 0
+        if (Array.isArray(c.pagos))
+          for (const p of c.pagos) cobrado += Number((p as any)?.monto ?? (p as any)?.importe ?? 0)
+        if (esNC) { m.facturado -= total; continue }   // NC resta facturado; no genera pendiente propio
+        m.facturado += total
+        cobrado = Math.min(cobrado, total)              // sobrepagos/redondeos no generan negativo
+        m.cobrado += cobrado
+        const pend = Math.round((total - cobrado)*100)/100
+        if (pend >= 1) {
+          m.pendiente += pend
+          m.impagos.push({
+            id:c.id, fecha:c.fecha, tipo:c.tipo||'', numero:c.numero,
+            cliente: c.aseguradora_nombre || c.cliente_nombre || '—',
+            total, esNC, cobrado, pendiente: pend,
+          })
+        }
+      }
+      for (const m of Object.values(porMes)) m.impagos.sort((a,b)=>b.pendiente-a.pendiente)
+      setCobranzas(Object.values(porMes).sort((a,b)=>b.mes.localeCompare(a.mes)))
+      setCobranzasLoading(false)
+    })()
+  },[tab, supabase])
+
   // Buscar OS para reclamo
   useEffect(()=>{
     if(osQuery.length < 2){ setOsBusqResults([]); return }
@@ -296,7 +359,7 @@ export default function InformesClient() {
     setReclamos(data??[])
   }
 
-  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos', label:string) => (
+  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas', label:string) => (
     <button onClick={()=>setTab(t)}
       style={{background:tab===t?'#00A550':'#fff', color:tab===t?'#fff':'#4A6655',
         border:`1.5px solid ${tab===t?'#00A550':'#C2DDD0'}`,
@@ -337,6 +400,7 @@ export default function InformesClient() {
             {tabBtn('resultado','📋 Resultado')}
             {tabBtn('colaboradores','👷 Por colaborador')}
             {tabBtn('reclamos','⚠ Reclamos')}
+            {tabBtn('cobranzas','💰 Cobranzas')}
           </div>
 
           {tab === 'general' && (
@@ -726,11 +790,86 @@ export default function InformesClient() {
             </div>
           )}
 
-          {ventas.length === 0 && !loading && tab !== 'aseguradoras' && tab !== 'colaboradores' && tab !== 'reclamos' && (
+          {ventas.length === 0 && !loading && tab !== 'aseguradoras' && tab !== 'colaboradores' && tab !== 'reclamos' && tab !== 'cobranzas' && (
             <div className="text-center py-16 text-p-gray">
               <p className="text-4xl mb-2">📊</p>
               <p className="font-saira font-bold text-p-ink">Sin ventas en este período</p>
               <p className="text-sm mt-1">Registrá ventas en Caja para ver los informes.</p>
+            </div>
+          )}
+
+          {/* TAB COBRANZAS: facturado por mes vs pendiente de cobrar */}
+          {tab === 'cobranzas' && (
+            <div className="flex flex-col gap-4">
+              <p className="text-xs text-p-ink2">Últimos 12 meses calendario · Facturado = facturas − NC · Pendiente = facturas sin cobro total (mostrador + liquidaciones de aseguradoras)</p>
+              {cobranzasLoading ? <p className="text-center text-p-ink2 py-8">Cargando…</p> : cobranzas.length === 0 ? (
+                <p className="text-center text-p-ink2 py-8">Sin comprobantes en los últimos 12 meses.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {cobranzas.map(m=>(
+                    <div key={m.mes} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2">
+                        <span className="font-saira font-bold text-sm text-p-ink w-24">{m.label}</span>
+                        <div className="flex items-center gap-6 flex-wrap">
+                          <div className="text-right">
+                            <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Facturado</p>
+                            <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(m.facturado)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Cobrado</p>
+                            <p className="font-mono font-bold text-sm text-green-700">{moneyARS(m.cobrado)}</p>
+                          </div>
+                          {m.pendiente >= 1 ? (
+                            <button onClick={()=>setMesAbierto(mesAbierto===m.mes?null:m.mes)}
+                              className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 transition-colors">
+                              <span className="text-sm">⏳</span>
+                              <span className="text-xs font-bold text-amber-800">Pendiente de cobrar</span>
+                              <span className="font-mono font-bold text-sm text-amber-700">{moneyARS(m.pendiente)}</span>
+                              <span className="text-amber-600 text-xs">{mesAbierto===m.mes?'▲':'▼'}</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">✓ Cobrado completo</span>
+                          )}
+                        </div>
+                      </div>
+                      {mesAbierto===m.mes && m.impagos.length > 0 && (
+                        <div className="border-t border-amber-200 bg-amber-50/40">
+                          <table className="w-full text-sm">
+                            <thead className="text-p-ink2 text-[10px] uppercase tracking-wider">
+                              <tr>
+                                <th className="px-4 py-2 text-left">Comprobante</th>
+                                <th className="px-4 py-2 text-left">Fecha</th>
+                                <th className="px-4 py-2 text-left">Cliente / Aseguradora</th>
+                                <th className="px-4 py-2 text-right">Total</th>
+                                <th className="px-4 py-2 text-right">Cobrado</th>
+                                <th className="px-4 py-2 text-right">Pendiente</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-100">
+                              {m.impagos.map(c=>(
+                                <tr key={c.id}>
+                                  <td className="px-4 py-2 font-mono font-semibold text-p-ink">{c.tipo}{c.numero?` ${String(c.numero).padStart(8,'0')}`:''}</td>
+                                  <td className="px-4 py-2 font-mono text-p-ink2">{c.fecha.split('-').reverse().join('/')}</td>
+                                  <td className="px-4 py-2 text-p-ink">{c.cliente}</td>
+                                  <td className="px-4 py-2 text-right font-mono">{moneyARS(c.total)}</td>
+                                  <td className="px-4 py-2 text-right font-mono text-green-700">{c.cobrado>0?moneyARS(c.cobrado):'—'}</td>
+                                  <td className="px-4 py-2 text-right font-mono font-bold text-amber-700">{moneyARS(c.pendiente)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="font-bold border-t border-amber-200">
+                              <tr>
+                                <td colSpan={5} className="px-4 py-2 text-right text-xs text-amber-800 uppercase">Total pendiente {m.label}</td>
+                                <td className="px-4 py-2 text-right font-mono text-amber-700">{moneyARS(m.pendiente)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
