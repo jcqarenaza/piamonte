@@ -69,6 +69,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [catHits, setCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}[]>([])
   const [rubrosEdit, setRubrosEdit] = useState<Record<string,number|string>>({})
   const [itemManual, setItemManual] = useState({ d:'', c:'1', p:'' })
+  // Búsqueda en catálogo/stock propio dentro del modo aseguradora (vidrios fuera de la lista)
+  const [asegCatQ, setAsegCatQ] = useState('')
+  const [asegCatHits, setAsegCatHits] = useState<{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}[]>([])
 
   // Leer params desde módulo Precios
   useEffect(() => {
@@ -109,6 +112,16 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       }))))
   },[catQ,supabase,modoAseg])
 
+  // Búsqueda catálogo/stock propio (modo aseguradora — vidrios que no están en la lista)
+  useEffect(()=>{
+    if(!modoAseg){setAsegCatHits([]);return}
+    if(asegCatQ.trim().length<2){setAsegCatHits([]);return}
+    buscarCatalogo(supabase, asegCatQ, { incluirStock: true, limit: 12 })
+      .then(resultados => setAsegCatHits(resultados.map(r=>({
+        id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0, codigo: r.codigo || undefined
+      }))))
+  },[asegCatQ,supabase,modoAseg])
+
   // Búsqueda precios aseguradora
   useEffect(()=>{
     if(!modoAseg || !asegSel){setAsegHits([]);return}
@@ -128,6 +141,17 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       query.limit(15).then(({data})=>setAsegHits((data??[]).map((r:any)=>({...r,precio_siva:+r.precio_siva,instalacion_siva:+r.instalacion_siva,total_siva:+r.total_siva}))))
     }
   },[asegQ,asegSel,modoAseg,supabase])
+
+  function pickCatAseg(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
+    // Vidrio propio en presupuesto de aseguradora: precio sugerido = costo × 1.45, con IVA
+    // (en modo aseguradora los precios van IVA incluido). Editable en la lista de ítems.
+    const precioSug = Math.round(h.costo_neto * 1.45 * (1 + IVA_RATE) * 100) / 100
+    setItems(prev=>[...prev,{
+      d: h.descripcion, c: 1, p: precioSug,
+      costo: h.costo_neto, esRubro: false, codigo: h.codigo || undefined
+    } as any])
+    setAsegCatQ(''); setAsegCatHits([])
+  }
 
   function pickAseg(h: PrecioAseg) {
     if(!asegSel) return
@@ -674,6 +698,48 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                     </div>
                   )}
               </div>
+            </div>
+
+            {/* Vidrio propio (stock/catálogo) — para lo que no está en la lista */}
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">¿No está en la lista? Buscar en stock / catálogo propio</label>
+              <div className="relative">
+                <Input value={asegCatQ} onChange={e=>setAsegCatQ(e.target.value)} placeholder="Código propio o descripción…"/>
+                {asegCatHits.length>0&&(
+                  <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-64 overflow-y-auto mt-1">
+                    {asegCatHits.map(h=>{
+                      const precioSug = Math.round(h.costo_neto * 1.45 * (1 + IVA_RATE) * 100) / 100
+                      return(
+                        <button key={h.id} onClick={()=>pickCatAseg(h)} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-p-ink truncate">{h.descripcion}</p>
+                            <p className="text-[10px] text-p-ink2 flex items-center gap-1.5 flex-wrap">
+                              {h.codigo&&<span className="font-mono font-bold bg-p-light text-p-dark px-1.5 rounded">{h.codigo}</span>}
+                              <span>{h.proveedor}</span>
+                              <span>costo: {moneyARS2(h.costo_neto)}</span>
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-mono font-bold text-sm text-p-dark">{moneyARS2(precioSug)}</p>
+                            <p className="text-[10px] text-p-ink2">sugerido c/IVA · editable</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Ítem libre (también en modo aseguradora) */}
+            <div>
+              <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Ítem libre <span className="normal-case font-normal">(precio final c/IVA)</span></label>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="col-span-2"><Input value={itemManual.d} onChange={e=>setItemManual(p=>({...p,d:e.target.value}))} placeholder="Descripción"/></div>
+                <Input type="number" value={itemManual.c} onChange={e=>setItemManual(p=>({...p,c:e.target.value}))} min="1" placeholder="Cant."/>
+                <div className="col-span-2"><Input value={itemManual.p} onChange={e=>setItemManual(p=>({...p,p:e.target.value}))} placeholder="$ precio"/></div>
+              </div>
+              <button onClick={addItemManual} style={{...btnGray,width:'100%',marginTop:6}}>+ Agregar ítem libre</button>
             </div>
           </>) : (<>
 
