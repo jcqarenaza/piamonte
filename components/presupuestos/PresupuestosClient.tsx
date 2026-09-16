@@ -219,7 +219,13 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function addItemManual() {
     if(!itemManual.d||!itemManual.p) return
-    setItems(prev=>[...prev,{d:itemManual.d,c:+itemManual.c||1,p:+itemManual.p.replace(/[^0-9.]/g,'')}])
+    // Parseo de moneda argentina: "$ 500.000,50" → 500000.50 · "500000" → 500000
+    let s = itemManual.p.replace(/[$\s]/g,'')
+    if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.')        // puntos = miles, coma = decimal
+    else if (/\.\d{3}(\.|$)/.test(s)) s = s.replace(/\./g,'')            // solo puntos y agrupan de a 3 → miles
+    const precio = parseFloat(s)
+    if (!isFinite(precio) || precio <= 0) { alert('Precio inválido — revisá el monto del ítem libre'); return }
+    setItems(prev=>[...prev,{d:itemManual.d,c:+itemManual.c||1,p:Math.round(precio*100)/100}])
     setItemManual({d:'',c:'1',p:''})
   }
 
@@ -415,12 +421,15 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     y+=6
     doc.setTextColor(30,30,30); doc.setFont('helvetica','normal'); doc.setFontSize(8)
     p.items.forEach((it:VentaItem, idx:number)=>{
-      if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,6,'F') }
-      doc.text(it.d.slice(0,45), hx+2, y+4.5)
+      // Descripción con salto de línea (antes se truncaba a 45 caracteres)
+      const descLines: string[] = doc.splitTextToSize(it.d, cols[0] - 4)
+      const rowH = Math.max(6, descLines.length * 4 + 2)
+      if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,rowH,'F') }
+      descLines.forEach((ln, li) => doc.text(ln, hx+2, y+4.5+li*4))
       doc.text(String(it.c), hx+cols[0]+cols[1]-2, y+4.5, {align:'right'})
       doc.text(fmt(it.p), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
       doc.text(fmt(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
-      y+=6
+      y+=rowH
     })
 
     // ─── TOTALES — posición fija ───
@@ -734,10 +743,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             {/* Ítem libre (también en modo aseguradora) */}
             <div>
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Ítem libre <span className="normal-case font-normal">(precio final c/IVA)</span></label>
-              <div className="grid grid-cols-5 gap-2">
-                <div className="col-span-2"><Input value={itemManual.d} onChange={e=>setItemManual(p=>({...p,d:e.target.value}))} placeholder="Descripción"/></div>
+              <Input value={itemManual.d} onChange={e=>setItemManual(p=>({...p,d:e.target.value}))} placeholder="Descripción del vidrio / trabajo"/>
+              <div className="grid grid-cols-3 gap-2 mt-2">
                 <Input type="number" value={itemManual.c} onChange={e=>setItemManual(p=>({...p,c:e.target.value}))} min="1" placeholder="Cant."/>
-                <div className="col-span-2"><Input value={itemManual.p} onChange={e=>setItemManual(p=>({...p,p:e.target.value}))} placeholder="$ precio"/></div>
+                <div className="col-span-2 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-p-ink2 text-sm pointer-events-none">$</span>
+                  <input type="text" inputMode="decimal" value={itemManual.p} onChange={e=>setItemManual(p=>({...p,p:e.target.value}))} placeholder="500.000,50"
+                    className="w-full border border-p-line rounded-lg pl-7 pr-3 py-2 text-sm font-mono focus:outline-none focus:border-p-green"/>
+                </div>
               </div>
               <button onClick={addItemManual} style={{...btnGray,width:'100%',marginTop:6}}>+ Agregar ítem libre</button>
             </div>
