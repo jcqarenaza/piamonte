@@ -68,6 +68,10 @@ export default function InformesClient() {
   // Datos aseguradoras
   interface AsegStats { os_creadas:number; os_pendientes:number; facturadas:number; fc_importe:number }
   const [asegData, setAsegData] = useState<Record<string,AsegStats>>({})
+  // Vista mensual del tab aseguradoras (últimos 12 meses)
+  interface AsegMes { mes:string; label:string; os:number; pend:number; fact:number; importe:number; comps: [string, AsegStats][] }
+  const [asegMeses, setAsegMeses] = useState<AsegMes[]>([])
+  const [asegMesAbierto, setAsegMesAbierto] = useState<string|null>(null)
   const [asegLoading, setAsegLoading] = useState(false)
 
   useEffect(() => {
@@ -187,6 +191,51 @@ export default function InformesClient() {
       setAsegLoading(false)
     })
   }, [tab, pIdx, periodos, supabase])
+
+  // Aseguradoras por mes (últimos 12 meses calendario, independiente del selector)
+  useEffect(() => {
+    if(tab !== 'aseguradoras') return
+    const hoy = new Date()
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1).toISOString().slice(0,10)
+    Promise.all([
+      supabase.from('ordenes_servicio').select('fecha,aseguradora,estado')
+        .not('aseguradora','is',null).gte('fecha', desde),
+      supabase.from('comprobantes').select('fecha,aseguradora_nombre,total,es_nc')
+        .not('aseguradora_nombre','is',null).gte('fecha', desde),
+    ]).then(([osRes, compRes]) => {
+      const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+      const porMes: Record<string, { comps: Record<string,AsegStats> }> = {}
+      const bucket = (fecha:string, nombre:string) => {
+        const mes = String(fecha).slice(0,7)
+        if(!porMes[mes]) porMes[mes] = { comps:{} }
+        if(!porMes[mes].comps[nombre]) porMes[mes].comps[nombre] = { os_creadas:0, os_pendientes:0, facturadas:0, fc_importe:0 }
+        return porMes[mes].comps[nombre]
+      }
+      for (const o of (osRes.data??[]) as any[]) {
+        const s = bucket(o.fecha, o.aseguradora)
+        s.os_creadas++
+        if(o.estado === 'pendiente') s.os_pendientes++
+      }
+      for (const c of (compRes.data??[]) as any[]) {
+        const s = bucket(c.fecha, c.aseguradora_nombre)
+        const monto = +(c.total||0)
+        if (c.es_nc) { s.fc_importe -= monto }        // NC restan importe, no cuentan como facturada
+        else { s.facturadas++; s.fc_importe += monto }
+      }
+      const meses: AsegMes[] = Object.entries(porMes).map(([mes, v]) => {
+        const comps = Object.entries(v.comps).sort((a,b)=>b[1].fc_importe-a[1].fc_importe)
+        return {
+          mes, label: `${MESES[+mes.slice(5,7)-1]} ${mes.slice(0,4)}`,
+          os: comps.reduce((a,e)=>a+e[1].os_creadas,0),
+          pend: comps.reduce((a,e)=>a+e[1].os_pendientes,0),
+          fact: comps.reduce((a,e)=>a+e[1].facturadas,0),
+          importe: comps.reduce((a,e)=>a+e[1].fc_importe,0),
+          comps,
+        }
+      }).sort((a,b)=>b.mes.localeCompare(a.mes))
+      setAsegMeses(meses)
+    })
+  }, [tab, supabase])
 
   const periodo = periodos[pIdx]
   const total    = ventas.reduce((a,v)=>a+v.precio, 0)
@@ -793,6 +842,64 @@ export default function InformesClient() {
                     </div>
                   </>)
                 })()}
+
+                {/* Por mes — últimos 12 meses, expandible por compañía */}
+                {asegMeses.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <p className="font-saira font-bold text-sm text-purple-800 mt-2">Por mes — últimos 12 meses</p>
+                    {asegMeses.map(m=>(
+                      <div key={m.mes} className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
+                        <button onClick={()=>setAsegMesAbierto(asegMesAbierto===m.mes?null:m.mes)}
+                          className="w-full flex items-center justify-between px-4 py-3 flex-wrap gap-2 hover:bg-purple-50/40 transition-colors">
+                          <span className="font-saira font-bold text-sm text-p-ink w-24 text-left">{m.label}</span>
+                          <div className="flex items-center gap-6 flex-wrap">
+                            <div className="text-right">
+                              <p className="text-[10px] text-p-ink2 uppercase tracking-wider">OS creadas</p>
+                              <p className="font-mono font-bold text-sm text-p-ink">{m.os}{m.pend>0&&<span className="text-amber-600 text-xs"> ({m.pend} pend.)</span>}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Facturadas</p>
+                              <p className="font-mono font-bold text-sm text-p-green">{m.fact}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] text-p-ink2 uppercase tracking-wider">Importe</p>
+                              <p className="font-mono font-bold text-sm text-p-ink">{moneyARS(m.importe)}</p>
+                            </div>
+                            <span className="text-purple-500 text-xs">{asegMesAbierto===m.mes?'▲':'▼'}</span>
+                          </div>
+                        </button>
+                        {asegMesAbierto===m.mes && (
+                          <div className="border-t border-purple-200 bg-purple-50/30 overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="text-p-ink2 text-[10px] uppercase tracking-wider">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Compañía</th>
+                                  <th className="px-4 py-2 text-right">OS creadas</th>
+                                  <th className="px-4 py-2 text-right">Pendientes</th>
+                                  <th className="px-4 py-2 text-right">Facturadas</th>
+                                  <th className="px-4 py-2 text-right">Importe</th>
+                                  <th className="px-4 py-2 text-right">USD oficial</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-purple-100">
+                                {m.comps.map(([nombre,s])=>(
+                                  <tr key={nombre}>
+                                    <td className="px-4 py-2 font-semibold text-p-ink">{nombre}</td>
+                                    <td className="px-4 py-2 text-right font-mono">{s.os_creadas||'—'}</td>
+                                    <td className="px-4 py-2 text-right">{s.os_pendientes>0?<span className="font-mono font-bold text-amber-600">{s.os_pendientes}</span>:<span className="text-p-ink2">—</span>}</td>
+                                    <td className="px-4 py-2 text-right font-mono font-bold text-p-green">{s.facturadas||'—'}</td>
+                                    <td className="px-4 py-2 text-right font-mono font-bold">{moneyARS(s.fc_importe)}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-p-ink2">{toUsd(s.fc_importe)||'—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>)}
             </div>
           )}
