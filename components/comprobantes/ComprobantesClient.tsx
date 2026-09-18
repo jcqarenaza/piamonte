@@ -867,6 +867,31 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
       return p
     })
+    // ── Completar tipo de pieza en descripciones (p.ej. "COROLLA 2017" → "PARABRISAS COROLLA 2017")
+    // para que la aseguradora sepa qué se facturó. Fuente: precios_aseguradora por código —
+    // el campo `posicion`, o si está vacío el tipo extraído de la descripción oficial ("PSAS...").
+    // Si la descripción del ítem ya dice el tipo (incluso abreviado "PSAS"), no se toca.
+    const TIPOS_PIEZA = ['PARABRISAS','PARABRISA','PSAS','LUNETA','PUERTA','CUSTODIO','PAÑO','PANO','VENTANA','VENTANILLA','TRIANGULO','TRIÁNGULO','ALETA','TECHO']
+    const tieneTipo = (d:string) => { const up=(d||'').toUpperCase(); return TIPOS_PIEZA.some(t=>up.includes(t)) }
+    let itemsFinal: any[] = items
+    try {
+      const sinTipo = items.filter((it:any)=> it.d && !tieneTipo(it.d) && (it as any).codigo)
+      if (sinTipo.length) {
+        const codigos = [...new Set(sinTipo.map((it:any)=>(it as any).codigo))]
+        const { data: ofic } = await supabase.from('precios_aseguradora')
+          .select('codigo,descripcion,posicion').in('codigo', codigos).not('lista','ilike','%archivo%')
+        const mapa: Record<string,string> = {}
+        for (const r of (ofic??[]) as any[]) {
+          if (mapa[r.codigo]) continue
+          let t: string|undefined = r.posicion ? String(r.posicion).toUpperCase().trim() : undefined
+          if (!t) { const up=String(r.descripcion||'').toUpperCase(); t = TIPOS_PIEZA.find(x=>up.includes(x)) }
+          if (t) mapa[r.codigo] = (t==='PSAS'||t==='PSAS.'||t==='PARABRISA') ? 'PARABRISAS' : (t==='PANO' ? 'PAÑO' : t)
+        }
+        itemsFinal = items.map((it:any)=> it.d && !tieneTipo(it.d) && mapa[(it as any).codigo]
+          ? { ...it, d: `${mapa[(it as any).codigo]} ${it.d}` } : it)
+      }
+    } catch { /* si la lista no responde, se factura con las descripciones tal cual */ }
+
     const { data:comp, error:compError } = await supabase.from('comprobantes').insert({
       numero:nextNum, fecha:todayStr(), tipo:tipoDoc(),
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
@@ -883,7 +908,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       siniestro: modo==='aseguradora' ? (siniestro||null) : null,
       presupuesto_id: pid||null,
       orden_id: oid||osSelId||null,
-      items, neto, iva_pct:IVA, iva, total,
+      items: itemsFinal, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
       iva_negro_pct: esNegro ? ivaNegroP : null,
       pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto),
