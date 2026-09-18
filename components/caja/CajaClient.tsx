@@ -957,10 +957,11 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               cv.width = W*S; cv.height = H*S
               ctx.scale(S,S)
               ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H)
+              const nroRecibo = String(rv.numero ?? rv.comprobante ?? (rv.id||'').slice(0,8).toUpperCase() ?? '')
               let y = 30
               ctx.fillStyle = '#0C1810'; ctx.textAlign = 'center'
               ctx.font = 'bold 15px Arial'; ctx.fillText('PARABRISAS EL PIAMONTE', W/2, y); y += 18
-              ctx.font = 'bold 18px monospace'; ctx.fillText('RECIBO', W/2, y); y += 16
+              ctx.font = 'bold 18px monospace'; ctx.fillText(`RECIBO N° ${nroRecibo}`, W/2, y); y += 16
               ctx.font = '11px monospace'; ctx.fillStyle = '#6b7280'
               ctx.fillText(rv.fecha?.split('-').reverse().join('/') || '', W/2, y); y += 14
               if (rv.cliente) { ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#0C1810'; ctx.fillText(rv.cliente, W/2, y); y += 14 }
@@ -983,7 +984,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               if (rv.pago) { ctx.textAlign = 'left'; ctx.font = '11px monospace'; ctx.fillStyle = '#6b7280'; ctx.fillText('Forma de pago: '+rv.pago, 20, y) }
               // descargar
               const a = document.createElement('a')
-              a.download = `Recibo-${(rv.cliente||'venta').replace(/[^\w-]+/g,'_')}-${rv.fecha||''}.png`
+              a.download = `Recibo Nro ${nroRecibo.replace(/[^\w-]+/g,'_')}.png`
               a.href = cv.toDataURL('image/png')
               a.click()
             }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>⬇ Descargar imagen</button>

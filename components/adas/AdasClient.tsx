@@ -217,7 +217,7 @@ export default function AdasClient({ userId }: { userId: string }) {
     setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setIncluyeAdas(false)
   }
 
-  function printCertAdas(c: Cert) {
+  function printCertAdas(c: Cert, modo: 'print'|'pdf' = 'print') {
     const checked = (v: boolean) => v
       ? `<span style="color:#00A550;font-weight:bold;font-size:16px">✔</span>`
       : `<span style="color:#ccc;font-size:16px">☐</span>`
@@ -406,7 +406,18 @@ export default function AdasClient({ userId }: { userId: string }) {
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
+${modo === 'print'
+  ? `<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>`
+  : `<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+<script>window.onload=function(){setTimeout(function(){
+  html2canvas(document.body,{scale:2,useCORS:true}).then(function(cv){
+    var p=new window.jspdf.jsPDF('p','mm','a4');
+    var w=210,h=cv.height*w/cv.width; if(h>297){h=297;w=cv.width*h/cv.height}
+    p.addImage(cv.toDataURL('image/jpeg',0.95),'JPEG',(210-w)/2,0,w,h);
+    p.save('Certificado-ADAS-N-${c.numero}.pdf');
+    setTimeout(function(){window.close()},500)
+  })},400)}<\/script>`}
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)
@@ -416,7 +427,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   // Certificado sin calibración ADAS — mismos colores, escudo y logo que el de ADAS, para
   // mantener una sola identidad visual. Muestra la pieza de vidrio instalada y la garantía
   // de 12 meses sobre la colocación.
-  function printCertInstalacion(c: CertInstalacion) {
+  function printCertInstalacion(c: CertInstalacion, modo: 'print'|'pdf' = 'print') {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
     const piezas = (c.piezas_instaladas ?? [])
     const codigoHtmlInst = c.codigo_pieza
@@ -539,7 +550,18 @@ export default function AdasClient({ userId }: { userId: string }) {
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
+${modo === 'print'
+  ? `<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>`
+  : `<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+<script>window.onload=function(){setTimeout(function(){
+  html2canvas(document.body,{scale:2,useCORS:true}).then(function(cv){
+    var p=new window.jspdf.jsPDF('p','mm','a4');
+    var w=210,h=cv.height*w/cv.width; if(h>297){h=297;w=cv.width*h/cv.height}
+    p.addImage(cv.toDataURL('image/jpeg',0.95),'JPEG',(210-w)/2,0,w,h);
+    p.save('Certificado-Instalacion-N-${c.numero}.pdf');
+    setTimeout(function(){window.close()},500)
+  })},400)}<\/script>`}
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)
@@ -587,6 +609,10 @@ export default function AdasClient({ userId }: { userId: string }) {
                   {c.piezas_instaladas?.length ? ` · ${c.piezas_instaladas[0].d}` : ''}
                 </p>
               </div>
+              <button onClick={() => c._tipo === 'adas' ? printCertAdas(c, 'pdf') : printCertInstalacion(c, 'pdf')}
+                style={{background:'#1d4ed8',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                ⬇ PDF
+              </button>
               <button onClick={() => c._tipo === 'adas' ? printCertAdas(c) : printCertInstalacion(c)}
                 style={{background:'#00A550',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                 🖨 Imprimir
