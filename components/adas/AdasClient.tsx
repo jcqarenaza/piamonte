@@ -1,4 +1,5 @@
 'use client'
+import { jsPDF } from 'jspdf'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { LOGO_BASE64 } from '@/lib/logo'
 import { useState, useEffect } from 'react'
@@ -217,7 +218,7 @@ export default function AdasClient({ userId }: { userId: string }) {
     setOrigen('manual'); setCompSel(null); setCompQ(''); setCompSugs([]); setIncluyeAdas(false)
   }
 
-  function printCertAdas(c: Cert, modo: 'print'|'pdf' = 'print') {
+  function printCertAdas(c: Cert) {
     const checked = (v: boolean) => v
       ? `<span style="color:#00A550;font-weight:bold;font-size:16px">✔</span>`
       : `<span style="color:#ccc;font-size:16px">☐</span>`
@@ -406,18 +407,7 @@ export default function AdasClient({ userId }: { userId: string }) {
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-${modo === 'print'
-  ? `<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>`
-  : `<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
-<script>window.onload=function(){setTimeout(function(){
-  html2canvas(document.body,{scale:2,useCORS:true}).then(function(cv){
-    var p=new window.jspdf.jsPDF('p','mm','a4');
-    var w=210,h=cv.height*w/cv.width; if(h>297){h=297;w=cv.width*h/cv.height}
-    p.addImage(cv.toDataURL('image/jpeg',0.95),'JPEG',(210-w)/2,0,w,h);
-    p.save('Certificado-ADAS-N-${c.numero}.pdf');
-    setTimeout(function(){window.close()},500)
-  })},400)}<\/script>`}
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)
@@ -427,7 +417,7 @@ ${modo === 'print'
   // Certificado sin calibración ADAS — mismos colores, escudo y logo que el de ADAS, para
   // mantener una sola identidad visual. Muestra la pieza de vidrio instalada y la garantía
   // de 12 meses sobre la colocación.
-  function printCertInstalacion(c: CertInstalacion, modo: 'print'|'pdf' = 'print') {
+  function printCertInstalacion(c: CertInstalacion) {
     const fechaFmt = c.fecha.split('-').reverse().join('/')
     const piezas = (c.piezas_instaladas ?? [])
     const codigoHtmlInst = c.codigo_pieza
@@ -550,22 +540,171 @@ ${modo === 'print'
 </div>
 <div class="footer-slogan">NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.</div>
 
-${modo === 'print'
-  ? `<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>`
-  : `<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
-<script>window.onload=function(){setTimeout(function(){
-  html2canvas(document.body,{scale:2,useCORS:true}).then(function(cv){
-    var p=new window.jspdf.jsPDF('p','mm','a4');
-    var w=210,h=cv.height*w/cv.width; if(h>297){h=297;w=cv.width*h/cv.height}
-    p.addImage(cv.toDataURL('image/jpeg',0.95),'JPEG',(210-w)/2,0,w,h);
-    p.save('Certificado-Instalacion-N-${c.numero}.pdf');
-    setTimeout(function(){window.close()},500)
-  })},400)}<\/script>`}
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
 </body></html>`
     const w = window.open('', '_blank')!
     w.document.write(html)
     w.document.close()
+  }
+
+  // ── PDF directo a Descargas (jsPDF, mismo patrón que facturas/presupuestos) ──
+  function descargarCertPDF(c: any, tipo: 'adas'|'instalacion') {
+    const doc = new jsPDF('p','mm','a4')
+    const G:[number,number,number]=[0,165,80], INK:[number,number,number]=[26,26,26], GRIS:[number,number,number]=[85,85,85]
+    const box=(x:number,y:number,w:number,h:number)=>{doc.setDrawColor(...INK);doc.setLineWidth(0.4);doc.roundedRect(x,y,w,h,2,2)}
+    const secTitle=(t:string,x:number,y:number)=>{doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...INK);doc.text(t.toUpperCase(),x,y)}
+    const check=(x:number,y:number,on:boolean)=>{ // casilla 3×3 con tilde dibujado
+      if(on){doc.setFillColor(...G);doc.roundedRect(x,y-2.6,3,3,0.6,0.6,'F')
+        doc.setDrawColor(255,255,255);doc.setLineWidth(0.5)
+        doc.line(x+0.6,y-1.1,x+1.3,y-0.4);doc.line(x+1.3,y-0.4,x+2.5,y-2.1)}
+      else{doc.setDrawColor(180,180,180);doc.setLineWidth(0.35);doc.roundedRect(x,y-2.6,3,3,0.6,0.6)}
+    }
+    const fechaFmt = String(c.fecha).split('-').reverse().join('/')
+    const piezas = c.piezas_instaladas ?? []
+
+    // Header: logo + escudo verde
+    try{doc.addImage(LOGO_BASE64,'PNG',12,7,50,13)}catch{doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...INK);doc.text('PARABRISAS EL PIAMONTE',12,15)}
+    doc.setFont('helvetica','normal');doc.setFontSize(6);doc.setTextColor(...GRIS)
+    doc.text('SEGURIDAD  •  TECNOLOGÍA  •  CONFIANZA',12,23)
+    doc.setFillColor(...G);doc.roundedRect(160,5,38,22,3,3,'F')
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold')
+    if(tipo==='adas'){doc.setFontSize(6.5);doc.text('VEHÍCULO CALIBRADO',179,11,{align:'center'});doc.setFontSize(14);doc.text('ADAS',179,19,{align:'center'})}
+    else{doc.setFontSize(6.5);doc.text('PIEZA INSTALADA',179,11,{align:'center'});doc.setFontSize(14);doc.text('OK',179,19,{align:'center'})}
+    doc.setDrawColor(...G);doc.setLineWidth(1.1);doc.line(12,29,198,29)
+
+    // Título
+    doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(...INK)
+    doc.text('CERTIFICADO DE',12,38)
+    doc.setTextColor(...G);doc.text(tipo==='adas'?'CALIBRACIÓN ADAS':'INSTALACIÓN',12,45)
+    doc.setFontSize(10);doc.text(`N° ${c.numero}`,12,52)
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(...GRIS);doc.text(`Fecha: ${fechaFmt}`,12,57)
+
+    const top=62
+    const campoLinea=(label:string,valor:string,x:number,y:number,w:number)=>{
+      doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GRIS);doc.text(label,x,y)
+      doc.setFontSize(8.5);doc.setTextColor(...INK);doc.text(String(valor||''),x,y+4.2)
+      doc.setDrawColor(150,150,150);doc.setLineWidth(0.25);doc.line(x,y+5.2,x+w,y+5.2)
+      return y+10
+    }
+
+    if (tipo === 'adas') {
+      // ── Columna 1: cliente + vehículo + vidrio ──
+      const c1x=12,c1w=60
+      box(c1x,top,c1w,15);secTitle('Datos del cliente',c1x+3,top+5)
+      campoLinea('Nombre / Razón Social:',c.cliente||c.razon_social||'',c1x+3,top+9,c1w-6)
+      let y1=top+19
+      const vh=70;box(c1x,y1,c1w,vh);secTitle('Datos del vehículo',c1x+3,y1+5)
+      let yv=y1+9
+      for(const [l,v] of [['Marca',c.marca],['Modelo',c.modelo],['Año',c.anio],['Dominio',c.dominio],['VIN (N° de chasis)',c.vin],['Kilometraje',c.kilometraje]] as [string,any][])
+        yv=campoLinea(l+':',v,c1x+3,yv,c1w-6)
+      y1+=vh+4
+      if(piezas.length||c.codigo_pieza){
+        const ph=8+piezas.length*5+(c.codigo_pieza?5:0)
+        box(c1x,y1,c1w,ph);secTitle('Vidrio instalado',c1x+3,y1+5)
+        let yp=y1+9;doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...INK)
+        for(const p of piezas){const ls=doc.splitTextToSize(`${p.d}  ×${p.c}`,c1w-6);doc.text(ls[0],c1x+3,yp);yp+=5}
+        if(c.codigo_pieza){doc.setTextColor(...GRIS);doc.text(`Código: ${c.codigo_pieza}`,c1x+3,yp)}
+      }
+      // ── Columna 2: sistemas ──
+      const c2x=76,c2w=60
+      const sistemas=[...SISTEMAS_DEFAULT.map(s=>[s,c.sistemas.includes(s)] as [string,boolean]), ...(c.otros_sistemas?[[c.otros_sistemas,true] as [string,boolean]]:[])]
+      let hs=10;const sistLines=sistemas.map(([s])=>doc.splitTextToSize(s,c2w-12) as string[])
+      sistLines.forEach(ls=>hs+=ls.length*3.6+2.2)
+      box(c2x,top,c2w,hs);secTitle('Sistemas calibrados',c2x+3,top+5)
+      let ys=top+10
+      sistemas.forEach(([_,on],i)=>{check(c2x+3,ys,on)
+        doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...INK)
+        doc.text(sistLines[i],c2x+8,ys);ys+=sistLines[i].length*3.6+2.2})
+      // ── Columna 3: procedimiento + resultado ──
+      const c3x=140,c3w=58
+      let hp=10;const procLines=PROCEDIMIENTOS_DEFAULT.map(p=>doc.splitTextToSize(p,c3w-12) as string[])
+      procLines.forEach(ls=>hp+=ls.length*3.4+2)
+      box(c3x,top,c3w,hp);secTitle('Procedimiento realizado',c3x+3,top+5)
+      let yp2=top+10
+      PROCEDIMIENTOS_DEFAULT.forEach((p,i)=>{check(c3x+3,yp2,c.procedimientos.includes(p))
+        doc.setFont('helvetica','normal');doc.setFontSize(6.8);doc.setTextColor(...INK)
+        doc.text(procLines[i],c3x+8,yp2);yp2+=procLines[i].length*3.4+2})
+      let y3=top+hp+4
+      const obsLines=c.observaciones?doc.splitTextToSize(`Observaciones: ${c.observaciones}`,c3w-6) as string[]:[]
+      const rh=34+obsLines.length*3.2
+      box(c3x,y3,c3w,rh);secTitle('Resultado',c3x+3,y3+5)
+      doc.setFillColor(...G);doc.roundedRect(c3x+3,y3+7,c3w-6,14,2,2,'F')
+      doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(10)
+      doc.text('CALIBRACIÓN EXITOSA',c3x+c3w/2,y3+15.5,{align:'center'})
+      doc.setFont('helvetica','normal');doc.setFontSize(6.2);doc.setTextColor(...GRIS)
+      doc.text(doc.splitTextToSize('El vehículo cumple con los parámetros establecidos por el fabricante para los sistemas ADAS instalados.',c3w-6),c3x+3,y3+25)
+      if(obsLines.length){doc.setFontSize(6.5);doc.setTextColor(...INK);doc.text(obsLines,c3x+3,y3+32)}
+      // ── Equipo ──
+      const ye=Math.max(top+19+70+4+(piezas.length||c.codigo_pieza?8+piezas.length*5+(c.codigo_pieza?5:0):0), top+hs, y3+rh)+5
+      box(12,ye,91,26);secTitle('Equipo utilizado',15,ye+5)
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GRIS);doc.text('Equipo de calibración:',15,ye+10)
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...INK);doc.text(String(c.equipo||EQUIPO_MODELO),15,ye+15.5)
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...GRIS)
+      doc.text(`N° de serie: ${EQUIPO_SERIE}`,15,ye+20);doc.text(`Software: ${c.software||''}   ·   Protocolos: ${c.protocolos||''}`,15,ye+24)
+      box(107,ye,91,26)
+      doc.setFontSize(7.5);doc.setTextColor(...GRIS);doc.text('Sistema de calibración ADAS',152.5,ye+14,{align:'center'})
+      firmasYFooter(ye+30)
+    } else {
+      // ── Instalación: 2 columnas ──
+      const c1x=12,c1w=90
+      box(c1x,top,c1w,15);secTitle('Datos del cliente',c1x+3,top+5)
+      campoLinea('Nombre / Razón Social:',c.cliente||c.razon_social||'',c1x+3,top+9,c1w-6)
+      const y1=top+19,vh=70
+      box(c1x,y1,c1w,vh);secTitle('Datos del vehículo',c1x+3,y1+5)
+      let yv=y1+9
+      for(const [l,v] of [['Marca',c.marca],['Modelo',c.modelo],['Año',c.anio],['Dominio',c.dominio],['VIN (N° de chasis)',c.vin],['Kilometraje',c.kilometraje]] as [string,any][])
+        yv=campoLinea(l+':',v,c1x+3,yv,c1w-6)
+      const c2x=107,c2w=91
+      const obsL=c.observaciones?doc.splitTextToSize(`Observaciones: ${c.observaciones}`,c2w-6) as string[]:[]
+      const ph=12+Math.max(piezas.length,1)*5+(c.codigo_pieza?5:0)+obsL.length*3.4
+      box(c2x,top,c2w,ph);secTitle('Vidrio instalado',c2x+3,top+5)
+      let yp=top+10;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...INK)
+      if(piezas.length)for(const p of piezas){doc.text((doc.splitTextToSize(`${p.d}  ×${p.c}`,c2w-6) as string[])[0],c2x+3,yp);yp+=5}
+      else{doc.setTextColor(...GRIS);doc.text('Sin detalle de pieza',c2x+3,yp);yp+=5}
+      if(c.codigo_pieza){doc.setTextColor(...GRIS);doc.setFontSize(7);doc.text(`Código: ${c.codigo_pieza}`,c2x+3,yp);yp+=5}
+      if(obsL.length){doc.setFontSize(7);doc.setTextColor(...INK);doc.text(obsL,c2x+3,yp)}
+      const yg=top+ph+4
+      doc.setFillColor(...G);doc.roundedRect(c2x,yg,c2w,24,2,2,'F')
+      doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7);doc.text('GARANTÍA',c2x+4,yg+6)
+      doc.setFontSize(13);doc.text('12 meses',c2x+4,yg+13)
+      doc.setFont('helvetica','normal');doc.setFontSize(6.3)
+      doc.text(doc.splitTextToSize('Sobre la instalación realizada, contra filtraciones o defectos de colocación. No cubre roturas por impacto.',c2w-8),c2x+4,yg+18)
+      firmasYFooter(Math.max(y1+vh,yg+24)+6)
+    }
+
+    function firmasYFooter(y:number){
+      // 3 cajas de firma
+      const bw=60
+      box(12,y,bw,34);secTitle('Responsable técnico',15,y+5)
+      try{doc.addImage(FIRMA_SAPPA,'PNG',15,y+7,34,13)}catch{}
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...INK);doc.text('Mario Sappa',15,y+26)
+      doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GRIS)
+      doc.text(tipo==='adas'?'Técnico Especialista en ADAS':'Técnico Especialista en Cristales Automotrices',15,y+30)
+      box(75,y,bw,34)
+      doc.setDrawColor(...G);doc.setLineWidth(0.9);doc.circle(105,y+17,12)
+      doc.setFont('helvetica','bold');doc.setFontSize(5.5);doc.setTextColor(...G)
+      doc.text('PARABRISAS',105,y+14,{align:'center'});doc.text('EL PIAMONTE',105,y+17.5,{align:'center'})
+      doc.setFontSize(4.8);doc.setTextColor(...GRIS);doc.text('GARANTÍA Y CALIDAD',105,y+22,{align:'center'})
+      box(138,y,bw,34)
+      doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...INK);doc.text('CONSULTAS Y GARANTÍA',168,y+7,{align:'center'})
+      doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GRIS);doc.text('Parabrisas El Piamonte',168,y+12,{align:'center'})
+      doc.setFillColor(...G);doc.roundedRect(148,y+14.5,40,7,2,2,'F')
+      doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('2302 595969',168,y+19.3,{align:'center'})
+      doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...GRIS);doc.text('General Pico, La Pampa',168,y+26,{align:'center'})
+      doc.setTextColor(...G);doc.setFont('helvetica','bold');doc.text(`Cert. N° ${c.numero}`,168,y+30,{align:'center'})
+      // Footer
+      const yf=y+38
+      doc.setFillColor(245,245,245);doc.rect(0,yf,210,15,'F')
+      doc.setDrawColor(...G);doc.setLineWidth(0.7);doc.line(0,yf,210,yf)
+      try{doc.addImage(LOGO_BASE64,'PNG',12,yf+3,34,9)}catch{}
+      doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...G)
+      doc.text('2302 595969',130,yf+7);doc.text('General Pico, La Pampa',160,yf+7)
+      doc.setFont('helvetica','normal');doc.setFontSize(5.8);doc.setTextColor(...GRIS)
+      doc.text('WhatsApp',130,yf+11);doc.text('Calle 17 N° 1224',160,yf+11)
+      doc.setFontSize(6);doc.text('NO VENDEMOS UN VIDRIO. DEVOLVEMOS LA SEGURIDAD ORIGINAL DE SU VEHÍCULO.',105,yf+19,{align:'center'})
+    }
+
+    doc.save(`Certificado-${tipo==='adas'?'ADAS':'Instalacion'}-N-${c.numero}.pdf`)
   }
 
   // Un solo listado de "Certificados" — el tipo (con o sin ADAS) es solo una etiqueta,
@@ -609,7 +748,7 @@ ${modo === 'print'
                   {c.piezas_instaladas?.length ? ` · ${c.piezas_instaladas[0].d}` : ''}
                 </p>
               </div>
-              <button onClick={() => c._tipo === 'adas' ? printCertAdas(c, 'pdf') : printCertInstalacion(c, 'pdf')}
+              <button onClick={() => descargarCertPDF(c, c._tipo)}
                 style={{background:'#1d4ed8',color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                 ⬇ PDF
               </button>
