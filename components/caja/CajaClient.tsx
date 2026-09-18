@@ -934,9 +934,20 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <button onClick={()=>setReciboVenta(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cerrar</button>
-            <button onClick={()=>{
+            <button onClick={async ()=>{
               // Descargar recibo como imagen PNG (canvas, sin diálogo de impresión)
               const rv = reciboVenta
+              // N° de recibo correlativo: se asigna la primera vez y queda guardado en la venta
+              let nroRec: number|undefined = rv.nro_recibo
+              if (!nroRec) {
+                const { data } = await supabase.rpc('next_recibo_caja_numero')
+                if (typeof data === 'number') {
+                  nroRec = data
+                  await supabase.from('ventas').update({ nro_recibo: nroRec }).eq('id', rv.id)
+                  rv.nro_recibo = nroRec
+                }
+              }
+              const nroRecibo = nroRec ? String(nroRec).padStart(6,'0') : (rv.id||'').slice(0,8).toUpperCase()
               const m = rv.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
               const cod = m?.[1]||''; const desc = m?.[2]||rv.descripcion||''
               const fmt = (n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(n)
@@ -953,14 +964,12 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                 if (ln.trim()) descLines.push(ln.trim())
                 if (descLines.length===0) descLines.push('')
               }
-              const H = 92 + 34 + descLines.length*18 + 16 + 46 + (rv.pago?22:0) + 40
+              const H = 74 + 34 + descLines.length*18 + 16 + 46 + (rv.pago?22:0) + 40
               cv.width = W*S; cv.height = H*S
               ctx.scale(S,S)
               ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H)
-              const nroRecibo = String(rv.numero ?? rv.comprobante ?? (rv.id||'').slice(0,8).toUpperCase() ?? '')
               let y = 30
               ctx.fillStyle = '#0C1810'; ctx.textAlign = 'center'
-              ctx.font = 'bold 15px Arial'; ctx.fillText('PARABRISAS EL PIAMONTE', W/2, y); y += 18
               ctx.font = 'bold 18px monospace'; ctx.fillText(`RECIBO N° ${nroRecibo}`, W/2, y); y += 16
               ctx.font = '11px monospace'; ctx.fillStyle = '#6b7280'
               ctx.fillText(rv.fecha?.split('-').reverse().join('/') || '', W/2, y); y += 14
