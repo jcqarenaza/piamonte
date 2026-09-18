@@ -285,7 +285,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   .footer-logo-name span{color:#00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
   .footer-slogan{font-size:9px;color:#555;text-align:center;padding:3px 20px;background:#f0f0f0}
-  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:48mm 10mm 28mm 10mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
+  @media print{body{width:auto;margin:0;font-size:10px;zoom:0.92}@page{margin:10mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;max-width:none}}
 </style></head><body>
 
 <div class="header">
@@ -456,7 +456,7 @@ export default function AdasClient({ userId }: { userId: string }) {
   .footer-bar{background:#f5f5f5;color:#1a1a1a;padding:8px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:2px solid #00A550}
   .footer-contact{display:flex;gap:20px;font-size:11px}
   .footer-slogan{font-size:9px;color:#555;text-align:center;padding:3px 20px;background:#f0f0f0}
-  @media print{body{width:auto;margin:0;font-size:10px}@page{margin:48mm 10mm 28mm 10mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  @media print{body{width:auto;margin:0;font-size:10px;zoom:0.92}@page{margin:10mm;size:A4}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 
 <div class="header">

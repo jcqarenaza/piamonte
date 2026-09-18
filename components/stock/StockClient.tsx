@@ -1056,6 +1056,26 @@ Usá otro código o elegí esa pieza del buscador.`); return }
     load()
   }
 
+  function etiquetaCalibracion() {
+    // 🧪 Regla de calibración: imprime líneas cada 10mm numeradas. El número que quede
+    // en el borde superior de la etiqueta física = OFFSET_TOP_MM real que aplica el driver.
+    // Medir también con regla que entre líneas haya 10mm reales (verifica la escala).
+    const w = window.open('', '_blank', 'width=400,height=600')
+    if (!w) return
+    const lineas = Array.from({length:10}, (_,i)=>i*10)
+      .map(mm=>`<div class="l" style="top:${mm}mm"></div><div class="m" style="top:${mm+1}mm">${mm}</div>`).join('')
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Calibración etiqueta</title><style>
+      @page{margin:0;size:80mm 100mm}
+      *{margin:0;padding:0}
+      html,body{width:80mm;height:100mm;font-family:Arial;overflow:hidden;position:relative}
+      .m{position:absolute;left:2mm;font-size:10pt;font-weight:bold}
+      .l{position:absolute;left:0;right:0;border-top:1px solid #000}
+    </style></head><body>${lineas}
+    <script>window.onload=()=>{setTimeout(()=>window.print(),150)}<\/script>
+    </body></html>`)
+    w.document.close()
+  }
+
   function generarEtiqueta(s: typeof items[0]) {
     // ⚙ AJUSTES DE ETIQUETA — igualar a lo que dice el driver del PC42 (Preferencias → Stock/Media)
     const ETIQ_ANCHO_MM = 80    // ancho del material según el driver (verificado: apaisada gira)
@@ -1517,6 +1537,10 @@ Usá otro código o elegí esa pieza del buscador.`); return }
         {isAdmin && <button onClick={()=>{setAjusteMasivoOpen(true);setAjusteMasivoLista([]);setAjusteMasivoSel(null);setAjusteMasivoQ('');setAjusteMasivoDelta(0);setAjusteMasivoNota('')}}
           style={{background:'#059669',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
           📊 Ajuste masivo
+        </button>}
+        {isAdmin && <button onClick={etiquetaCalibracion} title="Imprime una regla en mm para calibrar el offset de la etiqueta"
+          style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+          🧪 Calibrar etiqueta
         </button>}
       </div>
 

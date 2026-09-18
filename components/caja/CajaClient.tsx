@@ -935,36 +935,58 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           <div className="flex justify-end gap-2 pt-4">
             <button onClick={()=>setReciboVenta(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cerrar</button>
             <button onClick={()=>{
-              const w = window.open('','_blank','width=600,height=400')
-              if(!w) return
+              // Descargar recibo como imagen PNG (canvas, sin diálogo de impresión)
               const rv = reciboVenta
               const m = rv.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
               const cod = m?.[1]||''; const desc = m?.[2]||rv.descripcion||''
-              w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo</title><style>
-                body{font-family:monospace;font-size:13px;padding:20px;margin:0}
-                table{width:100%;border-collapse:collapse;margin-bottom:12px}
-                th{text-align:left;padding:4px 2px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb}
-                td{padding:6px 2px;font-size:12px}
-                .right{text-align:right}
-                .total{border-top:2px solid #111;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:8px}
-                .center{text-align:center;margin-bottom:12px}
-                @media print{@page{margin:10mm}}
-              </style></head><body>
-                <div class="center">
-                  <div style="font-weight:700;font-size:16px">RECIBO</div>
-                  <div style="font-size:11px;color:#6b7280">${rv.fecha?.split('-').reverse().join('/')}</div>
-                  ${rv.cliente?`<div style="font-weight:600;margin-top:4px">${rv.cliente}</div>`:''}
-                </div>
-                <table>
-                  <thead><tr><th>Código</th><th>Descripción</th><th class="right">Precio</th></tr></thead>
-                  <tbody><tr><td>${cod}</td><td>${desc}</td><td class="right" style="font-weight:700">${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(rv.precio)}</td></tr></tbody>
-                </table>
-                <div class="total"><span>TOTAL</span><span>${new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(rv.precio)}</span></div>
-                ${rv.pago?`<div style="font-size:11px;color:#6b7280;margin-top:6px">Forma de pago: ${rv.pago}</div>`:''}
-                <script>window.onload=()=>{window.print();window.close()}<\/script>
-              </body></html>`)
-              w.document.close()
-            }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>🖨 Imprimir</button>
+              const fmt = (n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(n)
+              const S = 2                       // escala x2 para nitidez
+              const W = 480
+              const cv = document.createElement('canvas')
+              const ctx = cv.getContext('2d')!
+              // pre-medir alto: header 92 + tabla + total + pie
+              ctx.font = `${12*S}px monospace`
+              const descLines: string[] = []
+              {                                  // wrap de la descripción a ~46 chars
+                const words = String(desc).split(' '); let ln = ''
+                for (const w of words) { if ((ln+' '+w).trim().length > 46) { descLines.push(ln.trim()); ln = w } else ln += ' '+w }
+                if (ln.trim()) descLines.push(ln.trim())
+                if (descLines.length===0) descLines.push('')
+              }
+              const H = 92 + 34 + descLines.length*18 + 16 + 46 + (rv.pago?22:0) + 40
+              cv.width = W*S; cv.height = H*S
+              ctx.scale(S,S)
+              ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H)
+              let y = 30
+              ctx.fillStyle = '#0C1810'; ctx.textAlign = 'center'
+              ctx.font = 'bold 15px Arial'; ctx.fillText('PARABRISAS EL PIAMONTE', W/2, y); y += 18
+              ctx.font = 'bold 18px monospace'; ctx.fillText('RECIBO', W/2, y); y += 16
+              ctx.font = '11px monospace'; ctx.fillStyle = '#6b7280'
+              ctx.fillText(rv.fecha?.split('-').reverse().join('/') || '', W/2, y); y += 14
+              if (rv.cliente) { ctx.font = 'bold 13px monospace'; ctx.fillStyle = '#0C1810'; ctx.fillText(rv.cliente, W/2, y); y += 14 }
+              y += 6
+              // tabla
+              ctx.textAlign = 'left'; ctx.font = '10px monospace'; ctx.fillStyle = '#6b7280'
+              ctx.fillText('CÓDIGO', 20, y); ctx.fillText('DESCRIPCIÓN', 110, y)
+              ctx.textAlign = 'right'; ctx.fillText('PRECIO', W-20, y); y += 6
+              ctx.strokeStyle = '#e5e7eb'; ctx.beginPath(); ctx.moveTo(20,y); ctx.lineTo(W-20,y); ctx.stroke(); y += 16
+              ctx.fillStyle = '#0C1810'; ctx.font = '12px monospace'
+              ctx.textAlign = 'left'; ctx.fillText(cod, 20, y)
+              descLines.forEach((ln,i)=>ctx.fillText(ln, 110, y+i*18))
+              ctx.textAlign = 'right'; ctx.font = 'bold 12px monospace'; ctx.fillText(fmt(rv.precio), W-20, y)
+              y += descLines.length*18 + 4
+              // total
+              ctx.strokeStyle = '#111'; ctx.lineWidth = 2
+              ctx.beginPath(); ctx.moveTo(20,y); ctx.lineTo(W-20,y); ctx.stroke(); ctx.lineWidth = 1; y += 24
+              ctx.textAlign = 'left'; ctx.font = 'bold 14px monospace'; ctx.fillText('TOTAL', 20, y)
+              ctx.textAlign = 'right'; ctx.font = 'bold 17px monospace'; ctx.fillText(fmt(rv.precio), W-20, y); y += 22
+              if (rv.pago) { ctx.textAlign = 'left'; ctx.font = '11px monospace'; ctx.fillStyle = '#6b7280'; ctx.fillText('Forma de pago: '+rv.pago, 20, y) }
+              // descargar
+              const a = document.createElement('a')
+              a.download = `Recibo-${(rv.cliente||'venta').replace(/[^\w-]+/g,'_')}-${rv.fecha||''}.png`
+              a.href = cv.toDataURL('image/png')
+              a.click()
+            }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>⬇ Descargar imagen</button>
           </div>
         </Modal>
       )}
