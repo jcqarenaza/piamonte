@@ -1084,30 +1084,29 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }).eq('id', remitoSel.id)
     }
 
-    // Si venía de una OS, buscar y eliminar la venta de caja previa para evitar duplicar
+    // Si venía de una OS: NUNCA borrar ventas de caja automáticamente. La heurística
+    // anterior borraba por parecido de descripción/código y se llevó ventas ajenas
+    // (caso Kangoo 24/09: venta de caja de otro cliente eliminada sin devolución de
+    // stock ni auditoría). Ahora solo se AVISA si hay una venta de hoy parecida, y
+    // la decisión de borrarla queda en Caja (con su flujo de devolución + auditoría).
     const osId = oid || osSelId
     if (osId && comp) {
-      // Buscar ventas de caja registradas desde esa OS (sin comprobante_id = son de OS directa)
-      const { data: ventasOS } = await supabase.from('ventas')
-        .select('id, descripcion, precio')
-        .is('comprobante_id', null)
-        .eq('fecha', todayStr())
-        .ilike('descripcion', `%${items[0]?.d?.slice(0,15) || ''}%`)
-      // También buscar por stock_id de los ítems
-      const stockCodigos = items.map((it:any) => it.codigo).filter(Boolean)
-      const { data: ventasPorCodigo } = stockCodigos.length ? await supabase.from('ventas')
-        .select('id, descripcion, precio')
-        .is('comprobante_id', null)
-        .or(stockCodigos.map((c:string) => `descripcion.ilike.%${c}%`).join(','))
-        : { data: [] }
-
-      const ventasABorrar = [...(ventasOS || []), ...(ventasPorCodigo || [])]
-        .filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i) // deduplicar
-        .filter(v => !v.descripcion?.includes('FA-') && !v.descripcion?.includes('FB-') && !v.descripcion?.includes('NC '))
-
-      if (ventasABorrar.length > 0) {
-        await supabase.from('ventas').delete().in('id', ventasABorrar.map(v => v.id))
-      }
+      try {
+        const stockCodigos = items.map((it:any) => it.codigo).filter(Boolean)
+        const filtros = [
+          items[0]?.d ? `descripcion.ilike.%${items[0].d.slice(0,15)}%` : null,
+          ...stockCodigos.map((c:string) => `descripcion.ilike.%${c}%`),
+        ].filter(Boolean) as string[]
+        if (filtros.length) {
+          const { data: parecidas } = await supabase.from('ventas')
+            .select('descripcion, precio, cliente')
+            .is('comprobante_id', null)
+            .eq('fecha', todayStr())
+            .or(filtros.join(','))
+          const avisar = (parecidas||[]).filter(v => !v.descripcion?.includes('FA-') && !v.descripcion?.includes('FB-') && !v.descripcion?.includes('NC '))
+          if (avisar.length) alert(`ℹ Aviso: hay ${avisar.length} venta(s) de caja de hoy con descripción parecida a esta factura:\n${avisar.map(v=>`· ${v.descripcion} — ${v.cliente||'s/cliente'} ($${v.precio})`).join('\n')}\n\nSi alguna es un duplicado de este trabajo, borrala desde Caja (ahí devuelve stock y queda auditado). No se borró nada automáticamente.`)
+        }
+      } catch { /* el aviso nunca bloquea la facturación */ }
     }
 
     if(comp) {

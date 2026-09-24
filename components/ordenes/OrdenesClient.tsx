@@ -509,7 +509,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       if (updErr) { alert('Error al guardar: ' + updErr.message); return }
       setEditId(null)
     } else {
-    await supabase.from('ordenes_servicio').insert({
+    const { data: osNueva } = await supabase.from('ordenes_servicio').insert({
       numero: nextNum, fecha: todayStr(),
       aseguradora: form.aseg||null, siniestro: form.sin||null, poliza: form.pol||null,
       cliente: form.cli||null, telefono: form.tel||null, vehiculo: form.veh||null,
@@ -522,8 +522,34 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       estado: 'pendiente',
       posicion_vidrio: posVidrio.length ? posVidrio.join(',') : null,
       stock_codigo: stockSel?.codigo || null,
-    })
+    }).select('id').single()
     // Stock se descuenta solo al facturar, NO al guardar la OS
+    // ── Vínculo con venta de caja previa: si el vidrio de esta OS ya se vendió por
+    // caja (venta reciente sin comprobante ni OS), el stock YA salió por esa venta.
+    // Se ofrece vincular: al marcar colocada NO se descuenta de nuevo, y la venta
+    // queda atada a la OS (nada se borra nunca).
+    try {
+      const stockIds = (items||[]).map((it:any)=>it.stock_id).filter(Boolean)
+      if (osNueva?.id && stockIds.length) {
+        const desde = new Date(Date.now() - 7*24*3600*1000).toISOString().slice(0,10)
+        const { data: movs } = await supabase.from('stock_movimientos')
+          .select('venta_id').in('stock_id', stockIds).eq('tipo','salida')
+          .not('venta_id','is',null).gte('fecha', desde)
+        const ventaIds = [...new Set((movs??[]).map((m:any)=>m.venta_id))]
+        if (ventaIds.length) {
+          const { data: candidatas } = await supabase.from('ventas')
+            .select('id, descripcion, cliente, precio, fecha')
+            .in('id', ventaIds).is('comprobante_id', null).is('os_id', null)
+          if (candidatas?.length) {
+            const v = candidatas[0]
+            if (confirm(`Este vidrio ya se vendió por Caja:\n· ${v.descripcion} — ${v.cliente||'s/cliente'} ($${v.precio}, ${String(v.fecha).split('-').reverse().join('/')})\n\n¿Vincular esta OS a esa venta?\nEl stock ya salió con la venta: al marcar COLOCADA no se va a descontar de nuevo.`)) {
+              await supabase.from('ventas').update({ os_id: osNueva.id }).eq('id', v.id)
+              await supabase.from('ordenes_servicio').update({ stock_via_venta: true }).eq('id', osNueva.id)
+            }
+          }
+        }
+      }
+    } catch { /* la vinculación nunca bloquea la creación de la OS */ }
     // Si viene de un turno, actualizar turnos.os_id con la nueva OS
     if (form.turno_id && !editId) {
       const { data: newOs } = await supabase.from('ordenes_servicio')
@@ -878,6 +904,9 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                   {(o as any).stock_via_remito && !(o as any).cristal_colocado && (
                     <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">🚚 En colocador</span>
                   )}
+                  {(o as any).stock_via_venta && (
+                    <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5 shrink-0">🧾 Vendido por Caja</span>
+                  )}
                   {(() => {
                     const colab = colaboradores.find(c => c.id === (o as any).colaborador_id)
                     return colab ? (
@@ -914,6 +943,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                         <>
                           {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
                             <button onClick={async()=>{
+                              if ((o as any).stock_via_venta) {
+                                if (!confirm('El stock de esta OS salió por una venta de Caja vinculada — desde acá NO se devuelve.\nSi el trabajo se cae, ajustá la venta en Caja (ahí devuelve stock y queda auditado).\n\n¿Desmarcar "colocada" igualmente?')) return
+                                await supabase.from('ordenes_servicio').update({ cristal_colocado: false }).eq('id', o.id)
+                                load(); return
+                              }
                               if (!confirm('¿Retirar los productos? Esto devolverá al stock todas las unidades con stock vinculado de esta OS.')) return
                               const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
                               const fecha = todayStr()
@@ -951,10 +985,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                           {(o.items||[]).filter((it:any)=>it.stock_id).length > 0 && (
                             <button onClick={async()=>{
                               const viaRemito = !!(o as any).stock_via_remito
+                              const viaVenta = !!(o as any).stock_via_venta
                               if (!confirm(viaRemito
                                 ? '¿Confirmar cristal colocado? El stock ya salió por remito al colocador — NO se descuenta de nuevo.'
+                                : viaVenta
+                                ? '¿Confirmar cristal colocado? El stock ya salió con la venta de Caja vinculada — NO se descuenta de nuevo.'
                                 : '¿Confirmar cristal colocado? Esto descontará el stock.')) return
-                              if (!viaRemito) {
+                              if (!viaRemito && !viaVenta) {
                                 const stockItems = (o.items||[]).filter((it:any)=>it.stock_id)
                                 const fecha = todayStr()
                                 for (const it of stockItems) {
