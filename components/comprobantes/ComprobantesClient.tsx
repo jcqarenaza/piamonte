@@ -1422,7 +1422,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     y+=1
 
     // ─── TOTALES EN FILA HORIZONTAL — siempre en posición fija ───
-    const totY = 243
+    // Totales arriba para todas: la franja baja queda libre para el QR fiscal
+    const totY = 232
     const tc = 5
     const tw = rw / tc
     doc.setFillColor(0,165,80)
