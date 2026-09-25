@@ -1443,19 +1443,49 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.text(v, pad + tw*i + tw/2, totY+11.5, {align:'center'})
     })
 
+    // ─── QR FISCAL ARCA — misma URL, generación, POSICIÓN y TAMAÑO que el formato ARCA
+    // (route generar-pdf-arca: 80x80pt en x:20 y:55 → 28,2mm en x:7,1 y:249,4 de un A4) ───
+    let qrDataUrl: string | null = null
+    if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido && c.nro_cbte_afip) {
+      try {
+        let docRec = String(c.cliente_cuit || '').replace(/\D/g, '')
+        if (!docRec && c.aseguradora_id) {
+          const { data: aRow } = await supabase.from('aseguradoras').select('cuit').eq('id', c.aseguradora_id).maybeSingle()
+          docRec = String(aRow?.cuit || '').replace(/\D/g, '')
+        }
+        const tipoDocRec = docRec.length === 11 ? 80 : (docRec.length >= 7 ? 96 : 99)
+        const tipoCmpMap = c.categoria === 'nc' ? TIPO_CBTE_NC_AFIP : c.categoria === 'nd' ? TIPO_CBTE_ND_AFIP : TIPO_CBTE_AFIP
+        const qrData = {
+          ver: 1, fecha: c.fecha, cuit: 27242657174, ptoVta: 6,
+          tipoCmp: tipoCmpMap[c.tipo], nroCmp: Number(c.nro_cbte_afip ?? c.numero ?? 0),
+          importe: Number(c.total || 0), moneda: 'PES', ctz: 1,
+          tipoDocRec, nroDocRec: tipoDocRec === 99 ? 0 : Number(docRec || '0'),
+          tipoCodAut: 'E', codAut: Number(c.cae_emitido || '0'),
+        }
+        const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + btoa(JSON.stringify(qrData))
+        // @ts-ignore — qrcode sin tipos; si falta la librería cae al catch y el PDF sale sin QR
+        const QR = (await import('qrcode')).default as any
+        qrDataUrl = await QR.toDataURL(qrUrl, { scale: 5, margin: 4, errorCorrectionLevel: 'L' })
+      } catch { qrDataUrl = null }
+    }
+    const QR_X = 7.06, QR_Y = 249.44, QR_S = 28.22   // = x:20pt y:55pt 80x80pt del formato ARCA
+    if (qrDataUrl) { try { doc.addImage(qrDataUrl, 'PNG', QR_X, QR_Y, QR_S, QR_S) } catch {} }
+    // Con QR, los bloques del margen izquierdo se corren a su derecha para no pisarlo
+    const xL = qrDataUrl ? QR_X + QR_S + 3 : pad
+
     // ─── FORMA DE PAGO — solo si no es cuenta corriente ───
     const esCuentaCorriente = c.pagos?.length && c.pagos.every((p:Pago) => esPagoCC(p.metodo))
     const pagoY = totY + 18  // siempre DEBAJO del recuadro de totales (que termina en totY+13)
     if(c.pagos?.length && !esCuentaCorriente){
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
-      doc.text('Forma de pago:', pad, pagoY)
+      doc.text('Forma de pago:', xL, pagoY)
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
       const pagoTexto = c.pagos.map((p:Pago)=>
         `${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`
       ).join('  |  ')
       // Envolver en líneas para que no se pise con el borde ni con el CAE
-      const pagoLines = doc.splitTextToSize(pagoTexto, rw - 32)
-      doc.text(pagoLines.slice(0,2), pad + 28, pagoY)
+      const pagoLines = doc.splitTextToSize(pagoTexto, rw - 32 - (xL - pad))
+      doc.text(pagoLines.slice(0,2), xL + 28, pagoY)
       doc.setFontSize(8)
     }
 
@@ -1464,53 +1494,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (c.observaciones) {
       // Observaciones destacadas (pedido 28/08: que se lean — clave en facturas Sancor)
       doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(30,30,30)
-      doc.text('Obs.:', pad, totY + 24)
+      doc.text('Obs.:', xL, totY + 24)
       doc.setFont('helvetica','normal')
-      const obsLines = doc.splitTextToSize(c.observaciones, rw - 16)
-      doc.text(obsLines.slice(0, 3), pad + 12, totY + 24)
+      const obsLines = doc.splitTextToSize(c.observaciones, rw - 16 - (xL - pad))
+      doc.text(obsLines.slice(0, 3), xL + 12, totY + 24)
       doc.setFontSize(8)
     }
 
     const caeY = 268
-    // ─── QR FISCAL ARCA — mismo estándar que la factura nativa de ARCA, para que
-    // los sistemas de las aseguradoras extraigan los datos del comprobante ───
-    let qrDataUrl: string | null = null
-    if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido && c.nro_cbte_afip) {
-      try {
-        // CUIT/DNI del receptor: del comprobante, o de la ficha de la aseguradora
-        let docRec = String(c.cliente_cuit || '').replace(/\D/g, '')
-        if (!docRec && c.aseguradora_id) {
-          const { data: aRow } = await supabase.from('aseguradoras').select('cuit').eq('id', c.aseguradora_id).maybeSingle()
-          docRec = String(aRow?.cuit || '').replace(/\D/g, '')
-        }
-        const tipoDocRec = docRec.length === 11 ? 80 : (docRec.length >= 7 ? 96 : 99)
-        const tipoCmpMap = c.categoria === 'nc' ? TIPO_CBTE_NC_AFIP : c.categoria === 'nd' ? TIPO_CBTE_ND_AFIP : TIPO_CBTE_AFIP
-        const payload = {
-          ver: 1, fecha: c.fecha, cuit: 27242657174, ptoVta: 6,
-          tipoCmp: tipoCmpMap[c.tipo], nroCmp: Number(c.nro_cbte_afip),
-          importe: Math.round((Number(c.total) || 0) * 100) / 100,
-          moneda: 'PES', ctz: 1,
-          tipoDocRec, nroDocRec: tipoDocRec === 99 ? 0 : Number(docRec),
-          tipoCodAut: 'E', codAut: Number(c.cae_emitido),
-        }
-        const url = 'https://www.afip.gob.ar/fe/qr/?p=' + btoa(JSON.stringify(payload))
-        // @ts-ignore — qrcode sin tipos; si falta la librería cae al catch y el PDF sale sin QR
-        const QR = (await import('qrcode')).default as any
-        qrDataUrl = await QR.toDataURL(url, { width: 300, margin: 0 })
-      } catch { qrDataUrl = null /* sin librería o error: el PDF sale sin QR, como hasta hoy */ }
-    }
-
     if (!c.es_negro && ['A','B','C'].includes(c.tipo) && c.cae_emitido) {
-      const caeH = qrDataUrl ? 17 : 10
       doc.setDrawColor(210,220,215); doc.setLineWidth(0.3)
-      rRect(pad, caeY, rw, caeH, 2, 'S')
-      const textX = qrDataUrl ? pad + 21 : pad + 4
-      if (qrDataUrl) { try { doc.addImage(qrDataUrl, 'PNG', pad + 2, caeY + 1, 15, 15) } catch {} }
+      rRect(xL, caeY, W - pad - xL, 10, 2, 'S')
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(30,30,30)
-      doc.text(`CAE: ${c.cae_emitido}`, textX, caeY + 6.5)
+      doc.text(`CAE: ${c.cae_emitido}`, xL+4, caeY+6.5)
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(100,100,100)
       if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, W-pad-4, caeY+6.5, {align:'right'})
-      if (qrDataUrl) { doc.setFontSize(6); doc.text('Comprobante Autorizado — código QR ARCA', textX, caeY + 12) }
     }
 
     // ─── FOOTER — siempre en Y=285 ───
