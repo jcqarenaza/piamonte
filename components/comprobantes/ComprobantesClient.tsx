@@ -76,10 +76,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [asegQ, setAsegQ]       = useState('')
   const [asegSugs, setAsegSugs] = useState<AseguradoraMin[]>([])
   const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
-  // ── Calibración ADAS en facturas de aseguradora: al primer ítem se agregan INSTALACIÓN
-  // (sin precio), CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN
-  // (% configurado en la aseguradora). Una sola vez: si Vero los saca, no vuelven.
-  const [adasInyectado, setAdasInyectado] = useState(false)
 
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75)
@@ -183,7 +179,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   useEffect(() => {
     supabase.from('comprobantes').select('*').eq('es_negro', esNegro)
       .order('fecha',{ascending:false})
-      .order('nro_cbte_afip',{ascending:false, nullsFirst:false})
       .order('created_at',{ascending:false})
       .then(({data})=>setComps(data??[]))
     supabase.from('tarjetas_config').select('*').eq('activo',true).order('banco').order('red').order('cuotas').then(({data})=>setTarjConfigs(data??[]))
@@ -235,7 +230,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (searchParams.get('nuevo') === '1') setOpen(true)
     if (asegNombre) {
       setModo('aseguradora')
-      supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva,bonif_adas_pct')
+      supabase.from('aseguradoras').select('id,nombre,razon_social,cuit,condicion_iva')
         .ilike('nombre', `%${asegNombre}%`).limit(1)
         .then(({data}) => { if (data?.[0]) selectAseguradora(data[0] as AseguradoraMin) })
       setFiscal(p=>({...p, vehiculo:veh||'', patente:pat||'' }))
@@ -349,7 +344,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   function cambiarModo(m: Modo) {
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
-    setAseg(null); setAdasInyectado(false); setAsegQ(''); setAsegSugs([])
+    setAseg(null); setAsegQ(''); setAsegSugs([])
     setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel(""); setCfDni("")
     setHistorialCli(null)
     setNuevoCliOpen(false)
@@ -829,29 +824,6 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setComps(comps2??[])
     return false
   }
-
-  useEffect(() => {
-    if (modo !== 'aseguradora' || !asegSel || adasInyectado) return
-    // Desde presupuesto u OS se hereda lo que viene (si Vero sacó la calibración allá, acá no vuelve)
-    if (searchParams.get('pid') || searchParams.get('oid')) return
-    const up = (x:any)=>String(x?.d||'').toUpperCase()
-    if (!items.length || items.some(it => up(it).includes('CALIBRACION ADAS') || up(it).includes('CALIBRACIÓN ADAS'))) return
-    setAdasInyectado(true)
-    ;(async () => {
-      try {
-        const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
-        const precio = Number(art?.precio_venta) || 0
-        if (!precio) return
-        const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
-        const nuevos: any[] = [
-          { d:'INSTALACION — INCLUIDA', c:1, p:0 },
-          { d:'CALIBRACION ADAS', c:1, p:precio },
-        ]
-        if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
-        setItems(prev => [...prev, ...nuevos])
-      } catch {}
-    })()
-  }, [modo, asegSel, items, adasInyectado, supabase])
 
   async function save(){
     if (saving) return
@@ -1752,7 +1724,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 {c.categoria==='nd'&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">🧾 ND</span>}
                 {saldadaPorNC&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 shrink-0">↩ Saldada</span>}
                 {(rol==='gerencial'||rol==='admin') && (c as any).es_negro&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-white shrink-0">⚫</span>}
-                {!c.es_negro && ['A','B','C'].includes(c.tipo) && (
+                {!c.es_negro && ['A','B','C','FCE'].includes(c.tipo) && (
                   c.cae_emitido
                     ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">✓ CAE</span>
                     : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">⚠ Sin CAE</span>
@@ -1924,10 +1896,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar aseguradora</label>
               <div className="relative">
                 <div className="relative">
-                  <Input value={asegQ} onChange={e=>{setAsegQ(e.target.value);setAseg(null); setAdasInyectado(false);setHistorialCli(null)}}
+                  <Input value={asegQ} onChange={e=>{setAsegQ(e.target.value);setAseg(null);setHistorialCli(null)}}
                     placeholder="Allianz, Mapfre, Sancor…"/>
                   {asegSel && (
-                    <button type="button" onClick={()=>{setAseg(null); setAdasInyectado(false);setAsegQ('');setAsegSugs([]);setHistorialCli(null)}}
+                    <button type="button" onClick={()=>{setAseg(null);setAsegQ('');setAsegSugs([]);setHistorialCli(null)}}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-p-gray hover:text-red-500 text-lg leading-none px-1"
                       title="Cambiar aseguradora">✕</button>
                   )}
