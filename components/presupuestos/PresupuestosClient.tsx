@@ -25,7 +25,7 @@ const btnWa   = { ...btnSm,background:'#25d366' } as const
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string }
 interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean }
-interface ClienteMin  { id:string; nombre:string; telefono:string|null; tipo_cliente_id:string|null; tipo_nombre?:string; tipo_margen?:number }
+interface ClienteMin  { id:string; nombre:string; telefono:string|null; tipo_cliente_id:string|null; cuit?:string|null; tipo_fiscal?:string|null; tipo_nombre?:string; tipo_margen?:number }
 interface Aseguradora { id:string; nombre:string; lista_precio:string; recargo_pct:number }
 interface PrecioAseg  { id:string; codigo:string; descripcion:string; cristal:string; marca:string; modelo:string; precio_siva:number; instalacion_siva:number; total_siva:number }
 
@@ -172,7 +172,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   useEffect(()=>{
     if(cliSel){setCliSugs([]);return}
     if(cliQ.trim().length<2){setCliSugs([]);return}
-    supabase.from('clientes').select('id,nombre,telefono,tipo_cliente_id,tipos_cliente(nombre,margen_pct)').ilike('nombre',`%${cliQ}%`).limit(8).then(({data})=>{
+    supabase.from('clientes').select('id,nombre,telefono,tipo_cliente_id,cuit,tipo_fiscal,tipos_cliente(nombre,margen_pct)').ilike('nombre',`%${cliQ}%`).limit(8).then(({data})=>{
       setCliSugs((data??[]).map((c:any)=>({
         id:c.id, nombre:c.nombre, telefono:c.telefono,
         tipo_cliente_id:c.tipo_cliente_id,
@@ -186,7 +186,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setCliQ(c.nombre)
     setCliSugs([])
     setCliSel(c)
-    setForm(p=>({...p, cli:c.nombre, tel:c.telefono||p.tel}))
+    setForm(p=>({...p, cli:c.nombre, tel:c.telefono||p.tel,
+      condIva: c.tipo_fiscal==='responsable_inscripto' ? 'ri' : c.tipo_fiscal==='monotributo' ? 'mono' : 'cf',
+      cuit: c.cuit||'' }))
+    if (c.tipo_fiscal==='responsable_inscripto') setIvaOn(true)
     setTipoSel(tipos.find(t=>t.id===c.tipo_cliente_id)||null)
     // Presupuestos anteriores NO convertidos
     const {data} = await supabase.from('presupuestos')
@@ -202,6 +205,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     const t = tipos.find(t=>t.nombre==='Particular')
     setCliSel(null); setTipoSel(t??null)
     setCliQ(''); setCliSugs([])
+    setForm(p=>({...p, condIva:'cf', cuit:''}))
   }
 
   function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
