@@ -216,8 +216,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
     const pidUrl = searchParams.get('pid')
     if (pidUrl) {
-      supabase.from('presupuestos').select('observaciones').eq('id', pidUrl).maybeSingle()
-        .then(({data}) => { if ((data as any)?.observaciones) setObs((data as any).observaciones) })
+      supabase.from('presupuestos').select('observaciones,cond_iva,cuit').eq('id', pidUrl).maybeSingle()
+        .then(({data}) => {
+          const d = data as any
+          if (d?.observaciones) setObs(d.observaciones)
+          // La condición IVA y el CUIT cargados en el presupuesto viajan a la factura
+          if (d?.cond_iva === 'ri' || d?.cond_iva === 'mono') {
+            setFiscal(p=>({ ...p,
+              tipo_fiscal: d.cond_iva === 'ri' ? 'responsable_inscripto' : 'monotributo',
+              cuit: d.cuit || p.cuit }))
+          }
+        })
     }
     if (searchParams.get('nuevo') === '1') setOpen(true)
     if (asegNombre) {
@@ -921,6 +930,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       console.error('Error comprobante:', compError)
       return
     }
+
+    // El presupuesto se marca facturado recién acá, con la factura ya guardada
+    // (antes se marcaba al tocar el botón en Presupuestos y quedaba "facturado" sin factura)
+    if (pid) { try { await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', pid) } catch {} }
 
     // ── Tarjetas: generar la liquidación PENDIENTE en el módulo Tarjetas ──
     // (queda esperando el "✓ Acreditado" manual, que la deposita en el banco configurado)

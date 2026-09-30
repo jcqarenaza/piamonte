@@ -603,8 +603,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                         <button onClick={()=>toOS(p)} style={{...btnSm,background:'#1d4ed8'}}>→ OS</button>
                       )}
                       {!(p as any).convertido_comp && (
-                        <button onClick={async()=>{
-                          await supabase.from('presupuestos').update({ convertido_comp: true }).eq('id', p.id)
+                        <button onClick={()=>{
+                          // NO se marca convertido acá: lo marca Comprobantes recién al GUARDAR la factura
                           const params = new URLSearchParams({
                             cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
                             items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
