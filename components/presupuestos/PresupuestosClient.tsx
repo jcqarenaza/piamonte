@@ -814,13 +814,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               </div>
             )}
 
+            <div style={{gridColumn:'1 / -1'}}>
             <Field label="Tipo de cliente">
               <Select value={tipoSel?.id??''} onChange={e=>{const t=tipos.find(t=>t.id===e.target.value);setTipoSel(t??null)}}>
                 <option value="">Sin tipo</option>
                 {tipos.map(t=><option key={t.id} value={t.id}>{t.nombre} ({Math.round(t.margen_pct*100)}% margen)</option>)}
               </Select>
             </Field>
-            <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
+            </div>
           </div>
 
           {tipoSel&&(
