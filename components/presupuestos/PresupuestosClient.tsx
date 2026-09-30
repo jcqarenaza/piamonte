@@ -201,13 +201,6 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   
-  function selectConsumidorFinal() {
-    const t = tipos.find(t=>t.nombre==='Particular')
-    setCliSel(null); setTipoSel(t??null)
-    setCliQ(''); setCliSugs([])
-    setForm(p=>({...p, condIva:'cf', cuit:''}))
-  }
-
   function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
     const margen = tipoSel?.margen_pct ?? 0.45
     // costo_neto ya incluye flete — NO volver a sumar
@@ -776,9 +769,6 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
               }} placeholder="Buscar cliente existente…"/>
               {cliSugs.length>0&&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-48 overflow-y-auto mt-1">
-                  <button onClick={selectConsumidorFinal} className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 font-semibold text-p-dark">
-                    👤 Consumidor final
-                  </button>
                   {cliSugs.map(c=>(
                     <button key={c.id} onClick={()=>selectCliente(c)} className="w-full text-left px-3 py-2.5 text-sm hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between">
                       <div>
@@ -791,12 +781,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 mt-1.5 flex-wrap">
-              <button onClick={selectConsumidorFinal} style={{...btnSm,background:'#f3f4f6',color:'#374151',border:'1px solid #d1d5db',fontSize:12}}>
-                👤 Consumidor final
-              </button>
-              {cliSel&&<span className="text-xs bg-p-light text-p-dark px-2 py-1 rounded-full font-semibold">✓ {cliSel.nombre}</span>}
-            </div>
+            {cliSel&&<div className="flex gap-2 mt-1.5 flex-wrap"><span className="text-xs bg-p-light text-p-dark px-2 py-1 rounded-full font-semibold">✓ {cliSel.nombre}</span></div>}
           </div>
 
           {/* Tipo + Margen */}
