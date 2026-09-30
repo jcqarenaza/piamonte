@@ -1436,7 +1436,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       className="w-4 h-4 accent-purple-600"/>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-p-ink truncate">OS-{String(o.numero).padStart(4,'0')} · {o.cliente}</p>
-                      <p className="text-xs text-p-ink2">{o.vehiculo} · {o.fecha.split('-').reverse().join('/')}</p>
+                      <p className="text-xs text-p-ink2">{o.vehiculo} · {o.fecha.split('-').reverse().join('/')}{o.siniestro ? <> · <span className="font-semibold text-purple-700">Sin. {o.siniestro}</span></> : <span className="text-amber-600 font-semibold"> · sin siniestro</span>}</p>
                     </div>
                     <input
                       type="text"
@@ -1467,7 +1467,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
               {umbralFce > 0 && totalSel >= umbralFce && (
                 <div className="border rounded-xl p-2.5 text-xs font-semibold"
                   style={{background:'#fffbeb',borderColor:'#fcd34d',color:'#92400e'}}>
-                  ⚠ Supera el tope MiPyME ({moneyARS2(umbralFce)}) — corresponde <b>FCE</b>: emitila como Factura de Crédito Electrónica en el portal de ARCA y registrala acá con ese número.
+                  ⚠ Supera el tope MiPyME ({moneyARS2(umbralFce)}) — corresponde <b>FCE</b>: el sistema la emite directo en ARCA con el botón de abajo.
                 </div>
               )}
               <Field label="Tipo de comprobante emitido en ARCA">
@@ -1530,6 +1530,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                       className="w-full border rounded-lg px-3 py-2 text-sm" />
                   </Field>
                 </div>
+              </div>
+              <details className="border border-p-line rounded-xl bg-gray-50">
+                <summary className="cursor-pointer px-3 py-2.5 text-xs font-bold text-p-ink2 select-none">
+                  🛟 Registro manual — solo si la emisión directa falló (cargar lo emitido en el portal de ARCA)
+                </summary>
+                <div className="p-3 pt-1 flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <Field label="Punto de venta"><Input value={sancorForm.pv} onChange={e=>setSancorForm(p=>({...p,pv:e.target.value}))} placeholder="00001"/></Field>
                 <Field label="N° Factura"><Input value={sancorForm.nro} onChange={e=>setSancorForm(p=>({...p,nro:e.target.value}))} placeholder="00000001"/></Field>
               </div>
@@ -1539,7 +1546,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 <Field label="Vencimiento CAE"><Input type="date" value={sancorForm.vto} onChange={e=>setSancorForm(p=>({...p,vto:e.target.value}))}/></Field>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={()=>setSancorModal(false)} style={btnGray}>Cancelar</button>
                 <button disabled={sancorLoading||!sancorForm.cae||!sancorForm.nro} onClick={async()=>{
                   const selIds = Object.entries(sancorSel).filter(([,v])=>v).map(([id])=>id)
                   if (!selIds.length) { alert('Seleccioná al menos una OS'); return }
@@ -1584,6 +1590,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                 }} style={{...btn,background:'#7c3aed',opacity:sancorLoading?0.6:1}}>
                   {sancorLoading?'Registrando…':'✓ Registrar factura'}
                 </button>
+              </div>
+                </div>
+              </details>
+              <div className="flex justify-end pt-1">
+                <button onClick={()=>setSancorModal(false)} style={btnGray}>Cancelar</button>
               </div>
             </>
           )}
