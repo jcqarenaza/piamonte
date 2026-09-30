@@ -452,7 +452,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     await supabase.from('ventas').insert({
       fecha: todayStr(),
       descripcion: `${esFce?'FCE':'FA'}-${pvStr}-${nroStr} - Sancor Seguros`,
-      precio: total, costo: costoVenta||null, pendiente: true,
+      precio: total, costo: costoVenta||null, pendiente: !costoVenta,
       comprobante_id: comp.id,
       pago: 'Cuenta corriente', cliente: 'Sancor Seguros',
       origen: 'compra', user_id: userId,
