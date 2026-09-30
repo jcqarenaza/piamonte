@@ -61,7 +61,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [cliSugs, setCliSugs] = useState<ClienteMin[]>([])
   const [cliSel, setCliSel]   = useState<ClienteMin|null>(null)
   const [tipoSel, setTipoSel] = useState<TipoCliente|null>(null)
-  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7', obs:'' })
+  const [form, setForm]       = useState({ cli:'', tel:'', veh:'', pat:'', dias:'7', obs:'', condIva:'cf', cuit:'' })
 
   // Items del presupuesto
   const [items, setItems]     = useState<(VentaItem & { costo?:number; esRubro?:boolean; precioModificado?:boolean })[]>([])
@@ -232,7 +232,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const itemsImpresion = items  // todos los ítems van al PDF
   // En modo aseguradora el precio ya incluye IVA (y recargo si corresponde)
   const neto  = modoAseg ? items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0),0) : items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0),0)
-  const iva   = modoAseg ? 0 : (ivaOn ? Math.round(neto*IVA_RATE) : 0)
+  const iva   = modoAseg ? 0 : ((ivaOn || form.condIva==='ri') ? Math.round(neto*IVA_RATE) : 0)
   const total = neto+iva
 
   // Precio sugerido vs precio real
@@ -245,7 +245,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function openEdit(p: any) {
     setEditId(p.id)
-    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', pat: p.patente||'', dias: String(p.validez_dias||7), obs: p.observaciones||'' })
+    setForm({ cli: p.cliente||'', tel: p.telefono||'', veh: p.vehiculo||'', pat: p.patente||'', dias: String(p.validez_dias||7), obs: p.observaciones||'', condIva: p.cond_iva||'cf', cuit: p.cuit||'' })
     setCliQ(p.cliente||'')
     setCliSugs([])
     setItems(p.items||[])
@@ -288,6 +288,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     if(editId) {
       await supabase.from('presupuestos').update({
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
+        cond_iva: form.condIva||'cf', cuit: form.cuit||null,
         items, total:total, iva:iva||null, observaciones: form.obs||null,
         tipo_cliente_id:tipoSel?.id||null, tipo_cliente_nombre:tipoSel?.nombre||null,
       }).eq('id', editId)
@@ -296,6 +297,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       await supabase.from('presupuestos').insert({
         fecha:todayStr(), vencimiento:venc.toISOString().slice(0,10),
         cliente:form.cli||null, telefono:form.tel||null, vehiculo:form.veh||null, patente:form.pat||null,
+        cond_iva: form.condIva||'cf', cuit: form.cuit||null,
         items:itemsImpresion, neto, iva_pct:IVA_RATE, iva, total,
         dolar_blue:cotiz?.oficial??null, dolar_mep:cotiz?.mep??null, user_id:userId,
         tipo_cliente_id:tipoSel?.id??null, tipo_cliente_nombre:tipoSel?.nombre??null,
@@ -309,7 +311,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
     setModoAseg(false); setAsegSel(null); setAsegQ('')
-    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:''})
+    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:'',condIva:'cf',cuit:''})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
   }
@@ -390,6 +392,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     } else {
       const filas = [
         `Cliente: ${p.cliente||'Consumidor Final'}`,
+        ...((p as any).cuit ? [`CUIT: ${(p as any).cuit}`] : []),
+        ...((p as any).cond_iva==='ri' ? ['Cond. IVA: Responsable Inscripto'] : (p as any).cond_iva==='mono' ? ['Cond. IVA: Monotributista'] : []),
         ...(p.telefono ? [`Tel: ${p.telefono}`] : []),
         ...(p.vehiculo ? [`Vehiculo: ${p.vehiculo}`] : []),
         ...((p as any).patente ? [`Patente: ${(p as any).patente}`] : []),
@@ -829,6 +833,16 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nombre del cliente *"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre completo"/></Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
+            <Field label="Condición IVA">
+              <Select value={form.condIva} onChange={e=>{const v=e.target.value; setForm(p=>({...p,condIva:v})); if(v==='ri') setIvaOn(true)}}>
+                <option value="cf">Consumidor Final</option>
+                <option value="ri">Responsable Inscripto</option>
+                <option value="mono">Monotributista</option>
+              </Select>
+            </Field>
+            {form.condIva!=='cf' && (
+              <Field label="CUIT"><Input value={form.cuit} onChange={e=>setForm(p=>({...p,cuit:e.target.value}))} placeholder="30-12345678-9"/></Field>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
@@ -947,11 +961,13 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   </div>
                 )
               })}
-              {!modoAseg && (
+              {!modoAseg && (form.condIva==='ri' ? (
+                <p className="mt-2 text-xs font-semibold text-p-green">IVA 21% discriminado (Responsable Inscripto)</p>
+              ) : (
                 <label className="flex items-center gap-2 mt-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={ivaOn} onChange={e=>setIvaOn(e.target.checked)} className="accent-p-green"/>Sumar IVA 21%
                 </label>
-              )}
+              ))}
               <div className="bg-p-light rounded-lg p-3 mt-2 text-sm">
                 {modoAseg ? (
                   <>
