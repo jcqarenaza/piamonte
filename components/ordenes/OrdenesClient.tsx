@@ -395,6 +395,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const { data: comp, error: errComp } = await supabase.from('comprobantes').insert({
       numero: nextNumData ?? null,
       fecha: todayStr(), tipo: esFce ? 'FCE' : 'A', categoria: 'factura',
+      vto_pago: esFce ? (sancorVtoPago || null) : null,
       aseguradora_id: '79b592cf-a211-4f39-826a-5e7c0ef594dc',
       aseguradora_nombre: 'Sancor Seguros',
       cliente_nombre: 'Sancor Seguros', cliente_cuit: sancorCuitReceptor,

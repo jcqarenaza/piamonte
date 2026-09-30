@@ -38,9 +38,13 @@ export async function POST(req: NextRequest) {
     const vto = c.cae_vencimiento ? c.cae_vencimiento.split('-').reverse().join('/') : ''
     const tipo = c.categoria === 'nc' ? 'NOTA DE CREDITO' : 'FACTURA'
     // Código de tipo de comprobante ARCA (para el nombre de archivo): 001=FA A, 003=NC A, 006=FA B, 008=NC B
+    const esFCE = c.tipo === 'FCE'
     const tipoCode =
-      c.tipo === 'A' ? (c.categoria === 'nc' ? '003' : '001')
-                     : (c.categoria === 'nc' ? '008' : '006')
+      esFCE ? '201'
+      : c.tipo === 'A' ? (c.categoria === 'nc' ? '003' : '001')
+                       : (c.categoria === 'nc' ? '008' : '006')
+    // Vencimiento de pago: el guardado en el comprobante (clave en FCE) o la fecha de emisión
+    const vtoPago = (c as any).vto_pago ? String((c as any).vto_pago).split('-').reverse().join('/') : fecha
 
     // Cargar plantilla y reemplazar el placeholder del número de comprobante.
     // PdV y Nro viven DENTRO del content stream original (fuente Arial, ops copiados
@@ -79,6 +83,12 @@ export async function POST(req: NextRequest) {
         p.drawText(s, { x: xC - f.widthOfTextAtSize(s, sz)/2, y: B(yTop, sz), font: f, size: sz, color: K })
       }
 
+      // ── FCE: la plantilla trae "COD. 01" fijo — se tapa y se escribe 201 ──
+      if (esFCE) {
+        cover(p, 276, 96, 48, 11, 1)
+        tC(298, 97, 'COD. 201', 7, true)
+      }
+
       // ── COPIA ── (el "ORIGINAL" fijo fue eliminado de la plantilla)
       tC(298, 25, copia, 14, true)
 
@@ -95,10 +105,10 @@ export async function POST(req: NextRequest) {
       t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 169.3, fecha, 10)
       {
         const lblVto = 'Fecha de Vto. para el pago: '
-        const wF = R.widthOfTextAtSize(fecha, 10)
+        const wF = R.widthOfTextAtSize(vtoPago, 10)
         const wL = Bd.widthOfTextAtSize(lblVto, 10)
         t(578 - wF - wL, 169.3, lblVto, 10, true)
-        t(578 - wF, 169.3, fecha, 10)
+        t(578 - wF, 169.3, vtoPago, 10)
       }
 
       // ── RECEPTOR ──
@@ -106,6 +116,12 @@ export async function POST(req: NextRequest) {
       t(52, 189.6, (cuitAseg || '').replace(/-/g,''), 8)
       t(222, 189.6, 'Apellido y Nombre / Razón Social:', 8, true)
       t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
+      // ── FCE: CBU informado + opción de transmisión (datos obligatorios del régimen) ──
+      if (esFCE && (c as any).cbu_informado) {
+        cover(p, 52, 204, 528, 12, 1)
+        t(52, 205.5, `CBU Emisor: ${(c as any).cbu_informado}`, 8, true)
+        t(300, 205.5, 'Opción de transmisión: Sistema de Circulación Abierta (SCA)', 8)
+      }
       // ── ITEMS ──
       cover(p, 15, 295, 566, 225, 0)
 
@@ -187,7 +203,7 @@ export async function POST(req: NextRequest) {
           fecha: c.fecha,
           cuit: 27242657174,
           ptoVta: 6,
-          tipoCmp: c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
+          tipoCmp: esFCE ? 201 : c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
           nroCmp:     Number(c.nro_cbte_afip ?? c.numero ?? 0),
           importe:    Number(c.total  || 0),
           moneda: 'PES',
