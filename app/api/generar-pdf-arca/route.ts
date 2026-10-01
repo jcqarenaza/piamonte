@@ -63,7 +63,23 @@ export async function POST(req: NextRequest) {
     const Bd = await outDoc.embedFont(StandardFonts.HelveticaBold)
     const It = await outDoc.embedFont(StandardFonts.HelveticaOblique)
 
+    // ── Reparto multipágina: la última página lleva hasta 8 ítems (deja lugar a
+    // obs + totales); las anteriores hasta 16 (usan la zona de totales para ítems).
+    // Con 8 o menos: una sola página, idéntica a siempre.
+    const todosItems = (c.items || [])
+    const chunks: any[][] = []
+    { const rem = [...todosItems]
+      const extra = Math.max(0, rem.length - 8)            // lo que no entra en la última
+      const nInter = Math.ceil(extra / 16)                 // páginas intermedias necesarias
+      const porPag = nInter > 0 ? Math.ceil(extra / nInter) : 0
+      for (let k = 0; k < nInter; k++) chunks.push(rem.splice(0, porPag))
+      chunks.push(rem) }                                   // última: 8 o menos, con totales
+    const nPags = chunks.length
+
     for (const copia of copias) {
+     for (let pg = 0; pg < nPags; pg++) {
+      const chunkItems = chunks[pg]
+      const esUltima = pg === nPags - 1
       // Copiar plantilla con layout exacto de ARCA
       const tmplDoc = await PDFDocument.load(tmplBytes)
       const [tmplPage] = await outDoc.copyPages(tmplDoc, [0])
@@ -141,12 +157,10 @@ export async function POST(req: NextRequest) {
       cover(p, 15, 295, 566, 225, 0)
 
       let iy = 301
-      const IY_MAX = 505   // la tabla termina acá: nada pisa los totales (y=524)
-      const itemsArr = (c.items || [])
-      let cortados = 0
+      const IY_MAX = esUltima ? 505 : 690   // sin totales, la tabla puede bajar más
+      const itemsArr = chunkItems
       for (let ii = 0; ii < itemsArr.length; ii++) {
         const it = itemsArr[ii]
-        if (iy > IY_MAX - 24) { cortados = itemsArr.length - ii; break }
         const net = Math.round((it.p || 0) / 1.21 * 100) / 100
         // Descripción
         t(57, iy, (it.d || '').slice(0, 55), 8)
@@ -180,13 +194,10 @@ export async function POST(req: NextRequest) {
           iy += 10
         }
       }
-      if (cortados > 0) {
-        t(57, Math.min(iy, IY_MAX - 10), `... y ${cortados} trabajo(s) más — detalle completo en la liquidación`, 8, true)
-        iy = Math.min(iy + 12, IY_MAX)
-      }
+
 
       // ── OBSERVACIONES (destacadas, hasta 3 líneas) ──
-      if (c.observaciones && iy <= IY_MAX - 12) {
+      if (esUltima && c.observaciones && iy <= 505 - 12) {
         iy += 6
         const obsTxt = String(c.observaciones).replace(/\s+/g, ' ').trim()
         const maxObsLins = Math.max(1, Math.min(3, Math.floor((518 - iy) / 13)))  // solo las líneas que entran
@@ -205,8 +216,11 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // ── TOTALES ── (formato ARCA: sin separador de miles)
+      // ── TOTALES ── (formato ARCA: sin separador de miles; solo en la última página)
       cover(p, 187, 524, 392, 145, 1)
+      if (!esUltima) {
+        tR(577, 658, 'Continúa en la página siguiente...', 9, true)
+      } else {
       t(187, 533, 'Importe Otros Tributos: $', 9)
       t(329.5, 533, '0,00', 9)
       const rows: [string, string, boolean, number][] = [
@@ -225,6 +239,13 @@ export async function POST(req: NextRequest) {
         const f = bold ? Bd : R
         p.drawText(lbl, { x: 498 - f.widthOfTextAtSize(lbl, sz) - 4, y: B(yRow, sz), font: f, size: sz, color: K })
         p.drawText(val, { x: 577 - f.widthOfTextAtSize(val, sz), y: B(yRow, sz), font: f, size: sz, color: K })
+      }
+      }
+
+      // ── Pág. X/N ── (el template trae "Pág. 1/1" fijo; con varias páginas se re-escribe)
+      if (nPags > 1) {
+        cover(p, 258, 712, 80, 13, 1)
+        tC(298, 714, `Pág. ${pg + 1}/${nPags}`, 10, true)
       }
 
       // QR — posición exacta de Arca
@@ -257,6 +278,7 @@ export async function POST(req: NextRequest) {
         t(442.6, 717, `CAE N°: ${c.cae_emitido}`, 10, true)
         t(374.4, 731, `Fecha de Vto. de CAE: ${vto}`, 10, true)
       }
+     }
     }
 
     const bytes = await outDoc.save()
