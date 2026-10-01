@@ -83,10 +83,15 @@ export async function POST(req: NextRequest) {
         p.drawText(s, { x: xC - f.widthOfTextAtSize(s, sz)/2, y: B(yTop, sz), font: f, size: sz, color: K })
       }
 
-      // ── FCE: la plantilla trae "COD. 01" fijo — se tapa y se escribe 201 ──
+      // ── FCE: encabezado calcado del oficial ARCA (201-00003-00000098) ──
       if (esFCE) {
-        cover(p, 276, 96, 48, 11, 1)
-        tC(298, 97, 'COD. 201', 7, true)
+        // "COD. 01" fijo de la plantilla → CÓD. 201 (dentro del recuadro de la letra)
+        cover(p, 276, 73, 45, 11, 1)
+        tC(298, 74.5, 'CÓD. 201', 7, true)
+        // Título "FACTURA" → "FACTURA DE CRÉDITO ELECTRÓNICA MiPyMEs (FCE)"
+        cover(p, 334, 56, 248, 30, 1)
+        t(341, 58, 'FACTURA DE CRÉDITO ELECTRÓNICA', 12, true)
+        t(341, 72, 'MiPyMEs (FCE)', 12, true)
       }
 
       // ── COPIA ── (el "ORIGINAL" fijo fue eliminado de la plantilla)
@@ -103,7 +108,16 @@ export async function POST(req: NextRequest) {
       t(159, 169.3, fecha, 10)
       t(232.4, 169.3, 'Hasta:', 10, true)
       t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 169.3, fecha, 10)
-      {
+      if (esFCE) {
+        // Orden del oficial: Vto de pago | Período Desde | Hasta (labels del template tapados)
+        cover(p, 18, 167.5, 563, 14, 0)
+        t(24, 169.3, 'Fecha de Vto. para el pago: ', 10, true)
+        t(24 + Bd.widthOfTextAtSize('Fecha de Vto. para el pago: ', 10), 169.3, vtoPago, 10)
+        t(262, 169.3, 'Período Facturado Desde: ', 10, true)
+        t(262 + Bd.widthOfTextAtSize('Período Facturado Desde: ', 10), 169.3, fecha, 10)
+        t(478, 169.3, 'Hasta: ', 10, true)
+        t(478 + Bd.widthOfTextAtSize('Hasta: ', 10), 169.3, fecha, 10)
+      } else {
         const lblVto = 'Fecha de Vto. para el pago: '
         const wF = R.widthOfTextAtSize(vtoPago, 10)
         const wL = Bd.widthOfTextAtSize(lblVto, 10)
@@ -116,17 +130,21 @@ export async function POST(req: NextRequest) {
       t(52, 189.6, (cuitAseg || '').replace(/-/g,''), 8)
       t(222, 189.6, 'Apellido y Nombre / Razón Social:', 8, true)
       t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
-      // ── FCE: CBU informado + opción de transmisión (datos obligatorios del régimen) ──
+      // ── FCE: CBU del Emisor (banda centrada) + Opción de Transferencia, como el oficial ──
       if (esFCE && (c as any).cbu_informado) {
-        cover(p, 52, 204, 528, 12, 1)
-        t(52, 205.5, `CBU Emisor: ${(c as any).cbu_informado}`, 8, true)
-        t(300, 205.5, 'Opción de transmisión: Sistema de Circulación Abierta (SCA)', 8)
+        tC(298, 242, `CBU del Emisor: ${(c as any).cbu_informado}`, 9, true)
+        t(24, 258, 'Opción de Transferencia: Sistema de Circulacion Abierta', 8)
       }
       // ── ITEMS ──
       cover(p, 15, 295, 566, 225, 0)
 
       let iy = 301
-      for (const it of (c.items || [])) {
+      const IY_MAX = 505   // la tabla termina acá: nada pisa los totales (y=524)
+      const itemsArr = (c.items || [])
+      let cortados = 0
+      for (let ii = 0; ii < itemsArr.length; ii++) {
+        const it = itemsArr[ii]
+        if (iy > IY_MAX - 24) { cortados = itemsArr.length - ii; break }
         const net = Math.round((it.p || 0) / 1.21 * 100) / 100
         // Descripción
         t(57, iy, (it.d || '').slice(0, 55), 8)
@@ -145,23 +163,34 @@ export async function POST(req: NextRequest) {
         // Subtotal c/IVA
         tR(579, iy, fmt((it.c || 1) * (it.p || 0)), 8)
 
-        iy += 18
+        iy += 15
 
-        // Referencia
-        if (c.siniestro || c.patente || c.vehiculo || c.cliente_nombre) {
+        // Referencia: en facturas por lotes (ítems con os_id) va el SINIESTRO del ítem;
+        // en facturas individuales, la referencia global del comprobante como siempre
+        if ((it as any).os_id) {
+          if ((it as any).sin) {
+            p.drawText(`Sin: ${(it as any).sin}`, { x: 57, y: B(iy + 3, 7), font: It, size: 7, color: GRAY2 })
+            iy += 9
+          }
+        } else if (c.siniestro || c.patente || c.vehiculo || c.cliente_nombre) {
           const ref = [c.vehiculo, c.patente ? `Pat: ${c.patente}` : null, c.siniestro ? `Sin: ${c.siniestro}` : null, c.cliente_nombre ? c.cliente_nombre.toUpperCase() : null].filter(Boolean).join(' · ')
           p.drawText(ref, { x: 57, y: B(iy + 4, 7), font: It, size: 7, color: GRAY2 })
           iy += 10
         }
       }
+      if (cortados > 0) {
+        t(57, Math.min(iy, IY_MAX - 10), `... y ${cortados} trabajo(s) más — detalle completo en la liquidación`, 8, true)
+        iy = Math.min(iy + 12, IY_MAX)
+      }
 
       // ── OBSERVACIONES (destacadas, hasta 3 líneas) ──
-      if (c.observaciones) {
+      if (c.observaciones && iy <= IY_MAX - 12) {
         iy += 6
         const obsTxt = String(c.observaciones).replace(/\s+/g, ' ').trim()
+        const maxObsLins = Math.max(1, Math.min(3, Math.floor((518 - iy) / 13)))  // solo las líneas que entran
         const lineas: string[] = []
         let resto = obsTxt
-        while (resto.length > 0 && lineas.length < 3) {
+        while (resto.length > 0 && lineas.length < maxObsLins) {
           if (resto.length <= 80) { lineas.push(resto); break }
           let corte = resto.lastIndexOf(' ', 80)
           if (corte < 40) corte = 80

@@ -400,7 +400,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       aseguradora_nombre: 'Sancor Seguros',
       cliente_nombre: 'Sancor Seguros', cliente_cuit: sancorCuitReceptor,
       cliente_tipo_fiscal: 'responsable_inscripto',
-      items: osSel.map((o:any)=>({ d: `OS-${String(o.numero).padStart(4,'0')} · ${o.cliente} · ${o.vehiculo||''}`.trim(), c: 1, p: sancorTotales[o.id]||0, os_id: o.id })),
+      items: osSel.map((o:any)=>({ d: `OS-${String(o.numero).padStart(4,'0')} · ${o.cliente} · ${o.vehiculo||''}`.trim(), c: 1, p: sancorTotales[o.id]||0, os_id: o.id, sin: o.siniestro||null })),
       pagos: [{ metodo:'Cuenta corriente', monto:String(total) }],
       es_negro: false, es_nc: false,
       neto, iva_pct: 21, iva, total,
