@@ -105,12 +105,14 @@ export async function POST(req: NextRequest) {
 
       // ── PERÍODO FACTURADO / HASTA / FECHA VTO PAGO ── (formato exacto ARCA, con espacios tras ':')
       cover(p, 150, 168, 430, 14, 1)
-      t(159, 169.3, fecha, 10)
-      t(232.4, 169.3, 'Hasta:', 10, true)
-      t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 169.3, fecha, 10)
+      if (!esFCE) {
+        t(159, 169.3, fecha, 10)
+        t(232.4, 169.3, 'Hasta:', 10, true)
+        t(232.4 + Bd.widthOfTextAtSize('Hasta:', 10) + 4, 169.3, fecha, 10)
+      }
       if (esFCE) {
         // Orden del oficial: Vto de pago | Período Desde | Hasta (labels del template tapados)
-        cover(p, 18, 167.5, 563, 14, 0)
+        cover(p, 18, 167, 563, 15, 1)
         t(24, 169.3, 'Fecha de Vto. para el pago: ', 10, true)
         t(24 + Bd.widthOfTextAtSize('Fecha de Vto. para el pago: ', 10), 169.3, vtoPago, 10)
         t(262, 169.3, 'Período Facturado Desde: ', 10, true)
@@ -132,8 +134,8 @@ export async function POST(req: NextRequest) {
       t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
       // ── FCE: CBU del Emisor (banda centrada) + Opción de Transferencia, como el oficial ──
       if (esFCE && (c as any).cbu_informado) {
-        tC(298, 242, `CBU del Emisor: ${(c as any).cbu_informado}`, 9, true)
-        t(24, 258, 'Opción de Transferencia: Sistema de Circulacion Abierta', 8)
+        tC(298, 256, `CBU del Emisor: ${(c as any).cbu_informado}`, 9, true)
+        t(24, 271, 'Opción de Transferencia: Sistema de Circulacion Abierta', 8)
       }
       // ── ITEMS ──
       cover(p, 15, 295, 566, 225, 0)
@@ -163,7 +165,7 @@ export async function POST(req: NextRequest) {
         // Subtotal c/IVA
         tR(579, iy, fmt((it.c || 1) * (it.p || 0)), 8)
 
-        iy += 15
+        iy += esFCE ? 15 : 18
 
         // Referencia: en facturas por lotes (ítems con os_id) va el SINIESTRO del ítem;
         // en facturas individuales, la referencia global del comprobante como siempre
