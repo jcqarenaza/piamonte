@@ -134,8 +134,8 @@ export async function POST(req: NextRequest) {
       t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
       // ── FCE: CBU del Emisor (banda centrada) + Opción de Transferencia, como el oficial ──
       if (esFCE && (c as any).cbu_informado) {
-        tC(298, 256, `CBU del Emisor: ${(c as any).cbu_informado}`, 9, true)
-        t(24, 271, 'Opción de Transferencia: Sistema de Circulacion Abierta', 8)
+        tC(298, 249.5, `CBU del Emisor: ${(c as any).cbu_informado}`, 8.5, true)
+        t(24, 260, 'Opción de Transferencia: Sistema de Circulacion Abierta', 8)
       }
       // ── ITEMS ──
       cover(p, 15, 295, 566, 225, 0)
