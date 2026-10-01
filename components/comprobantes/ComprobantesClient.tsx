@@ -366,8 +366,22 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setNuevoCliForm({ nombre:'', telefono:'', cuit:'' })
   }
 
-  function addPago(){ setPagos(p=>[...p,{metodo:'Efectivo',monto:''}]) }
-  function updPago(i:number, k:keyof Pago, v:any){ setPagos(prev=>prev.map((p,j)=>j===i?{...p,[k]:v}:p)) }
+  // "Cuenta corriente" no es un medio de pago sino lo que queda a cobrar: si está presente,
+  // absorbe el resto del total y no se agregan más medios después.
+  function addPago(){ setPagos(p=> p.some(x=>x.metodo==='Cuenta corriente') ? p : [...p,{metodo:'Efectivo',monto:''}]) }
+  function updPago(i:number, k:keyof Pago, v:any){
+    setPagos(prev=>{
+      let next = prev.map((p,j)=>j===i?{...p,[k]:v}:p)
+      if (k==='metodo' && v==='Cuenta corriente') {
+        // Solo puede haber una fila CC; se queda con todo lo no cubierto por los otros medios
+        next = next.filter((p,j)=> j===i || p.metodo!=='Cuenta corriente')
+        const otros = next.reduce((a,p)=> p.metodo==='Cuenta corriente' ? a : a+(parseFloat(String(p.monto).replace(',','.'))||0), 0)
+        const resto = Math.max(0, Math.round((total - otros)*100)/100)
+        next = next.map(p=> p.metodo==='Cuenta corriente' ? {...p, monto: String(resto)} : p)
+      }
+      return next
+    })
+  }
   function delPago(i:number){ if(pagos.length>1) setPagos(prev=>prev.filter((_,j)=>j!==i)) }
   function distribuirTotal(){ setPagos(prev=>prev.map((p,i)=>i===0?{...p,monto:String(total)}:p)) }
 
@@ -2277,6 +2291,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <label className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Formas de pago</label>
               <div className="flex gap-2">
                 {total>0&&<button onClick={distribuirTotal} style={{...btnGray,padding:'4px 10px',fontSize:11}}>Distribuir total</button>}
+                {total>0&&modo==='cliente'&&!pagos.some(p=>p.metodo==='Cuenta corriente')&&(
+                  <button onClick={()=>setPagos([{metodo:'Cuenta corriente',monto:String(total)}])}
+                    style={{...btnGray,padding:'4px 10px',fontSize:11,background:'#fef3c7',border:'1px solid #f59e0b',color:'#92400e',fontWeight:700}}>
+                    💳 Todo a cuenta corriente
+                  </button>
+                )}
                 <button onClick={addPago} style={{...btnSm,padding:'4px 10px',fontSize:11}}>+ Agregar</button>
               </div>
             </div>
