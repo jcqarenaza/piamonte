@@ -556,14 +556,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       // La CC de aseguradoras la acredita el trigger fn_nc_aseguradora_cc en la base ("(auto)").
       // Acreditar acá también generaba DOBLE haber (caso La Segunda NC 0006-00000001, 07/07).
     } else if ((ncComp as any).cliente_id) {
-      await supabase.from('cuenta_corriente').insert({
-        cliente_id: (ncComp as any).cliente_id,
-        cliente_nombre: ncComp.cliente_nombre,
-        fecha: todayStr(), tipo: 'nc',
-        descripcion: ncDesc,
-        debe: 0, haber: ncTotalF,
-        comprobante_id: (nc as any).id, user_id: userId,
-      })
+      // Solo si la factura original fue a cuenta corriente (su cargo existe en CC).
+      // Si se cobró contado/transferencia, la devolución pasa por Caja y la CC no se toca
+      // (caso Pignatta/Gutierrez/Bhassa/Manera 09/2026: NC de facturas pagadas creaban crédito fantasma).
+      const { data: cargoCC } = await supabase.from('cuenta_corriente')
+        .select('id').eq('comprobante_id', ncComp.id).gt('debe', 0).limit(1)
+      if (cargoCC && cargoCC.length > 0) {
+        await supabase.from('cuenta_corriente').insert({
+          cliente_id: (ncComp as any).cliente_id,
+          cliente_nombre: ncComp.cliente_nombre,
+          fecha: todayStr(), tipo: 'nc',
+          descripcion: ncDesc,
+          debe: 0, haber: ncTotalF,
+          comprobante_id: (nc as any).id, user_id: userId,
+        })
+      }
     }
 
     // Liberar las OS de la factura original para poder refacturar
