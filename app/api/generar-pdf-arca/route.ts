@@ -105,9 +105,9 @@ export async function POST(req: NextRequest) {
         cover(p, 276, 73, 45, 11, 1)
         tC(298, 74.5, 'CÓD. 201', 7, true)
         // Título "FACTURA" → "FACTURA DE CRÉDITO ELECTRÓNICA MiPyMEs (FCE)"
-        cover(p, 334, 56, 248, 30, 1)
-        t(341, 58, 'FACTURA DE CRÉDITO ELECTRÓNICA', 12, true)
-        t(341, 72, 'MiPyMEs (FCE)', 12, true)
+        cover(p, 334, 55, 248, 30, 1)
+        t(341, 57, 'FACTURA DE CRÉDITO ELECTRÓNICA', 11.5, true)
+        t(341, 70, 'MiPyMEs (FCE)', 11.5, true)
       }
 
       // ── COPIA ── (el "ORIGINAL" fijo fue eliminado de la plantilla)
@@ -163,7 +163,9 @@ export async function POST(req: NextRequest) {
         const it = itemsArr[ii]
         const net = Math.round((it.p || 0) / 1.21 * 100) / 100
         // Descripción
-        t(57, iy, (it.d || '').slice(0, 55), 8)
+        { let d = String(it.d || '')
+          while (d.length > 4 && R.widthOfTextAtSize(d, 8) > 186) d = d.slice(0, -1)
+          t(57, iy, d, 8) }
         // Cantidad
         tC(256, iy, `${Number(it.c || 1).toFixed(2).replace('.', ',')}`, 8)
         // U. medida
