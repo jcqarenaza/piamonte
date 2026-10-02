@@ -34,7 +34,10 @@ export default function ContabilidadClient() {
   async function load() {
       setLoading(true)
       const mesStart = mes + '-01'
-      const mesEnd   = mes + '-31'
+      // Último día REAL del mes: '-31' no existe en meses cortos y la API
+      // rechazaba la fecha inválida — septiembre (30 días) quedaba vacío
+      const [yy, mm] = mes.split('-').map(Number)
+      const mesEnd   = new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10)
       const [v, c, r] = await Promise.all([
         supabase.from('vista_libro_iva_ventas').select('*').gte('fecha', mesStart).lte('fecha', mesEnd),
         supabase.from('vista_libro_iva_compras').select('*').gte('fecha', mesStart).lte('fecha', mesEnd),
