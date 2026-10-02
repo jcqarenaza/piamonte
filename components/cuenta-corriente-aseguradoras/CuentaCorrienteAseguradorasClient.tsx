@@ -362,7 +362,9 @@ export default function CuentaCorrienteAseguradorasClient() {
   // ── LIQUIDACIONES ──
   async function loadLiquidaciones() {
     setLoadingLiq(true)
-    const mesStart = mes+'-01', mesEnd = mes+'-31'
+    // Último día REAL del mes ('-31' no existe en meses cortos y la API rechazaba la fecha)
+    const [yy, mm] = mes.split('-').map(Number)
+    const mesStart = mes+'-01', mesEnd = new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10)
     const [{ data: cobrosData }, { data: asegRows }, { data: factsData }] = await Promise.all([
       supabase.from('cobros_aseguradoras').select('*').gte('fecha',mesStart).lte('fecha',mesEnd).order('fecha',{ascending:false}),
       supabase.from('aseguradoras').select('id,nombre'),
