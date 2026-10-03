@@ -2390,7 +2390,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       </Modal>
 
       {/* Modal Nota de Crédito */}
-      <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — ${ncComp?.tipo??''}-0006-${String(ncComp?.nro_cbte_afip ?? ncComp?.numero ?? '').padStart(8,'0')}`}>
+      <Modal open={!!ncComp} onClose={()=>setNcComp(null)} title={`Nota de Crédito — ${ncComp?.tipo??''}-0006-${String(ncComp?.nro_cbte_afip ?? ncComp?.numero ?? '').padStart(8,'0')}`} size="xl">
         {ncComp && (
           <div className="flex flex-col gap-3">
             {/* Info del comprobante original */}
@@ -2469,7 +2469,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       </Modal>
 
       {/* Modal Nota de Débito */}
-      <Modal open={!!ndComp} onClose={()=>setNdComp(null)} title={'Nota de Débito — Comprobante ' + (ndComp?.numero??'')}>
+      <Modal open={!!ndComp} onClose={()=>setNdComp(null)} title={'Nota de Débito — Comprobante ' + (ndComp?.numero??'')} size="lg">
         {ndComp && (
           <div className="flex flex-col gap-4">
             <div className="bg-p-light rounded-xl px-4 py-3 text-sm">
@@ -2517,7 +2517,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
         )}
       </Modal>
-      <Modal open={!!adjModal} onClose={()=>setAdjModal(null)} title={`Adjuntos — ${adjModal?.cliente_nombre||adjModal?.aseguradora_nombre||''} N°${adjModal?.numero||''}`}>
+      <Modal open={!!adjModal} onClose={()=>setAdjModal(null)} title={`Adjuntos — ${adjModal?.cliente_nombre||adjModal?.aseguradora_nombre||''} N°${adjModal?.numero||''}`} size="xl">
         {adjModal && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
@@ -2557,7 +2557,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           </div>
         )}
       </Modal>
-      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante">
+      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante" size="xl">
         {verComp && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-2">

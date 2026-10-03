@@ -1127,7 +1127,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"}>
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar orden de servicio" : "Nueva orden de servicio"} size="xl">
         <div className="flex flex-col gap-3">
           {/* Aseguradora — opcional, o puede ser solo cliente */}
           <div className="grid grid-cols-3 gap-3">
@@ -1422,7 +1422,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       </Modal>
 
       {/* Modal Factura Sancor */}
-      <Modal open={sancorModal} onClose={()=>setSancorModal(false)} title="Factura Sancor Seguros" size="lg">
+      <Modal open={sancorModal} onClose={()=>setSancorModal(false)} title="Factura Sancor Seguros" size="xl">
         <div className="flex flex-col gap-4">
           {sancorOS.length === 0 ? (
             <p className="text-sm text-p-ink2 text-center py-6">No hay OS de Sancor con cristal colocado pendientes de facturar.</p>

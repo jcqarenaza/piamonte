@@ -1936,7 +1936,7 @@ export default function ComprasClient() {
       </Modal>
 
       {/* Modal Ver detalle (solo lectura) */}
-      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante">
+      <Modal open={!!verComp} onClose={()=>setVerComp(null)} title="Detalle del comprobante" size="xl">
         {verComp && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-2">

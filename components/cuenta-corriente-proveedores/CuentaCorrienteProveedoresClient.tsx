@@ -871,7 +871,7 @@ export default function CuentaCorrienteProveedoresClient() {
 
       {/* Modal ver comprobante con ítems */}
       {verComp && (
-        <Modal open={!!verComp} onClose={()=>setVerComp(null)} title={`${verComp.tipo==='nc'?'NC':verComp.tipo==='nd'?'ND':'Factura'} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}`}>
+        <Modal open={!!verComp} onClose={()=>setVerComp(null)} title={`${verComp.tipo==='nc'?'NC':verComp.tipo==='nd'?'ND':'Factura'} ${verComp.letra||''} ${verComp.punto_venta||''}-${verComp.numero||''}`} size="xl">
           <div className="flex flex-col gap-3 text-sm">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="flex justify-between"><span className="text-p-ink2">Fecha</span><span>{verComp.fecha?.split('-').reverse().join('/')}</span></div>
@@ -964,7 +964,7 @@ export default function CuentaCorrienteProveedoresClient() {
       </Modal>
 
       {/* Modal Orden de Pago: elegir varias facturas + NC para un solo pago */}
-      <Modal open={opOpen} onClose={()=>setOpOpen(false)} title={`Nueva Orden de Pago — ${sel?.proveedor_nombre}`} size="lg">
+      <Modal open={opOpen} onClose={()=>setOpOpen(false)} title={`Nueva Orden de Pago — ${sel?.proveedor_nombre}`} size="xl">
         <div className="flex flex-col gap-3">
           {pendientes.length === 0 ? (
             <Empty msg="Este proveedor no tiene facturas ni NC pendientes de aplicar." />

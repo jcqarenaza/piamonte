@@ -52,6 +52,10 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const [asegQ, setAsegQ]       = useState('')
   const [asegHits, setAsegHits] = useState<PrecioAseg[]>([])
   const [manoObraIncluida, setManoObraIncluida] = useState(true)
+  // ── Calibración ADAS en aseguradoras: al primer ítem se agregan INSTALACIÓN (sin precio),
+  // CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN (% de la aseguradora).
+  // Se inyecta UNA sola vez por presupuesto: si Vero los saca, no vuelven solos.
+  const [adasInyectado, setAdasInyectado] = useState(false)
 
   // Flete por proveedor
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
@@ -93,7 +97,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
     supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('cotizaciones').select('blue,mep,oficial').order('fecha',{ascending:false}).limit(1).maybeSingle().then(({data})=>{if(data)setCotiz(data)})
-    supabase.from('aseguradoras').select('id,nombre,lista_precio,recargo_pct').eq('activo',true).order('nombre').then(({data})=>setAseguradoras((data??[]).map((a:any)=>({...a,recargo_pct:+a.recargo_pct}))))
+    supabase.from('aseguradoras').select('id,nombre,lista_precio,recargo_pct,bonif_adas_pct').eq('activo',true).order('nombre').then(({data})=>setAseguradoras((data??[]).map((a:any)=>({...a,recargo_pct:+a.recargo_pct}))))
     supabase.from('proveedores_compra').select('nombre,flete_pct').eq('activo',true)
       .then(({data}) => {
         const m: Record<string,number> = {}
@@ -152,6 +156,26 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     } as any])
     setAsegCatQ(''); setAsegCatHits([])
   }
+
+  useEffect(() => {
+    if (!modoAseg || !asegSel || adasInyectado) return
+    if (!items.length || items.some(it => String(it.d||'').toUpperCase().includes('CALIBRACION ADAS') || String(it.d||'').toUpperCase().includes('CALIBRACIÓN ADAS'))) return
+    setAdasInyectado(true)
+    ;(async () => {
+      try {
+        const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
+        const precio = Number(art?.precio_venta) || 0
+        if (!precio) return
+        const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
+        const nuevos: any[] = [
+          { d:'INSTALACION — INCLUIDA', c:1, p:0 },
+          { d:'CALIBRACION ADAS', c:1, p:precio },
+        ]
+        if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+        setItems(prev => [...prev, ...nuevos])
+      } catch {}
+    })()
+  }, [modoAseg, asegSel, items, adasInyectado, supabase])
 
   function pickAseg(h: PrecioAseg) {
     if(!asegSel) return
@@ -307,7 +331,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       })
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
-    setModoAseg(false); setAsegSel(null); setAsegQ('')
+    setModoAseg(false); setAsegSel(null); setAsegQ(''); setAdasInyectado(false)
     setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:'',condIva:'cf',cuit:''})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
@@ -428,8 +452,9 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       if(idx%2===0){ doc.setFillColor(245,250,247); doc.rect(pad,y,rw,rowH,'F') }
       descLines.forEach((ln, li) => doc.text(ln, hx+2, y+4.5+li*4))
       doc.text(String(it.c), hx+cols[0]+cols[1]-2, y+4.5, {align:'right'})
-      doc.text(fmt(it.p), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
-      doc.text(fmt(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
+      const sinPrecio = !(parseFloat(String(it.p).replace(',','.'))||0)   // ítem informativo (INSTALACIÓN — INCLUIDA)
+      doc.text(sinPrecio ? '—' : fmt(it.p), hx+cols[0]+cols[1]+cols[2]-2, y+4.5, {align:'right'})
+      doc.text(sinPrecio ? '—' : fmt(it.c*(parseFloat(String(it.p).replace(',','.'))||0)), hx+cols[0]+cols[1]+cols[2]+cols[3]-2, y+4.5, {align:'right'})
       y+=rowH
     })
 
@@ -629,7 +654,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
         </div>
       )}
 
-      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"} size="lg">
+      <Modal open={open} onClose={()=>setOpen(false)} title={editId ? "Editar presupuesto" : "Nuevo presupuesto"} size="xl">
         <div className="flex flex-col gap-3">
 
           {/* Toggle modo */}
