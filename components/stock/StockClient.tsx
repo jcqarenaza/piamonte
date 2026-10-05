@@ -291,10 +291,21 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   // Chequeo de consistencia stock vs movimientos
   const [inconsistencias, setInconsistencias] = useState<any[]>([])
   const [showInconsistencias, setShowInconsistencias] = useState(false)
-  useEffect(() => {
+  const [syncingId, setSyncingId] = useState<string|null>(null)
+  const loadInconsistencias = useCallback(() => {
     supabase.from('vista_inconsistencias_stock').select('*')
       .then(({ data }) => setInconsistencias(data ?? []))
   }, [supabase])
+  useEffect(() => { loadInconsistencias() }, [loadInconsistencias])
+  // La verdad es el kardex: la ficha se pisa con la suma de movimientos (RPC con skip del trigger)
+  async function sincronizarKardex(inc:any) {
+    if (!confirm(`Sincronizar ${inc.codigo}: la ficha pasa de ${inc.stock_actual} a ${inc.total_movimientos} (la suma real del kardex). ¿Confirmar?`)) return
+    setSyncingId(inc.stock_id)
+    const { error } = await supabase.rpc('sincronizar_stock_kardex', { p_stock_id: inc.stock_id })
+    setSyncingId(null)
+    if (error) { alert(`⚠ No se pudo sincronizar: ${error.message}`); return }
+    loadInconsistencias(); load()
+  }
 
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
   const marcas = [...new Set(items.filter(s => s.activo && s.marca).map(s => s.marca as string))].sort()
@@ -1497,6 +1508,11 @@ Usá otro código o elegí esa pieza del buscador.`); return }
                   <span className={`font-bold ${inc.diferencia > 0 ? 'text-amber-600' : 'text-red-700'}`}>
                     {inc.diferencia > 0 ? '+' : ''}{inc.diferencia}
                   </span>
+                  <button onClick={e=>{e.stopPropagation(); sincronizarKardex(inc)}} disabled={syncingId===inc.stock_id}
+                    className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-600 hover:text-white disabled:opacity-50 shrink-0"
+                    title="Pisar la ficha con la suma real del kardex">
+                    {syncingId===inc.stock_id ? '…' : '⚡ Sincronizar'}
+                  </button>
                 </div>
                 )
               })}
