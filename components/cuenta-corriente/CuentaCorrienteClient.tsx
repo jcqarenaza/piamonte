@@ -594,17 +594,44 @@ export default function CuentaCorrienteClient() {
             <p className="text-sm text-red-700">Saldo pendiente</p>
             <p className="font-saira font-bold text-2xl text-red-600">{moneyARS(sel?.saldo_actual||0)}</p>
           </div>
-          <Field label="Monto del cobro *">
+          <Field label="Monto del cobro * — lo que entró al banco (sin las retenciones)">
             <Input value={formPago.monto} onChange={e=>setFormPago(p=>({...p,monto:e.target.value}))} placeholder="0"/>
           </Field>
-          {formPago.monto && (
-            <div className="bg-p-light rounded-lg p-3 text-sm flex justify-between">
-              <span className="text-p-ink2">Saldo restante</span>
-              <span className={`font-bold ${(sel?.saldo_actual||0)-(+formPago.monto||0)>0?'text-red-500':'text-green-600'}`}>
-                {moneyARS(Math.max(0,(sel?.saldo_actual||0)-(+formPago.monto||0)))}
-              </span>
-            </div>
-          )}
+          {formPago.monto && (() => {
+            // El haber real = transferencia + retenciones: el resumen y el aviso usan ese total
+            const totalRet = Object.values(retMonto).reduce((a,v)=>a+(parseFloat(v||'0')||0),0)
+            const haberTotal = (+formPago.monto||0) + totalRet
+            const saldo = sel?.saldo_actual||0
+            const resta = saldo - haberTotal
+            const neto = Math.max(0, Math.round((saldo - totalRet)*100)/100)
+            return (
+              <div className="flex flex-col gap-2">
+                {totalRet>0 && (
+                  <div className="bg-p-light rounded-lg p-3 text-sm flex justify-between">
+                    <span className="text-p-ink2">Total a acreditar (transf. + retenciones)</span>
+                    <span className="font-bold text-p-ink">{moneyARS(haberTotal)}</span>
+                  </div>
+                )}
+                <div className="bg-p-light rounded-lg p-3 text-sm flex justify-between">
+                  <span className="text-p-ink2">Saldo restante</span>
+                  <span className={`font-bold ${resta>0.009?'text-red-500':'text-green-600'}`}>
+                    {moneyARS(Math.max(0,resta))}
+                  </span>
+                </div>
+                {resta < -0.009 && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 text-xs text-amber-900 flex flex-col gap-1.5">
+                    <p><strong>⚠ Se acreditaría {moneyARS(-resta)} de más.</strong> Con retenciones, en el monto va solo lo transferido (el neto): el sistema suma las retenciones al recibo solo.</p>
+                    {totalRet>0 && (
+                      <button type="button" onClick={()=>setFormPago(p=>({...p,monto:String(neto)}))}
+                        className="self-start bg-white border border-amber-400 text-amber-800 font-bold rounded-lg px-2.5 py-1 hover:bg-amber-100">
+                        Usar neto: {moneyARS(neto)}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           <Field label="Fecha">
             <Input type="date" value={formPago.fecha} onChange={e=>setFormPago(p=>({...p,fecha:e.target.value}))}/>
           </Field>
