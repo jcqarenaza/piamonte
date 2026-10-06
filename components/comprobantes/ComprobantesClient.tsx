@@ -852,12 +852,25 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if(!puedeGuardar) { setSaving(false); return }
     if (modo==='aseguradora' && !asegSel?.id) {
       alert('Seleccioná la aseguradora del listado de sugerencias')
-      return
+      setSaving(false); return
     }
     const usaCC = pagos.some(p => p.metodo === 'Cuenta corriente')
     if (usaCC && modo === 'cf') {
       alert('No se puede facturar en Cuenta Corriente a Consumidor Final. Cambiá a "Cliente" y seleccionalo del listado.')
-      return
+      setSaving(false); return
+    }
+    // Cliente que trabaja a cuenta corriente, facturado como ya cobrado: pedir confirmación.
+    // (Las facturas mensuales tipo Unipase salían "Transferencia" sin haberse cobrado — FA-139/223.)
+    if (!usaCC && modo === 'cliente' && cliSel?.id) {
+      const metodosCobro = [...new Set(pagos.filter(p => (parseFloat(String(p.monto).replace(',','.'))||0) > 0 && ['Efectivo','Transferencia'].includes(p.metodo)).map(p => p.metodo))]
+      if (metodosCobro.length) {
+        const { data: tieneCC } = await supabase.from('cuenta_corriente')
+          .select('id').eq('cliente_id', cliSel.id).limit(1)
+        if (tieneCC && tieneCC.length > 0 &&
+            !confirm(`${cliSel.nombre} trabaja en cuenta corriente.\n\n¿Seguro que esta factura YA SE COBRÓ por ${metodosCobro.join(' y ')}?\n\nSi queda pendiente de pago, cancelá y usá el botón "💳 Todo a cuenta corriente".`)) {
+          setSaving(false); return
+        }
+      }
     }
     // CC sin cliente seleccionado: si hay nombre + CUIT, crear el cliente automáticamente
     let cliEfectivo = cliSel
@@ -866,7 +879,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const cuitCC = fiscal.cuit.trim()
       if (!nombreCC || !cuitCC) {
         alert('Para facturar en Cuenta Corriente completá el nombre y CUIT del cliente.')
-        return
+        setSaving(false); return
       }
       const { data: nuevoCliente } = await supabase.from('clientes').insert({
         nombre: nombreCC,
