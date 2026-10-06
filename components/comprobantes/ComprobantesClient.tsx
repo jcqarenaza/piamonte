@@ -859,6 +859,18 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       alert('No se puede facturar en Cuenta Corriente a Consumidor Final. Cambiá a "Cliente" y seleccionalo del listado.')
       setSaving(false); return
     }
+    // Los pagos deben cubrir el total: sin esto se emitían facturas con CAE y pagos
+    // vacíos (ni cobradas ni a cuenta — FA-226/227 de prueba, 06/10). En aseguradoras
+    // se mantiene el default histórico: sin pagos = todo a cuenta corriente.
+    if (modo !== 'aseguradora') {
+      const sumaPagos = pagos.reduce((a,p)=> a + (parseFloat(String(p.monto).replace(',','.'))||0), 0)
+      if (Math.abs(sumaPagos - total) > 0.01) {
+        alert(sumaPagos < total
+          ? `La forma de pago no cubre el total: faltan ${moneyARS(total - sumaPagos)}.\nCompletá el monto, o usá "Distribuir total" / "💳 Todo a cuenta corriente".`
+          : `Los pagos superan el total por ${moneyARS(sumaPagos - total)}. Revisá los montos.`)
+        setSaving(false); return
+      }
+    }
     // Cliente que trabaja a cuenta corriente, facturado como ya cobrado: pedir confirmación.
     // (Las facturas mensuales tipo Unipase salían "Transferencia" sin haberse cobrado — FA-139/223.)
     if (!usaCC && modo === 'cliente' && cliSel?.id) {
