@@ -22,6 +22,9 @@ const ORIG_LABEL: Record<string,string> = {
   deposito_manual:'Depósito manual', debito_bancario:'Débito bancario', cheque_emitido:'Cheque emitido', otro:'Otro'
 }
 
+// Montos con coma o punto ("1336,60" y "1336.60" valen igual), redondeados a 2 decimales
+const num2 = (v: string|number) => Math.round((parseFloat(String(v).replace(/\./g, (m,i,str)=>String(str).includes(',')?'':m).replace(',','.'))||0)*100)/100
+
 const emptyMov = { tipo:'credito' as 'credito'|'debito', concepto:'', monto:'', origen_tipo:'deposito_manual', fecha:todayStr(), notas:'', nro_extracto:'' }
 const emptyCuenta = { banco:'Banco de La Pampa', tipo:'Cuenta Corriente', nro_cuenta:'', alias:'', cbu:'', saldo_inicial:'0', fecha_saldo_inicial:todayStr() }
 const emptyTransf = { fecha:todayStr(), monto:'', concepto:'', destino_tipo:'tercero' as 'tercero'|'cuenta_propia', cuenta_destino_id:'', notas:'' }
@@ -80,25 +83,25 @@ export default function BancoClient() {
   const sinConciliar = pendConcil.length
 
   async function guardarCuenta() {
-    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, cbu:formCuenta.cbu||null, saldo_inicial:+formCuenta.saldo_inicial||0, fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, moneda:'ARS', activo:true, updated_at:new Date().toISOString() }
+    const payload = { banco:formCuenta.banco, tipo:formCuenta.tipo, nro_cuenta:formCuenta.nro_cuenta||null, alias:formCuenta.alias||null, cbu:formCuenta.cbu||null, saldo_inicial:num2(formCuenta.saldo_inicial), fecha_saldo_inicial:formCuenta.fecha_saldo_inicial, moneda:'ARS', activo:true, updated_at:new Date().toISOString() }
     if (editCuentaId) await supabase.from('cuentas_banco').update(payload).eq('id',editCuentaId)
     else await supabase.from('cuentas_banco').insert(payload)
     setCuentaModal(false); loadCuentas()
   }
 
   async function guardarMov() {
-    if (!selCuenta||!formMov.monto||!formMov.concepto) return
-    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:+formMov.monto, origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
+    if (!selCuenta||!formMov.concepto||num2(formMov.monto)<=0) { if(formMov.monto) alert('Monto inválido — usá números, con coma o punto para los centavos (ej: 1336,60)'); return }
+    const payload = { cuenta_id:selCuenta.id, fecha:formMov.fecha, tipo:formMov.tipo, concepto:formMov.concepto, monto:num2(formMov.monto), origen_tipo:formMov.origen_tipo||null, notas:formMov.notas||null, nro_extracto:formMov.nro_extracto||null }
     if (editMovId) await supabase.from('movimientos_banco').update(payload).eq('id',editMovId)
     else await supabase.from('movimientos_banco').insert(payload)
     setMovModal(false); if(selCuenta) loadMovs(selCuenta)
   }
 
   async function guardarTransferencia() {
-    if (!selCuenta||!formTransf.monto||!formTransf.concepto) return
+    if (!selCuenta||!formTransf.concepto||num2(formTransf.monto)<=0) { if(formTransf.monto) alert('Monto inválido — usá números, con coma o punto para los centavos (ej: 1336,60)'); return }
     setSavingTransf(true)
     try {
-      const monto = +formTransf.monto
+      const monto = num2(formTransf.monto)
       // Débito en cuenta origen
       await supabase.from('movimientos_banco').insert({
         cuenta_id: selCuenta.id,
@@ -294,7 +297,7 @@ export default function BancoClient() {
             <Field label="Fecha"><Input type="date" value={formMov.fecha} onChange={e=>setFormMov(p=>({...p,fecha:e.target.value}))}/></Field>
           </div>
           <Field label="Concepto *"><Input value={formMov.concepto} onChange={e=>setFormMov(p=>({...p,concepto:e.target.value}))} placeholder="Descripción…"/></Field>
-          <Field label="Monto *"><Input value={formMov.monto} onChange={e=>setFormMov(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
+          <Field label="Monto *"><Input inputMode="decimal" value={formMov.monto} onChange={e=>setFormMov(p=>({...p,monto:e.target.value}))} placeholder="$ — coma o punto para centavos"/></Field>
           <Field label="Origen">
             <select value={formMov.origen_tipo} onChange={e=>setFormMov(p=>({...p,origen_tipo:e.target.value}))} className="w-full border border-p-line rounded-lg px-3 py-2 text-sm bg-white">
               {Object.entries(ORIG_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
@@ -315,7 +318,7 @@ export default function BancoClient() {
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Fecha"><Input type="date" value={formTransf.fecha} onChange={e=>setFormTransf(p=>({...p,fecha:e.target.value}))}/></Field>
-            <Field label="Monto *"><Input value={formTransf.monto} onChange={e=>setFormTransf(p=>({...p,monto:e.target.value}))} placeholder="$"/></Field>
+            <Field label="Monto *"><Input inputMode="decimal" value={formTransf.monto} onChange={e=>setFormTransf(p=>({...p,monto:e.target.value}))} placeholder="$ — coma o punto para centavos"/></Field>
           </div>
           <Field label="Concepto / Destinatario *"><Input value={formTransf.concepto} onChange={e=>setFormTransf(p=>({...p,concepto:e.target.value}))} placeholder="Ej: Pago proveedor GAMMA…"/></Field>
           <Field label="Destino">
