@@ -1266,7 +1266,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setGenPDF(true)
     try {
       const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ format:'a4', unit:'mm' })
+      const doc = new jsPDF({ format:'a4', unit:'mm', compress:true })
       doc.setFontSize(16); doc.setFont('helvetica','bold')
       doc.text(`${adjModal.tipo?.toUpperCase() || 'COMPROBANTE'} N° ${adjModal.numero||''}`, 15, 20)
       doc.setFontSize(11); doc.setFont('helvetica','normal')
@@ -1300,7 +1300,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function generarPDF(c:Comprobante): Promise<Blob> {
     const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({format:'a4',unit:'mm'})
+    const doc = new jsPDF({format:'a4',unit:'mm',compress:true})
     const W=210, pad=14, rw=W-pad*2
     let y=12
 
@@ -1310,7 +1310,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
 
     // ─── HEADER ───
-    try { doc.addImage(LOGO_BASE64,'PNG',pad,y-2,28,15) } catch(e){}
+    try { doc.addImage(LOGO_BASE64,'PNG',pad,y-2,28,15,undefined,'FAST') } catch(e){}
     doc.setTextColor(30,30,30); doc.setFont('helvetica','bold'); doc.setFontSize(10)
     doc.text('PARABRISAS EL PIAMONTE', pad+32, y+2)
     doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100); doc.setFontSize(7)
@@ -1351,7 +1351,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // ─── MARCA DE AGUA ───
     const gState = new (doc as any).GState({ opacity: 0.05 })
     doc.saveGraphicsState(); doc.setGState(gState)
-    try { doc.addImage(LOGO_BASE64, 'PNG', 60, 120, 90, 50) } catch(e){}
+    try { doc.addImage(LOGO_BASE64, 'PNG', 60, 120, 90, 50, undefined, 'FAST') } catch(e){}
     doc.setFont('helvetica','bold'); doc.setFontSize(30); doc.setTextColor(0,165,80)
     doc.text('EL PIAMONTE', W/2, 190, {align:'center'})
     doc.setFontSize(8)
@@ -1529,7 +1529,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       } catch { qrDataUrl = null }
     }
     const QR_X = 7.06, QR_Y = 249.44, QR_S = 28.22   // = x:20pt y:55pt 80x80pt del formato ARCA
-    if (qrDataUrl) { try { doc.addImage(qrDataUrl, 'PNG', QR_X, QR_Y, QR_S, QR_S) } catch {} }
+    if (qrDataUrl) { try { doc.addImage(qrDataUrl, 'PNG', QR_X, QR_Y, QR_S, QR_S, undefined, 'FAST') } catch {} }
     // Con QR, los bloques del margen izquierdo se corren a su derecha para no pisarlo
     const xL = qrDataUrl ? QR_X + QR_S + 3 : pad
 
