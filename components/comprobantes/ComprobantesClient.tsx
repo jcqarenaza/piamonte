@@ -1515,14 +1515,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         }
         const tipoDocRec = docRec.length === 11 ? 80 : (docRec.length >= 7 ? 96 : 99)
         const tipoCmpMap = c.categoria === 'nc' ? TIPO_CBTE_NC_AFIP : c.categoria === 'nd' ? TIPO_CBTE_ND_AFIP : TIPO_CBTE_AFIP
-        const qrData = {
-          ver: 1, fecha: c.fecha, cuit: 27242657174, ptoVta: 6,
-          tipoCmp: tipoCmpMap[c.tipo], nroCmp: Number(c.nro_cbte_afip ?? c.numero ?? 0),
-          importe: Number(c.total || 0), moneda: 'PES', ctz: 1,
-          tipoDocRec, nroDocRec: tipoDocRec === 99 ? 0 : Number(docRec || '0'),
-          tipoCodAut: 'E', codAut: Number(c.cae_emitido || '0'),
-        }
-        const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + btoa(JSON.stringify(qrData))
+        // El importe va SIEMPRE con 2 decimales en el JSON (442022.00, no 442022):
+        // los parsers de portales (AGRI/Pilkington) rechazan los totales redondos sin decimales.
+        // JSON.stringify se los comería, así que el JSON se arma a mano, mismo orden de campos.
+        const impStr = Number(c.total || 0).toFixed(2)
+        const qrJson = `{"ver":1,"fecha":"${c.fecha}","cuit":27242657174,"ptoVta":6,` +
+          `"tipoCmp":${tipoCmpMap[c.tipo]},"nroCmp":${Number(c.nro_cbte_afip ?? c.numero ?? 0)},` +
+          `"importe":${impStr},"moneda":"PES","ctz":1,` +
+          `"tipoDocRec":${tipoDocRec},"nroDocRec":${tipoDocRec === 99 ? 0 : Number(docRec || '0')},` +
+          `"tipoCodAut":"E","codAut":${Number(c.cae_emitido || '0')}}`
+        const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + btoa(qrJson)
         // @ts-ignore — qrcode sin tipos; si falta la librería cae al catch y el PDF sale sin QR
         const QR = (await import('qrcode')).default as any
         qrDataUrl = await QR.toDataURL(qrUrl, { scale: 5, margin: 4, errorCorrectionLevel: 'L' })

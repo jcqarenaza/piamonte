@@ -252,22 +252,15 @@ export async function POST(req: NextRequest) {
 
       // QR — posición exacta de Arca
       try {
-        const qrData = {
-          ver: 1,
-          fecha: c.fecha,
-          cuit: 27242657174,
-          ptoVta: 6,
-          tipoCmp: esFCE ? 201 : c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11,
-          nroCmp:     Number(c.nro_cbte_afip ?? c.numero ?? 0),
-          importe:    Number(c.total  || 0),
-          moneda: 'PES',
-          ctz: 1,
-          tipoDocRec: 80,
-          nroDocRec:  Number((cuitAseg || '0').replace(/-/g, '')),
-          tipoCodAut: 'E',
-          codAut:     Number(c.cae_emitido || '0'),
-        }
-        const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + Buffer.from(JSON.stringify(qrData)).toString('base64')
+        // Importe SIEMPRE con 2 decimales en el JSON (parsers de portales rechazan totales
+        // redondos sin decimales); JSON.stringify los comería, así que se arma a mano.
+        const tipoCmpQR = esFCE ? 201 : c.tipo === 'A' ? 1 : c.tipo === 'B' ? 6 : 11
+        const qrJson = `{"ver":1,"fecha":"${c.fecha}","cuit":27242657174,"ptoVta":6,` +
+          `"tipoCmp":${tipoCmpQR},"nroCmp":${Number(c.nro_cbte_afip ?? c.numero ?? 0)},` +
+          `"importe":${Number(c.total || 0).toFixed(2)},"moneda":"PES","ctz":1,` +
+          `"tipoDocRec":80,"nroDocRec":${Number((cuitAseg || '0').replace(/-/g, ''))},` +
+          `"tipoCodAut":"E","codAut":${Number(c.cae_emitido || '0')}}`
+        const qrUrl = 'https://www.arca.gob.ar/fe/qr/?p=' + Buffer.from(qrJson).toString('base64')
         // ECC 'L' y scale entero (5px por módulo) como ARCA: sin anti-aliasing fraccional,
         // decodifica en cualquier lector. Dibujado 80x80pt en la posición del QR original.
         const qrBuf = await QRCode.toBuffer(qrUrl, { type: 'png', scale: 5, margin: 4, errorCorrectionLevel: 'L' })
