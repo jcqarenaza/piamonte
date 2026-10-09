@@ -10,6 +10,7 @@ import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 
 // Montos tipeados a la argentina: "352.923,48", "352923,48" y "352923.48" valen igual
+const fmtMonto = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num2 = (v: string|number) => Math.round((parseFloat(String(v).replace(/\./g, (m,idx,str)=>String(str).includes(',')?'':m).replace(',','.'))||0)*100)/100
 
 const IVA = 0.21
@@ -187,7 +188,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const i = prev.findIndex(p => p.metodo === 'Cuenta corriente')
       if (i < 0) return prev
       const otros = prev.reduce((a,p,j)=> j===i ? a : a + num2(p.monto), 0)
-      const resto = String(Math.max(0, Math.round((total - otros)*100)/100))
+      const resto = fmtMonto(Math.max(0, Math.round((total - otros)*100)/100))
       if (String(prev[i].monto) === resto) return prev
       return prev.map((p,j)=> j===i ? { ...p, monto: resto } : p)
     })
@@ -396,13 +397,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         next = next.filter((p,j)=> j===i || p.metodo!=='Cuenta corriente')
         const otros = next.reduce((a,p)=> p.metodo==='Cuenta corriente' ? a : a+num2(p.monto), 0)
         const resto = Math.max(0, Math.round((total - otros)*100)/100)
-        next = next.map(p=> p.metodo==='Cuenta corriente' ? {...p, monto: String(resto)} : p)
+        next = next.map(p=> p.metodo==='Cuenta corriente' ? {...p, monto: fmtMonto(resto)} : p)
       }
       return next
     })
   }
   function delPago(i:number){ if(pagos.length>1) setPagos(prev=>prev.filter((_,j)=>j!==i)) }
-  function distribuirTotal(){ setPagos(prev=>prev.map((p,i)=>i===0?{...p,monto:String(total)}:p)) }
+  function distribuirTotal(){ setPagos(prev=>prev.map((p,i)=>i===0?{...p,monto:fmtMonto(total)}:p)) }
 
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
@@ -2341,7 +2342,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <div className="flex gap-2">
                 {total>0&&<button onClick={distribuirTotal} style={{...btnGray,padding:'4px 10px',fontSize:11}}>Distribuir total</button>}
                 {total>0&&modo==='cliente'&&!pagos.some(p=>p.metodo==='Cuenta corriente')&&(
-                  <button onClick={()=>setPagos([{metodo:'Cuenta corriente',monto:String(total)}])}
+                  <button onClick={()=>setPagos([{metodo:'Cuenta corriente',monto:fmtMonto(total)}])}
                     style={{...btnGray,padding:'4px 10px',fontSize:11,background:'#fef3c7',border:'1px solid #f59e0b',color:'#92400e',fontWeight:700}}>
                     💳 Todo a cuenta corriente
                   </button>
