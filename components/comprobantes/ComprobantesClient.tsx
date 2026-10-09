@@ -176,6 +176,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
   const diferencia  = total - totalPagado
 
+  // La fila "Cuenta corriente" es el residual del total: si el total o los otros
+  // medios cambian DESPUÉS de elegirla, su monto se recalcula solo (antes quedaba
+  // clavado en lo que faltaba al momento de elegirla — p.ej. $0 si aún no había precio).
+  useEffect(() => {
+    setPagos(prev => {
+      const i = prev.findIndex(p => p.metodo === 'Cuenta corriente')
+      if (i < 0) return prev
+      const otros = prev.reduce((a,p,j)=> j===i ? a : a + (parseFloat(String(p.monto).replace(',','.'))||0), 0)
+      const resto = String(Math.max(0, Math.round((total - otros)*100)/100))
+      if (String(prev[i].monto) === resto) return prev
+      return prev.map((p,j)=> j===i ? { ...p, monto: resto } : p)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total])
+
   useEffect(() => {
     supabase.from('comprobantes').select('*').eq('es_negro', esNegro)
       .order('fecha',{ascending:false})
@@ -265,13 +280,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       .or(`nombre.ilike.%${cliQ}%,telefono.ilike.%${cliQ}%`).limit(6)
       .then(async ({data})=>{
         const lista = (data??[]) as ClienteMin[]
-        // Auto-seleccionar si hay exactamente 1 resultado o coincidencia exacta de nombre
+        // Auto-selección SOLO por coincidencia exacta de nombre (y si no está ya elegido).
+        // La regla "un solo resultado = seleccionar" re-atrapaba al cliente al intentar
+        // borrarlo del buscador ("Milenari" → único match → Milenaria de nuevo).
         const exacto = lista.find(c=>c.nombre.toLowerCase()===cliQ.trim().toLowerCase())
-        if (exacto) { await selectCliente(exacto); setCliSugs([]); return }
-        if (lista.length === 1) { await selectCliente(lista[0]); setCliSugs([]); return }
-        setCliSugs(lista)
+        if (exacto && !cliSel) { await selectCliente(exacto); setCliSugs([]); return }
+        setCliSugs(cliSel ? [] : lista)
       })
-  },[cliQ,supabase])
+  },[cliQ,cliSel,supabase])
 
   useEffect(()=>{
     if(asegQ.trim().length < 2){ setAsegSugs([]); return }
@@ -1905,6 +1921,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 {cliSel ? (
                   <>
                     <span className="text-xs text-p-green font-semibold">✓ {cliSel.nombre}</span>
+                    <button onClick={()=>{ setCli(null); setCliQ(''); setCliSugs([]); setHistorialCli(null) }}
+                      className="text-xs font-bold text-red-400 hover:text-red-600 border border-red-200 rounded-full px-2 py-0.5"
+                      title="Quitar cliente y buscar otro">✕ cambiar</button>
                     <button onClick={()=>setShowFiscal(!showFiscal)}
                       className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${showFiscal?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>
                       {showFiscal ? '▲ ' : '▼ '}{tipoFiscalLabel(fiscal.tipo_fiscal)}{fiscal.cuit&&` · CUIT ${fiscal.cuit}`}
