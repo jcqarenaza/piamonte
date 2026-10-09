@@ -9,6 +9,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 
+// Montos tipeados a la argentina: "352.923,48", "352923,48" y "352923.48" valen igual
+const num2 = (v: string|number) => Math.round((parseFloat(String(v).replace(/\./g, (m,idx,str)=>String(str).includes(',')?'':m).replace(',','.'))||0)*100)/100
+
 const IVA = 0.21
 const IVA_NEGRO_OPTS = [
   { label: '75% del total declarado', pct: 75 },
@@ -173,7 +176,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const total = esCFoB
     ? subtotalItems  // para B/C el total es el precio original (IVA incluido)
     : Math.round((neto + iva) * 100) / 100
-  const totalPagado = pagos.reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0), 0)
+  const totalPagado = pagos.reduce((a,p)=>a+num2(p.monto), 0)
   const diferencia  = total - totalPagado
 
   // La fila "Cuenta corriente" es el residual del total: si el total o los otros
@@ -183,7 +186,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setPagos(prev => {
       const i = prev.findIndex(p => p.metodo === 'Cuenta corriente')
       if (i < 0) return prev
-      const otros = prev.reduce((a,p,j)=> j===i ? a : a + (parseFloat(String(p.monto).replace(',','.'))||0), 0)
+      const otros = prev.reduce((a,p,j)=> j===i ? a : a + num2(p.monto), 0)
       const resto = String(Math.max(0, Math.round((total - otros)*100)/100))
       if (String(prev[i].monto) === resto) return prev
       return prev.map((p,j)=> j===i ? { ...p, monto: resto } : p)
@@ -391,7 +394,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if (k==='metodo' && v==='Cuenta corriente') {
         // Solo puede haber una fila CC; se queda con todo lo no cubierto por los otros medios
         next = next.filter((p,j)=> j===i || p.metodo!=='Cuenta corriente')
-        const otros = next.reduce((a,p)=> p.metodo==='Cuenta corriente' ? a : a+(parseFloat(String(p.monto).replace(',','.'))||0), 0)
+        const otros = next.reduce((a,p)=> p.metodo==='Cuenta corriente' ? a : a+num2(p.monto), 0)
         const resto = Math.max(0, Math.round((total - otros)*100)/100)
         next = next.map(p=> p.metodo==='Cuenta corriente' ? {...p, monto: String(resto)} : p)
       }
@@ -700,7 +703,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // 2) Marcar OS
     if (f.orden_id) await supabase.from('ordenes_servicio').update({ convertido_comp: true, estado: 'realizado' }).eq('id', f.orden_id)
     // 3) CC (cliente o aseguradora) por los pagos en cuenta corriente
-    const montoCC = pagosF.filter((p:any)=>p.metodo==='Cuenta corriente').reduce((a:number,p:any)=>a+(parseFloat(String(p.monto).replace(/[^0-9.]/g,''))||0),0)
+    const montoCC = pagosF.filter((p:any)=>p.metodo==='Cuenta corriente').reduce((a:number,p:any)=>a+num2(p.monto),0)
     const nroDesc = String(f.nro_cbte_afip||f.numero||'').padStart(8,'0')
     if (f.aseguradora_id && montoCC > 0) {
       const { count } = await supabase.from('cuenta_corriente_aseguradoras').select('id',{count:'exact',head:true}).eq('comprobante_id', c.id)
@@ -879,7 +882,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // vacíos (ni cobradas ni a cuenta — FA-226/227 de prueba, 06/10). En aseguradoras
     // se mantiene el default histórico: sin pagos = todo a cuenta corriente.
     if (modo !== 'aseguradora') {
-      const sumaPagos = pagos.reduce((a,p)=> a + (parseFloat(String(p.monto).replace(',','.'))||0), 0)
+      const sumaPagos = pagos.reduce((a,p)=> a + num2(p.monto), 0)
       if (Math.abs(sumaPagos - total) > 0.01) {
         alert(sumaPagos < total
           ? `La forma de pago no cubre el total: faltan ${moneyARS(total - sumaPagos)}.\nCompletá el monto, o usá "Distribuir total" / "💳 Todo a cuenta corriente".`
@@ -890,7 +893,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     // Cliente que trabaja a cuenta corriente, facturado como ya cobrado: pedir confirmación.
     // (Las facturas mensuales tipo Unipase salían "Transferencia" sin haberse cobrado — FA-139/223.)
     if (!usaCC && modo === 'cliente' && cliSel?.id) {
-      const metodosCobro = [...new Set(pagos.filter(p => (parseFloat(String(p.monto).replace(',','.'))||0) > 0 && ['Efectivo','Transferencia'].includes(p.metodo)).map(p => p.metodo))]
+      const metodosCobro = [...new Set(pagos.filter(p => num2(p.monto) > 0 && ['Efectivo','Transferencia'].includes(p.metodo)).map(p => p.metodo))]
       if (metodosCobro.length) {
         const { data: tieneCC } = await supabase.from('cuenta_corriente')
           .select('id').eq('cliente_id', cliSel.id).limit(1)
@@ -1002,7 +1005,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const p:any = pagos[i]
       if (p.metodo === 'Tarjeta' && tarjetaIds[i]) {
         const tc = tarjetasConf.find((t:any)=>t.id===tarjetaIds[i])
-        const base = parseFloat(String(p.monto).replace(/[^0-9.]/g,'')) || 0
+        const base = num2(p.monto)
         const rec = parseFloat(recargosTarj[i]||'0')||0
         const bruto = base * (1 + rec/100)
         const desc = bruto * ((tc?.retencion_pct||0)/100)
@@ -1023,7 +1026,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     for (let i = 0; i < pagos.length; i++) {
       const p:any = pagos[i]
       if (p.metodo === 'Transferencia' && cuentaBancoIds[i]) {
-        const montoP = parseFloat(String(p.monto).replace(/[^0-9.]/g,'')) || 0
+        const montoP = num2(p.monto)
         if (montoP > 0) {
           const { error: errBco } = await supabase.from('movimientos_banco').insert({
             cuenta_id: cuentaBancoIds[i], fecha: todayStr(), tipo: 'credito',
@@ -1035,7 +1038,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       }
     }
 
-    const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+    const pagosCCMonto = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+num2(p.monto),0)
     const montoCC = modo==='aseguradora' && asegSel?.id ? (pagosCCMonto || total) : pagosCCMonto
     if (montoCC > 0 && comp && modo==='aseguradora' && asegSel?.id) {
       // CC aseguradoras se inserta post-CAE para usar el nro_cbte_afip real
@@ -1086,7 +1089,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         const p = pagos[i]
         const ch = chequesPago[i]
         if (p.metodo==='Cheque' && ch?.numero) {
-          const montoCh = parseFloat(p.monto.replace(/[^0-9.]/g,'')||'0')
+          const montoCh = num2(p.monto)
           await supabase.from('cheques').insert({
             tipo:'tercero', formato:ch.formato, modalidad:ch.modalidad,
             numero:ch.numero, banco:ch.banco,
@@ -1189,7 +1192,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const nroParaDesc = (comp as any).nro_cbte_afip || nextNum
       const nroFormateado = `${prefijo}-0006-${String(nroParaDesc).padStart(8,'0')}`
       // Determinar método de pago principal para caja
-      const pagosCCTotal = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+(parseFloat(p.monto.replace(/[^0-9.]/g,''))||0),0)
+      const pagosCCTotal = pagos.filter(p=>p.metodo==='Cuenta corriente').reduce((a,p)=>a+num2(p.monto),0)
       const pagoPrincipal = modo==='aseguradora' ? 'Cuenta corriente'
         : pagosCCTotal >= total*0.9 ? 'Cuenta corriente'
         : pagos.find(p=>p.metodo!=='Cuenta corriente')?.metodo || pagos[0]?.metodo || 'Efectivo'
@@ -2290,7 +2293,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                       onChange={e=>{
                         const v=e.target.value
                         setPrecioEditStr(prev=>({...prev,[i]:v}))
-                        const num=parseFloat(v.replace(',','.'))||0
+                        const num=num2(v)
                         setItems(prev=>prev.map((x,j)=>j===i?{...x,p:num}:x))
                       }}
                       onBlur={e=>{
