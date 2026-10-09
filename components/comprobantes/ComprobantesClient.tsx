@@ -1641,7 +1641,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function compartirWA(c:Comprobante){
     const blob = (await esFormatoArcaDe(c)) ? await generarPDFArca(c) : await generarPDF(c)
-    const file = new File([blob],`Comprobante-${c.numero}.pdf`,{type:'application/pdf'})
+    const file = new File([blob],`Comprobante-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0")}-${c.tipo||""}.pdf`,{type:'application/pdf'})
     if(navigator.canShare?.({files:[file]})){ await navigator.share({files:[file],title:'Comprobante El Piamonte'}); return }
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
     const tel=(c.cliente_telefono||'').replace(/[^0-9]/g,'')
@@ -1666,7 +1666,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   async function descargar(c:Comprobante){
     const blob = (await esFormatoArcaDe(c)) ? await generarPDFArca(c) : await generarPDF(c)
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`0006-${nroAfip}${sufijo}.pdf`; a.click(); URL.revokeObjectURL(url)
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; const sufijo = c.categoria==="nc" ? " NC" : c.categoria==="nd" ? " ND" : ""; const nroAfip = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0"); a.download=`0006-${nroAfip}${sufijo} ${c.tipo||""}.pdf`.replace(" .pdf",".pdf"); a.click(); URL.revokeObjectURL(url)
   }
 
   // Los comprobantes NO se pueden borrar. Una factura genera NC, una NC genera ND.
