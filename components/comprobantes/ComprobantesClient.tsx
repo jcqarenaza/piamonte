@@ -988,7 +988,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       items: itemsFinal, neto, iva_pct:IVA, iva, total,
       es_negro: esNegro,
       iva_negro_pct: esNegro ? ivaNegroP : null,
-      pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto),
+      // Monto SIEMPRE como número plano ("180000" / "1234.5"): en pantalla se muestra a la argentina,
+      // pero en la base una coma/punto de miles rompe los casts a numeric (error "180.000,00").
+      pagos: modo==='aseguradora' && !pagosEnriquecidos.some(p=>p.monto) ? [{metodo:'Cuenta corriente',monto:String(total)}] : pagosEnriquecidos.filter(p=>p.monto).map(p=>({ ...p, monto: String(num2(p.monto)) })),
       observaciones: obs||null,
       user_id: userId,
     }).select().single()
@@ -1572,7 +1574,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       doc.text('Forma de pago:', xL, pagoY)
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
       const pagoTexto = c.pagos.map((p:Pago)=>
-        `${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(parseFloat(p.monto)||0)}`
+        `${p.metodo}${p.cuotas&&p.cuotas>1?` (${p.cuotas} cuotas)`:''}: ${moneyARS(num2(p.monto))}`
       ).join('  |  ')
       // Envolver en líneas para que no se pise con el borde ni con el CAE
       const pagoLines = doc.splitTextToSize(pagoTexto, rw - 32 - (xL - pad))
@@ -2415,9 +2417,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                           <input value={recargosTarj[i]??''} onChange={e=>setRecargosTarj(prev=>({...prev,[i]:e.target.value}))}
                             className="border border-p-line rounded-lg px-2 py-1 w-16 font-mono text-right focus:outline-none focus:border-p-green"/>
                           <span className="text-p-ink2">%</span>
-                          {(parseFloat(p.monto)||0) > 0 && (parseFloat(recargosTarj[i]||'0')||0) > 0 && (
+                          {num2(p.monto) > 0 && (parseFloat(recargosTarj[i]||'0')||0) > 0 && (
                             <span className="font-bold text-amber-700">
-                              → a cobrar: {moneyARS((parseFloat(p.monto)||0) * (1 + (parseFloat(recargosTarj[i]||'0')||0)/100))}
+                              → a cobrar: {moneyARS(num2(p.monto) * (1 + (parseFloat(recargosTarj[i]||'0')||0)/100))}
                             </span>
                           )}
                         </div>
@@ -2679,7 +2681,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 {verComp.pagos.map((p,i)=>(
                   <div key={i} className="flex justify-between text-sm py-0.5">
                     <span>{p.metodo}{p.cuotas?` (${p.cuotas} cuotas)`:''}</span>
-                    <span className="font-mono">{moneyARS(+p.monto)}</span>
+                    <span className="font-mono">{moneyARS(num2(p.monto))}</span>
                   </div>
                 ))}
               </div>
