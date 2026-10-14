@@ -714,7 +714,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         debe: montoCC, haber: 0, comprobante_id: c.id, user_id: userId,
       })
     } else if (f.cliente_id && montoCC > 0) {
-      await supabase.from('cuenta_corriente').insert({
+      // Idempotente: si el cargo de este comprobante ya está en la CC, no duplicar
+      const { count: yaCargo } = await supabase.from('cuenta_corriente')
+        .select('id',{count:'exact',head:true}).eq('comprobante_id', c.id).gt('debe', 0)
+      if ((yaCargo||0) === 0) await supabase.from('cuenta_corriente').insert({
         cliente_id: f.cliente_id, cliente_nombre: f.cliente_nombre, fecha: todayStr(),
         tipo: 'cargo', descripcion: `F${f.tipo}-0006-${nroDesc}`,
         debe: montoCC, haber: 0, comprobante_id: c.id, user_id: userId,
@@ -1075,11 +1078,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
     // ══ EFECTOS (solo con CAE obtenido, o comprobantes no electrónicos) ══
     if (montoCC > 0 && comp && modo==='cliente' && cliEfectivo?.id) {
-      await supabase.from('cuenta_corriente').insert({
-        cliente_id: cliEfectivo.id, cliente_nombre: cliEfectivo.nombre, fecha: todayStr(),
-        tipo: 'cargo', descripcion: `Comprobante ${nextNum}`,
-        debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
-      })
+      // Idempotente + descripción con el N° real (en electrónicos nextNum viene null; el número lo da ARCA)
+      const { count: yaCargoCC } = await supabase.from('cuenta_corriente')
+        .select('id',{count:'exact',head:true}).eq('comprobante_id', (comp as any).id).gt('debe', 0)
+      if ((yaCargoCC||0) === 0) {
+        const nroCC = String((comp as any).nro_cbte_afip ?? nextNum ?? '').padStart(8,'0')
+        await supabase.from('cuenta_corriente').insert({
+          cliente_id: cliEfectivo.id, cliente_nombre: cliEfectivo.nombre, fecha: todayStr(),
+          tipo: 'cargo', descripcion: `F${tipoDoc()}-0006-${nroCC}`,
+          debe: montoCC, haber: 0, comprobante_id: (comp as any).id, user_id: userId,
+        })
+      }
     }
 
     // Cheques: si algún pago fue con cheque, registrarlo en el libro como cheque de tercero "en cartera"

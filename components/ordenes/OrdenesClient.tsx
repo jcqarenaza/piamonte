@@ -185,6 +185,22 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       .then(({data}) => setPresCli(data??[]))
   }, [form.cli, supabase])
 
+  // Sin aseguradora: sugerir clientes cargados mientras se escribe el nombre
+  const [cliSugsOS, setCliSugsOS] = useState<{id:string;nombre:string;telefono:string|null}[]>([])
+  useEffect(() => {
+    const q = form.cli.trim()
+    if (form.aseg || q.length < 2) { setCliSugsOS([]); return }
+    let vivo = true
+    supabase.from('clientes').select('id,nombre,telefono').ilike('nombre', `%${q}%`).order('nombre').limit(6)
+      .then(({data}) => {
+        if (!vivo) return
+        const lista = (data ?? []) as any[]
+        // si ya está elegido el nombre exacto, no molestar con la lista
+        setCliSugsOS(lista.length===1 && lista[0].nombre.trim().toLowerCase()===q.toLowerCase() ? [] : lista)
+      })
+    return () => { vivo = false }
+  }, [form.cli, form.aseg, supabase])
+
   const load = useCallback(() => {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(async ({data})=>{
@@ -1149,7 +1165,31 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
           </Field>
           {/* Asegurado */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Asegurado"><Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder="Nombre"/></Field>
+            <Field label={form.aseg ? 'Asegurado' : 'Cliente'}>
+              <Input value={form.cli} onChange={e=>setForm(p=>({...p,cli:e.target.value}))} placeholder={form.aseg ? 'Nombre' : 'Buscar cliente cargado o escribir nombre'}/>
+              {!form.aseg && (
+                <div className="mt-1.5 flex flex-col gap-1">
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" onClick={()=>{ setForm(p=>({...p,cli:'Consumidor Final'})); setCliSugsOS([]) }}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full border ${form.cli==='Consumidor Final' ? 'bg-p-dark text-white border-p-dark' : 'bg-white text-p-ink2 border-p-line2 hover:bg-gray-50'}`}>
+                      👤 Consumidor final
+                    </button>
+                  </div>
+                  {cliSugsOS.length > 0 && (
+                    <div className="border border-p-line2 rounded-xl overflow-hidden bg-white">
+                      {cliSugsOS.map(c=>(
+                        <button key={c.id} type="button"
+                          onClick={()=>{ setForm(p=>({...p,cli:c.nombre,tel:c.telefono||p.tel})); setCliSugsOS([]) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 border-b border-p-line2 last:border-0 flex justify-between gap-2">
+                          <span className="truncate">{c.nombre}</span>
+                          {c.telefono && <span className="text-xs text-p-ink2 shrink-0">{c.telefono}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Field>
             <Field label="WhatsApp"><Input value={form.tel} onChange={e=>setForm(p=>({...p,tel:e.target.value}))} placeholder="54 9 …"/></Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
