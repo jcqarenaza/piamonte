@@ -43,6 +43,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
+  const [pidOS, setPidOS]         = useState<string|null>(null) // presupuesto de origen (se marca convertido al guardar la OS)
   const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
   const [presCli, setPresCli]   = useState<any[]>([])
   const [productores, setProductores] = useState<any[]>([])
@@ -152,6 +153,8 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const qParam = searchParams.get('q')
     if (qParam) setBuscarNombre(decodeURIComponent(qParam))
     const itemsStr = searchParams.get('items')
+    const pidUrl = searchParams.get('pid')
+    if (pidUrl && !editOsId) setPidOS(pidUrl)
     if (editOsId) {
       // Abrir directamente en modo edición la OS indicada
       supabase.from('ordenes_servicio').select('*').eq('id', editOsId).maybeSingle()
@@ -557,6 +560,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       posicion_vidrio: posVidrio.length ? posVidrio.join(',') : null,
       stock_codigo: stockSel?.codigo || null,
     }).select('id').single()
+    // Presupuesto de origen: recién ahora, con la OS creada, se marca como convertido
+    if (osNueva?.id && pidOS) {
+      await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', pidOS)
+      setPidOS(null)
+    }
     // Stock se descuenta solo al facturar, NO al guardar la OS
     // ── Vínculo con venta de caja previa: si el vidrio de esta OS ya se vendió por
     // caja (venta reciente sin comprobante ni OS), el stock YA salió por esa venta.

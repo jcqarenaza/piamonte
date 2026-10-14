@@ -299,8 +299,8 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   async function toOS(p: any) {
-    // Marcar presupuesto como convertido a OS
-    await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', p.id)
+    // NO se marca convertido acá: lo marca la pantalla de OS recién cuando la OS se GUARDA
+    // (si se marcaba antes y la OS no se guardaba, el presupuesto quedaba "OS" sin OS y sin botón).
     const params = new URLSearchParams({
       cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
       pat: p.patente??'', obs: (p as any).observaciones??'',
