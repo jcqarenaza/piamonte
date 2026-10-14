@@ -285,6 +285,19 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setOpen(true)
   }
 
+  // El presupuesto guarda los precios de los ítems SIN IVA y suma el IVA aparte (total = neto + iva).
+  // Comprobantes toma el precio del ítem como YA CON IVA: llevamos los precios con IVA incluido
+  // para que la factura salga por el total del presupuesto y no por el neto.
+  function itemsParaComprobante(p: any): any[] {
+    const its: any[] = p.items || []
+    const netoP = its.reduce((a:number,it:any)=>a+(it.c||1)*(parseFloat(String(it.p).replace(',','.'))||0), 0)
+    const totalP = parseFloat(String(p.total||0)) || 0
+    const ivaP = parseFloat(String(p.iva||0)) || 0
+    if (ivaP <= 0 || netoP <= 0 || totalP <= netoP) return its
+    const f = totalP / netoP
+    return its.map((it:any) => ({ ...it, p: Math.round((parseFloat(String(it.p).replace(',','.'))||0) * f * 100) / 100 }))
+  }
+
   async function toOS(p: any) {
     // Marcar presupuesto como convertido a OS
     await supabase.from('presupuestos').update({ convertido_os: true }).eq('id', p.id)
@@ -632,7 +645,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                           // NO se marca convertido acá: lo marca Comprobantes recién al GUARDAR la factura
                           const params = new URLSearchParams({
                             cli: p.cliente??'', tel: p.telefono??'', veh: p.vehiculo??'',
-                            items: JSON.stringify(p.items), total: String(p.total), iva: String(p.iva??0),
+                            items: JSON.stringify(itemsParaComprobante(p)), total: String(p.total), iva: String(p.iva??0),
                             pid: p.id,
                             ...(p.tipo_cliente_id?{tipo_id:p.tipo_cliente_id}:{}),
                             ...(p.tipo_cliente_nombre?{tipo_nombre:p.tipo_cliente_nombre}:{}),

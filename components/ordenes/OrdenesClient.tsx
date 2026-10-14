@@ -187,19 +187,22 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
 
   // Sin aseguradora: sugerir clientes cargados mientras se escribe el nombre
   const [cliSugsOS, setCliSugsOS] = useState<{id:string;nombre:string;telefono:string|null}[]>([])
+  const [clientesAll, setClientesAll] = useState<{id:string;nombre:string;telefono:string|null}[]>([])
+  // Normaliza para buscar: sin acentos, sin puntos/espacios/símbolos ("B.H.A.S.S.A" == "bhassa")
+  const normBusq = (s:string) => (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'')
+  // Traer los clientes una sola vez al abrir el modal (la tabla es chica) y filtrar en memoria
   useEffect(() => {
-    const q = form.cli.trim()
+    if (!open || clientesAll.length > 0) return
+    supabase.from('clientes').select('id,nombre,telefono').order('nombre').limit(3000)
+      .then(({data}) => setClientesAll((data ?? []) as any[]))
+  }, [open, clientesAll.length, supabase])
+  useEffect(() => {
+    const q = normBusq(form.cli)
     if (form.aseg || q.length < 2) { setCliSugsOS([]); return }
-    let vivo = true
-    supabase.from('clientes').select('id,nombre,telefono').ilike('nombre', `%${q}%`).order('nombre').limit(6)
-      .then(({data}) => {
-        if (!vivo) return
-        const lista = (data ?? []) as any[]
-        // si ya está elegido el nombre exacto, no molestar con la lista
-        setCliSugsOS(lista.length===1 && lista[0].nombre.trim().toLowerCase()===q.toLowerCase() ? [] : lista)
-      })
-    return () => { vivo = false }
-  }, [form.cli, form.aseg, supabase])
+    const lista = clientesAll.filter(c => normBusq(c.nombre).includes(q)).slice(0, 6)
+    // si ya está elegido el nombre exacto, no molestar con la lista
+    setCliSugsOS(lista.length===1 && normBusq(lista[0].nombre)===q ? [] : lista)
+  }, [form.cli, form.aseg, clientesAll])
 
   const load = useCallback(() => {
     supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
@@ -245,6 +248,20 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const neto  = items.reduce((a,it)=>a+it.c*(parseFloat(String(it.p).replace(',','.'))||0), 0)
   const iva   = ivaOn ? neto*IVA_RATE : 0
   const total = neto + iva
+
+  // La OS guarda los precios de los ítems SIN IVA y suma el IVA aparte (total = neto + iva).
+  // Comprobantes interpreta el precio del ítem como YA CON IVA. Si la OS suma IVA, al pasarla
+  // a comprobante hay que llevar los precios con IVA incluido, o la factura sale por el neto
+  // (caso OS $180.000 → comprobante $148.760).
+  function itemsParaComprobante(o: any): any[] {
+    const items: any[] = o.items || []
+    const netoOS = items.reduce((a:number,it:any)=>a+(it.c||1)*(parseFloat(String(it.p).replace(',','.'))||0), 0)
+    const totalOS = parseFloat(String(o.total||0)) || 0
+    const ivaOS = parseFloat(String(o.iva||0)) || 0
+    if (ivaOS <= 0 || netoOS <= 0 || totalOS <= netoOS) return items
+    const f = totalOS / netoOS
+    return items.map((it:any) => ({ ...it, p: Math.round((parseFloat(String(it.p).replace(',','.'))||0) * f * 100) / 100 }))
+  }
 
   function addItem() {
     if(!item.d||!item.p) return
@@ -989,7 +1006,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                               if ((o as any).convertido_comp) { alert('⚠ Esta OS ya tiene comprobante emitido.'); return }
                               const params = new URLSearchParams({
                                 cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
-                                items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                                items: JSON.stringify(itemsParaComprobante(o)), total: String(o.total), iva: String(o.iva??0), oid: o.id,
                                 ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
                                 ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
                               })
@@ -1033,7 +1050,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                               if ((o as any).convertido_comp) { alert('⚠ Esta OS ya tiene comprobante emitido.'); return }
                               const params = new URLSearchParams({
                                 cli: o.cliente??'', tel: o.telefono??'', veh: o.vehiculo??'', pat: (o as any).patente??'',
-                                items: JSON.stringify(o.items), total: String(o.total), iva: String(o.iva??0), oid: o.id,
+                                items: JSON.stringify(itemsParaComprobante(o)), total: String(o.total), iva: String(o.iva??0), oid: o.id,
                                 ...(o.aseguradora?{aseguradora:o.aseguradora}:{}),
                                 ...((o as any).siniestro?{siniestro:(o as any).siniestro}:{}),
                               })
