@@ -32,6 +32,76 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
 
   const esCajaRol = perfil.rol === 'caja'
   const [reciboVenta, setReciboVenta] = useState<any|null>(null)
+
+  // N° de recibo correlativo: se asigna la primera vez y queda guardado en la venta
+  async function asignarNroRecibo(rv: any): Promise<string> {
+    let nroRec: number|undefined = rv.nro_recibo
+    if (!nroRec) {
+      const { data } = await supabase.rpc('next_recibo_caja_numero')
+      if (typeof data === 'number') {
+        nroRec = data
+        await supabase.from('ventas').update({ nro_recibo: nroRec }).eq('id', rv.id)
+        rv.nro_recibo = nroRec
+      }
+    }
+    return nroRec ? String(nroRec).padStart(6,'0') : (rv.id||'').slice(0,8).toUpperCase()
+  }
+
+  // Recibo en PDF: hoja A4 VERTICAL (210 x 297). El recibo va HORIZONTAL en la MITAD SUPERIOR
+  // (210 x 148,5 mm); la mitad de abajo queda libre. Sin datos del local ni logo (comprobante
+  // de caja, no fiscal). Imprimir en A4 vertical al 100% / "tamaño real".
+  async function descargarReciboPDF(rv: any) {
+    const nroRecibo = await asignarNroRecibo(rv)
+    const m = rv.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
+    const cod = m?.[1] || ''
+    const desc = String(m?.[2] || rv.descripcion || '')
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ orientation:'portrait', format:'a4', unit:'mm', compress:true })
+    const INK:  [number,number,number] = [12,24,16]
+    const GRIS: [number,number,number] = [107,114,128]
+    const money = (n:number) => '$ ' + (Number(n)||0).toLocaleString('es-AR', { minimumFractionDigits:2, maximumFractionDigits:2 })
+    const W = 210
+    const cw = 150, L = (W - cw) / 2, R = L + cw, XC = W / 2   // bloque de 150 mm centrado
+    let y = 18
+
+    doc.setTextColor(...INK); doc.setFont('courier','bold'); doc.setFontSize(15)
+    doc.text(`RECIBO N° ${nroRecibo}`, XC, y, { align:'center' }); y += 6
+    doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(...GRIS)
+    doc.text(rv.fecha?.split('-').reverse().join('/') || '', XC, y, { align:'center' }); y += 6
+    if (rv.cliente) {
+      doc.setFont('courier','bold'); doc.setFontSize(12); doc.setTextColor(...INK)
+      doc.text(String(rv.cliente), XC, y, { align:'center', maxWidth: cw }); y += 6
+    }
+    y += 5
+
+    // Tabla
+    doc.setFont('courier','normal'); doc.setFontSize(8); doc.setTextColor(...GRIS)
+    doc.text('CÓDIGO', L, y); doc.text('DESCRIPCIÓN', L + 26, y); doc.text('PRECIO', R, y, { align:'right' })
+    y += 2.5
+    doc.setDrawColor(210,214,220); doc.setLineWidth(0.3); doc.line(L, y, R, y); y += 6
+    doc.setFont('courier','normal'); doc.setFontSize(9.5); doc.setTextColor(...INK)
+    let lineas: string[] = doc.splitTextToSize(desc, cw - 26 - 34)
+    if (lineas.length > 5) lineas = [...lineas.slice(0,4), lineas[4].replace(/.{0,3}$/, '...')]
+    doc.text(cod, L, y, { maxWidth: 24 })
+    lineas.forEach((ln, i) => doc.text(ln, L + 26, y + i*4.6))
+    doc.setFont('courier','bold'); doc.text(money(rv.precio), R, y, { align:'right' })
+    y += lineas.length*4.6 + 3
+
+    // Total
+    doc.setDrawColor(...INK); doc.setLineWidth(0.7); doc.line(L, y, R, y); y += 8
+    doc.setFont('courier','bold'); doc.setFontSize(11); doc.text('TOTAL', L, y)
+    doc.setFontSize(15); doc.text(money(rv.precio), R, y, { align:'right' }); y += 8
+    if (rv.pago) {
+      doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(...GRIS)
+      doc.text(`Forma de pago: ${rv.pago}`, L, y)
+    }
+
+    // Línea de corte al medio de la hoja
+    doc.setDrawColor(190,190,190); doc.setLineWidth(0.2)
+    doc.setLineDashPattern([2,2], 0); doc.line(5, 148.5, 205, 148.5); doc.setLineDashPattern([], 0)
+
+    doc.save(`Recibo Nro ${nroRecibo.replace(/[^\w-]+/g,'_')}.pdf`)
+  }
   const [itemsCaja, setItemsCaja] = useState<{desc:string;codigo:string;precio:number|string;costo:number;stock_id:string|null;cantidad:number}[]>([])
   const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
   const [tarjetasConf, setTarjetasConf] = useState<any[]>([])
@@ -934,20 +1004,11 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
           </div>
           <div className="flex justify-end gap-2 pt-4">
             <button onClick={()=>setReciboVenta(null)} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>Cerrar</button>
+            <button onClick={()=>descargarReciboPDF(reciboVenta)} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>🖨 Recibo A4 (PDF)</button>
             <button onClick={async ()=>{
               // Descargar recibo como imagen PNG (canvas, sin diálogo de impresión)
               const rv = reciboVenta
-              // N° de recibo correlativo: se asigna la primera vez y queda guardado en la venta
-              let nroRec: number|undefined = rv.nro_recibo
-              if (!nroRec) {
-                const { data } = await supabase.rpc('next_recibo_caja_numero')
-                if (typeof data === 'number') {
-                  nroRec = data
-                  await supabase.from('ventas').update({ nro_recibo: nroRec }).eq('id', rv.id)
-                  rv.nro_recibo = nroRec
-                }
-              }
-              const nroRecibo = nroRec ? String(nroRec).padStart(6,'0') : (rv.id||'').slice(0,8).toUpperCase()
+              const nroRecibo = await asignarNroRecibo(rv)
               const m = rv.descripcion?.match(/^\[([^\]]+)\]\s*(.+)$/)
               const cod = m?.[1]||''; const desc = m?.[2]||rv.descripcion||''
               const fmt = (n:number)=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(n)
@@ -996,7 +1057,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
               a.download = `Recibo Nro ${nroRecibo.replace(/[^\w-]+/g,'_')}.png`
               a.href = cv.toDataURL('image/png')
               a.click()
-            }} style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>⬇ Descargar imagen</button>
+            }} style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'9px 20px',fontWeight:700,fontSize:14,cursor:'pointer'}}>⬇ Imagen</button>
           </div>
         </Modal>
       )}
