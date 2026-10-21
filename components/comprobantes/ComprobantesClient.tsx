@@ -122,6 +122,28 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [remitoItemsSel, setRemitoItemsSel] = useState<Set<number>>(new Set())
   const [ventaPreviaOS, setVentaPreviaOS] = useState(false)
   const [oidParam, setOidParam] = useState<string|null>(null)
+  // Semáforo de ARCA: null = consultando, true = en línea, false = sin servicio
+  const [arcaEst, setArcaEst] = useState<{ok:boolean|null; detalle:string}>({ ok:null, detalle:'Consultando estado de ARCA…' })
+  async function chequearArca() {
+    try {
+      const r = await fetch('/api/arca-status', { cache:'no-store' })
+      const d = await r.json()
+      const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})
+      setArcaEst({
+        ok: !!d.ok,
+        detalle: d.ok
+          ? `ARCA en línea · actualizado ${hora} (click para actualizar)`
+          : `ARCA sin servicio${d.error?` — ${d.error}`:(d.app||d.db||d.auth)?` — AppServer ${d.app||'?'} · DbServer ${d.db||'?'} · AuthServer ${d.auth||'?'}`:''} · ${hora}. Si emitís ahora, el comprobante queda como borrador "Sin CAE" para reintentar. (click para actualizar)`,
+      })
+    } catch {
+      setArcaEst({ ok:false, detalle:'No se pudo consultar el estado de ARCA (¿sin internet?). Click para reintentar.' })
+    }
+  }
+  useEffect(() => {
+    chequearArca()
+    const t = setInterval(chequearArca, 60000)
+    return () => clearInterval(t)
+  }, [])
   const [tarjConfigs, setTarjConfigs]     = useState<any[]>([])
   const [pagoTarjConfig, setPagoTarjConfig] = useState('')
   const [obs, setObs]           = useState('')
@@ -158,7 +180,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const esExento = fiscal.tipo_fiscal === 'exento'
   // Si el cliente es RI (Factura A), los precios ya incluyen IVA → neto = precio / 1.21
   // Si es CF/B/C/exento, el total es el precio tal cual
-  const discriminaIva = !esNegro && !esExento && fiscal.tipo_fiscal === 'responsable_inscripto'
+  const discriminaIva = !esNegro && !esExento && (fiscal.tipo_fiscal === 'responsable_inscripto' || fiscal.tipo_fiscal === 'monotributo')
   const esCFoB = !esNegro && !esExento && !discriminaIva // B o C — IVA incluido en precio
   const subtotalItems = Math.round(items.reduce((a,it)=>a+it.c*it.p, 0) * 100) / 100
   // Para B/C: el precio ya incluye IVA, calculamos el neto descontando el IVA
@@ -408,7 +430,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
     if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final'||fiscal.tipo_fiscal==='exento') return 'B'
-    if(fiscal.tipo_fiscal==='responsable_inscripto') return 'A'
+    // El emisor (El Piamonte) es Responsable Inscripto: a otro RI y a un MONOTRIBUTISTA se les emite
+    // Factura A (IVA discriminado). La Factura C solo la emiten monotributistas: ARCA la rechaza
+    // con "NO AUTORIZADO A EMITIR COMPROBANTES" (caso Garcia Juan Jose, 21/10/2026).
+    if(fiscal.tipo_fiscal==='responsable_inscripto' || fiscal.tipo_fiscal==='monotributo') return 'A'
     return 'C'
   }
 
@@ -782,10 +807,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       let condIvaReceptor = MAPA_COND_IVA[c.cliente_tipo_fiscal || ''] ?? (docTipo === 80 ? 1 : 5)
       // Red de seguridad: una Factura B jamás puede declarar receptor RI
       // Red bidireccional — la LETRA del comprobante manda:
-      // Clase A (FA=1, ND=2, NC=3, FCE=201/202/203): receptor RI por definición.
+      // Clase A (FA=1, ND=2, NC=3, FCE=201/202/203): receptor RI (1) o MONOTRIBUTISTA (6 / 13 / 16).
       // Clase B: jamás receptor RI.
       const CLASE_A = [1, 2, 3, 201, 202, 203]
-      if (CLASE_A.includes(tipoCbte)) condIvaReceptor = 1
+      if (CLASE_A.includes(tipoCbte)) condIvaReceptor = [6, 13, 16].includes(condIvaReceptor) ? condIvaReceptor : 1
       else if (condIvaReceptor === 1) condIvaReceptor = docTipo === 80 ? 4 : 5
       const { data, error } = await supabase.functions.invoke('arca-facturar', {
         body: {
@@ -1748,7 +1773,19 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             </button>
           ))}
         </div>
-        {rol !== 'caja' && <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>}
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <button onClick={()=>{ setArcaEst({ok:null,detalle:'Consultando estado de ARCA…'}); chequearArca() }} title={arcaEst.detalle}
+            style={{display:'flex',alignItems:'center',gap:7,borderRadius:99,padding:'6px 13px',fontSize:12,fontWeight:700,cursor:'pointer',
+              background: arcaEst.ok===null ? '#f3f4f6' : arcaEst.ok ? '#ecfdf3' : '#fef2f2',
+              color:      arcaEst.ok===null ? '#6b7280' : arcaEst.ok ? '#047857' : '#b91c1c',
+              border:`1.5px solid ${arcaEst.ok===null ? '#d1d5db' : arcaEst.ok ? '#6ee7b7' : '#fca5a5'}`}}>
+            <span style={{width:10,height:10,borderRadius:'50%',display:'inline-block',
+              background: arcaEst.ok===null ? '#9ca3af' : arcaEst.ok ? '#10b981' : '#ef4444',
+              boxShadow:`0 0 0 3px ${arcaEst.ok===null ? '#e5e7eb' : arcaEst.ok ? '#d1fae5' : '#fee2e2'}`}}/>
+            {arcaEst.ok===null ? 'ARCA…' : arcaEst.ok ? 'ARCA en línea' : 'ARCA sin servicio'}
+          </button>
+          {rol !== 'caja' && <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo comprobante</button>}
+        </div>
       </div>
 
       {compsFiltrados.length===0 ? <Empty msg="Sin comprobantes para este filtro." /> : (
