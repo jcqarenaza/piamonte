@@ -1,11 +1,17 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Link corto para WhatsApp: /c/<codigo> -> edge function pdf-link (que redirige al PDF firmado)
+  // Links publicos (sin login) que resuelve la edge function pdf-link:
+  //  /c/<codigo>          -> PDF de comprobante enviado por WhatsApp
+  //  /presupuesto/<nro>   -> PDF de presupuesto (links ya enviados siguen funcionando)
   async rewrites() {
-    return [
-      { source: '/c/:code', destination: 'https://hjzhatercccblhgaukgx.supabase.co/functions/v1/pdf-link?c=:code' },
-    ]
+    const fn = 'https://hjzhatercccblhgaukgx.supabase.co/functions/v1/pdf-link'
+    return {
+      beforeFiles: [
+        { source: '/c/:code', destination: fn + '?c=:code' },
+        { source: '/presupuesto/:ref', destination: fn + '?p=:ref' },
+      ],
+    }
   },
   images: {
     remotePatterns: [

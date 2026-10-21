@@ -272,10 +272,20 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     setItem({d:'',c:'1',p:''})
   }
 
+  // Bucket privado: se firman los links (1 h) al cargar los adjuntos
+  async function firmarAdjuntos(rows: any[]): Promise<any[]> {
+    const lista = rows ?? []
+    const paths = lista.map((a:any) => a.storage_path).filter(Boolean)
+    if (!paths.length) return lista
+    const { data } = await supabase.storage.from('comprobante-adjuntos').createSignedUrls(paths, 3600)
+    const mapa = new Map((data ?? []).map((s:any) => [s.path, s.signedUrl]))
+    return lista.map((a:any) => ({ ...a, url: mapa.get(a.storage_path) || a.url }))
+  }
+
   async function abrirAdjuntos(o: any) {
     setAdjModal(o)
     const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('os_id', o.id).order('orden')
-    setAdjuntos(data ?? [])
+    setAdjuntos(await firmarAdjuntos(data ?? []))
   }
 
   async function subirArchivoOS(file: File, tipo: string) {
@@ -292,7 +302,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
         url: urlData.publicUrl, storage_path: path, orden: adjuntos.length
       })
       const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('os_id', adjModal.id).order('orden')
-      setAdjuntos(data ?? [])
+      setAdjuntos(await firmarAdjuntos(data ?? []))
     } catch(e) { console.error(e) }
     setUploading(false)
   }

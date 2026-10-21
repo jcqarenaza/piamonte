@@ -6,7 +6,7 @@ const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJI
 
 export async function proxy(request: NextRequest) {
   // Links cortos de comprobantes (WhatsApp): publicos, sin login. Solo /c/<codigo>.
-  if (/^\/c\/[a-z0-9]{6,20}$/.test(request.nextUrl.pathname)) return NextResponse.next()
+  if (/^\/(c\/[A-Za-z0-9-]{6,50}|presupuesto\/[A-Za-z0-9-]{1,40})$/.test(request.nextUrl.pathname)) return NextResponse.next()
 
   let supabaseResponse = NextResponse.next({ request })
 

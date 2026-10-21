@@ -1279,6 +1279,16 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     setSaving(false)
   }
 
+  // Bucket privado: se firman los links (1 h) al cargar los adjuntos
+  async function firmarAdjuntos(rows: any[]): Promise<any[]> {
+    const lista = rows ?? []
+    const paths = lista.map((a:any) => a.storage_path).filter(Boolean)
+    if (!paths.length) return lista
+    const { data } = await supabase.storage.from('comprobante-adjuntos').createSignedUrls(paths, 3600)
+    const mapa = new Map((data ?? []).map((s:any) => [s.path, s.signedUrl]))
+    return lista.map((a:any) => ({ ...a, url: mapa.get(a.storage_path) || a.url }))
+  }
+
   async function abrirAdjuntos(c: Comprobante) {
     setAdjModal(c)
     const [adjComp, adjOS] = await Promise.all([
@@ -1288,7 +1298,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         : Promise.resolve({ data: [] })
     ])
     const osAdj = (adjOS.data ?? []).map((a:any) => ({...a, _de_os: true}))
-    setAdjuntos([...(adjComp.data ?? []), ...osAdj])
+    setAdjuntos(await firmarAdjuntos([...(adjComp.data ?? []), ...osAdj]))
   }
 
   async function subirArchivo(file: File, tipo: string) {
@@ -1306,7 +1316,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         orden: adjuntos.length
       })
       const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', adjModal.id).order('orden')
-      setAdjuntos(data ?? [])
+      setAdjuntos(await firmarAdjuntos(data ?? []))
     } catch(e) { console.error(e) }
     setUploading(false)
   }
@@ -1700,8 +1710,11 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const path = `${new Date().getFullYear()}/${c.id}-${Date.now()}.pdf`
       const up = await supabase.storage.from('comprobantes-pdf').upload(path, blob, { contentType:'application/pdf', upsert:false })
       if (up.error) throw up.error
-      const rnd = crypto.getRandomValues(new Uint8Array(8))
-      const code = Array.from(rnd).map(b=>'abcdefghijkmnpqrstuvwxyz23456789'[b%32]).join('')
+      // Codigo = numero de comprobante + sufijo aleatorio (para que no se puedan adivinar links ajenos)
+      const rnd = crypto.getRandomValues(new Uint8Array(6))
+      const sufijo = Array.from(rnd).map(b=>'abcdefghijkmnpqrstuvwxyz23456789'[b%32]).join('')
+      const base = c.nro_cbte_afip ? `${pref||'CB'}-0006-${nro}` : `${pref||'CB'}-${String(c.numero ?? c.id).replace(/[^A-Za-z0-9]/g,'').slice(0,12)}`
+      const code = `${base}-${sufijo}`
       const ins = await supabase.from('pdf_links').insert({ code, path, nombre })
       if (ins.error) throw ins.error
       link = `${window.location.origin}/c/${code}`
@@ -1710,13 +1723,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     }
     if (link) {
       const txt = `${saludo}\n\nPodés descargar tu comprobante acá (válido por 30 días):\n${link}`
-      window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(txt)}`,'_blank')
+      window.open(`https://web.whatsapp.com/send?${tel?`phone=${tel}&`:''}text=${encodeURIComponent(txt)}`,'_blank')
       return
     }
     // 2) Respaldo: descargar el PDF y abrir el chat con el texto (adjuntar a mano)
     const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=nombre; a.click(); URL.revokeObjectURL(url)
     alert('No se pudo generar el link del PDF. Se descargó el archivo: adjuntalo en el chat de WhatsApp.')
-    setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(saludo)}`,'_blank'),800)
+    setTimeout(()=>window.open(`https://web.whatsapp.com/send?${tel?`phone=${tel}&`:''}text=${encodeURIComponent(saludo)}`,'_blank'),800)
   }
 
   // Formato de PDF según la ficha (aseguradoras.formato_factura / clientes.formato_factura)
@@ -1891,7 +1904,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                   </p>
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={()=>abrirAdjuntos(c)} style={{...btnSm,background:'#7c3aed'}}>📎 Adjuntos</button>
-                    {c.cliente_telefono&&<button onClick={()=>compartirWA(c)} style={btnWa}>📱 WhatsApp</button>}
+                    <button onClick={()=>compartirWA(c)} style={btnWa} title={c.cliente_telefono?'':'El cliente no tiene teléfono: elegís el chat en WhatsApp'}>📱 WhatsApp</button>
                     {!c.es_negro && ['A','B','C'].includes(c.tipo) && !c.cae_emitido && (
                       <button onClick={()=>reintentarCAE(c)} disabled={caeLoading===c.id}
                         style={{...btnSm,background:'#dc2626',opacity:caeLoading===c.id?.6:1}}>

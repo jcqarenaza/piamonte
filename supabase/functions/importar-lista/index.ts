@@ -261,6 +261,16 @@ Deno.serve(async (req) => {
   }
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // Solo usuarios logueados (la clave publica anon NO alcanza)
+  {
+    const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const sbAuth = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const { data: au, error: auErr } = token ? await sbAuth.auth.getUser(token) : { data: null, error: new Error('sin token') }
+    if (auErr || !au?.user) {
+      return new Response(JSON.stringify({ ok: false, error: 'No autorizado' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
