@@ -1704,7 +1704,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       const code = Array.from(rnd).map(b=>'abcdefghijkmnpqrstuvwxyz23456789'[b%32]).join('')
       const ins = await supabase.from('pdf_links').insert({ code, path, nombre })
       if (ins.error) throw ins.error
-      link = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/pdf-link?c=${code}`
+      link = `${window.location.origin}/c/${code}`
     } catch (e) {
       console.error('WhatsApp: no se pudo subir el PDF', e)
     }
