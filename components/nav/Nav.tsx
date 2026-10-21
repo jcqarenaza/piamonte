@@ -19,7 +19,6 @@ const GRUPOS = [
     items: [
       { id:'articulos', href:'/articulos', label:'Artículos', icon:'🏷️' },
       { id:'comparar',  href:'/comparar',  label:'Comparar',  icon:'⚖️' },
-      { id:'equivalencias', href:'/equivalencias', label:'Equivalencias', icon:'🔗' },
       { id:'ofertas',   href:'/ofertas',   label:'Ofertas',   icon:'⭐' },
     ]
   },

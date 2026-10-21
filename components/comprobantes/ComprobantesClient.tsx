@@ -91,6 +91,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [cfNombre, setCfNombre] = useState('')
   const [cfTel, setCfTel]       = useState('')
   const [cfDni, setCfDni]       = useState('')
+  // Padrón ARCA: al tipear un CUIT válido en el modal se consulta la constancia de inscripción
+  type PadronInfo = { cuit:string; razon:string; condicion:string|null; condicion_label:string; condicion_verificada:boolean; domicilio:string; localidad:string; provincia:string }
+  const [padron, setPadron] = useState<{ loading:boolean; data:PadronInfo|null; error:string }>({ loading:false, data:null, error:'' })
   const [rubros, setRubros]           = useState<RubroPrecio[]>([])
   const [rubrosEdit, setRubrosEdit]   = useState<Record<string,number>>({})
   const [items, setItems]       = useState<ItemVenta[]>([])
@@ -427,6 +430,45 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   function delPago(i:number){ if(pagos.length>1) setPagos(prev=>prev.filter((_,j)=>j!==i)) }
   function distribuirTotal(){ setPagos(prev=>prev.map((p,i)=>i===0?{...p,monto:fmtMonto(total)}:p)) }
 
+  useEffect(() => {
+    const limpio = (fiscal.cuit || '').replace(/\D/g, '')
+    if (limpio.length !== 11) { setPadron({ loading:false, data:null, error:'' }); return }
+    if (padron.data?.cuit === limpio) return
+    let vivo = true
+    const t = setTimeout(async () => {
+      setPadron({ loading:true, data:null, error:'' })
+      const { data, error } = await supabase.functions.invoke('padron-arca', { body:{ cuit: limpio } })
+      if (!vivo) return
+      if (error || !data?.ok) { setPadron({ loading:false, data:null, error: data?.error || error?.message || 'Sin respuesta' }); return }
+      const d = data as PadronInfo
+      setPadron({ loading:false, data:d, error:'' })
+      const titulo = d.razon.toLowerCase().replace(/(^|\s|,)([a-záéíóúñ])/g, (m: string) => m.toUpperCase())
+      if (d.condicion_verificada && d.condicion && d.condicion !== 'no_inscripto') {
+        setFiscal(p => ({ ...p, tipo_fiscal: d.condicion as string, razon_social: p.razon_social || titulo }))
+      }
+      if (modo === 'cf') setCfNombre(n => n.trim() ? n : titulo)
+    }, 500)
+    return () => { vivo = false; clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fiscal.cuit])
+  const padronDifiere = !!(padron.data?.condicion_verificada && padron.data.condicion && padron.data.condicion !== 'no_inscripto' && padron.data.condicion !== fiscal.tipo_fiscal)
+  const PadronBox = () => (
+    <>
+      {padron.loading && <div className="text-xs text-gray-500 mt-1">Consultando ARCA…</div>}
+      {padron.error && <div className="mt-1 rounded-lg px-3 py-1.5 text-xs bg-amber-50 text-amber-800 border border-amber-200">ARCA no respondió: {padron.error}</div>}
+      {padron.data && (
+        <div className={`mt-1 rounded-lg px-3 py-2 text-xs border ${padronDifiere ? 'bg-orange-50 border-orange-300' : 'bg-blue-50 border-blue-200'}`}>
+          <div className="font-bold text-gray-800">{padron.data.razon}</div>
+          <div className={padronDifiere ? 'text-orange-800 font-semibold' : 'text-gray-700'}>
+            ARCA: {padron.data.condicion_label}
+            {padronDifiere && <> · elegido <u>{tipoFiscalLabel(fiscal.tipo_fiscal)}</u>{' '}
+              <button type="button" className="ml-1 underline font-bold" onClick={()=>setFiscal(p=>({...p, tipo_fiscal: padron.data!.condicion as string}))}>Usar la de ARCA</button></>}
+          </div>
+          {(padron.data.domicilio || padron.data.localidad) && <div className="text-gray-500">📍 {[padron.data.domicilio, padron.data.localidad, padron.data.provincia].filter(Boolean).join(', ')}</div>}
+        </div>
+      )}
+    </>
+  )
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
     if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final'||fiscal.tipo_fiscal==='exento') return 'B'
@@ -1027,7 +1069,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       cliente_id: modo==='cliente' ? (cliEfectivo?.id||null) : null,
       cliente_nombre: modo==='cliente' ? (cliEfectivo?.nombre||cliQ||null) : (modo==='aseguradora' ? (clienteAseg||null) : (modo==='cf' ? (cfNombre||'Consumidor Final') : null)),
       cliente_telefono: modo==='cliente' ? (cliEfectivo?.telefono||null) : (modo==='cf' && cfTel ? cfTel : null),
-      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && (fiscal.tipo_fiscal==='responsable_inscripto'||fiscal.tipo_fiscal==='exento') && fiscal.cuit ? fiscal.cuit : (modo==='cf' && cfDni ? cfDni : null)),
+      cliente_cuit: modo==='cliente' ? (fiscal.cuit||null) : (modo==='cf' && fiscal.cuit.replace(/\D/g,'').length===11 ? fiscal.cuit : (modo==='cf' && cfDni ? cfDni : null)),
       cliente_tipo_fiscal: fiscal.tipo_fiscal||'consumidor_final',
       tipo_cliente_id: fiscal.tipo_cliente_id||null,
       tipo_cliente_nombre: tipoC?.nombre||null,
@@ -1996,10 +2038,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 <Field label="Nombre *">
                   <Input value={cfNombre} onChange={e=>setCfNombre(e.target.value)} placeholder="Apellido y nombre…"/>
                 </Field>
-                <Field label="DNI *">
+                <Field label={fiscal.cuit ? 'DNI' : 'DNI *'}>
                   <Input value={cfDni} onChange={e=>setCfDni(e.target.value.replace(/\D/g,''))} placeholder="12345678" maxLength={8}/>
                 </Field>
               </div>
+              <Field label="CUIT (si tiene — se consulta en ARCA)">
+                <Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/>
+                <PadronBox/>
+              </Field>
               <Field label="Teléfono (opcional)">
                 <Input value={cfTel} onChange={e=>setCfTel(e.target.value)} type="tel" placeholder="Ej: 2302xxxxxx"/>
               </Field>
@@ -2007,22 +2053,23 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               <div className="flex flex-col gap-1.5 mt-1">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={fiscal.tipo_fiscal==='responsable_inscripto'}
-                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
+                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'responsable_inscripto' : 'consumidor_final'}))}
                     className="accent-p-green"/>
                   <span className="font-semibold text-p-dark">Facturar como Responsable Inscripto (Factura A)</span>
                 </label>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={fiscal.tipo_fiscal==='monotributo'}
+                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'monotributo' : 'consumidor_final'}))}
+                    className="accent-p-green"/>
+                  <span className="font-semibold text-p-dark">Monotributista (Factura A)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={fiscal.tipo_fiscal==='exento'}
-                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'exento' : 'consumidor_final', cuit: e.target.checked ? p.cuit : ''}))}
+                    onChange={e=>setFiscal(p=>({...p, tipo_fiscal: e.target.checked ? 'exento' : 'consumidor_final'}))}
                     className="accent-amber-500"/>
                   <span className="font-semibold text-amber-700">Exento de IVA (Factura B sin IVA)</span>
                 </label>
               </div>
-              {(fiscal.tipo_fiscal==='responsable_inscripto' || fiscal.tipo_fiscal==='exento') && (
-                <Field label={fiscal.tipo_fiscal==='exento' ? 'CUIT (opcional para exentos)' : 'CUIT *'}>
-                  <Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/>
-                </Field>
-              )}
             </div>
           )}
 
@@ -2144,7 +2191,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                 </Field>
               </div>
               {fiscal.tipo_fiscal!=='consumidor_final'&&(
-                <Field label="CUIT"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/></Field>
+                <Field label="CUIT"><Input value={fiscal.cuit} onChange={e=>setFiscal(p=>({...p,cuit:e.target.value}))} placeholder="20-12345678-9"/><PadronBox/></Field>
               )}
               <button onClick={async()=>{
                 if(cliSel?.id){
