@@ -126,8 +126,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [arcaEst, setArcaEst] = useState<{ok:boolean|null; detalle:string}>({ ok:null, detalle:'Consultando estado de ARCA…' })
   async function chequearArca() {
     try {
-      const r = await fetch('/api/arca-status', { cache:'no-store' })
-      const d = await r.json()
+      const { data: d, error: fnErr } = await supabase.functions.invoke('arca-estado', { body: {} })
+      if (fnErr || !d) throw fnErr || new Error('sin respuesta')
       const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})
       setArcaEst({
         ok: !!d.ok,
