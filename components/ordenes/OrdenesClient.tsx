@@ -435,14 +435,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     const etiqueta = esFce ? 'FCE MiPyME' : 'Factura A'
     if (!confirm(`Se va a emitir una ${etiqueta} en ARCA por ${moneyARS2(total)} (${selIds.length} OS).${esFce?`\nCBU informado: ${cta.banco} ${cta.tipo}\nVto de pago: ${sancorVtoPago.split('-').reverse().join('/')}`:''}\n¿Confirmás?`)) return
     setSancorEmitiendo(true)
-    // Verificación contra el padrón de ARCA: la letra A exige receptor RI o Monotributo
-    try {
-      const { data: pad } = await supabase.functions.invoke('padron-arca', { body: { cuit: sancorCuitReceptor } })
-      if (pad?.ok && pad.condicion_verificada && pad.condicion && !['responsable_inscripto','monotributo'].includes(pad.condicion)) {
-        alert(`NO SE EMITIÓ.\n\nARCA informa que el CUIT ${sancorCuitReceptor} (${pad.razon}) es "${pad.condicion_label}", y a esa condición no le corresponde ${etiqueta}.\nRevisá config_fce.cuit_receptor.`)
-        setSancorEmitiendo(false); return
-      }
-    } catch { /* si el padrón no responde, se sigue como antes */ }
     const osSel = sancorOS.filter((o:any)=>selIds.includes(o.id))
     // 1) Comprobante borrador (necesario: la edge function lo referencia en facturacion_electronica)
     const { data: nextNumData } = await supabase.rpc('siguiente_numero_comprobante', { p_tipo: esFce ? 'FCE' : 'A', p_categoria: 'factura' })
