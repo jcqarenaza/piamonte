@@ -1629,6 +1629,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       if (c.cae_vencimiento) doc.text(`Vto. CAE: ${c.cae_vencimiento.split('-').reverse().join('/')}`, W-pad-4, caeY+6.5, {align:'right'})
     }
 
+    // ─── LEYENDA OBLIGATORIA: Factura A a monotributista (ARCA, Ley 27.618) ───
+    if (c.tipo==='A' && c.cliente_tipo_fiscal==='monotributo') {
+      const leyenda = 'El crédito fiscal discriminado en el presente comprobante, solo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618'
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.2); doc.setTextColor(30,30,30)
+      const lin = doc.splitTextToSize(leyenda, W - pad*2)
+      doc.text(lin.slice(0,2), pad, 281.4)
+    }
+
     // ─── FOOTER — siempre en Y=285 ───
     doc.setFillColor(0,165,80)
     doc.rect(0, 285, W, 12, 'F')
@@ -1682,16 +1690,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const nro = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0")
     const nombre = `Comprobante-${nro}-${c.tipo||""}.pdf`
     const tel = (c.cliente_telefono||'').replace(/[^0-9]/g,'')
-    const saludo = `Hola${c.cliente_nombre?' '+c.cliente_nombre:''}! Te enviamos el comprobante N°${c.numero} de Parabrisas El Piamonte. Total: ${moneyARS(c.total)}.`
-    // 1) Subir y firmar el link
+    const pref = c.categoria==='nc' ? 'NC' : c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : c.tipo==='C' ? 'FC' : c.tipo==='FCE' ? 'FCE' : ''
+    const nroTxt = c.nro_cbte_afip ? `${pref ? pref+' ' : ''}0006-${nro}` : String(c.numero ?? '')
+    const saludo = `Hola${c.cliente_nombre?' '+c.cliente_nombre:''}! Te enviamos el comprobante ${nroTxt} de Parabrisas El Piamonte. Total: ${moneyARS(c.total)}.`
+    // 1) Subir el PDF (bucket privado) y registrar un codigo corto -> la edge function pdf-link
+    //    lo resuelve a un link firmado de corta duracion y redirige (el link del mensaje queda corto).
     let link = ''
     try {
       const path = `${new Date().getFullYear()}/${c.id}-${Date.now()}.pdf`
       const up = await supabase.storage.from('comprobantes-pdf').upload(path, blob, { contentType:'application/pdf', upsert:false })
       if (up.error) throw up.error
-      const sig = await supabase.storage.from('comprobantes-pdf').createSignedUrl(path, 60*60*24*30, { download: nombre })
-      if (sig.error || !sig.data?.signedUrl) throw sig.error || new Error('sin link')
-      link = sig.data.signedUrl
+      const rnd = crypto.getRandomValues(new Uint8Array(8))
+      const code = Array.from(rnd).map(b=>'abcdefghijkmnpqrstuvwxyz23456789'[b%32]).join('')
+      const ins = await supabase.from('pdf_links').insert({ code, path, nombre })
+      if (ins.error) throw ins.error
+      link = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/pdf-link?c=${code}`
     } catch (e) {
       console.error('WhatsApp: no se pudo subir el PDF', e)
     }
