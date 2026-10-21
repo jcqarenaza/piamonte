@@ -62,6 +62,35 @@ export default function ClientesClient({ userId }: { userId:string }) {
 
   const cuitCheck = validarCuit(form.cuit)
 
+  // Consulta al padrón de ARCA (edge function padron-arca) cuando el CUIT es válido
+  type ArcaInfo = { cuit:string; razon:string; condicion:string|null; condicion_label:string; condicion_verificada:boolean; domicilio:string; localidad:string; provincia:string }
+  const [arca, setArca] = useState<{ loading:boolean; data:ArcaInfo|null; error:string }>({ loading:false, data:null, error:'' })
+  useEffect(() => {
+    const limpio = form.cuit.replace(/[^0-9]/g,'')
+    if (limpio.length !== 11 || !validarCuit(form.cuit).ok) { setArca({ loading:false, data:null, error:'' }); return }
+    if (arca.data?.cuit === limpio) return
+    let vivo = true
+    const t = setTimeout(async () => {
+      setArca({ loading:true, data:null, error:'' })
+      const { data, error } = await supabase.functions.invoke('padron-arca', { body:{ cuit:limpio } })
+      if (!vivo) return
+      if (error || !data?.ok) { setArca({ loading:false, data:null, error: data?.error || error?.message || 'Sin respuesta de ARCA' }); return }
+      const d = data as ArcaInfo
+      setArca({ loading:false, data:d, error:'' })
+      // Autocompletar solo lo que está vacío; la condición se pisa si ARCA la verificó
+      const dir = [d.domicilio, d.localidad].filter(Boolean).join(', ')
+      setForm(p => ({ ...p,
+        nombre: p.nombre.trim() ? p.nombre : tituloCaso(d.razon),
+        direccion: p.direccion.trim() ? p.direccion : dir,
+        tipo_fiscal: d.condicion_verificada && d.condicion && d.condicion !== 'no_inscripto' ? d.condicion : p.tipo_fiscal,
+      }))
+    }, 500)
+    return () => { vivo = false; clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.cuit])
+  function tituloCaso(s: string) { return s.toLowerCase().replace(/(^|\s|,)([a-záéíóúñ])/g, (m: string) => m.toUpperCase()) }
+  const arcaDifiere = !!(arca.data?.condicion_verificada && arca.data.condicion && arca.data.condicion !== 'no_inscripto' && arca.data.condicion !== form.tipo_fiscal)
+
   const load = useCallback(async () => {
     supabase.from('tipos_cliente').select('id,nombre').order('nombre').then(({data})=>setTipos(data??[]))
     let query = supabase.from('clientes').select('*').order('nombre')
@@ -78,6 +107,7 @@ export default function ClientesClient({ userId }: { userId:string }) {
   async function save() {
     if (!form.nombre.trim()) return
     if (form.cuit && !validarCuit(form.cuit).ok) { alert('El CUIT/CUIL ingresado no es válido.'); return }
+    if (arcaDifiere && !confirm(`ARCA informa que este CUIT es "${arca.data!.condicion_label}" y lo estás guardando como "${TIPOS_FISCAL.find(t=>t.id===form.tipo_fiscal)?.label}".\n\n¿Guardar igual?`)) return
     setSaving(true)
     const payload = { nombre:form.nombre, telefono:form.telefono||null, email:form.email||null, cuit:form.cuit||null, direccion:form.direccion||null, notas:form.notas||null, tipo_cliente_id:form.tipo_cliente_id||null, tipo_fiscal:form.tipo_fiscal||'consumidor_final', tiene_cuenta_corriente:form.tiene_cuenta_corriente, plazo_cc_dias:form.plazo_cc_dias, tope_credito:form.tope_credito?+form.tope_credito:null, formato_factura:form.formato_factura||'interno' }
     if (selected?.id) await supabase.from('clientes').update(payload).eq('id', selected.id)
@@ -268,6 +298,19 @@ export default function ClientesClient({ userId }: { userId:string }) {
             {form.cuit && (
               <div className={`mt-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${cuitCheck.ok?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-700 border border-red-200'}`}>
                 {cuitCheck.ok ? '✓ ' : '⚠ '}{cuitCheck.msg}
+              </div>
+            )}
+            {arca.loading && <div className="mt-1.5 text-xs text-gray-500">Consultando ARCA…</div>}
+            {arca.error && <div className="mt-1.5 rounded-lg px-3 py-1.5 text-xs bg-amber-50 text-amber-800 border border-amber-200">ARCA no respondió: {arca.error}</div>}
+            {arca.data && (
+              <div className={`mt-1.5 rounded-lg px-3 py-2 text-xs border ${arcaDifiere ? 'bg-orange-50 border-orange-300' : 'bg-blue-50 border-blue-200'}`}>
+                <div className="font-bold text-gray-800">{arca.data.razon}</div>
+                <div className={arcaDifiere ? 'text-orange-800 font-semibold' : 'text-gray-700'}>
+                  ARCA: {arca.data.condicion_label}
+                  {arcaDifiere && <> · cargado como <u>{TIPOS_FISCAL.find(t=>t.id===form.tipo_fiscal)?.label}</u>{' '}
+                    <button type="button" className="ml-1 underline font-bold" onClick={()=>setForm(p=>({...p, tipo_fiscal: arca.data!.condicion as string}))}>Corregir</button></>}
+                </div>
+                {(arca.data.domicilio || arca.data.localidad) && <div className="text-gray-500">📍 {[arca.data.domicilio, arca.data.localidad, arca.data.provincia].filter(Boolean).join(', ')}</div>}
               </div>
             )}
           </Field>

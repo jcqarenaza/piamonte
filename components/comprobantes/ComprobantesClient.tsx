@@ -805,6 +805,34 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         monotributo: 6, monotributista: 6, monotributista_social: 13,
       }
       let condIvaReceptor = MAPA_COND_IVA[c.cliente_tipo_fiscal || ''] ?? (docTipo === 80 ? 1 : 5)
+
+      // ── Verificación contra el padrón de ARCA (Constancia de Inscripción) antes de emitir ──
+      // Si ARCA dice que el receptor no corresponde a la letra del comprobante, se frena acá.
+      // Si el padrón no responde, se sigue como antes (no bloquea la facturación por eso).
+      const CLASE_A_TIPOS = [1, 2, 3, 201, 202, 203]
+      const esLetraA = CLASE_A_TIPOS.includes(tipoCbte)
+      if (cuitReceptor.length === 11) {
+        const { data: pad } = await supabase.functions.invoke('padron-arca', { body: { cuit: cuitReceptor } })
+        if (pad?.ok && pad.condicion_verificada && pad.condicion && pad.condicion !== 'no_inscripto') {
+          const condArca: string = pad.condicion
+          const arcaEsA = condArca === 'responsable_inscripto' || condArca === 'monotributo'
+          if (!cbteAsoc && arcaEsA !== esLetraA) {
+            const letraOk = arcaEsA ? 'A' : 'B'
+            const quien = c.aseguradora_id ? 'la aseguradora' : 'el cliente'
+            alert(`NO SE EMITIÓ.\n\nARCA informa que ${quien} (${pad.razon}, CUIT ${cuitReceptor}) es "${pad.condicion_label}".\nA esa condición le corresponde Factura ${letraOk}, no ${esLetraA ? 'A' : 'B'}.\n\nCorregí la condición fiscal en la ficha ${c.aseguradora_id ? 'de la aseguradora' : 'del cliente'} y volvé a generar el comprobante.`)
+            setCaeLoading(null); return false
+          }
+          // La condición real manda sobre la ficha (p.ej. ficha RI pero ARCA dice Monotributo)
+          const codArca = MAPA_COND_IVA[condArca]
+          if (codArca && codArca !== condIvaReceptor) {
+            condIvaReceptor = codArca
+            setToast(`ℹ ARCA informa "${pad.condicion_label}" para ${pad.razon}; se emite con esa condición. Revisá la ficha.`)
+            setTimeout(()=>setToast(''), 7000)
+          }
+        } else if (pad && !pad.ok) {
+          console.warn('padron-arca:', pad.error)
+        }
+      }
       // Red de seguridad: una Factura B jamás puede declarar receptor RI
       // Red bidireccional — la LETRA del comprobante manda:
       // Clase A (FA=1, ND=2, NC=3, FCE=201/202/203): receptor RI (1) o MONOTRIBUTISTA (6 / 13 / 16).
