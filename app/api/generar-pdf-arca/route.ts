@@ -148,6 +148,12 @@ export async function POST(req: NextRequest) {
       t(52, 189.6, (cuitAseg || '').replace(/-/g,''), 8)
       t(222, 189.6, 'Apellido y Nombre / Razón Social:', 8, true)
       t(356, 189.6, (razonSocial || '').slice(0, 46), 8)
+      // Condición frente al IVA del receptor: la plantilla trae fijo "IVA Responsable Inscripto".
+      // Si el cliente es monotributista se pisa con la condición real (coincide con lo informado a ARCA).
+      if (c.cliente_tipo_fiscal === 'monotributo') {
+        cover(p, 131, 206, 125, 12, 0)
+        t(131, 208, 'Responsable Monotributo', 8)
+      }
       // ── FCE: CBU del Emisor (banda centrada) + Opción de Transferencia, como el oficial ──
       if (esFCE && (c as any).cbu_informado) {
         tC(298, 249.5, `CBU del Emisor: ${(c as any).cbu_informado}`, 8.5, true)
@@ -242,6 +248,25 @@ export async function POST(req: NextRequest) {
         p.drawText(lbl, { x: 498 - f.widthOfTextAtSize(lbl, sz) - 4, y: B(yRow, sz), font: f, size: sz, color: K })
         p.drawText(val, { x: 577 - f.widthOfTextAtSize(val, sz), y: B(yRow, sz), font: f, size: sz, color: K })
       }
+      }
+
+      // ── LEYENDA OBLIGATORIA: comprobante clase A emitido a un monotributista ──
+      // (ARCA: "El crédito fiscal discriminado en el presente comprobante, solo podrá ser
+      // computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños
+      // Contribuyentes de la Ley Nº 27.618"). Va a la izquierda de los totales, en la última página.
+      if (esUltima && c.tipo === 'A' && c.cliente_tipo_fiscal === 'monotributo') {
+        const leyenda = 'El crédito fiscal discriminado en el presente comprobante, solo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618'
+        const maxW = 160, szL = 7
+        const palabras = leyenda.split(' ')
+        const lineasL: string[] = []
+        let cur = ''
+        for (const w of palabras) {
+          const probe = cur ? cur + ' ' + w : w
+          if (Bd.widthOfTextAtSize(probe, szL) > maxW && cur) { lineasL.push(cur); cur = w } else cur = probe
+        }
+        if (cur) lineasL.push(cur)
+        let ly = 533
+        for (const ln of lineasL) { t(22, ly, ln, szL, true); ly += 9 }
       }
 
       // ── Pág. X/N ── (el template trae "Pág. 1/1" fijo; con varias páginas se re-escribe)

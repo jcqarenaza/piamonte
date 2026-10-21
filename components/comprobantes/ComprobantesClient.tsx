@@ -1675,14 +1675,35 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return await res.blob()
   }
 
+  // WhatsApp: WhatsApp Web no permite adjuntar archivos desde un link, asi que se sube el PDF
+  // a Supabase Storage (bucket privado) y se manda un link firmado (30 dias) en el mensaje.
   async function compartirWA(c:Comprobante){
     const blob = (await esFormatoArcaDe(c)) ? await generarPDFArca(c) : await generarPDF(c)
-    const file = new File([blob],`Comprobante-${String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0")}-${c.tipo||""}.pdf`,{type:'application/pdf'})
-    if(navigator.canShare?.({files:[file]})){ await navigator.share({files:[file],title:'Comprobante El Piamonte'}); return }
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=file.name; a.click(); URL.revokeObjectURL(url)
-    const tel=(c.cliente_telefono||'').replace(/[^0-9]/g,'')
-    const txt=`Hola${c.cliente_nombre?' '+c.cliente_nombre:''}! Te enviamos el comprobante N°${c.numero} de Parabrisas El Piamonte. Total: ${moneyARS(c.total)}.`
-    setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(txt)}`,'_blank'),800)
+    const nro = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0")
+    const nombre = `Comprobante-${nro}-${c.tipo||""}.pdf`
+    const tel = (c.cliente_telefono||'').replace(/[^0-9]/g,'')
+    const saludo = `Hola${c.cliente_nombre?' '+c.cliente_nombre:''}! Te enviamos el comprobante N°${c.numero} de Parabrisas El Piamonte. Total: ${moneyARS(c.total)}.`
+    // 1) Subir y firmar el link
+    let link = ''
+    try {
+      const path = `${new Date().getFullYear()}/${c.id}-${Date.now()}.pdf`
+      const up = await supabase.storage.from('comprobantes-pdf').upload(path, blob, { contentType:'application/pdf', upsert:false })
+      if (up.error) throw up.error
+      const sig = await supabase.storage.from('comprobantes-pdf').createSignedUrl(path, 60*60*24*30, { download: nombre })
+      if (sig.error || !sig.data?.signedUrl) throw sig.error || new Error('sin link')
+      link = sig.data.signedUrl
+    } catch (e) {
+      console.error('WhatsApp: no se pudo subir el PDF', e)
+    }
+    if (link) {
+      const txt = `${saludo}\n\nPodés descargar tu comprobante acá (válido por 30 días):\n${link}`
+      window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(txt)}`,'_blank')
+      return
+    }
+    // 2) Respaldo: descargar el PDF y abrir el chat con el texto (adjuntar a mano)
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=nombre; a.click(); URL.revokeObjectURL(url)
+    alert('No se pudo generar el link del PDF. Se descargó el archivo: adjuntalo en el chat de WhatsApp.')
+    setTimeout(()=>window.open(`https://web.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(saludo)}`,'_blank'),800)
   }
 
   // Formato de PDF según la ficha (aseguradoras.formato_factura / clientes.formato_factura)
