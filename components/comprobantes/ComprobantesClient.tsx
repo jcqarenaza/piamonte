@@ -469,6 +469,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       )}
     </>
   )
+  // Prefijo del comprobante con letra: FA, FB, FC, FCE, NCA, NCB, NDA, NDB
+  const prefCbte = (c: { categoria?: string|null; tipo?: string|null }) => {
+    const letra = c.tipo==='A'?'A':c.tipo==='B'?'B':c.tipo==='C'?'C':c.tipo==='FCE'?'E':''
+    if (c.categoria==='nc') return 'NC'+letra
+    if (c.categoria==='nd') return 'ND'+letra
+    return c.tipo==='FCE' ? 'FCE' : letra ? 'F'+letra : 'X'
+  }
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
     if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final'||fiscal.tipo_fiscal==='exento') return 'B'
@@ -1770,7 +1777,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const nro = String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,"0")
     const nombre = `Comprobante-${nro}-${c.tipo||""}.pdf`
     const tel = (c.cliente_telefono||'').replace(/[^0-9]/g,'')
-    const pref = c.categoria==='nc' ? 'NC' : c.tipo==='A' ? 'FA' : c.tipo==='B' ? 'FB' : c.tipo==='C' ? 'FC' : c.tipo==='FCE' ? 'FCE' : ''
+    const pref = prefCbte(c)
     const nroTxt = c.nro_cbte_afip ? `${pref ? pref+' ' : ''}0006-${nro}` : String(c.numero ?? '')
     const saludo = `Hola${c.cliente_nombre?' '+c.cliente_nombre:''}! Te enviamos el comprobante ${nroTxt} de Parabrisas El Piamonte. Total: ${moneyARS(c.total)}.`
     // 1) Subir el PDF (bucket privado) y registrar un codigo corto -> la edge function pdf-link
@@ -1943,7 +1950,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               className="bg-white border border-p-line rounded-xl shadow-sm cursor-pointer hover:border-p-green transition-colors overflow-hidden">
               <div className="flex items-center gap-2.5 px-3.5 py-2.5 flex-wrap">
                 <span className="font-mono text-[11px] font-bold text-p-dark bg-p-light px-2 py-0.5 rounded-full shrink-0">
-                  {c.categoria==='nc'?'NC':(c.tipo==='A'?'FA':c.tipo==='B'?'FB':c.tipo==='C'?'FC':c.tipo==='FCE'?'FCE':'X')}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
+                  {prefCbte(c)}-0006-{String(c.nro_cbte_afip ?? c.numero ?? 0).padStart(8,'0')}
                 </span>
                 <div className="flex flex-col min-w-0" style={{maxWidth:240}}>
                   <p className="font-saira font-bold text-p-ink text-sm truncate">
@@ -2782,7 +2789,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="font-mono text-sm font-bold text-p-dark bg-p-light px-3 py-1 rounded-full">
-                {verComp.categoria==='nc'?'NC':(verComp.tipo==='A'?'FA':verComp.tipo==='B'?'FB':verComp.tipo==='C'?'FC':verComp.tipo==='FCE'?'FCE':'X')}-0006-{String(verComp.nro_cbte_afip ?? verComp.numero ?? 0).padStart(8,'0')}
+                {prefCbte(verComp)}-0006-{String(verComp.nro_cbte_afip ?? verComp.numero ?? 0).padStart(8,'0')}
               </span>
               <span className="text-sm text-p-ink2">{verComp.fecha.split('-').reverse().join('/')}</span>
             </div>
