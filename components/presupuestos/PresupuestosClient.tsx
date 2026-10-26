@@ -55,7 +55,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   // ── Calibración ADAS en aseguradoras: al primer ítem se agregan INSTALACIÓN (sin precio),
   // CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN (% de la aseguradora).
   // Se inyecta UNA sola vez por presupuesto: si Vero los saca, no vuelven solos.
-  const [adasInyectado, setAdasInyectado] = useState(false)
+  // conAdas: casilla "Calibración ADAS". Se prende sola si algún ítem parece llevar ADAS
+  // (CAPTOR / C/CAP / CAMARA / C/CAM / ADAS) y el usuario puede prenderla o apagarla a mano.
+  const [conAdas, setConAdas] = useState(false)
+  const [adasManual, setAdasManual] = useState(false)
+  const ADAS_RE = /CAPTOR|C\/CAP\b|C\/CAP\.|CAMARA|CÁMARA|C\/CAM\b|C\/CAM\.|\bADAS\b/i
+  const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
   // Flete por proveedor
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
@@ -157,25 +162,39 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     setAsegCatQ(''); setAsegCatHits([])
   }
 
+  // Detección automática: si entra un ítem con pinta de ADAS y el usuario no tocó la casilla, se prende
   useEffect(() => {
-    if (!modoAseg || !asegSel || adasInyectado) return
-    if (!items.length || items.some(it => String(it.d||'').toUpperCase().includes('CALIBRACION ADAS') || String(it.d||'').toUpperCase().includes('CALIBRACIÓN ADAS'))) return
-    setAdasInyectado(true)
-    ;(async () => {
-      try {
-        const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
-        const precio = Number(art?.precio_venta) || 0
-        if (!precio) return
-        const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
-        const nuevos: any[] = [
-          { d:'INSTALACION — INCLUIDA', c:1, p:0 },
-          { d:'CALIBRACION ADAS', c:1, p:precio },
-        ]
-        if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
-        setItems(prev => [...prev, ...nuevos])
-      } catch {}
-    })()
-  }, [modoAseg, asegSel, items, adasInyectado, supabase])
+    if (!modoAseg || adasManual) return
+    const detectado = items.some(it => !esLineaAdas(it.d) && ADAS_RE.test(String(it.d||'')))
+    if (detectado && !conAdas) setConAdas(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, modoAseg, adasManual])
+
+  // Sincroniza las líneas del paquete ADAS con la casilla
+  useEffect(() => {
+    if (!modoAseg || !asegSel) return
+    const tiene = items.some(it => esLineaAdas(it.d))
+    // Si las líneas ya vienen cargadas (OS o presupuesto que ya tenía ADAS), se adopta la casilla
+    if (!conAdas && tiene && !adasManual) { setConAdas(true); return }
+    if (!conAdas && tiene) { setItems(prev => prev.filter(it => !esLineaAdas(it.d))); return }
+    if (conAdas && !tiene && items.length) {
+      ;(async () => {
+        try {
+          const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
+          const precio = Number(art?.precio_venta) || 0
+          if (!precio) return
+          const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
+          const nuevos: any[] = [
+            { d:'INSTALACION — INCLUIDA', c:1, p:0 },
+            { d:'CALIBRACION ADAS', c:1, p:precio },
+          ]
+          if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          setItems(prev => prev.some(it => esLineaAdas(it.d)) ? prev : [...prev, ...nuevos])
+        } catch {}
+      })()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conAdas, modoAseg, asegSel, items.length])
 
   function pickAseg(h: PrecioAseg) {
     if(!asegSel) return
@@ -344,7 +363,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       })
     }
     setOpen(false); setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
-    setModoAseg(false); setAsegSel(null); setAsegQ(''); setAdasInyectado(false)
+    setModoAseg(false); setAsegSel(null); setAsegQ(''); setConAdas(false); setAdasManual(false)
     setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:'',condIva:'cf',cuit:''})
     const {data}=await supabase.from('presupuestos').select('*').order('created_at',{ascending:false})
     setPresus(data??[])
@@ -686,7 +705,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           {modoAseg ? (<>
             {/* Selector de aseguradora */}
             <Field label="Compañía aseguradora">
-              <Select value={asegSel?.id??''} onChange={e=>{const a=aseguradoras.find(a=>a.id===e.target.value);setAsegSel(a??null);setItems([]);setAsegQ('')}}>
+              <Select value={asegSel?.id??''} onChange={e=>{const a=aseguradoras.find(a=>a.id===e.target.value);setAsegSel(a??null);setItems([]);setAsegQ('');setConAdas(false);setAdasManual(false)}}>
                 <option value="">Seleccionar aseguradora…</option>
                 {aseguradoras.map(a=><option key={a.id} value={a.id}>{a.nombre}{a.recargo_pct>0?` (+${Math.round(a.recargo_pct*100)}%)`:''}</option>)}
               </Select>
@@ -699,10 +718,16 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   {asegSel.recargo_pct > 0 && <> · Recargo: <strong>{Math.round(asegSel.recargo_pct*100)}%</strong></>}
                   {' '}· Precios con IVA 21% incluido
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-purple-800 cursor-pointer whitespace-nowrap ml-3">
-                  <input type="checkbox" checked={manoObraIncluida} onChange={e=>setManoObraIncluida(e.target.checked)} className="accent-purple-600"/>
-                  Mano de obra incluida
-                </label>
+                <div className="flex items-center gap-3 ml-3">
+                  <label className="flex items-center gap-1.5 text-xs text-purple-800 cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={manoObraIncluida} onChange={e=>setManoObraIncluida(e.target.checked)} className="accent-purple-600"/>
+                    Mano de obra incluida
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-purple-800 cursor-pointer whitespace-nowrap" title="Agrega calibración ADAS y la bonificación de la aseguradora">
+                    <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
+                    Calibración ADAS
+                  </label>
+                </div>
               </div>
             )}
 

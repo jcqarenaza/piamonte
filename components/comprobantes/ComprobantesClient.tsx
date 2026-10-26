@@ -82,7 +82,10 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
   // Calibración ADAS en aseguradoras (misma regla que Presupuestos): al primer ítem se agregan
   // INSTALACIÓN (sin precio), CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN (% de la ficha).
-  const [adasInyectado, setAdasInyectado] = useState(false)
+  const [conAdas, setConAdas] = useState(false)
+  const [adasManual, setAdasManual] = useState(false)
+  const ADAS_RE = /CAPTOR|C\/CAP\b|C\/CAP\.|CAMARA|CÁMARA|C\/CAM\b|C\/CAM\.|\bADAS\b/i
+  const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75)
@@ -368,7 +371,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function selectAseguradora(a:AseguradoraMin){
-    setAseg(a); setAsegQ(a.nombre); setAsegSugs([]); setAdasInyectado(false)
+    setAseg(a); setAsegQ(a.nombre); setAsegSugs([]); setConAdas(false); setAdasManual(false)
     setFiscal(p=>({...p, tipo_fiscal:'responsable_inscripto', cuit:a.cuit||'' }))
     setRemitoSel(null); setRemitoItemsSel(new Set())
     const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora,patente,cliente,siniestro')
@@ -392,7 +395,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   function cambiarModo(m: Modo) {
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
-    setAseg(null); setAsegQ(''); setAsegSugs([]); setAdasInyectado(false)
+    setAseg(null); setAsegQ(''); setAsegSugs([]); setConAdas(false); setAdasManual(false)
     setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel(""); setCfDni("")
     setHistorialCli(null)
     setNuevoCliOpen(false)
@@ -454,26 +457,39 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return () => { vivo = false; clearTimeout(t) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscal.cuit])
+  // Detección automática de ADAS por descripción (CAPTOR / C/CAP / CAMARA / C/CAM / ADAS)
   useEffect(() => {
-    if (modo !== 'aseguradora' || !asegSel || adasInyectado) return
-    if (!items.length || items.some(it => String(it.d||'').toUpperCase().includes('CALIBRACION ADAS') || String(it.d||'').toUpperCase().includes('CALIBRACIÓN ADAS'))) return
-    setAdasInyectado(true)
-    ;(async () => {
-      try {
-        const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
-        const precio = Number(art?.precio_venta) || 0
-        if (!precio) return
-        const pct = Math.min(100, Math.max(0, Number(asegSel.bonif_adas_pct ?? 100)))
-        const nuevos: ItemVenta[] = [
-          { d:'INSTALACION — INCLUIDA', c:1, p:0 },
-          { d:'CALIBRACION ADAS', c:1, p:precio },
-        ]
-        if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
-        setItems(prev => [...prev, ...nuevos])
-      } catch {}
-    })()
+    if (modo !== 'aseguradora' || adasManual) return
+    const detectado = items.some(it => !esLineaAdas(it.d) && ADAS_RE.test(String(it.d||'')))
+    if (detectado && !conAdas) setConAdas(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modo, asegSel, items, adasInyectado])
+  }, [items, modo, adasManual])
+
+  // Sincroniza las líneas del paquete ADAS con la casilla
+  useEffect(() => {
+    if (modo !== 'aseguradora' || !asegSel) return
+    const tiene = items.some(it => esLineaAdas(it.d))
+    // Si las líneas ya vienen cargadas (OS o presupuesto que ya tenía ADAS), se adopta la casilla
+    if (!conAdas && tiene && !adasManual) { setConAdas(true); return }
+    if (!conAdas && tiene) { setItems(prev => prev.filter(it => !esLineaAdas(it.d))); return }
+    if (conAdas && !tiene && items.length) {
+      ;(async () => {
+        try {
+          const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
+          const precio = Number(art?.precio_venta) || 0
+          if (!precio) return
+          const pct = Math.min(100, Math.max(0, Number(asegSel.bonif_adas_pct ?? 100)))
+          const nuevos: ItemVenta[] = [
+            { d:'INSTALACION — INCLUIDA', c:1, p:0 },
+            { d:'CALIBRACION ADAS', c:1, p:precio },
+          ]
+          if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          setItems(prev => prev.some(it => esLineaAdas(it.d)) ? prev : [...prev, ...nuevos])
+        } catch {}
+      })()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conAdas, modo, asegSel, items.length])
   const padronDifiere = !!(padron.data?.condicion_verificada && padron.data.condicion && padron.data.condicion !== 'no_inscripto' && padron.data.condicion !== fiscal.tipo_fiscal)
   const PadronBox = () => (
     <>
@@ -2190,7 +2206,13 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               </div>
               <div className="flex items-center gap-2 mt-2">
                 {asegSel ? (
-                  <span className="text-xs text-blue-600 font-semibold">✓ {asegSel.nombre}</span>
+                  <>
+                    <span className="text-xs text-blue-600 font-semibold">✓ {asegSel.nombre}</span>
+                    <label className="flex items-center gap-1.5 text-xs text-purple-800 font-semibold cursor-pointer ml-auto" title="Agrega calibración ADAS y la bonificación de la aseguradora">
+                      <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
+                      Calibración ADAS
+                    </label>
+                  </>
                 ) : (
                   <span className="text-xs text-amber-600 font-semibold">⚠ Elegí una aseguradora de la lista — no se puede facturar a un nombre sin cargar</span>
                 )}
