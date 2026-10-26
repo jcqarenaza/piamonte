@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { cargarStockActivo } from '@/lib/utils/cargarStock'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
 
@@ -49,8 +50,8 @@ export default function StockAvanzadoClient({ rol }: { rol: string }) {
 
   async function loadItems() {
     setLoading(true)
-    const { data } = await supabase.from('stock').select('*').eq('activo',true).order('descripcion')
-    setItems(data ?? [])
+    const data = await cargarStockActivo(supabase)
+    setItems(data)
     setLoading(false)
   }
 

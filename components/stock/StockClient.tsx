@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { cargarStockActivo } from '@/lib/utils/cargarStock'
 import type { StockItem } from '@/lib/types/database'
 import { Btn, Modal, Field, Input, Select, Empty, AlarmBar } from '@/components/ui'
 import { moneyARS2 as moneyARS, POS_LABEL } from '@/lib/utils/format'
@@ -249,8 +250,8 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       abrData.forEach((a:any) => { map[a.abreviatura.toUpperCase()] = a.expansion })
       setAbreviaturas(map)
     }
-    const { data } = await supabase.from('stock').select('*').eq('activo', true).order('descripcion')
-    setItems(data ?? [])
+    const data = await cargarStockActivo(supabase)
+    setItems(data)
     setLoading(false)
   }, [supabase])
 
@@ -841,8 +842,8 @@ Usá otro código o elegí esa pieza del buscador.`); return }
     }
 
     // Refrescar items del estado local
-    const { data: itemsRefresh } = await supabase.from('stock').select('*').eq('activo', true)
-    if (itemsRefresh) setItems(itemsRefresh as any)
+    const itemsRefresh = await cargarStockActivo(supabase)
+    if (itemsRefresh.length) setItems(itemsRefresh as any)
 
     setAjusteMasivoLista(p => [...p, ...nuevosALista])
     setExcelLoading(false)
