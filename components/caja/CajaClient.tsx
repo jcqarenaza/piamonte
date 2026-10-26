@@ -418,9 +418,34 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     } finally { borrandoRef.current.delete(v.id) }
   }
 
+  // Acepta formato argentino: "327.353,60", "327353,60", "327353.60", "$ 327.353,60"
+  function parseMonto(txt: string): number {
+    let t = (txt || '').replace(/[^0-9.,]/g, '')
+    if (!t) return 0
+    const coma = t.lastIndexOf(','), punto = t.lastIndexOf('.')
+    if (coma >= 0 && punto >= 0) {
+      // el ultimo separador es el decimal; el otro es de miles
+      t = coma > punto ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')
+    } else if (coma >= 0) {
+      t = t.replace(',', '.')
+    } else if (punto >= 0) {
+      // un solo punto con exactamente 3 digitos despues => separador de miles (327.353)
+      const partes = t.split('.')
+      if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) t = t.replace(/\./g, '')
+    }
+    return +t || 0
+  }
+  function costoRazonable(costo: number, precio: number): boolean {
+    if (costo > 0 && precio > 0 && costo > precio * 2) {
+      return confirm(`El costo ingresado (${moneyARS(costo)}) es ${Math.round(costo / precio)} veces el precio de venta (${moneyARS(precio)}).\n\n¿Es correcto?`)
+    }
+    return true
+  }
+
   async function updateCosto(v: Venta, costo: string) {
-    const c = +costo.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    const c = parseMonto(costo)
     if (!c) return
+    if (!costoRazonable(c, v.precio)) return
     await supabase.from('ventas').update({ costo: c, pendiente: false }).eq('id', v.id)
     setVentas(prev => prev.map(x => x.id === v.id ? { ...x, costo: c, pendiente: false } : x))
     setEditCosto(p => { const n = { ...p }; delete n[v.id]; return n })
@@ -454,9 +479,11 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
     const upd: Record<string, any> = {}
     const descConCodigo = editForm.codigo ? `[${editForm.codigo}] ${editForm.descripcion}` : editForm.descripcion
     if (descConCodigo !== v.descripcion) { campos.push(['descripcion', v.descripcion ?? '', descConCodigo]); upd.descripcion = descConCodigo }
-    const newCosto = +editForm.costo.replace(/,/g, '.').replace(/[^0-9.]/g, '') || null
+    const newCosto = parseMonto(editForm.costo) || null
+    const newPrecioChk = parseMonto(editForm.precio) || v.precio
+    if (newCosto && !costoRazonable(newCosto, newPrecioChk)) return
     if (newCosto !== (v.costo || null)) { campos.push(['costo', String(v.costo ?? ''), String(newCosto ?? '')]); upd.costo = newCosto; upd.pendiente = !newCosto }
-    const newPrecio = +editForm.precio.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    const newPrecio = parseMonto(editForm.precio)
     if (newPrecio !== v.precio) { campos.push(['precio', String(v.precio), String(newPrecio)]); upd.precio = newPrecio }
     if (editForm.cliente !== (v.cliente ?? '')) { campos.push(['cliente', v.cliente ?? '', editForm.cliente]); upd.cliente = editForm.cliente || null }
     if (editForm.pago !== v.pago) { campos.push(['pago', v.pago ?? '', editForm.pago]); upd.pago = editForm.pago }
