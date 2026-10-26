@@ -24,7 +24,7 @@ const btnBlue = { ...btnSm,background:'#1d4ed8' } as const
 const btnWa   = { ...btnSm,background:'#25d366' } as const
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string }
-interface RubroPrecio { id:string; nombre:string; precio_base:number; visible_en_impresion:boolean }
+interface RubroPrecio { id:string; codigo?:string|null; nombre:string; precio_base:number; visible_en_impresion:boolean }
 interface ClienteMin  { id:string; nombre:string; telefono:string|null; tipo_cliente_id:string|null; cuit?:string|null; tipo_fiscal?:string|null; tipo_nombre?:string; tipo_margen?:number }
 interface Aseguradora { id:string; nombre:string; lista_precio:string; recargo_pct:number }
 interface PrecioAseg  { id:string; codigo:string; descripcion:string; cristal:string; marca:string; modelo:string; precio_siva:number; instalacion_siva:number; total_siva:number }
@@ -235,7 +235,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   function addRubro(r: RubroPrecio) {
     const precio = parseFloat(String(rubrosEdit[r.id] ?? r.precio_base).replace(',','.')) || r.precio_base
-    setItems(prev=>[...prev,{d:r.nombre,c:1,p:precio,esRubro:true,visible_impresion:r.visible_en_impresion} as any])
+    setItems(prev=>[...prev,{d:r.nombre,c:1,p:precio,esRubro:true,visible_impresion:r.visible_en_impresion,codigo:r.codigo||undefined} as any])
   }
 
   function addItemManual() {

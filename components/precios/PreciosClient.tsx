@@ -146,8 +146,9 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   useEffect(() => {
     supabase.from('config_precios').select('*').eq('id', 1).maybeSingle()
       .then(({ data }) => { if (data) setConfigPrecios(data) })
-    supabase.from('rubros_precio').select('precio_base').ilike('nombre','%nstalac%').eq('activo',true).maybeSingle()
-      .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_base || 0) })
+    // Precio de instalación = artículo de servicio COLOC0001 (única fuente, ya no hay rubro aparte)
+    supabase.from('stock').select('precio_venta').eq('codigo','COLOC0001').maybeSingle()
+      .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_venta || 0) })
     supabase.from('proveedores_compra').select('nombre,flete_pct').eq('activo',true)
       .then(({data}) => {
         const m: Record<string,number> = {}

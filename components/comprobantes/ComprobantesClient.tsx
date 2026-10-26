@@ -41,11 +41,11 @@ const PUEDE_CREAR_CLIENTE = (rol: string) => rol === 'admin' || rol === 'gerenci
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number }
 interface ClienteMin  { id:string; nombre:string; telefono:string|null; email:string|null; cuit:string|null; tipo_fiscal:string|null; tipo_cliente_id:string|null }
-interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null }
+interface AseguradoraMin { id:string; nombre:string; razon_social:string|null; cuit:string|null; condicion_iva:string|null; bonif_adas_pct?:number|null }
 
 interface Pago { metodo:string; monto:string; cuotas?:number }
 interface ItemVenta { d:string; c:number; p:number; costo?:number; stock_id?:string; articulo_id?:string|null }
-interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean }
+interface RubroPrecio { id:string; codigo?:string|null; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean }
 
 interface Comprobante {
   id:string; numero:number|null; fecha:string; tipo:string
@@ -80,6 +80,9 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const [asegQ, setAsegQ]       = useState('')
   const [asegSugs, setAsegSugs] = useState<AseguradoraMin[]>([])
   const [asegSel, setAseg]      = useState<AseguradoraMin|null>(null)
+  // Calibración ADAS en aseguradoras (misma regla que Presupuestos): al primer ítem se agregan
+  // INSTALACIÓN (sin precio), CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN (% de la ficha).
+  const [adasInyectado, setAdasInyectado] = useState(false)
 
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75)
@@ -365,7 +368,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }
 
   async function selectAseguradora(a:AseguradoraMin){
-    setAseg(a); setAsegQ(a.nombre); setAsegSugs([])
+    setAseg(a); setAsegQ(a.nombre); setAsegSugs([]); setAdasInyectado(false)
     setFiscal(p=>({...p, tipo_fiscal:'responsable_inscripto', cuit:a.cuit||'' }))
     setRemitoSel(null); setRemitoItemsSel(new Set())
     const { data: ords } = await supabase.from('ordenes_servicio').select('id,numero,fecha,total,items,vehiculo,aseguradora,patente,cliente,siniestro')
@@ -389,7 +392,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   function cambiarModo(m: Modo) {
     setModo(m)
     setCli(null); setCliQ(''); setCliSugs([])
-    setAseg(null); setAsegQ(''); setAsegSugs([])
+    setAseg(null); setAsegQ(''); setAsegSugs([]); setAdasInyectado(false)
     setClienteAseg(""); setSiniestro(""); setCfNombre(""); setCfTel(""); setCfDni("")
     setHistorialCli(null)
     setNuevoCliOpen(false)
@@ -451,6 +454,26 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     return () => { vivo = false; clearTimeout(t) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscal.cuit])
+  useEffect(() => {
+    if (modo !== 'aseguradora' || !asegSel || adasInyectado) return
+    if (!items.length || items.some(it => String(it.d||'').toUpperCase().includes('CALIBRACION ADAS') || String(it.d||'').toUpperCase().includes('CALIBRACIÓN ADAS'))) return
+    setAdasInyectado(true)
+    ;(async () => {
+      try {
+        const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
+        const precio = Number(art?.precio_venta) || 0
+        if (!precio) return
+        const pct = Math.min(100, Math.max(0, Number(asegSel.bonif_adas_pct ?? 100)))
+        const nuevos: ItemVenta[] = [
+          { d:'INSTALACION — INCLUIDA', c:1, p:0 },
+          { d:'CALIBRACION ADAS', c:1, p:precio },
+        ]
+        if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+        setItems(prev => [...prev, ...nuevos])
+      } catch {}
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo, asegSel, items, adasInyectado])
   const padronDifiere = !!(padron.data?.condicion_verificada && padron.data.condicion && padron.data.condicion !== 'no_inscripto' && padron.data.condicion !== fiscal.tipo_fiscal)
   const PadronBox = () => (
     <>
@@ -1870,7 +1893,8 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   function addRubro(r: RubroPrecio) {
     const precio = rubrosEdit[r.id] ?? r.precio_base
-    setItems(prev=>[...prev, { d:r.nombre, c:1, p:precio, costo: r.costo_base||undefined, articulo_id:null }])
+    // Rubro = artículo de servicio en stock: lleva su código pero no stock_id (no descuenta stock)
+    setItems(prev=>[...prev, { d:r.nombre, c:1, p:precio, costo: r.costo_base||undefined, articulo_id:null, codigo: r.codigo||undefined } as any])
   }
 
   return (

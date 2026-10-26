@@ -44,7 +44,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [uploading, setUploading] = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
   const [pidOS, setPidOS]         = useState<string|null>(null) // presupuesto de origen (se marca convertido al guardar la OS)
-  const [rubros, setRubros]     = useState<{id:string;nombre:string;precio_base:number}[]>([])
   const [presCli, setPresCli]   = useState<any[]>([])
   const [productores, setProductores] = useState<any[]>([])
   const [formProd, setFormProd] = useState('')  // productor_id seleccionado
@@ -208,7 +207,6 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   }, [form.cli, form.aseg, clientesAll])
 
   const load = useCallback(() => {
-    supabase.from('rubros_precio').select('id,nombre,precio_base').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('ordenes_servicio').select('*,updated_at').order('created_at',{ascending:false}).then(async ({data})=>{
       const ords = data??[]
       // Traer fecha/hora de los turnos vinculados para mostrarlos en la lista

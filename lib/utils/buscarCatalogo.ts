@@ -76,7 +76,7 @@ export async function buscarCatalogo(
       if (incluirStock) {
         const { data: stockData } = await supabase.from('stock')
           .select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
-          .or(codigoFilter).gt('cantidad', 0).eq('activo', true).limit(6)
+          .or(codigoFilter).or('cantidad.gt.0,es_servicio.eq.true').eq('activo', true).limit(6)
         const stockItems: ResultadoCatalogo[] = (stockData||[]).map(s => ({
           id: s.id, descripcion: s.descripcion, codigo: s.codigo,
           proveedor: null, costo_neto: s.costo,
@@ -92,7 +92,7 @@ export async function buscarCatalogo(
     if (incluirStock) {
       const { data: stockSolo } = await supabase.from('stock')
         .select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
-        .or(codigoFilter).gt('cantidad', 0).eq('activo', true).limit(6)
+        .or(codigoFilter).or('cantidad.gt.0,es_servicio.eq.true').eq('activo', true).limit(6)
       if (stockSolo && stockSolo.length > 0) {
         return stockSolo.map(s => ({
           id: s.id, descripcion: s.descripcion, codigo: s.codigo,
@@ -119,7 +119,7 @@ export async function buscarCatalogo(
   let stockItems: ResultadoCatalogo[] = []
   if (incluirStock) {
     let sQ = supabase.from('stock').select('id,descripcion,codigo,cantidad,precio_venta,costo,articulo_id')
-      .eq('activo', true).gt('cantidad', 0).limit(50)
+      .eq('activo', true).or('cantidad.gt.0,es_servicio.eq.true').limit(50)
     if (posWord && nonPosWs.length > 0) sQ = sQ.eq('pos', POS_KW[posWord]).ilike('descripcion', `%${mainWord}%`)
     else sQ = sQ.or(`descripcion.ilike.%${mainWord}%,codigo.ilike.%${mainWord}%`)
     const { data: sd } = await sQ

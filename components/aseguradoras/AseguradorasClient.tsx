@@ -57,7 +57,7 @@ export default function AseguradorasClient() {
 
   const [form, setForm] = useState({
     nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'',
-    contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno'
+    contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno', bonif_adas_pct:'100'
   })
   const cuitCheck = validarCuit(form.cuit)
 
@@ -72,7 +72,7 @@ export default function AseguradorasClient() {
   useEffect(() => { load() }, [load])
 
   function openNuevo() {
-    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'', contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno' })
+    setForm({ nombre:'', razon_social:'', cuit:'', condicion_iva:'', direccion:'', contacto:'', telefono:'', plazo_pago_dias:'30', formato_factura:'interno', bonif_adas_pct:'100' })
     setSelected(null)
     setOpen(true)
   }
@@ -82,7 +82,8 @@ export default function AseguradorasClient() {
       nombre: a.nombre, razon_social: a.razon_social||'', cuit: a.cuit||'', condicion_iva: a.condicion_iva||'',
       direccion: a.direccion||'', contacto: a.contacto||'', telefono: a.telefono||'',
       plazo_pago_dias: String(a.plazo_pago_dias ?? 30),
-      formato_factura: (a as any).formato_factura || 'interno'
+      formato_factura: (a as any).formato_factura || 'interno',
+      bonif_adas_pct: String((a as any).bonif_adas_pct ?? 100),
     })
     setSelected(a)
     setOpen(true)
@@ -98,6 +99,7 @@ export default function AseguradorasClient() {
       contacto: form.contacto||null, telefono: form.telefono||null,
       plazo_pago_dias: parseInt(form.plazo_pago_dias) || 30,
       formato_factura: form.formato_factura || 'interno',
+      bonif_adas_pct: Math.min(100, Math.max(0, parseFloat(form.bonif_adas_pct) || 0)),
     }
     if (selected?.id) {
       await supabase.from('aseguradoras').update(payload).eq('id', selected.id)
@@ -264,6 +266,10 @@ export default function AseguradorasClient() {
             </div>
             <Input type="number" value={form.plazo_pago_dias} onChange={e=>setForm(p=>({...p,plazo_pago_dias:e.target.value}))} placeholder="30"/>
             <p className="text-[11px] text-p-ink2 mt-1">Se usa para calcular cuándo vence cada factura y avisar antes de que pase.</p>
+          </Field>
+          <Field label="Bonificación calibración ADAS (%)">
+            <Input type="number" min={0} max={100} value={form.bonif_adas_pct} onChange={e=>setForm(p=>({...p,bonif_adas_pct:e.target.value}))} placeholder="100"/>
+            <p className="text-[11px] text-p-ink2 mt-1">Al presupuestar o facturar un parabrisas con ADAS a esta aseguradora se agrega la calibración y se bonifica este porcentaje. 100 = no se le cobra; 0 = se cobra completa.</p>
           </Field>
           <Field label="Formato de factura (PDF)">
             <select value={form.formato_factura} onChange={e=>setForm(p=>({...p,formato_factura:e.target.value}))}
