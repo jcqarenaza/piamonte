@@ -431,11 +431,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       // Alta de artículo nuevo: nace con cantidad 0 y la cantidad entra SOLO por el RPC
       // (movimiento incluido — así no se fabrican más artículos sin historia)
       const codigoNuevo = ajusteForm.codigo.trim().toUpperCase() || null
-      if (codigoNuevo) {
-        const { data: dup } = await supabase.from('stock').select('id, descripcion').eq('codigo', codigoNuevo).eq('activo', true).maybeSingle()
-        if (dup) { alert(`⚠ El código ${codigoNuevo} ya existe: "${(dup as any).descripcion}".
-Usá otro código o elegí esa pieza del buscador.`); return }
-      }
+      if (await codigoYaExiste(codigoNuevo)) return
       const { data: nuevo, error: errIns } = await supabase.from('stock').insert({
         descripcion: ajusteForm.desc, codigo: codigoNuevo, cantidad: 0, costo,
         deposito: 'Principal', activo: true
@@ -521,6 +517,23 @@ Usá otro código o elegí esa pieza del buscador.`); return }
     setOpen(true)
   }
 
+  // Guardia anti duplicados por CÓDIGO: mismo código exacto, o misma base de 6 dígitos
+  // (regla GAMMA: 422131, 422131VSLP y 422131VSLI son el mismo vidrio con distinto origen).
+  // Devuelve true si hay que FRENAR el alta (ya avisó al usuario).
+  async function codigoYaExiste(codigo: string | null, excluirId?: string | null): Promise<boolean> {
+    const cod = (codigo || '').trim().toUpperCase()
+    if (!cod) return false
+    const base = /^\d{6}/.test(cod) ? cod.slice(0, 6) : null
+    let q = supabase.from('stock').select('id,codigo,descripcion,cantidad').eq('activo', true)
+    q = base ? q.or(`codigo.eq.${cod},codigo.ilike.${base}%`) : q.eq('codigo', cod)
+    const { data } = await q.limit(5)
+    const dups = (data || []).filter((d: any) => d.id !== excluirId)
+    if (!dups.length) return false
+    const lista = dups.map((d: any) => `  • ${d.codigo} — ${d.descripcion} (${d.cantidad} u.)`).join('\n')
+    alert(`⚠ NO SE CREÓ. Ya existe en stock${base ? ` un artículo con base ${base}` : ' ese código'}:\n\n${lista}\n\nSi es la misma pieza, buscala y usá ⚖ Ajustar para cargar la cantidad. Si es otra distinta, cargala con su código completo (con las letras de origen).`)
+    return true
+  }
+
   async function buscarArticulo(texto: string) {
     setForm(p => ({ ...p, desc: texto }))
     setArticuloSel(null)
@@ -541,6 +554,7 @@ Usá otro código o elegí esa pieza del buscador.`); return }
 
   async function save() {
     if (!form.desc) { alert('Cargá la descripción.'); return }
+    if (await codigoYaExiste(form.cod, editId)) return
 
     let articuloId = articuloSel?.id || null
     if (!articuloId) {
