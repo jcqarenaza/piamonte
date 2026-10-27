@@ -558,14 +558,24 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (!cod) return false
     if (!/\d/.test(cod)) return false   // "ORIGINAL", "FAVICUR", "CRISTEM": marcas usadas como código, no identifican una pieza
     const base = /^\d{6}/.test(cod) ? cod.slice(0, 6) : null
+    const completo = /^\d{6}[A-ZÑ]{4,5}$/.test(cod)   // 6 dígitos + letras de origen (GAMMA 4, XYG 5)
     let q = supabase.from('stock').select('id,codigo,descripcion,cantidad').eq('activo', true)
     q = base ? q.or(`codigo.eq.${cod},codigo.ilike.${base}%`) : q.eq('codigo', cod)
-    const { data } = await q.limit(5)
+    const { data } = await q.limit(8)
     const dups = (data || []).filter((d: any) => d.id !== excluirId)
     if (!dups.length) return false
     const lista = dups.map((d: any) => `  • ${d.codigo} — ${d.descripcion} (${d.cantidad} u.)`).join('\n')
-    alert(`⚠ NO SE CREÓ. Ya existe en stock${base ? ` un artículo con base ${base}` : ' ese código'}:\n\n${lista}\n\nSi es la misma pieza, buscala y usá ⚖ Ajustar para cargar la cantidad. Si es otra distinta, cargala con su código completo (con las letras de origen).`)
-    return true
+    const exacto = dups.some((d: any) => String(d.codigo).toUpperCase() === cod)
+    if (exacto) {
+      alert(`⚠ NO SE CREÓ. Ese código ya existe en stock:\n\n${lista}\n\nBuscalo y usá ⚖ Ajustar para cargar la cantidad.`)
+      return true
+    }
+    if (base && !completo) {
+      alert(`⚠ NO SE CREÓ. El código "${cod}" está incompleto y ya hay fichas con base ${base}:\n\n${lista}\n\nSi es la misma pieza, usá esa ficha con ⚖ Ajustar. Si es otra variante, cargala con el código completo (6 dígitos + letras de origen, ej. ${base}VSLP).`)
+      return true
+    }
+    // Código completo distinto (otra letra de origen): puede ser una variante legítima. Se confirma.
+    return !confirm(`Ya hay fichas con base ${base}:\n\n${lista}\n\n"${cod}" tiene otra letra de origen. ¿Es una variante distinta (otro proveedor/origen) y querés crearla igual?`)
   }
 
   async function buscarArticulo(texto: string) {
