@@ -55,6 +55,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   const [ajusteStockId, setAjusteStockId] = useState<string|null>(null)
   const [costoEdit, setCostoEdit] = useState<Record<string, string>>({})
   const [editId, setEditId] = useState<string|null>(null)
+  const [codOriginal, setCodOriginal] = useState<string>('')   // código al abrir la edición: si no cambia, no se re-valida
   const [dolarOficial, setDolarOficial] = useState<number|null>(null)
   const [abreviaturas, setAbreviaturas] = useState<Record<string,string>>({})
   const [conteoMode, setConteoMode] = useState(false)
@@ -511,6 +512,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       rubro: !!(s as any).rubro_rapido,
     })
     setEditId(s.id)
+    setCodOriginal((s.codigo || '').trim().toUpperCase())
     if ((s as any).articulo_id) {
       supabase.from('articulos_maestro').select('id,descripcion,codigo_referencia').eq('id', (s as any).articulo_id).maybeSingle()
         .then(({data}) => setArticuloSel(data ?? null))
@@ -527,6 +529,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   async function codigoYaExiste(codigo: string | null, excluirId?: string | null): Promise<boolean> {
     const cod = (codigo || '').trim().toUpperCase()
     if (!cod) return false
+    if (!/\d/.test(cod)) return false   // "ORIGINAL", "FAVICUR", "CRISTEM": marcas usadas como código, no identifican una pieza
     const base = /^\d{6}/.test(cod) ? cod.slice(0, 6) : null
     let q = supabase.from('stock').select('id,codigo,descripcion,cantidad').eq('activo', true)
     q = base ? q.or(`codigo.eq.${cod},codigo.ilike.${base}%`) : q.eq('codigo', cod)
@@ -558,7 +561,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   async function save() {
     if (!form.desc) { alert('Cargá la descripción.'); return }
-    if (await codigoYaExiste(form.cod, editId)) return
+    // En edición solo se valida si el código cambió (editar una ficha repetida no debe bloquearse)
+    const codActual = (form.cod || '').trim().toUpperCase()
+    if ((!editId || codActual !== codOriginal) && await codigoYaExiste(form.cod, editId)) return
 
     let articuloId = articuloSel?.id || null
     if (!articuloId && !form.servicio) {
