@@ -292,6 +292,33 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
 
   // Chequeo de consistencia stock vs movimientos
   const [inconsistencias, setInconsistencias] = useState<any[]>([])
+  // Al escribir una base de 6 dígitos sin sufijo, se ofrecen los códigos completos del catálogo y del stock
+  const [codSugs, setCodSugs] = useState<{codigo:string; descripcion:string; origen:string; cantidad?:number}[]>([])
+  const [duplicados, setDuplicados] = useState<any[]>([])
+  const [showDuplicados, setShowDuplicados] = useState(false)
+  const loadDuplicados = useCallback(() => {
+    supabase.from('vista_stock_duplicados').select('*').then(({ data }) => setDuplicados(data ?? []))
+  }, [supabase])
+  useEffect(() => { loadDuplicados() }, [loadDuplicados])
+  useEffect(() => {
+    const cod = (form.cod || '').trim().toUpperCase()
+    if (!/^\d{6}$/.test(cod)) { setCodSugs([]); return }
+    let vivo = true
+    ;(async () => {
+      const [{ data: cat }, { data: stk }] = await Promise.all([
+        supabase.from('catalogo').select('codigo,descripcion,proveedor').ilike('codigo', cod + '%').limit(8),
+        supabase.from('stock').select('codigo,descripcion,cantidad').eq('activo', true).ilike('codigo', cod + '%').limit(8),
+      ])
+      if (!vivo) return
+      const vistos = new Set<string>()
+      const out: typeof codSugs = []
+      for (const r of (stk || [])) if (r.codigo && !vistos.has(r.codigo)) { vistos.add(r.codigo); out.push({ codigo: r.codigo, descripcion: r.descripcion, origen: 'YA EN STOCK', cantidad: r.cantidad }) }
+      for (const r of (cat || [])) if (r.codigo && !vistos.has(r.codigo)) { vistos.add(r.codigo); out.push({ codigo: r.codigo, descripcion: r.descripcion, origen: r.proveedor || 'catálogo' }) }
+      setCodSugs(out)
+    })()
+    return () => { vivo = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.cod])
   const [showInconsistencias, setShowInconsistencias] = useState(false)
   const [syncingId, setSyncingId] = useState<string|null>(null)
   const loadInconsistencias = useCallback(() => {
@@ -306,7 +333,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const { error } = await supabase.rpc('sincronizar_stock_kardex', { p_stock_id: inc.stock_id })
     setSyncingId(null)
     if (error) { alert(`⚠ No se pudo sincronizar: ${error.message}`); return }
-    loadInconsistencias(); load()
+    loadInconsistencias(); loadDuplicados(); load()
   }
 
   const depositos = [...new Set(items.map(s => s.deposito || 'Principal'))].sort()
@@ -1503,6 +1530,28 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
           <span className="text-xs font-bold text-orange-700">Ver →</span>
         </div>
       )}
+      {duplicados.length > 0 && isAdmin && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl mb-3 overflow-hidden">
+          <div className="px-4 py-2.5 flex items-center justify-between">
+            <p className="text-sm text-orange-800 cursor-pointer hover:underline" onClick={()=>setShowDuplicados(v=>!v)}>👯 <strong>{duplicados.length}</strong> código(s) con más de una ficha activa</p>
+            <span className="text-xs font-bold text-orange-700 cursor-pointer" onClick={()=>setShowDuplicados(v=>!v)}>{showDuplicados ? 'Ocultar ▲' : 'Ver detalle ▼'}</span>
+          </div>
+          {showDuplicados && (
+            <div className="border-t border-orange-200 divide-y divide-orange-100">
+              {duplicados.map((d:any) => (
+                <div key={d.base} className="px-4 py-2 text-xs flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-mono font-bold text-orange-900">{d.base}</span>
+                    <span className="text-orange-800 ml-2">{d.fichas} fichas · {d.unidades} u. en total</span>
+                    <div className="text-orange-700 mt-0.5">{d.codigos}</div>
+                  </div>
+                  <button type="button" onClick={()=>{ setQ(d.base); setFiltroFam(null) }} className="text-xs font-bold text-orange-700 hover:underline whitespace-nowrap">Ver →</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {inconsistencias.length > 0 && isAdmin && (
         <div className="bg-red-50 border border-red-200 rounded-xl mb-3 overflow-hidden">
           <div className="px-4 py-2.5 flex items-center justify-between">
@@ -2153,6 +2202,22 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
               }} placeholder="Ej: 421830VSLP" />
               {articuloSel?.codigo_referencia === form.cod.toUpperCase() && (
                 <p className="text-[11px] text-p-green font-semibold mt-1">✓ Código encontrado en catálogo: {articuloSel.descripcion}</p>
+              )}
+              {codSugs.length > 0 && (
+                <div className="mt-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                  <p className="text-[11px] font-bold text-amber-800 mb-1">Ese código está incompleto. Elegí el código completo (con las letras de origen):</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {codSugs.map(sg => (
+                      <button key={sg.codigo} type="button"
+                        onClick={() => setForm(p => ({ ...p, cod: sg.codigo, desc: p.desc.trim() ? p.desc : sg.descripcion }))}
+                        className={`text-xs px-2 py-1 rounded-full border font-mono ${sg.origen === 'YA EN STOCK' ? 'bg-red-50 border-red-300 text-red-800' : 'bg-white border-amber-300 text-amber-900 hover:bg-amber-100'}`}
+                        title={sg.descripcion}>
+                        {sg.codigo} · {sg.origen}{sg.cantidad != null ? ` (${sg.cantidad} u.)` : ''}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-amber-700 mt-1">Rojo = ya existe en stock: usá esa ficha con ⚖ Ajustar en vez de crear otra.</p>
+                </div>
               )}
             </Field>
             <Field label="Marca / modelo"><Input value={form.marca} onChange={e => setForm(p => ({ ...p, marca: e.target.value }))} placeholder="VW Gol" /></Field>
