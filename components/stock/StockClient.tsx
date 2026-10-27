@@ -561,7 +561,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (await codigoYaExiste(form.cod, editId)) return
 
     let articuloId = articuloSel?.id || null
-    if (!articuloId) {
+    if (!articuloId && !form.servicio) {
       // 1) Buscar por código de referencia si se cargó uno
       if (form.cod) {
         // Código SIEMPRE en mayúsculas para el match (la BD guarda upper por trigger)
@@ -607,7 +607,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
       articulo_id: articuloId,
       stock_minimo: +form.minimo || 0,
-      tiene_adas: !!form.adas,
+      tiene_adas: !!form.adas && !form.servicio,
       es_servicio: !!form.servicio,
       rubro_rapido: !!form.rubro,
     }
@@ -2127,7 +2127,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
                 </div>
               )}
             </div>
-            {articuloSel ? (
+            {form.servicio ? (
+              <p className="text-[11px] text-p-ink2 mt-1">Servicio: no se vincula al catálogo maestro</p>
+            ) : articuloSel ? (
               <p className="text-[11px] text-p-green font-semibold mt-1">✓ Vinculado al artículo del catálogo maestro</p>
             ) : form.desc.trim().length >= 2 ? (
               <p className="text-[11px] text-amber-600 mt-1">⚠ Sin coincidencia — se va a crear un artículo nuevo con esta descripción</p>
@@ -2161,14 +2163,14 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             <Field label="Precio venta"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
             <Field label="Costo de venta"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
           </div>
-          <label className="flex items-center gap-2 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+          {!form.servicio && <label className="flex items-center gap-2 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
             <input type="checkbox" checked={form.adas} onChange={e => setForm(p => ({ ...p, adas: e.target.checked }))} className="accent-purple-600"/>
             <span className="text-sm font-semibold text-purple-900">Se calibra con ADAS</span>
             <span className="text-[11px] text-purple-700">— al presupuestar o facturar este vidrio a una aseguradora se agrega la calibración y su bonificación</span>
-          </label>
+          </label>}
           <div className="grid grid-cols-2 gap-2">
             <label className="flex items-center gap-2 cursor-pointer bg-p-light border border-p-line rounded-lg px-3 py-2">
-              <input type="checkbox" checked={form.servicio} onChange={e => setForm(p => ({ ...p, servicio: e.target.checked, pos: e.target.checked && !p.pos ? 'SERVICIOS' : p.pos }))} className="accent-p-green"/>
+              <input type="checkbox" checked={form.servicio} onChange={e => setForm(p => ({ ...p, servicio: e.target.checked, adas: e.target.checked ? false : p.adas, pos: e.target.checked && !p.pos ? 'SERVICIOS' : p.pos }))} className="accent-p-green"/>
               <span className="text-sm font-semibold text-p-ink">Es un servicio</span>
               <span className="text-[11px] text-p-ink2">(mano de obra, colocación: no mueve stock)</span>
             </label>
