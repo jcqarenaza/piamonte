@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface TipoCliente { id:string; nombre:string; margen_pct:number; color:string; activo:boolean }
-interface RubroPrecio { id:string; nombre:string; precio_base:number; costo_base:number; visible_en_impresion:boolean; activo:boolean; orden:number }
 interface CategoriaGasto { id:string; nombre:string; color:string; orden:number; activo:boolean }
 interface Colaborador { id:string; nombre:string; activo:boolean }
 
@@ -16,7 +15,6 @@ function moneyARS(n:number){ return '$'+Math.round(n).toLocaleString('es-AR') }
 
 export default function ConfiguracionClient() {
   const [tipos,      setTipos]      = useState<TipoCliente[]>([])
-  const [rubros,     setRubros]     = useState<RubroPrecio[]>([])
   const [categorias, setCategorias] = useState<CategoriaGasto[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [saving,     setSaving]     = useState(false)
@@ -27,9 +25,6 @@ export default function ConfiguracionClient() {
   const [nuevoTipo,     setNuevoTipo]     = useState({ nombre:'', margen_pct:'', color:COLORS[0] })
   const [showNuevoTipo, setShowNuevoTipo] = useState(false)
 
-  const [rubroEdit,      setRubroEdit]      = useState<Record<string,{nombre:string;precio_base:string;costo_base:string;visible:boolean}>>({})
-  const [nuevoRubro,     setNuevoRubro]     = useState({ nombre:'', precio_base:'', costo_base:'', visible:false })
-  const [showNuevoRubro, setShowNuevoRubro] = useState(false)
 
   const [catEdit,      setCatEdit]      = useState<Record<string,{nombre:string;color:string}>>({})
   const [nuevaCat,     setNuevaCat]     = useState({ nombre:'', color:COLORS[0] })
@@ -41,7 +36,6 @@ export default function ConfiguracionClient() {
 
   useEffect(() => {
     supabase.from('tipos_cliente').select('*').order('nombre').then(({data})=>setTipos(data??[]))
-    supabase.from('rubros_precio').select('*').eq('activo',true).order('orden').then(({data})=>setRubros(data??[]))
     supabase.from('categorias_gasto').select('*').eq('activo',true).order('orden').then(({data})=>setCategorias(data??[]))
     supabase.from('colaboradores').select('*').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
   },[supabase])
@@ -74,32 +68,6 @@ export default function ConfiguracionClient() {
     setSaving(false); ok('Tipo creado ✓')
   }
 
-  function startEditRubro(r:RubroPrecio){
-    setRubroEdit(p=>({...p,[r.id]:{nombre:r.nombre,precio_base:String(r.precio_base),costo_base:String(r.costo_base||0),visible:r.visible_en_impresion}}))
-  }
-  async function saveRubro(id:string){
-    const e=rubroEdit[id]; if(!e) return
-    setSaving(true)
-    await supabase.from('rubros_precio').update({nombre:e.nombre,precio_base:+e.precio_base,costo_base:+e.costo_base||0,visible_en_impresion:e.visible}).eq('id',id)
-    const {data}=await supabase.from('rubros_precio').select('*').eq('activo',true).order('orden')
-    setRubros(data??[])
-    setRubroEdit(p=>{const n={...p};delete n[id];return n})
-    setSaving(false); ok('Rubro actualizado ✓')
-  }
-  async function deleteRubro(id:string){
-    if(!confirm('¿Borrar este rubro?')) return
-    await supabase.from('rubros_precio').update({activo:false}).eq('id',id)
-    setRubros(prev=>prev.filter(r=>r.id!==id)); ok('Rubro eliminado')
-  }
-  async function addRubro(){
-    if(!nuevoRubro.nombre||!nuevoRubro.precio_base) return
-    setSaving(true)
-    const orden = (Math.max(...rubros.map(r=>r.orden),0))+1
-    await supabase.from('rubros_precio').insert({nombre:nuevoRubro.nombre,precio_base:+nuevoRubro.precio_base,costo_base:+nuevoRubro.costo_base||0,visible_en_impresion:nuevoRubro.visible,orden})
-    const {data}=await supabase.from('rubros_precio').select('*').eq('activo',true).order('orden')
-    setRubros(data??[]); setNuevoRubro({nombre:'',precio_base:'',costo_base:'',visible:false}); setShowNuevoRubro(false)
-    setSaving(false); ok('Rubro creado ✓')
-  }
 
   return (
     <div className="max-w-2xl flex flex-col gap-8">
@@ -179,82 +147,9 @@ export default function ConfiguracionClient() {
         })}
       </div>
 
-      {/* ── Rubros rápidos ── */}
-      <div className="bg-white border border-p-line rounded-xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-p-line2 bg-p-light flex items-center justify-between">
-          <div>
-            <p className="font-saira font-bold text-sm text-p-ink">Rubros rápidos</p>
-            <p className="text-xs text-p-ink2 mt-0.5">Precios default de mano de obra, materiales y servicios.</p>
-          </div>
-          <button onClick={()=>setShowNuevoRubro(!showNuevoRubro)} style={btn}>+ Nuevo rubro</button>
-        </div>
-
-        {showNuevoRubro && (
-          <div className="px-4 py-3 bg-green-50 border-b border-p-line2 flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="block text-[10px] font-semibold text-p-ink2 uppercase mb-1">Nombre</label>
-              <input value={nuevoRubro.nombre} onChange={e=>setNuevoRubro(p=>({...p,nombre:e.target.value}))}
-                placeholder="Ej: Retiro de vidrio" className="border border-p-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-p-green w-44"/>
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-p-ink2 uppercase mb-1">Precio base</label>
-              <input type="number" value={nuevoRubro.precio_base} onChange={e=>setNuevoRubro(p=>({...p,precio_base:e.target.value}))}
-                placeholder="15000" className="border border-p-line rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-p-green w-28"/>
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-p-ink2 uppercase mb-1">Costo base</label>
-              <input type="number" value={nuevoRubro.costo_base} onChange={e=>setNuevoRubro(p=>({...p,costo_base:e.target.value}))}
-                placeholder="0" className="border border-amber-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-amber-400 w-28"/>
-            </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={nuevoRubro.visible} onChange={e=>setNuevoRubro(p=>({...p,visible:e.target.checked}))} className="accent-p-green"/>
-              Visible en PDF
-            </label>
-            <button onClick={addRubro} disabled={saving} style={btn}>Guardar</button>
-            <button onClick={()=>setShowNuevoRubro(false)} style={btnGray}>Cancelar</button>
-          </div>
-        )}
-
-        {rubros.map(r=>{
-          const e = rubroEdit[r.id]
-          return (
-            <div key={r.id} className="flex items-center gap-3 px-4 py-3 border-b border-p-line2 last:border-0 flex-wrap">
-              {e ? (
-                <>
-                  <input value={e.nombre} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],nombre:ev.target.value}}))}
-                    className="border border-p-green rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none"/>
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm text-p-ink2">$</span>
-                    <input type="number" value={e.precio_base} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],precio_base:ev.target.value}}))}
-                      placeholder="precio" className="border border-p-green rounded-lg px-2 py-1.5 text-sm font-mono w-28 focus:outline-none"/>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-p-ink2">costo $</span>
-                    <input type="number" value={e.costo_base} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],costo_base:ev.target.value}}))}
-                      placeholder="0" className="border border-amber-300 rounded-lg px-2 py-1.5 text-sm font-mono w-28 focus:outline-none"/>
-                  </div>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="checkbox" checked={e.visible} onChange={ev=>setRubroEdit(p=>({...p,[r.id]:{...p[r.id],visible:ev.target.checked}})) } className="accent-p-green"/>
-                    Visible en PDF
-                  </label>
-                  <button onClick={()=>saveRubro(r.id)} disabled={saving} style={btn}>Guardar</button>
-                  <button onClick={()=>setRubroEdit(p=>{const n={...p};delete n[r.id];return n})} style={btnGray}>Cancelar</button>
-                </>
-              ) : (
-                <>
-                  <p className="font-semibold text-sm text-p-ink flex-1">{r.nombre}</p>
-                  <p className="font-mono font-bold text-sm text-p-dark">{moneyARS(r.precio_base)}</p>
-                  {r.costo_base > 0 && <p className="font-mono text-xs text-amber-600">costo: {moneyARS(r.costo_base)}</p>}
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.visible_en_impresion?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500'}`}>
-                    {r.visible_en_impresion?'visible en PDF':'oculto en PDF'}
-                  </span>
-                  <button onClick={()=>startEditRubro(r)} style={{...btnGray,padding:'5px 12px',fontSize:12}}>✏ Editar</button>
-                  <button onClick={()=>deleteRubro(r.id)} style={{...btnRed,padding:'5px 12px',fontSize:12}}>✕</button>
-                </>
-              )}
-            </div>
-          )
-        })}
+      {/* Los rubros rápidos ahora son artículos de la familia Servicios en Stock */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
+        <strong>Rubros rápidos:</strong> ahora se administran desde <strong>Stock → familia Servicios</strong>. Cada servicio es un artículo con código; en su ficha se marca si aparece como botón rápido al facturar.
       </div>
 
       {/* ── Categorías de Gasto ── */}

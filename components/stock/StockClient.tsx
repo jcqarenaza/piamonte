@@ -12,10 +12,10 @@ const FAM_MAP: Record<string, string> = {
   CUSTODIA_D: 'Aletas y Custodias', CUSTODIA_I: 'Aletas y Custodias',
   ALETA_D: 'Aletas y Custodias', ALETA_I: 'Aletas y Custodias', ALETA: 'Aletas y Custodias',
   VENTANA_D: 'Aletas y Custodias', VENTANA_I: 'Aletas y Custodias',
-  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros', ACCESORIOS: 'Accesorios',
+  TECHO: 'Techo', ESCOBILLA: 'Escobillas', VIDRIO: 'Otros', ACCESORIOS: 'Accesorios', SERVICIOS: 'Servicios',
 }
-const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Accesorios', 'Otros']
-const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Accesorios: '🔧', Otros: '⬜' }
+const FAMS = ['Parabrisas', 'Lunetas', 'Techo', 'Puertas', 'Aletas y Custodias', 'Escobillas', 'Accesorios', 'Servicios', 'Otros']
+const FAM_ICON: Record<string, string> = { Parabrisas: '🟦', Lunetas: '🟫', Techo: '🔲', Puertas: '🚪', 'Aletas y Custodias': '🔷', Escobillas: '🪟', Accesorios: '🔧', Servicios: '🛠️', Otros: '⬜' }
 
 type Tab = 'inventario' | 'vincular' | 'movimientos'
 
@@ -167,7 +167,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     setMovLoading(false)
   }
 
-  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
+  const [form, setForm] = useState({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '', adas: false, servicio: false, rubro: false })
   const [articuloSel, setArticuloSel] = useState<{id:string;descripcion:string;codigo_referencia:string|null}|null>(null)
   const [articuloSugs, setArticuloSugs] = useState<any[]>([])
   const [buscandoArticulo, setBuscandoArticulo] = useState(false)
@@ -330,6 +330,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     if (p.startsWith('ESCOBILLA') || p.startsWith('PLUMILLA') || p.startsWith('LIMPIAPARABRISAS')) return 'ESCOBILLA'
     if (p.startsWith('VIDRIO') || p.startsWith('TECHO')) return 'VIDRIO'
     if (p.startsWith('ACCESORIO') || p === 'ACCESORIOS') return 'ACCESORIOS'
+    if (p.startsWith('SERVICIO')) return 'SERVICIOS'
     // Todo lo que no matchea ninguna categoría conocida cae en Otros
     return 'VIDRIO'
   }
@@ -464,7 +465,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
   }
 
   function openNuevo() {
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '', adas: false, servicio: false, rubro: false })
     setEditId(null)
     setArticuloSel(null)
     setArticuloSugs([])
@@ -489,7 +490,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
     const pos = art?.pos || cat?.pos || ''
     const anio = art?.anio ? String(art.anio) : ''
 
-    setForm({ desc, cod: codigo, marca, pos, anio, cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
+    setForm({ desc, cod: codigo, marca, pos, anio, cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '', adas: false, servicio: false, rubro: false })
     setEditId(null)
     setArticuloSel(art ? { id: art.id, descripcion: art.descripcion, codigo_referencia: art.codigo_referencia } : null)
     setArticuloSugs([])
@@ -505,6 +506,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       dep: s.deposito || 'Principal',
       minimo: String(s.stock_minimo ?? 0),
       leyenda: '',
+      adas: !!(s as any).tiene_adas,
+      servicio: !!(s as any).es_servicio,
+      rubro: !!(s as any).rubro_rapido,
     })
     setEditId(s.id)
     if ((s as any).articulo_id) {
@@ -603,6 +607,9 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       deposito: form.dep || 'Principal', updated_at: new Date().toISOString(),
       articulo_id: articuloId,
       stock_minimo: +form.minimo || 0,
+      tiene_adas: !!form.adas,
+      es_servicio: !!form.servicio,
+      rubro_rapido: !!form.rubro,
     }
     if (editId) {
       const { error: errUpd } = await supabase.from('stock').update(payload).eq('id', editId)
@@ -625,7 +632,7 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
       }
       }
     setOpen(false)
-    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '' })
+    setForm({ desc: '', cod: '', marca: '', pos: '', anio: '', cant: '1', precio: '', costo: '', dep: 'Principal', minimo: '0', leyenda: '', adas: false, servicio: false, rubro: false })
     setEditId(null)
     setArticuloSel(null)
     load()
@@ -2153,6 +2160,23 @@ export default function StockClient({ isAdmin, userId }: { isAdmin: boolean; use
             </Field>
             <Field label="Precio venta"><Input value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} placeholder="$" /></Field>
             <Field label="Costo de venta"><Input value={form.costo} onChange={e => setForm(p => ({ ...p, costo: e.target.value }))} placeholder="$" /></Field>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+            <input type="checkbox" checked={form.adas} onChange={e => setForm(p => ({ ...p, adas: e.target.checked }))} className="accent-purple-600"/>
+            <span className="text-sm font-semibold text-purple-900">Se calibra con ADAS</span>
+            <span className="text-[11px] text-purple-700">— al presupuestar o facturar este vidrio a una aseguradora se agrega la calibración y su bonificación</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 cursor-pointer bg-p-light border border-p-line rounded-lg px-3 py-2">
+              <input type="checkbox" checked={form.servicio} onChange={e => setForm(p => ({ ...p, servicio: e.target.checked, pos: e.target.checked && !p.pos ? 'SERVICIOS' : p.pos }))} className="accent-p-green"/>
+              <span className="text-sm font-semibold text-p-ink">Es un servicio</span>
+              <span className="text-[11px] text-p-ink2">(mano de obra, colocación: no mueve stock)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer bg-p-light border border-p-line rounded-lg px-3 py-2">
+              <input type="checkbox" checked={form.rubro} onChange={e => setForm(p => ({ ...p, rubro: e.target.checked }))} className="accent-p-green"/>
+              <span className="text-sm font-semibold text-p-ink">Botón rápido al facturar</span>
+              <span className="text-[11px] text-p-ink2">(aparece en Comprobantes y Presupuestos)</span>
+            </label>
           </div>
           <Field label="Mínimo en stock">
             <div className="flex items-center gap-3">

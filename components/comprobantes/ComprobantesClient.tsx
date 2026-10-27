@@ -460,7 +460,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // Detección automática de ADAS por descripción (CAPTOR / C/CAP / CAMARA / C/CAM / ADAS)
   useEffect(() => {
     if (modo !== 'aseguradora' || adasManual) return
-    const detectado = items.some(it => !esLineaAdas(it.d) && ADAS_RE.test(String(it.d||'')))
+    const detectado = items.some(it => !esLineaAdas(it.d) && ((it as any).tiene_adas || ADAS_RE.test(String(it.d||''))))
     if (detectado && !conAdas) setConAdas(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, modo, adasManual])
@@ -2424,7 +2424,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                               precioStock = s.precio_venta || Math.round(costoStock*1.45)
                             }
                           }
-                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:precioStock,costo:costoStock,stock_id:s.id,articulo_id:s.articulo_id||null,codigo:s.codigo||null}])
+                          setItems(prev=>[...prev,{d:s.descripcion,c:1,p:precioStock,costo:costoStock,stock_id:s.id,articulo_id:s.articulo_id||null,codigo:s.codigo||null,tiene_adas:!!s.tiene_adas} as any])
                           setStockQ(''); setStockSugs([]); setArticuloSugs([])
                         }} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                           <div className="min-w-0">

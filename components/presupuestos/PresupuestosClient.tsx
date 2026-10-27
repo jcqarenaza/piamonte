@@ -151,13 +151,13 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     }
   },[asegQ,asegSel,modoAseg,supabase])
 
-  function pickCatAseg(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
+  function pickCatAseg(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string;tiene_adas?:boolean}) {
     // Vidrio propio en presupuesto de aseguradora: precio sugerido = costo × 1.45, con IVA
     // (en modo aseguradora los precios van IVA incluido). Editable en la lista de ítems.
     const precioSug = Math.round(h.costo_neto * 1.45 * (1 + IVA_RATE) * 100) / 100
     setItems(prev=>[...prev,{
       d: h.descripcion, c: 1, p: precioSug,
-      costo: h.costo_neto, esRubro: false, codigo: h.codigo || undefined
+      costo: h.costo_neto, esRubro: false, codigo: h.codigo || undefined, tiene_adas: !!h.tiene_adas
     } as any])
     setAsegCatQ(''); setAsegCatHits([])
   }
@@ -165,7 +165,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   // Detección automática: si entra un ítem con pinta de ADAS y el usuario no tocó la casilla, se prende
   useEffect(() => {
     if (!modoAseg || adasManual) return
-    const detectado = items.some(it => !esLineaAdas(it.d) && ADAS_RE.test(String(it.d||'')))
+    const detectado = items.some(it => !esLineaAdas(it.d) && ((it as any).tiene_adas || ADAS_RE.test(String(it.d||''))))
     if (detectado && !conAdas) setConAdas(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, modoAseg, adasManual])
