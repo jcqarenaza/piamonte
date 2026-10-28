@@ -20,6 +20,7 @@ export interface ResultadoCatalogo {
   cantidad?: number
   precio_venta?: number
   articulo_id?: string | null
+  tiene_adas?: boolean
 }
 
 /**

@@ -111,14 +111,24 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       })
   },[supabase])
 
+  // "+ Nuevo presupuesto": arranca siempre en blanco, aunque se haya cerrado una edición sin guardar
+  function abrirNuevo() {
+    setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
+    setModoAseg(false); setAsegSel(null); setAsegQ(''); setConAdas(false); setAdasManual(false)
+    setCatQ(''); setCatHits([])
+    setForm({cli:'',tel:'',veh:'',pat:'',dias:'7',obs:'',condIva:'cf',cuit:''})
+    setOpen(true)
+  }
+
   // Búsqueda catálogo (modo normal)
   useEffect(()=>{
     if(modoAseg){setCatHits([]);return}
     if(catQ.trim().length<2){setCatHits([]);return}
-    buscarCatalogo(supabase, catQ, { incluirStock: false, limit: 12 })
+    buscarCatalogo(supabase, catQ, { incluirStock: true, limit: 12 })
       .then(resultados => setCatHits(resultados.map(r=>({
-        id: r.id, descripcion: r.descripcion || '', proveedor: r.proveedor || '', costo_neto: r.costo_neto || 0, codigo: r.codigo || undefined
-      }))))
+        id: r.id, descripcion: r.descripcion || '', proveedor: r.stock_id ? 'STOCK' : (r.proveedor || ''), costo_neto: r.costo_neto || 0, codigo: r.codigo || undefined,
+        stock_id: r.stock_id, precio_venta: r.precio_venta || 0, tiene_adas: !!r.tiene_adas,
+      } as any))))
   },[catQ,supabase,modoAseg])
 
   // Búsqueda catálogo/stock propio (modo aseguradora — vidrios que no están en la lista)
@@ -177,7 +187,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
     // Si las líneas ya vienen cargadas (OS o presupuesto que ya tenía ADAS), se adopta la casilla
     if (!conAdas && tiene && !adasManual) { setConAdas(true); return }
     if (!conAdas && tiene) { setItems(prev => prev.filter(it => !esLineaAdas(it.d))); return }
-    if (conAdas && !tiene && items.length) {
+    if (conAdas && !tiene && (items.length || adasManual)) {
       ;(async () => {
         try {
           const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
@@ -255,10 +265,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   
-  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string;tiene_adas?:boolean}) {
+  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string;tiene_adas?:boolean;stock_id?:string;precio_venta?:number}) {
     const margen = tipoSel?.margen_pct ?? 0.45
-    // costo_neto ya incluye flete — NO volver a sumar
-    const precioSug = Math.round(h.costo_neto * (1 + margen))
+    // costo_neto ya incluye flete — NO volver a sumar.
+    // Si viene de STOCK con precio de venta cargado (servicios, colocación, vidrios propios) se usa ese precio.
+    const precioSug = h.stock_id && h.precio_venta ? h.precio_venta : Math.round(h.costo_neto * (1 + margen))
     setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false,codigo:h.codigo||undefined,tiene_adas:!!h.tiene_adas} as any])
     setCatQ(''); setCatHits([])
   }
@@ -622,7 +633,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   return (
     <div>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:20}}>
-        <button onClick={()=>setOpen(true)} style={btn}>+ Nuevo presupuesto</button>
+        <button onClick={abrirNuevo} style={btn}>+ Nuevo presupuesto</button>
       </div>
 
       {presus.length===0 ? <Empty msg="Sin presupuestos todavía." /> : (
@@ -921,14 +932,14 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
           {/* Búsqueda en catálogo */}
           <div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar vidrio en catálogo</label>
+            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar vidrio, servicio o pieza (stock y catálogo)</label>
             <div className="relative">
-              <Input value={catQ} onChange={e=>setCatQ(e.target.value)} placeholder="Modelo, marca…"/>
+              <Input value={catQ} onChange={e=>setCatQ(e.target.value)} placeholder="Modelo, marca, código, mano de obra, pegamento…"/>
               {catHits.length>0&&(
                 <div className="absolute z-20 top-full left-0 right-0 bg-white border border-p-line rounded-xl shadow-xl max-h-52 overflow-y-auto mt-1">
                   {catHits.map(h=>{
                     const margen=tipoSel?.margen_pct??0.45
-                    const sug=Math.round(h.costo_neto*(1+margen))
+                    const sug=(h as any).stock_id && (h as any).precio_venta ? (h as any).precio_venta : Math.round(h.costo_neto*(1+margen))
                     return(
                       <button key={h.id} onClick={()=>pickCat(h)} className="w-full text-left px-3 py-2.5 hover:bg-p-light border-b border-p-line2 last:border-0 flex items-center justify-between gap-3">
                         <div>
@@ -940,7 +951,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-mono font-bold text-sm text-p-dark">{moneyARS(sug)}</p>
-                          <p className="text-[10px] text-p-green">precio sugerido</p>
+                          <p className="text-[10px] text-p-green">{(h as any).stock_id && (h as any).precio_venta ? 'precio de stock' : 'precio sugerido'}</p>
                         </div>
                       </button>
                     )
@@ -953,22 +964,6 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
           {/* Rubros rápidos + Ítem libre (solo modo normal) */}
           {!modoAseg && (<>
-          <div>
-            <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Rubros rápidos</label>
-            <div className="grid grid-cols-2 gap-2">
-              {rubros.map(r=>(
-                <div key={r.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                  <button onClick={()=>addRubro(r)} className="text-xs font-bold text-p-dark hover:text-p-green">+ {r.nombre}</button>
-                  <input type="text" inputMode="decimal" value={rubrosEdit[r.id]??r.precio_base}
-                    onChange={e=>setRubrosEdit(p=>({...p,[r.id]:e.target.value}))}
-                    onBlur={e=>setRubrosEdit(p=>({...p,[r.id]:parseFloat(String(p[r.id]).replace(',','.'))||r.precio_base}))}
-                    className="ml-auto w-24 border border-p-line rounded px-2 py-0.5 text-xs font-mono text-right focus:outline-none focus:border-p-green"
-                    onFocus={()=>setRubrosEdit(p=>({...p,[r.id]:p[r.id]??r.precio_base}))}/>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Ítem manual */}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Ítem libre</label>
