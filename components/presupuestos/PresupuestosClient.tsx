@@ -164,7 +164,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   // Detección automática: si entra un ítem con pinta de ADAS y el usuario no tocó la casilla, se prende
   useEffect(() => {
-    if (!modoAseg || adasManual) return
+    if (adasManual) return
     const detectado = items.some(it => !esLineaAdas(it.d) && ((it as any).tiene_adas || ADAS_RE.test(String(it.d||''))))
     if (detectado && !conAdas) setConAdas(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,7 +172,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
 
   // Sincroniza las líneas del paquete ADAS con la casilla
   useEffect(() => {
-    if (!modoAseg || !asegSel) return
+    if (modoAseg && !asegSel) return
     const tiene = items.some(it => esLineaAdas(it.d))
     // Si las líneas ya vienen cargadas (OS o presupuesto que ya tenía ADAS), se adopta la casilla
     if (!conAdas && tiene && !adasManual) { setConAdas(true); return }
@@ -183,18 +183,24 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
           const precio = Number(art?.precio_venta) || 0
           if (!precio) return
-          const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
-          const nuevos: any[] = [
-            { d:'INSTALACION — INCLUIDA', c:1, p:0 },
-            { d:'CALIBRACION ADAS', c:1, p:precio },
-          ]
-          if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          const nuevos: any[] = []
+          if (modoAseg && asegSel) {
+            // Aseguradora: instalación incluida + calibración + bonificación de la compañía
+            const pct = Math.min(100, Math.max(0, Number((asegSel as any).bonif_adas_pct ?? 100)))
+            nuevos.push({ d:'INSTALACION — INCLUIDA', c:1, p:0 }, { d:'CALIBRACION ADAS', c:1, p:precio })
+            if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          } else {
+            // Particular: la calibración se cobra completa
+            nuevos.push({ d:'CALIBRACION ADAS', c:1, p:precio, codigo:'CALIB-ADAS', esRubro:true })
+          }
           setItems(prev => prev.some(it => esLineaAdas(it.d)) ? prev : [...prev, ...nuevos])
         } catch {}
       })()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conAdas, modoAseg, asegSel, items.length])
+  // Al cambiar de modo se resetea la casilla
+  useEffect(() => { setConAdas(false); setAdasManual(false) }, [modoAseg])
 
   function pickAseg(h: PrecioAseg) {
     if(!asegSel) return
@@ -249,11 +255,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   }
 
   
-  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string}) {
+  function pickCat(h:{id:string;descripcion:string;proveedor:string;costo_neto:number;codigo?:string;tiene_adas?:boolean}) {
     const margen = tipoSel?.margen_pct ?? 0.45
     // costo_neto ya incluye flete — NO volver a sumar
     const precioSug = Math.round(h.costo_neto * (1 + margen))
-    setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false,codigo:h.codigo||undefined} as any])
+    setItems(prev=>[...prev,{d:h.descripcion,c:1,p:precioSug,costo:h.costo_neto,esRubro:false,codigo:h.codigo||undefined,tiene_adas:!!h.tiene_adas} as any])
     setCatQ(''); setCatHits([])
   }
 
@@ -906,6 +912,12 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
             <Field label="Vehículo"><Input value={form.veh} onChange={e=>setForm(p=>({...p,veh:e.target.value}))} placeholder="VW Gol 2015"/></Field>
             <Field label="Patente"><Input value={form.pat} onChange={e=>setForm(p=>({...p,pat:e.target.value.toUpperCase()}))} placeholder="ABC 123"/></Field>
           </div>
+
+          {/* Calibración ADAS (particular: a precio completo) */}
+          <label className="flex items-center gap-2 text-xs font-semibold text-purple-800 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2" title="Agrega la calibración ADAS a precio completo">
+            <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
+            Calibración ADAS {conAdas && <span className="font-normal text-purple-700">— se cobra completa (sin bonificación)</span>}
+          </label>
 
           {/* Búsqueda en catálogo */}
           <div>

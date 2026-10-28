@@ -25,6 +25,8 @@ export default function RentabilidadesAvanzadasClient() {
   const [topPiezas, setTopPiezas] = useState<TopPieza[]>([])
   const [compras, setCompras]   = useState<any[]>([])
   const [ventasCajaPorMes, setVentasCajaPorMes] = useState<Record<string,{operaciones:number;total:number}>>({})
+  // Margen bruto REAL por mes: ventas netas (sin IVA) − costo de lo vendido, desde la tabla ventas
+  const [margenPorMes, setMargenPorMes] = useState<Record<string,{neto:number;costo:number;sinCosto:number}>>({})
   const [loading, setLoading]   = useState(true)
   const [periodo, setPeriodo]   = useState(6) // meses a mostrar
   const supabase = createClient()
@@ -36,16 +38,27 @@ export default function RentabilidadesAvanzadasClient() {
   useEffect(()=>{
     async function load() {
       setLoading(true)
-      const [r1, r2movs, r3, r4] = await Promise.all([
+      const desde12 = new Date(new Date().getFullYear(), new Date().getMonth()-11, 1).toISOString().slice(0,10)
+      const [r1, r2movs, r3, r4, r5] = await Promise.all([
         supabase.from('vista_rentabilidad_mensual').select('*').limit(100),
         supabase.from('stock_movimientos').select('stock_id,cantidad,precio_venta_unitario')
           .eq('tipo','salida').not('precio_venta_unitario','is',null).limit(2000),
-        supabase.from('comprobantes_compra').select('fecha,total,tipo')
+        supabase.from('comprobantes_compra').select('fecha,total,neto,tipo')
           .in('tipo',['factura','nc'])
           .gte('fecha', new Date(new Date().getFullYear(), new Date().getMonth()-11, 1).toISOString().slice(0,10))
           .order('fecha',{ascending:false}).limit(2000),
         supabase.from('ventas').select('fecha,precio').is('comprobante_id', null).not('fecha','is',null).limit(2000),
+        supabase.from('ventas').select('fecha,precio,neto,costo,pendiente').gte('fecha', desde12).limit(5000),
       ])
+      const mMap: Record<string,{neto:number;costo:number;sinCosto:number}> = {}
+      for (const v of (r5.data??[]) as any[]) {
+        const mes = String(v.fecha).slice(0,7)
+        if (!mMap[mes]) mMap[mes] = { neto:0, costo:0, sinCosto:0 }
+        mMap[mes].neto += v.neto ?? (v.precio||0)/1.21
+        if (v.pendiente) mMap[mes].sinCosto++
+        else if ((v.precio||0) >= 0) mMap[mes].costo += v.costo||0
+      }
+      setMargenPorMes(mMap)
       setDatos(r1.data??[])
 
       // Top piezas por código de artículo
@@ -95,7 +108,9 @@ export default function RentabilidadesAvanzadasClient() {
       mes: m,
       operaciones: rows.reduce((a,r)=>a+r.operaciones,0) + caja.operaciones,
       facturado: rows.reduce((a,r)=>a+r.facturado,0) + caja.total,
-      neto: rows.reduce((a,r)=>a+r.neto,0),
+      neto: margenPorMes[m]?.neto ?? rows.reduce((a,r)=>a+r.neto,0),
+      costo: margenPorMes[m]?.costo ?? 0,
+      sinCosto: margenPorMes[m]?.sinCosto ?? 0,
     }
   })
 
@@ -118,8 +133,11 @@ export default function RentabilidadesAvanzadasClient() {
   // Compras del período elegido: facturas − notas de crédito, filtradas por fecha real
   const corteCompras = new Date(new Date().getFullYear(), new Date().getMonth()-(periodo-1), 1).toISOString().slice(0,10)
   const comprasPeriodo = compras.filter(c=>String(c.fecha) >= corteCompras)
-  const totalCompras = comprasPeriodo.reduce((a,c)=>a + (c.tipo==='nc' ? -(c.total||0) : (c.total||0)), 0)
-  const margenBruto  = totalFact > 0 ? Math.round(((totalFact-totalCompras)/totalFact)*100) : 0
+  const totalCompras = comprasPeriodo.reduce((a,c)=>a + (c.tipo==='nc' ? -(+c.neto||0) : (+c.neto||0)), 0)   // NETO
+  const totalNeto    = porMes.reduce((a,m)=>a+m.neto,0)
+  const totalCosto   = porMes.reduce((a,m)=>a+m.costo,0)
+  const margenBrutoARS = totalNeto - totalCosto
+  const margenBruto  = totalNeto > 0 ? Math.round((margenBrutoARS/totalNeto)*100) : 0
 
   if(loading) return <p className="text-sm text-p-gray text-center py-10">Cargando…</p>
 
@@ -149,13 +167,14 @@ export default function RentabilidadesAvanzadasClient() {
           <p className="text-[10px] text-p-ink2">{usdBNA(ticketProm)}</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Compras (facturas)</p>
+          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Compras de stock (netas)</p>
           <p className="font-saira font-bold text-xl text-p-ink mt-1">{moneyARS(totalCompras)}</p>
-          <p className="text-[10px] text-p-ink2">{usdBNA(totalCompras)}</p>
+          <p className="text-[10px] text-p-ink2">{usdBNA(totalCompras)} · no se restan del margen: van a stock</p>
         </div>
         <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Margen estimado</p>
+          <p className="text-[11px] font-semibold text-p-ink2 uppercase tracking-wider">Margen bruto real (s/IVA)</p>
           <p className={`font-saira font-bold text-xl mt-1 ${margenBruto>30?'text-p-green':margenBruto>0?'text-amber-500':'text-red-500'}`}>{margenBruto}%</p>
+          <p className="text-[10px] text-p-ink2">{moneyARS(margenBrutoARS)} = ventas netas {moneyARS(totalNeto)} − costo {moneyARS(totalCosto)}</p>
         </div>
       </div>
 
@@ -170,7 +189,8 @@ export default function RentabilidadesAvanzadasClient() {
                   <th className="text-left py-2 font-bold text-p-ink2 text-xs uppercase">Mes</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Operaciones</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Facturado</th>
-                  <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">USD BNA</th>
+                  <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Neto s/IVA</th>
+                  <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Margen bruto</th>
                   <th className="text-right py-2 font-bold text-p-ink2 text-xs uppercase">Ticket prom.</th>
                 </tr>
               </thead>
@@ -190,8 +210,11 @@ export default function RentabilidadesAvanzadasClient() {
                           <span className="font-mono font-bold text-p-dark">{moneyARS(m.facturado)}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 text-right font-mono text-p-ink2">{usdBNA(m.facturado)}</td>
-                      <td className="py-2.5 text-right font-mono text-p-ink2">{moneyARS(m.operaciones>0?Math.round(m.facturado/m.operaciones):0)}</td>
+                      <td className="py-2.5 text-right font-mono text-p-ink2">{moneyARS(m.neto)}</td>
+                      <td className="py-2.5 text-right font-mono font-bold" style={{color:(m.neto-m.costo)>=0?'#00A550':'#ef4444'}}>
+                        {moneyARS(m.neto-m.costo)} <span className="text-[10px] font-normal text-p-ink2">({m.neto>0?Math.round((m.neto-m.costo)/m.neto*100):0}%{m.sinCosto?` · ${m.sinCosto} s/costo`:''})</span>
+                      </td>
+                      <td className="py-2.5 text-right font-mono text-p-ink2">{moneyARS(m.operaciones>0?Math.round(m.neto/m.operaciones):0)}</td>
                     </tr>
                   )
                 })}

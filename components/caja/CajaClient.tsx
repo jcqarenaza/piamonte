@@ -215,11 +215,12 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
 
   const toUsd = (n: number) => usdBNA(n) !== '—' ? ' · ' + usdBNA(n) : ''
 
-  // Rentabilidad real (sin IVA, con flete 1.5%)
-  function calcRentabilidad(precio: number, costo: number | null) {
+  // Rentabilidad real, todo NETO (sin IVA). El costo de stock ya es neto y ya incluye flete;
+  // el precio viene con IVA: si la venta trae `neto` (del comprobante) se usa ese, si no se divide por 1.21.
+  function calcRentabilidad(precio: number, costo: number | null, neto?: number | null) {
     if (!costo) return null
-    const precioNeto = precio / 1.21
-    const costoNeto  = costo / 1.21 / 1.015
+    const precioNeto = neto && neto !== 0 ? Math.abs(neto) * Math.sign(precio || 1) : precio / 1.21
+    const costoNeto  = costo
     const ganancia   = precioNeto - costoNeto
     const margen     = Math.round((ganancia / precioNeto) * 100)
     return { precioNeto: Math.round(precioNeto), costoNeto: Math.round(costoNeto), ganancia: Math.round(ganancia), margen }
@@ -550,8 +551,10 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
   const fact = ventas.reduce((a, v) => a + v.precio, 0)
   const factContado = ventas.filter(v => v.pago !== 'Cuenta corriente').reduce((a, v) => a + v.precio, 0)
   const factCC      = ventas.filter(v => v.pago === 'Cuenta corriente').reduce((a, v) => a + v.precio, 0)
-  const costo = ventas.filter(v => !v.pendiente).reduce((a, v) => a + (v.costo ?? 0), 0)
-  const gan2 = fact - costo
+  const costo = ventas.filter(v => !v.pendiente && v.precio >= 0).reduce((a, v) => a + (v.costo ?? 0), 0)
+  // Margen bruto NETO: ventas sin IVA − costo (el costo ya es neto). Nunca precio c/IVA − costo.
+  const factNeto = ventas.reduce((a, v) => a + ((v as any).neto ?? v.precio / 1.21), 0)
+  const gan2 = factNeto - costo
   const [ventaFiltro, setVentaFiltro] = useState<'todas'|'contado'|'cc'>('todas')
   const ventasFiltradas = ventaFiltro==='contado' ? ventas.filter(v=>v.pago!=='Cuenta corriente') : ventaFiltro==='cc' ? ventas.filter(v=>v.pago==='Cuenta corriente') : ventas
   const pend = ventas.filter(v => v.pendiente).length
@@ -626,7 +629,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <KpiCard label="Facturado" value={moneyARS(fact)} sub={usdBNA(fact)} />
         {isAdmin && <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={usdBNA(costo)} />}
-        {isAdmin && <KpiCard label={`Ganancia${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={usdBNA(gan2)} />}
+        {isAdmin && <KpiCard label={`Margen bruto s/IVA${pend ? ' (parcial)' : ''}`} value={moneyARS(gan2)} accent sub={`${factNeto>0?Math.round(gan2/factNeto*100):0}% · ${usdBNA(gan2)}`} />}
         <KpiCard label="Operaciones" value={`${ventas.length}`} sub={pend ? `${pend} s/costo` : undefined} />
         {isAdmin && <KpiCard label="Gastos del día" value={moneyARS(totalGastos)} />}
         {isAdmin && <KpiCard label="Cobros Cta. Cte. (clientes)" value={moneyARS(totalRecibos)} />}
@@ -754,7 +757,7 @@ const PAGOS_GASTO = ['Efectivo','Transferencia','Débito','Crédito','Cheque']
                 <div className="text-right">
                   <p className="font-mono font-bold text-p-ink">{moneyARS(v.precio)}</p>
                   {isAdmin && !v.pendiente && (() => {
-                    const r = calcRentabilidad(v.precio, v.costo)
+                    const r = calcRentabilidad(v.precio, v.costo, (v as any).neto)
                     return r ? (
                       <div className="text-right">
                         <p className={`text-xs font-mono font-bold ${r.ganancia >= 0 ? 'text-green-600' : 'text-red-500'}`}>{moneyARS(r.ganancia)} <span className="text-[10px] opacity-70">({r.margen}%)</span></p>

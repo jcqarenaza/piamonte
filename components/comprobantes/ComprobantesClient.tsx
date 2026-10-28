@@ -460,7 +460,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   }, [fiscal.cuit])
   // Detección automática de ADAS por descripción (CAPTOR / C/CAP / CAMARA / C/CAM / ADAS)
   useEffect(() => {
-    if (modo !== 'aseguradora' || adasManual) return
+    if (adasManual) return
     const detectado = items.some(it => !esLineaAdas(it.d) && ((it as any).tiene_adas || ADAS_RE.test(String(it.d||''))))
     if (detectado && !conAdas) setConAdas(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -468,7 +468,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
 
   // Sincroniza las líneas del paquete ADAS con la casilla
   useEffect(() => {
-    if (modo !== 'aseguradora' || !asegSel) return
+    if (modo === 'aseguradora' && !asegSel) return
     const tiene = items.some(it => esLineaAdas(it.d))
     // Si las líneas ya vienen cargadas (OS o presupuesto que ya tenía ADAS), se adopta la casilla
     if (!conAdas && tiene && !adasManual) { setConAdas(true); return }
@@ -479,18 +479,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           const { data: art } = await supabase.from('stock').select('precio_venta').eq('codigo','CALIB-ADAS').maybeSingle()
           const precio = Number(art?.precio_venta) || 0
           if (!precio) return
-          const pct = Math.min(100, Math.max(0, Number(asegSel.bonif_adas_pct ?? 100)))
-          const nuevos: ItemVenta[] = [
-            { d:'INSTALACION — INCLUIDA', c:1, p:0 },
-            { d:'CALIBRACION ADAS', c:1, p:precio },
-          ]
-          if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          const nuevos: ItemVenta[] = []
+          if (modo === 'aseguradora' && asegSel) {
+            const pct = Math.min(100, Math.max(0, Number(asegSel.bonif_adas_pct ?? 100)))
+            nuevos.push({ d:'INSTALACION — INCLUIDA', c:1, p:0 }, { d:'CALIBRACION ADAS', c:1, p:precio })
+            if (pct > 0) nuevos.push({ d:`BONIFICACION CALIBRACION ADAS (${pct}%)`, c:1, p: -Math.round(precio*pct)/100 })
+          } else {
+            nuevos.push({ d:'CALIBRACION ADAS', c:1, p:precio, codigo:'CALIB-ADAS' } as any)
+          }
           setItems(prev => prev.some(it => esLineaAdas(it.d)) ? prev : [...prev, ...nuevos])
         } catch {}
       })()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conAdas, modo, asegSel, items.length])
+  useEffect(() => { setConAdas(false); setAdasManual(false) }, [modo])
   const padronDifiere = !!(padron.data?.condicion_verificada && padron.data.condicion && padron.data.condicion !== 'no_inscripto' && padron.data.condicion !== fiscal.tipo_fiscal)
   const PadronBox = () => (
     <>
@@ -838,14 +841,19 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
       })
     }
     // 4) Venta en Facturado del día
-    let costoVenta = 0
-    for (const it of itemsF.filter((x:any)=>x.stock_id)) {
-      const { data: sk } = await supabase.from('stock').select('costo').eq('id', it.stock_id).maybeSingle()
-      costoVenta += ((sk as any)?.costo||0) * (it.c||1)
+    // Costo de la venta desde el stock. Los servicios (colocación, calibración, rubros) van a costo 0.
+    // La venta queda "sin costo" (pendiente) solo si algún ítem con stock no tiene costo cargado.
+    let costoVenta = 0, faltaCosto = false
+    for (const it of itemsF) {
+      if (!it.stock_id) { costoVenta += (it.costo || 0) * (it.c||1); continue }
+      const { data: sk } = await supabase.from('stock').select('costo,es_servicio').eq('id', it.stock_id).maybeSingle()
+      if ((sk as any)?.es_servicio) continue
+      if (!(sk as any)?.costo) { faltaCosto = true; continue }
+      costoVenta += ((sk as any).costo||0) * (it.c||1)
     }
     await supabase.from('ventas').insert({
       fecha: todayStr(), descripcion: `F${f.tipo}-0006-${nroDesc} - ${f.aseguradora_nombre||f.cliente_nombre||'CF'}`,
-      precio: f.total, costo: costoVenta||null, pendiente: true,
+      precio: f.total, costo: costoVenta||null, pendiente: faltaCosto || !costoVenta,
       comprobante_id: c.id, tipo_cliente_id: f.tipo_cliente_id||null, tipo_cliente_nombre: f.tipo_cliente_nombre || (f.aseguradora_id ? 'Aseguradora' : null),
       pago: montoCC >= f.total*0.9 ? 'Cuenta corriente' : (pagosF.find((p:any)=>p.metodo!=='Cuenta corriente')?.metodo || 'Efectivo'),
       // Abajo va el contexto: el asegurado si es de aseguradora; CF si corresponde
@@ -1361,14 +1369,17 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
         : modo==='cf' ? 'Consumidor Final'
         : null
       // Calcular costo desde stock de los ítems facturados
-      let costoVenta = 0
-      for (const it of items.filter((it:any)=>it.stock_id)) {
-        const { data: stkData } = await supabase.from('stock').select('costo').eq('id',(it as any).stock_id).maybeSingle()
-        costoVenta += ((stkData as any)?.costo||0) * ((it as any).c||1)
+      let costoVenta = 0, faltaCosto = false
+      for (const it of items as any[]) {
+        if (!it.stock_id) { costoVenta += (it.costo || 0) * (it.c||1); continue }
+        const { data: stkData } = await supabase.from('stock').select('costo,es_servicio').eq('id', it.stock_id).maybeSingle()
+        if ((stkData as any)?.es_servicio) continue
+        if (!(stkData as any)?.costo) { faltaCosto = true; continue }
+        costoVenta += ((stkData as any).costo||0) * (it.c||1)
       }
       await supabase.from('ventas').insert({
         fecha:todayStr(), descripcion:`${nroFormateado} - ${nombreVenta||'CF'}`,
-        precio:total, costo:costoVenta||null, pendiente:true,
+        precio:total, costo:costoVenta||null, pendiente: faltaCosto || !costoVenta,
         comprobante_id:(comp as any).id,
         tipo_cliente_id:fiscal.tipo_cliente_id||null,
         tipo_cliente_nombre:tipoC?.nombre||null,
@@ -2395,6 +2406,12 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
             <Field label="Patente"><Input value={fiscal.patente} onChange={e=>setFiscal(p=>({...p,patente:e.target.value.toUpperCase()}))} placeholder="AB123CD"/></Field>
           </div>
 
+          {modo !== 'aseguradora' && (
+            <label className="flex items-center gap-2 text-xs font-semibold text-purple-800 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2" title="Agrega la calibración ADAS a precio completo">
+              <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
+              Calibración ADAS {conAdas && <span className="font-normal text-purple-700">— se cobra completa (sin bonificación)</span>}
+            </label>
+          )}
           <div>
             <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-1.5">Buscar pieza (stock o catálogo)</label>
             <div className="relative">

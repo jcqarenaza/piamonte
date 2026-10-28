@@ -5,7 +5,7 @@ import { KpiCard } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
 
 interface Venta {
-  fecha:string; precio:number; costo:number|null
+  fecha:string; precio:number; neto:number; costo:number|null
   descripcion:string; pendiente:boolean
   tipo_cliente_nombre:string|null
 }
@@ -39,7 +39,11 @@ export default function InformesClient() {
   const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
-  const [topPiezasCod, setTopPiezasCod] = useState<{descripcion:string;veces:number;total:number}[]>([])
+  const [topPiezasCod, setTopPiezasCod] = useState<{descripcion:string;veces:number;total:number;ganancia:number}[]>([])
+  const [topOrden, setTopOrden] = useState<'veces'|'total'|'ganancia'>('veces')
+  // Todo NETO (sin IVA). Viene de la función SQL resumen_rentabilidad.
+  interface Resumen { ventas_netas:number; costo_vendido:number; ventas_sin_costo:number; operaciones:number; gastos:number; compras_netas:number; nc_proveedor_netas:number; stock_inicio:number; stock_cierre:number }
+  const [resumen, setResumen] = useState<Resumen|null>(null)
 
   // Tab Colaboradores
   interface ColabRow { colaborador_id:string|null; nombre:string; cantidad:number; total:number; externos:number }
@@ -59,7 +63,7 @@ export default function InformesClient() {
 
   // Tab Resultado
   interface GastoRow { id:string; fecha:string; categoria:string; descripcion:string; monto:number; forma_pago:string|null }
-  interface CompraRow { id:string; fecha:string; proveedor_nombre:string; total:number; tipo:string }
+  interface CompraRow { id:string; fecha:string; proveedor_nombre:string; total:number; neto:number; tipo:string }
   const [gastos, setGastos] = useState<GastoRow[]>([])
   const [compras, setCompras] = useState<CompraRow[]>([])
   const [resLoading, setResLoading] = useState(false)
@@ -82,9 +86,12 @@ export default function InformesClient() {
   useEffect(() => {
     const p = periodos[pIdx]
     setLoading(true)
-    supabase.from('ventas').select('fecha,precio,costo,descripcion,pendiente,tipo_cliente_nombre')
+    supabase.from('ventas').select('fecha,precio,neto,costo,descripcion,pendiente,tipo_cliente_nombre')
       .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false})
-      .then(({data}) => { setVentas(data??[]); setLoading(false) })
+      .then(({data}) => { setVentas((data??[]).map((v:any)=>({ ...v, neto: v.neto ?? Math.round(v.precio/1.21*100)/100 })) ); setLoading(false) })
+    // Resumen neto del período (ventas, costo, gastos, compras, stock inicio/cierre) — función resumen_rentabilidad
+    supabase.rpc('resumen_rentabilidad', { p_desde: p.desde, p_hasta: p.hasta })
+      .then(({ data }) => { const r = Array.isArray(data) ? data[0] : data; setResumen(r ? Object.fromEntries(Object.entries(r).map(([k,v])=>[k, +(v as any)||0])) as any : null) })
   }, [pIdx, periodos, supabase])
 
   // Top piezas por código de artículo (desde stock_movimientos del período)
@@ -92,7 +99,7 @@ export default function InformesClient() {
     const p = periodos[pIdx]
     ;(async ()=>{
       const { data: movs } = await supabase.from('stock_movimientos')
-        .select('stock_id,cantidad,precio_venta_unitario')
+        .select('stock_id,cantidad,precio_venta_unitario,costo_unitario')
         .eq('tipo','salida').not('precio_venta_unitario','is',null)
         .gte('fecha', p.desde).lte('fecha', p.hasta).limit(2000)
       if (!movs?.length) { setTopPiezasCod([]); return }
@@ -102,16 +109,19 @@ export default function InformesClient() {
         : { data: [] }
       const stockMap: Record<string,{codigo:string;descripcion:string}> = {}
       for(const s of stockData??[]) stockMap[(s as any).id]={codigo:(s as any).codigo||'',descripcion:(s as any).descripcion||''}
-      const mapCod: Record<string,{descripcion:string;veces:number;total:number}> = {}
+      const mapCod: Record<string,{descripcion:string;veces:number;total:number;ganancia:number}> = {}
       for(const m of movs) {
         const st = stockMap[m.stock_id]
         if (!st?.codigo) continue
         const k = st.codigo
-        if(!mapCod[k]) mapCod[k]={descripcion:`${st.codigo} — ${st.descripcion}`,veces:0,total:0}
-        mapCod[k].veces += m.cantidad||1
-        mapCod[k].total += (m.precio_venta_unitario||0)*(m.cantidad||1)
+        if(!mapCod[k]) mapCod[k]={descripcion:`${st.codigo} — ${st.descripcion}`,veces:0,total:0,ganancia:0}
+        const c = m.cantidad||1
+        const netoU = (m.precio_venta_unitario||0) / 1.21   // precio de venta viene con IVA; el costo ya es neto
+        mapCod[k].veces += c
+        mapCod[k].total += netoU*c
+        mapCod[k].ganancia += (netoU - (m.costo_unitario||0))*c
       }
-      setTopPiezasCod(Object.values(mapCod).sort((a,b)=>b.veces-a.veces).slice(0,10))
+      setTopPiezasCod(Object.values(mapCod))
     })()
   },[pIdx, periodos, supabase])
 
@@ -154,8 +164,8 @@ export default function InformesClient() {
     Promise.all([
       supabase.from('gastos').select('id,fecha,categoria,descripcion,monto,forma_pago')
         .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false}),
-      supabase.from('comprobantes_compra').select('id,fecha,proveedor_nombre,total,tipo')
-        .eq('tipo','factura').gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false}),
+      supabase.from('comprobantes_compra').select('id,fecha,proveedor_nombre,total,neto,tipo')
+        .gte('fecha', p.desde).lte('fecha', p.hasta).order('fecha',{ascending:false}),
     ]).then(([gRes, cRes]) => {
       setGastos(gRes.data??[])
       setCompras(cRes.data??[])
@@ -238,10 +248,13 @@ export default function InformesClient() {
   }, [tab, supabase])
 
   const periodo = periodos[pIdx]
-  const total    = ventas.reduce((a,v)=>a+v.precio, 0)
-  const costo    = ventas.filter(v=>!v.pendiente).reduce((a,v)=>a+(v.costo??0), 0)
-  const ganancia = total - costo
+  const totalConIva = ventas.reduce((a,v)=>a+v.precio, 0)
+  const total    = ventas.reduce((a,v)=>a+(v.neto??0), 0)                    // ventas NETAS (sin IVA)
+  const costo    = ventas.filter(v=>!v.pendiente && v.precio >= 0).reduce((a,v)=>a+(v.costo??0), 0)
+  const ganancia = total - costo                                             // margen bruto
   const margen   = total > 0 ? Math.round((ganancia/total)*100) : 0
+  const gastosPeriodo = resumen?.gastos ?? 0
+  const resultadoOp = ganancia - gastosPeriodo
   const toUsd    = (n: number) => oficialRate ? 'USD ' + Math.round(n/oficialRate).toLocaleString('es-AR') : null
   const pendientes = ventas.filter(v=>v.pendiente).length
   const ticket   = ventas.length > 0 ? Math.round(total/ventas.length) : 0
@@ -263,10 +276,10 @@ export default function InformesClient() {
   const byTipo = ventas.reduce((acc,v) => {
     const k = v.tipo_cliente_nombre || 'Sin tipo'
     if(!acc[k]) acc[k] = { facturado:0, costo:0, ganancia:0, operaciones:0, pendientes:0 }
-    acc[k].facturado += v.precio
+    acc[k].facturado += v.neto??0
     acc[k].operaciones++
     if(v.pendiente) acc[k].pendientes++
-    else { acc[k].costo += v.costo??0; acc[k].ganancia += v.precio-(v.costo??0) }
+    else { acc[k].costo += v.costo??0; acc[k].ganancia += (v.neto??0)-(v.costo??0) }
     return acc
   }, {} as Record<string,TipoStats>)
 
@@ -441,12 +454,14 @@ export default function InformesClient() {
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> : (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <KpiCard label="Facturado"    value={moneyARS(total)} sub={toUsd(total)??undefined} />
-            <KpiCard label={`Ganancia${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={toUsd(ganancia) ?? `${margen}% margen`} />
-            <KpiCard label="Operaciones"  value={`${ventas.length}`} sub={pendientes?`${pendientes} s/costo`:undefined} />
-            <KpiCard label="Ticket prom." value={moneyARS(ticket)} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-2">
+            <KpiCard label="Ventas netas (s/IVA)" value={moneyARS(total)} sub={`c/IVA ${moneyARS(totalConIva)}`} />
+            <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`${pendientes} venta(s) s/costo`:undefined} />
+            <KpiCard label={`Margen bruto${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={`${margen}% s/ventas netas`} />
+            <KpiCard label="Gastos del período" value={moneyARS(gastosPeriodo)} />
+            <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={toUsd(resultadoOp)??undefined} />
           </div>
+          <p className="text-[11px] text-p-ink2 mb-5">Todo sin IVA. Margen bruto = ventas netas − costo de lo vendido · Resultado operativo = margen bruto − gastos (impuestos incluidos). Las compras no se restan: van a stock (ver 📋 Resultado). {ventas.length} operaciones · ticket promedio {moneyARS(ticket)}.</p>
 
           {/* Tabs */}
           <div className="flex gap-2 mb-5">
@@ -507,19 +522,28 @@ export default function InformesClient() {
                 {/* Top piezas por código */}
                 {topPiezasCod.length > 0 && (
                   <div className="bg-white border border-p-line rounded-xl p-4 shadow-sm">
-                    <p className="font-saira font-bold text-sm text-p-ink mb-3">Top piezas vendidas</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="font-saira font-bold text-sm text-p-ink">Top piezas vendidas</p>
+                      <div className="flex gap-1">
+                        {([['veces','Cantidad'],['total','Importe'],['ganancia','Ganancia']] as const).map(([k,l])=>(
+                          <button key={k} onClick={()=>setTopOrden(k)}
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${topOrden===k?'bg-p-ink text-white border-p-ink':'border-p-line text-p-ink2 hover:bg-p-light'}`}>{l}</button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex flex-col gap-2">
-                      {topPiezasCod.map((p,i)=>(
+                      {[...topPiezasCod].sort((a,b)=>b[topOrden]-a[topOrden]).slice(0,10).map((p,i,arr)=>(
                         <div key={i} className="flex items-center gap-3">
                           <span className="font-saira font-bold text-p-green w-5">{i+1}</span>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-p-ink truncate">{p.descripcion}</p>
                             <div className="mt-1 bg-p-line rounded-full h-1.5 overflow-hidden">
-                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.round((p.veces/topPiezasCod[0].veces)*100)}%`}}/>
+                              <div className="h-full bg-p-green rounded-full" style={{width:`${Math.max(2, Math.round((p[topOrden]/Math.max(1, arr[0][topOrden]))*100))}%`}}/>
                             </div>
                           </div>
                           <span className="text-[10px] text-p-ink2 shrink-0">{p.veces}×</span>
-                          <span className="font-mono text-xs font-bold text-p-ink shrink-0">{moneyARS(p.total)}</span>
+                          <span className="font-mono text-xs font-bold text-p-ink shrink-0" title="Importe neto">{moneyARS(p.total)}</span>
+                          <span className="font-mono text-[11px] font-bold shrink-0" style={{color:p.ganancia>=0?'#00A550':'#ef4444'}} title="Ganancia neta aprox.">{moneyARS(p.ganancia)}</span>
                         </div>
                       ))}
                     </div>
@@ -660,36 +684,91 @@ export default function InformesClient() {
 
           {tab === 'resultado' && (
             resLoading ? <p className="text-sm text-center py-8 text-p-gray">Cargando…</p> : (() => {
-              // Ingresos: ventas del período
-              const totalIngresos = ventas.reduce((a,v)=>a+v.precio, 0)
-
-              // Egresos: gastos agrupados por categoría + compras
+              // ── TODO NETO (sin IVA) ──
+              const totalIngresos = total                      // ventas netas del período
               const gastosPorCat = gastos.reduce((acc,g) => {
                 const cat = g.categoria || 'Sin categoría'
                 if (!acc[cat]) acc[cat] = []
                 acc[cat].push(g)
                 return acc
               }, {} as Record<string, GastoRow[]>)
-
               const totalGastos = gastos.reduce((a,g)=>a+g.monto, 0)
-              const totalCompras = compras.reduce((a,c)=>a+(+c.total||0), 0)
-              const totalEgresos = totalGastos + totalCompras
-              const resultado = totalIngresos - totalEgresos
+              const comprasFact = compras.filter(c=>c.tipo!=='nc')
+              const comprasNC   = compras.filter(c=>c.tipo==='nc')
+              const totalCompras = comprasFact.reduce((a,c)=>a+(+c.neto||0), 0)
+              const totalNC      = comprasNC.reduce((a,c)=>a+(+c.neto||0), 0)
+              const margenBruto  = ganancia
+              const resultado    = margenBruto - totalGastos
+              // Stock e inversión
+              const stockIni = resumen?.stock_inicio ?? 0
+              const stockFin = resumen?.stock_cierre ?? 0
+              const ajustes  = stockFin - (stockIni + totalCompras - totalNC - costo)   // roturas / ajustes / diferencias sin explicar
+              const variacion = stockFin - stockIni
+              // Costo operativo
+              const ops = ventas.filter(v=>v.precio>0).length
+              const costoPorOp = ops > 0 ? totalGastos / ops : 0
+              const margenPct = total > 0 ? margenBruto / total : 0
+              const puntoEq = margenPct > 0 ? totalGastos / margenPct : 0
+
+              const Fila = ({ l, v, bold, neg, sub }: { l:string; v:number; bold?:boolean; neg?:boolean; sub?:string }) => (
+                <div className={`flex justify-between items-center py-1.5 border-b border-p-line last:border-0 ${bold?'bg-p-light -mx-2 px-2 rounded':''}`}>
+                  <div><span className={`text-sm ${bold?'font-saira font-bold text-p-ink':'text-p-ink'}`}>{l}</span>{sub && <span className="text-[10px] text-p-ink2 ml-2">{sub}</span>}</div>
+                  <span className={`font-mono text-sm ${bold?'font-bold':''}`} style={{color: neg ? '#ef4444' : bold ? (v>=0?'#00A550':'#ef4444') : '#1a1a1a'}}>{neg?'− ':''}{moneyARS(Math.abs(v))}</span>
+                </div>
+              )
 
               return (
                 <div className="flex flex-col gap-4">
-                  {/* KPIs */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <KpiCard label="Ingresos" value={moneyARS(totalIngresos)} accent/>
-                    <KpiCard label="Egresos" value={moneyARS(totalEgresos)}/>
-                    <KpiCard label="Compras" value={moneyARS(totalCompras)}/>
-                    <KpiCard label={resultado>=0?"Resultado":"Déficit"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0}/>
+                    <KpiCard label="Ventas netas" value={moneyARS(totalIngresos)} accent/>
+                    <KpiCard label="Margen bruto" value={moneyARS(margenBruto)} sub={`${Math.round(margenPct*100)}%`}/>
+                    <KpiCard label="Gastos" value={moneyARS(totalGastos)}/>
+                    <KpiCard label={resultado>=0?"Resultado operativo":"Pérdida operativa"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0}/>
+                  </div>
+
+                  {/* ── Bloque 1: Resultado operativo ── */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white border border-p-line rounded-2xl p-4">
+                      <p className="font-saira font-bold text-sm text-p-ink mb-1">1 · Resultado operativo</p>
+                      <p className="text-[11px] text-p-ink2 mb-3">Lo que gana el negocio por operar. Sin IVA. Las compras no entran acá: van a stock.</p>
+                      <Fila l="Ventas netas" v={totalIngresos} sub={`${ops} operaciones`}/>
+                      <Fila l="Costo de lo vendido" v={costo} neg sub={pendientes?`${pendientes} venta(s) sin costo`:undefined}/>
+                      <Fila l="Margen bruto" v={margenBruto} bold sub={`${Math.round(margenPct*100)}%`}/>
+                      <Fila l="Gastos operativos (impuestos incluidos)" v={totalGastos} neg/>
+                      <Fila l={resultado>=0?'Resultado operativo':'Pérdida operativa'} v={resultado} bold/>
+                    </div>
+
+                    {/* ── Bloque 2: Stock e inversión ── */}
+                    <div className="bg-white border border-p-line rounded-2xl p-4">
+                      <p className="font-saira font-bold text-sm text-p-ink mb-1">2 · Stock e inversión</p>
+                      <p className="text-[11px] text-p-ink2 mb-3">Adónde fue la plata de las compras. Valorizado a costo neto.</p>
+                      <Fila l="Stock al inicio" v={stockIni} sub={periodo.desde.split('-').reverse().join('/')}/>
+                      <Fila l="Compras netas" v={totalCompras} sub={`${comprasFact.length} factura(s)`}/>
+                      {totalNC > 0 && <Fila l="NC de proveedor (roturas, devoluciones)" v={totalNC} neg/>}
+                      <Fila l="Costo de lo vendido" v={costo} neg/>
+                      <Fila l={ajustes>=0?'Ajustes y diferencias':'Ajustes, roturas y diferencias'} v={ajustes} neg={ajustes<0} sub="lo que no explican compras ni ventas"/>
+                      <Fila l="Stock al cierre" v={stockFin} bold sub={periodo.hasta.split('-').reverse().join('/')}/>
+                      <p className={`text-xs mt-2 font-semibold ${variacion>=0?'text-p-green':'text-amber-600'}`}>
+                        {variacion>=0 ? `El stock creció ${moneyARS(variacion)} en el período: parte del margen quedó invertido en vidrios.` : `El stock bajó ${moneyARS(-variacion)}: se vendió mercadería que ya estaba comprada.`}
+                      </p>
+                      {Math.abs(ajustes) > Math.max(50000, stockFin*0.03) && (
+                        <p className="text-[11px] text-amber-700 mt-1">⚠ Diferencia grande sin explicar: revisá roturas sin NC, ajustes manuales o ventas sin costo cargado.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Bloque 3: Costo operativo ── */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <KpiCard label="Costo operativo por operación" value={moneyARS(costoPorOp)} sub="gastos ÷ ventas"/>
+                    <KpiCard label="Punto de equilibrio (ventas netas)" value={moneyARS(puntoEq)} sub={`con ${Math.round(margenPct*100)}% de margen`}/>
+                    <KpiCard label="Gastos / ventas" value={`${total>0?Math.round(totalGastos/total*100):0}%`}/>
+                    <KpiCard label="Gastos / margen bruto" value={`${margenBruto>0?Math.round(totalGastos/margenBruto*100):0}%`} sub="cuánto del margen se lo llevan los gastos"/>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     {/* INGRESOS */}
                     <div className="bg-white border border-p-line rounded-2xl p-4">
-                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📈 Ingresos — {moneyARS(totalIngresos)}</p>
+                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📈 Ventas netas — {moneyARS(totalIngresos)}</p>
                       {ventas.length === 0 ? <p className="text-xs text-p-ink2">Sin ventas en el período</p> : (
                         <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                           {ventas.map((v,i) => (
@@ -698,7 +777,7 @@ export default function InformesClient() {
                                 <p className="text-xs text-p-ink truncate max-w-[200px]">{v.descripcion}</p>
                                 <p className="text-[10px] text-p-ink2">{v.fecha.split('-').reverse().join('/')}</p>
                               </div>
-                              <span className="font-mono text-xs font-semibold text-p-dark">{moneyARS(v.precio)}</span>
+                              <span className="font-mono text-xs font-semibold text-p-dark" title={`c/IVA ${moneyARS(v.precio)}`}>{moneyARS(v.neto??0)}</span>
                             </div>
                           ))}
                         </div>
@@ -707,7 +786,7 @@ export default function InformesClient() {
 
                     {/* EGRESOS */}
                     <div className="bg-white border border-p-line rounded-2xl p-4">
-                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📉 Gastos — {moneyARS(totalGastos)}</p>
+                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📉 Costo operativo por categoría — {moneyARS(totalGastos)}</p>
                       {Object.keys(gastosPorCat).length === 0 ? <p className="text-xs text-p-ink2">Sin gastos en el período</p> : (
                         <div className="flex flex-col gap-1">
                           {Object.entries(gastosPorCat).sort((a,b)=>
@@ -752,16 +831,16 @@ export default function InformesClient() {
 
                   {/* COMPRAS */}
                   <div className="bg-white border border-p-line rounded-2xl p-4">
-                    <p className="font-saira font-bold text-sm text-p-ink mb-3">🛒 Compras — {moneyARS(totalCompras)}</p>
+                    <p className="font-saira font-bold text-sm text-p-ink mb-3">🛒 Compras de stock (netas) — {moneyARS(totalCompras)}{totalNC>0?` · NC ${moneyARS(totalNC)}`:''}</p>
                     {compras.length === 0 ? <p className="text-xs text-p-ink2">Sin compras en el período</p> : (
                       <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                         {compras.map(c=>(
                           <div key={c.id} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
                             <div>
-                              <p className="text-xs text-p-ink">{c.proveedor_nombre}</p>
-                              <p className="text-[10px] text-p-ink2">{c.fecha.split('-').reverse().join('/')}</p>
+                              <p className="text-xs text-p-ink">{c.tipo==='nc' && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1 rounded mr-1">NC</span>}{c.proveedor_nombre}</p>
+                              <p className="text-[10px] text-p-ink2">{c.fecha.split('-').reverse().join('/')} · c/IVA {moneyARS(+c.total||0)}</p>
                             </div>
-                            <span className="font-mono text-xs font-semibold text-red-600">{moneyARS(+c.total||0)}</span>
+                            <span className={`font-mono text-xs font-semibold ${c.tipo==='nc'?'text-p-green':'text-p-ink'}`}>{c.tipo==='nc'?'+ ':''}{moneyARS(+c.neto||0)}</span>
                           </div>
                         ))}
                       </div>
