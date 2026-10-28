@@ -59,7 +59,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   // (CAPTOR / C/CAP / CAMARA / C/CAM / ADAS) y el usuario puede prenderla o apagarla a mano.
   const [conAdas, setConAdas] = useState(false)
   const [adasManual, setAdasManual] = useState(false)
-  const ADAS_RE = /CAPTOR|C\/CAP\b|C\/CAP\.|CAMARA|CÁMARA|C\/CAM\b|C\/CAM\.|\bADAS\b/i
+  const ADAS_RE = /CAPTOR|CAMARA|CÁMARA|\bC\/?CAP\b|\bC\/?CAM\b|\bCAP\b|\bCAM\b|\bADAS\b/i   // Pilkington abrevia: 'C/CAP', 'RSB CAM', 'SER CAP'
   const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
   // Flete por proveedor
@@ -209,6 +209,11 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       codigo: h.codigo, cristal: h.cristal
     } as any])
     setAsegQ(''); setAsegHits([])
+    // La marca "Se calibra con ADAS" vive en la ficha de stock: se consulta por código
+    if (h.codigo) {
+      supabase.from('stock').select('tiene_adas').eq('codigo', h.codigo).eq('activo', true).limit(1)
+        .then(({ data }) => { if (data?.[0]?.tiene_adas) setItems(prev => prev.map(it => (it as any).codigo === h.codigo ? { ...it, tiene_adas: true } : it)) })
+    }
   }
 
   // Búsqueda clientes

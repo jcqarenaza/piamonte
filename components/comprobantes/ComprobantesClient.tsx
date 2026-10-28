@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { buscarCatalogo } from '@/lib/utils/buscarCatalogo'
 import { ChequeFields, EMPTY_CHEQUE, type ChequeData } from '@/components/cheques/ChequeFields'
 import { createClient } from '@/lib/supabase/client'
+import { armarExpediente, adjuntosAPdfIndividuales, descargarBytes } from '@/lib/utils/expedientePDF'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS2 as moneyARS, todayStr } from '@/lib/utils/format'
 
@@ -84,7 +85,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   // INSTALACIÓN (sin precio), CALIBRACIÓN ADAS (precio del artículo CALIB-ADAS) y su BONIFICACIÓN (% de la ficha).
   const [conAdas, setConAdas] = useState(false)
   const [adasManual, setAdasManual] = useState(false)
-  const ADAS_RE = /CAPTOR|C\/CAP\b|C\/CAP\.|CAMARA|CÁMARA|C\/CAM\b|C\/CAM\.|\bADAS\b/i
+  const ADAS_RE = /CAPTOR|CAMARA|CÁMARA|\bC\/?CAP\b|\bC\/?CAM\b|\bCAP\b|\bCAM\b|\bADAS\b/i   // Pilkington abrevia: 'C/CAP', 'RSB CAM', 'SER CAP'
   const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
   const [showFiscal, setShowFiscal] = useState(false)
@@ -1447,36 +1448,33 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (!adjModal) return
     setGenPDF(true)
     try {
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ format:'a4', unit:'mm', compress:true })
-      doc.setFontSize(16); doc.setFont('helvetica','bold')
-      doc.text(`${adjModal.tipo?.toUpperCase() || 'COMPROBANTE'} N° ${adjModal.numero||''}`, 15, 20)
-      doc.setFontSize(11); doc.setFont('helvetica','normal')
-      doc.text(`Cliente: ${adjModal.cliente_nombre || adjModal.aseguradora_nombre || '—'}`, 15, 32)
-      doc.text(`Fecha: ${adjModal.fecha}`, 15, 40)
-      doc.text(`Vehículo: ${(adjModal as any).vehiculo || '—'}`, 15, 48)
-      doc.text(`Total: ${moneyARS(adjModal.total)}`, 15, 56)
-
-      for (const adj of adjuntos) {
-        doc.addPage()
-        doc.setFontSize(12); doc.setFont('helvetica','bold')
-        doc.text(adj.tipo === 'os_firmada' ? 'Orden de Servicio firmada' : `Foto — ${adj.nombre}`, 15, 15)
-        try {
-          const resp = await fetch(adj.url)
-          const blob = await resp.blob()
-          const reader = new FileReader()
-          const b64: string = await new Promise(res=>{ reader.onload=()=>res(reader.result as string); reader.readAsDataURL(blob) })
-          const ext = adj.nombre?.split('.').pop()?.toUpperCase() || 'JPEG'
-          const fmt = ext === 'PNG' ? 'PNG' : 'JPEG'
-          doc.addImage(b64, fmt, 10, 20, 190, 240, undefined, 'MEDIUM')
-        } catch(e) {
-          doc.text('(No se pudo cargar la imagen)', 15, 30)
-        }
-      }
-
-      const nombre = `expediente-${adjModal.numero||adjModal.id.slice(0,8)}.pdf`
-      doc.save(nombre)
-    } catch(e) { console.error(e) }
+      const nro = String(adjModal.nro_cbte_afip ?? adjModal.numero ?? '').padStart(8,'0')
+      // La factura va primero (mismo PDF que el botón PDF: formato ARCA o interno según la ficha)
+      let factura: ArrayBuffer | undefined
+      try {
+        const blob = (await esFormatoArcaDe(adjModal)) ? await generarPDFArca(adjModal) : await generarPDF(adjModal)
+        factura = await blob.arrayBuffer()
+      } catch (e) { console.error('No se pudo generar la factura para el expediente', e) }
+      const bytes = await armarExpediente(adjuntos, {
+        titulo: `${prefCbte(adjModal)}-0006-${nro} — ${adjModal.aseguradora_nombre || adjModal.cliente_nombre || ''}`,
+        lineas: [
+          adjModal.aseguradora_nombre ? `Asegurado: ${adjModal.cliente_nombre||'—'}${(adjModal as any).siniestro ? ' · Siniestro ' + (adjModal as any).siniestro : ''}` : `Cliente: ${adjModal.cliente_nombre||'—'}`,
+          `Vehículo: ${(adjModal as any).vehiculo || '—'}`,
+          `Fecha: ${adjModal.fecha} · Total: ${moneyARS(adjModal.total)} · Parabrisas El Piamonte`,
+        ],
+      }, factura)
+      descargarBytes(bytes, `expediente-${prefCbte(adjModal)}-${nro}.pdf`)
+    } catch(e) { console.error(e); alert('No se pudo armar el PDF: ' + String(e)) }
+    setGenPDF(false)
+  }
+  async function generarPDFsIndividuales() {
+    if (!adjModal) return
+    setGenPDF(true)
+    try {
+      const nro = String(adjModal.nro_cbte_afip ?? adjModal.numero ?? '').padStart(8,'0')
+      const lista = await adjuntosAPdfIndividuales(adjuntos, `${prefCbte(adjModal)}-${nro}`)
+      for (const f of lista) { descargarBytes(f.bytes, f.nombre); await new Promise(r => setTimeout(r, 400)) }
+    } catch(e) { alert('No se pudo convertir: ' + String(e)) }
     setGenPDF(false)
   }
 
@@ -2820,9 +2818,14 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
               {uploading && <p className="text-xs text-p-ink2 text-center">Subiendo…</p>}
             </div>
             {adjuntos.length > 0 && (
-              <button onClick={generarPDFCombinado} disabled={genPDF} style={{...btnSm, background:'#00A550'}}>
-                {genPDF ? 'Generando…' : '⬇ Descargar expediente PDF'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={generarPDFCombinado} disabled={genPDF} style={{...btnSm, background:'#00A550'}} title="Un solo PDF: factura + fotos + orden firmada">
+                  {genPDF ? 'Generando…' : '📄 Expediente PDF (factura + fotos + OS)'}
+                </button>
+                <button onClick={generarPDFsIndividuales} disabled={genPDF} style={{...btnSm, background:'#7c3aed'}} title="Cada foto convertida a su propio PDF">
+                  {genPDF ? 'Generando…' : `📄 Un PDF por foto (${adjuntos.length})`}
+                </button>
+              </div>
             )}
             <div className="flex justify-end">
               <button onClick={()=>setAdjModal(null)} style={btnGray}>Cerrar</button>

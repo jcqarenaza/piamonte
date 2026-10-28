@@ -4,6 +4,7 @@ import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { armarExpediente, adjuntosAPdfIndividuales, descargarBytes } from '@/lib/utils/expedientePDF'
 import type { OrdenServicio, VentaItem } from '@/lib/types/database'
 import { Modal, Field, Input, Select, Empty } from '@/components/ui'
 import { moneyARS, todayStr } from '@/lib/utils/format'
@@ -333,6 +334,37 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       } catch(e) { console.error('Descarga falló:', a.nombre, e) }
     }
     setDescargando(false)
+  }
+
+  // PDF para portales de aseguradoras (Nativa pide PDF): expediente único o un PDF por foto
+  const [armandoPdf, setArmandoPdf] = useState<''|'uno'|'varios'>('')
+  function baseNombreAdj() {
+    return `OS-${String(adjModal?.numero||'SN').padStart(4,'0')}_${(adjModal?.cliente||'').split(',')[0].replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ ]/g,'').trim().replace(/\s+/g,'-')}`
+  }
+  async function descargarExpedientePdf() {
+    if (!adjModal || !adjuntos.length) return
+    setArmandoPdf('uno')
+    try {
+      const bytes = await armarExpediente(adjuntos, {
+        titulo: `OS ${String(adjModal.numero||'').padStart(4,'0')} — ${adjModal.cliente||''}`,
+        lineas: [
+          `Aseguradora: ${adjModal.aseguradora||'—'}${adjModal.siniestro ? ' · Siniestro ' + adjModal.siniestro : ''}`,
+          `Vehículo: ${adjModal.vehiculo||'—'}${adjModal.patente ? ' · ' + adjModal.patente : ''}`,
+          `Fecha: ${adjModal.fecha||''} · Parabrisas El Piamonte`,
+        ],
+      })
+      descargarBytes(bytes, `${baseNombreAdj()}_expediente.pdf`)
+    } catch (e) { alert('No se pudo armar el PDF: ' + String(e)) }
+    setArmandoPdf('')
+  }
+  async function descargarPdfsIndividuales() {
+    if (!adjModal || !adjuntos.length) return
+    setArmandoPdf('varios')
+    try {
+      const lista = await adjuntosAPdfIndividuales(adjuntos, baseNombreAdj())
+      for (const f of lista) { descargarBytes(f.bytes, f.nombre); await new Promise(r => setTimeout(r, 400)) }
+    } catch (e) { alert('No se pudo convertir: ' + String(e)) }
+    setArmandoPdf('')
   }
 
   function openEdit(o: any) {
@@ -1162,10 +1194,22 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
             </div>
             <div className="p-4 border-t border-p-line flex justify-between items-center">
               {adjuntos.length > 0 ? (
-                <button onClick={descargarAdjuntos} disabled={descargando}
-                  style={{background:'#1565C0',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:descargando?.6:1}}>
-                  {descargando?'Descargando…':`⬇ Descargar todo (${adjuntos.length})`}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={descargarExpedientePdf} disabled={!!armandoPdf}
+                    style={{background:'#00A550',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:armandoPdf?.6:1}}
+                    title="Un solo PDF con carátula, fotos y orden firmada">
+                    {armandoPdf==='uno'?'Armando…':'📄 Expediente PDF'}
+                  </button>
+                  <button onClick={descargarPdfsIndividuales} disabled={!!armandoPdf}
+                    style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:armandoPdf?.6:1}}
+                    title="Cada foto convertida a su propio PDF (para portales que piden PDF por archivo)">
+                    {armandoPdf==='varios'?'Convirtiendo…':`📄 Un PDF por foto (${adjuntos.length})`}
+                  </button>
+                  <button onClick={descargarAdjuntos} disabled={descargando}
+                    style={{background:'#1565C0',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer',opacity:descargando?.6:1}}>
+                    {descargando?'Descargando…':`⬇ Originales (${adjuntos.length})`}
+                  </button>
+                </div>
               ) : <span/>}
               <button onClick={()=>setAdjModal(null)}
                 style={{background:'#6b7280',color:'#fff',border:'none',borderRadius:8,padding:'8px 20px',fontWeight:700,fontSize:13,cursor:'pointer'}}>
