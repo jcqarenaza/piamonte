@@ -459,7 +459,7 @@ export default function InformesClient() {
             <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado (no suman acá)`:`${ventas.length} operaciones con costo`} />
             <KpiCard label={`Margen bruto${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={`${margen}% s/ventas netas`} />
             <KpiCard label="Gastos del período" value={moneyARS(gastosPeriodo)} />
-            <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={toUsd(resultadoOp)??undefined} />
+            <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={`${total>0?Math.round(resultadoOp/total*100):0}% de las ventas${toUsd(resultadoOp)?' · '+toUsd(resultadoOp):''}`} />
           </div>
           <p className="text-[11px] text-p-ink2 mb-5">Todo sin IVA. Margen bruto = ventas netas − costo de lo vendido · Resultado operativo = margen bruto − gastos (impuestos incluidos). Las compras no se restan: van a stock (ver 📋 Resultado). {ventas.length} operaciones · ticket promedio {moneyARS(ticket)}.</p>
 
@@ -723,7 +723,7 @@ export default function InformesClient() {
                     <KpiCard label="Ventas netas" value={moneyARS(totalIngresos)} accent/>
                     <KpiCard label="Margen bruto" value={moneyARS(margenBruto)} sub={`${Math.round(margenPct*100)}%`}/>
                     <KpiCard label="Gastos" value={moneyARS(totalGastos)}/>
-                    <KpiCard label={resultado>=0?"Resultado operativo":"Pérdida operativa"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0}/>
+                    <KpiCard label={resultado>=0?"Resultado operativo":"Pérdida operativa"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0} sub={`${total>0?Math.round(resultado/total*100):0}% de las ventas`}/>
                   </div>
 
                   {/* ── Bloque 1: Resultado operativo ── */}
@@ -735,7 +735,7 @@ export default function InformesClient() {
                       <Fila l="Costo de lo vendido" v={costo} neg sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado, no suman acá`:undefined}/>
                       <Fila l="Margen bruto" v={margenBruto} bold sub={`${Math.round(margenPct*100)}%`}/>
                       <Fila l="Gastos operativos (impuestos incluidos)" v={totalGastos} neg/>
-                      <Fila l={resultado>=0?'Resultado operativo':'Pérdida operativa'} v={resultado} bold/>
+                      <Fila l={resultado>=0?'Resultado operativo':'Pérdida operativa'} v={resultado} bold sub={`${total>0?Math.round(resultado/total*100):0}% de las ventas netas`}/>
                     </div>
 
                     {/* ── Bloque 2: Stock e inversión ── */}
@@ -764,6 +764,50 @@ export default function InformesClient() {
                     <KpiCard label="Gastos / ventas" value={`${total>0?Math.round(totalGastos/total*100):0}%`}/>
                     <KpiCard label="Gastos / margen bruto" value={`${margenBruto>0?Math.round(totalGastos/margenBruto*100):0}%`} sub="cuánto del margen se lo llevan los gastos"/>
                   </div>
+
+                                    {/* ── Dónde están los gastos ── */}
+                  {(() => {
+                    const cats = Object.entries(gastosPorCat).map(([cat,gs])=>({cat, n:gs.length, monto:gs.reduce((a,g)=>a+g.monto,0)})).sort((a,b)=>b.monto-a.monto)
+                    const topG = [...gastos].sort((a,b)=>b.monto-a.monto).slice(0,6)
+                    if (cats.length === 0) return null
+                    const maxCat = cats[0].monto
+                    return (
+                      <div className="bg-white border border-p-line rounded-2xl p-4">
+                        <p className="font-saira font-bold text-sm text-p-ink mb-1">💡 Dónde está la plata de los gastos</p>
+                        <p className="text-[11px] text-p-ink2 mb-3">Ordenado de mayor a menor. Los rubros de arriba son los que mueven la aguja: ahí conviene mirar si hay algo para bajar. <span className="text-amber-700">Todavía no se cargan gastos bancarios ni comisiones de tarjetas.</span></p>
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-p-ink2 mb-1">Por rubro · % de los gastos · % de las ventas</p>
+                            <div className="flex flex-col gap-1.5">
+                              {cats.map(c => (
+                                <div key={c.cat}>
+                                  <div className="flex justify-between text-xs">
+                                    <span className="font-semibold text-p-ink">{c.cat} <span className="text-[10px] text-p-ink2 font-normal">({c.n})</span></span>
+                                    <span className="font-mono">{moneyARS(c.monto)} <span className="text-[10px] text-p-ink2">{totalGastos>0?Math.round(c.monto/totalGastos*100):0}% · {total>0?Math.round(c.monto/total*100):0}% vtas</span></span>
+                                  </div>
+                                  <div className="h-1.5 bg-p-light rounded mt-0.5"><div className="h-1.5 rounded bg-red-400" style={{width:`${maxCat>0?c.monto/maxCat*100:0}%`}}/></div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-p-ink2 mb-1">Los gastos individuales más grandes</p>
+                            <div className="flex flex-col gap-1">
+                              {topG.map(g => (
+                                <div key={g.id} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                                  <div>
+                                    <p className="text-xs text-p-ink truncate max-w-[220px]">{g.descripcion}</p>
+                                    <p className="text-[10px] text-p-ink2">{g.categoria} · {g.fecha.split('-').reverse().join('/')}</p>
+                                  </div>
+                                  <span className="font-mono text-xs text-red-600">{moneyARS(g.monto)} <span className="text-[10px] text-p-ink2">{totalGastos>0?Math.round(g.monto/totalGastos*100):0}%</span></span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   <div className="grid md:grid-cols-2 gap-4">
                     {/* INGRESOS */}
