@@ -32,8 +32,14 @@ const TIPO_COLORS: Record<string,string> = {
 function tipoColor(nombre:string|null){ return TIPO_COLORS[nombre||''] || '#6b7280' }
 
 export default function InformesClient() {
-  const [periodos]      = useState<Periodo[]>(getPeriodos())
+  const [periodos, setPeriodos] = useState<Periodo[]>(getPeriodos())
   const [pIdx, setPIdx] = useState(0)
+  const hoyISO = new Date().toISOString().slice(0,10)
+  const [selMes, setSelMes]     = useState('')
+  const [selAnio, setSelAnio]   = useState('')
+  const [selDesde, setSelDesde] = useState('')
+  const [selHasta, setSelHasta] = useState('')
+  const aplicarCustom = (p: Periodo) => { setPeriodos(prev => [...prev.slice(0,4), p]); setPIdx(4) }
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'>('general')
@@ -440,7 +446,7 @@ export default function InformesClient() {
   return (
     <div>
       {/* Selector de período */}
-      <div className="flex gap-2 flex-wrap mb-5">
+      <div className="flex gap-2 flex-wrap mb-2 items-center">
         {periodos.map((p,i)=>(
           <button key={i} onClick={()=>setPIdx(i)}
             style={{background:pIdx===i?'#00A550':'#fff', color:pIdx===i?'#fff':'#4A6655',
@@ -449,6 +455,32 @@ export default function InformesClient() {
             {p.label}
           </button>
         ))}
+      </div>
+      <div className="flex gap-3 flex-wrap mb-5 items-center text-xs text-p-ink2">
+        <label className="flex items-center gap-1">Mes
+          <input type="month" value={selMes} max={hoyISO.slice(0,7)} onChange={e=>{ const m=e.target.value; setSelMes(m); if(!m) return
+            const [y,mm]=m.split('-').map(Number); const fin=new Date(y,mm,0).getDate()
+            const nombre=new Date(y,mm-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'})
+            aplicarCustom({label:nombre.charAt(0).toUpperCase()+nombre.slice(1), desde:`${m}-01`, hasta:`${m}-${String(fin).padStart(2,'0')}`}) }}
+            className="border border-p-line rounded-lg px-2 py-1 text-xs text-p-ink"/>
+        </label>
+        <label className="flex items-center gap-1">Año
+          <select value={selAnio} onChange={e=>{ const y=e.target.value; setSelAnio(y); if(!y) return
+            const hasta = y===hoyISO.slice(0,4) ? hoyISO : `${y}-12-31`
+            aplicarCustom({label:`Año ${y}`, desde:`${y}-01-01`, hasta}) }}
+            className="border border-p-line rounded-lg px-2 py-1 text-xs text-p-ink">
+            <option value="">—</option>
+            {Array.from({length: Number(hoyISO.slice(0,4))-2023}, (_,i)=>String(2024+i)).map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1">Desde
+          <input type="date" value={selDesde} onChange={e=>setSelDesde(e.target.value)} className="border border-p-line rounded-lg px-2 py-1 text-xs text-p-ink"/>
+        </label>
+        <label className="flex items-center gap-1">Hasta
+          <input type="date" value={selHasta} onChange={e=>setSelHasta(e.target.value)} className="border border-p-line rounded-lg px-2 py-1 text-xs text-p-ink"/>
+        </label>
+        <button disabled={!selDesde||!selHasta||selDesde>selHasta} onClick={()=>aplicarCustom({label:`${selDesde.split('-').reverse().join('/')} – ${selHasta.split('-').reverse().join('/')}`, desde:selDesde, hasta:selHasta})}
+          className="px-3 py-1 rounded-lg border border-p-green text-p-green font-semibold disabled:opacity-40">Aplicar</button>
       </div>
 
       {loading ? <p className="text-sm text-p-gray text-center py-10">Cargando…</p> : (
