@@ -1016,9 +1016,11 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     <div className="flex gap-2 flex-wrap">
                       {/* Botones siempre visibles */}
                       <button onClick={()=>enviarWA(o)} style={btnWa}>📱 WhatsApp</button>
-                      {(() => { const c = adjCounts[o.id] ?? {f:0,s:0}; const ok = c.f>=3 && c.s>=1; const algo = c.f+c.s>0
-                        return <button onClick={()=>abrirAdjuntos(o)} title={ok?'Expediente completo':algo?'Faltan archivos':'Sin fotos ni OS firmada'} style={{...btnSm,background: ok?'#16a34a': algo?'#d97706':'#7c3aed'}}>
-                          📷 {c.f}/3 · {c.s>=1?'✍ OS firmada':'✍ sin firmar'}{ok?' ✓':''}
+                      {(() => { const c = adjCounts[o.id] ?? {f:0,s:0}; const fact = !!(o as any).convertido_comp
+                        const ok = c.f>=3 && c.s>=1 && fact; const algo = c.f+c.s>0 || fact
+                        const faltan = [c.f<3?`${3-c.f} foto(s)`:null, c.s<1?'OS firmada':null, !fact?'factura':null].filter(Boolean).join(', ')
+                        return <button onClick={()=>abrirAdjuntos(o)} title={ok?'Expediente completo':`Falta: ${faltan}`} style={{...btnSm,background: ok?'#16a34a': algo?'#d97706':'#7c3aed'}}>
+                          📷 {c.f}/3 · {c.s>=1?'✍ firmada':'✍ sin firmar'} · {fact?'🧾 facturada':'🧾 sin factura'}{ok?' ✓':''}
                         </button> })()}
                       {!(o as any).convertido_comp && esAdmin && (
                         <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
