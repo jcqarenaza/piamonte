@@ -62,6 +62,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
   const ADAS_RE = /CAPTOR|CAMARA|CÁMARA|\bC\/?CAP\b|\bC\/?CAM\b|\bCAP\b|\bCAM\b|\bADAS\b/i   // Pilkington abrevia: 'C/CAP', 'RSB CAM', 'SER CAP'
   const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
+
   // Flete por proveedor
   const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
 
@@ -111,6 +112,21 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
       })
   },[supabase])
 
+  // Resumen de las líneas ADAS (se muestran acá, no en la lista editable; en el PDF salen como líneas)
+  const resumenAdas = (() => {
+    const calib = items.find(it => /^CALIBRACION ADAS$/i.test(String(it.d||'')))
+    const bonif = items.find(it => /^BONIFICACION CALIBRACION ADAS/i.test(String(it.d||'')))
+    if (!calib) return null
+    const pc = parseFloat(String(calib.p).replace(',','.')) || 0
+    const pb = bonif ? Math.abs(parseFloat(String(bonif.p).replace(',','.')) || 0) : 0
+    const pct = pc > 0 ? Math.round(pb / pc * 100) : 0
+    return { calib: pc, bonif: pb, pct, neto: pc - pb }
+  })()
+  const ResumenAdas = () => resumenAdas ? (
+    <span className="text-[11px] font-normal text-purple-700 ml-2">
+      {moneyARS(resumenAdas.calib)}{resumenAdas.bonif > 0 ? <> · bonificación {resumenAdas.pct}% → <strong>{moneyARS(resumenAdas.neto)}</strong></> : <> · <strong>se cobra completa</strong></>}
+    </span>
+  ) : null
   // "+ Nuevo presupuesto": arranca siempre en blanco, aunque se haya cerrado una edición sin guardar
   function abrirNuevo() {
     setItems([]); setCliSel(null); setTipoSel(null); setEditId(null)
@@ -747,7 +763,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
                   </label>
                   <label className="flex items-center gap-1.5 text-xs text-purple-800 cursor-pointer whitespace-nowrap" title="Agrega calibración ADAS y la bonificación de la aseguradora">
                     <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
-                    Calibración ADAS
+                    Calibración ADAS<ResumenAdas/>
                   </label>
                 </div>
               </div>
@@ -927,7 +943,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           {/* Calibración ADAS (particular: a precio completo) */}
           <label className="flex items-center gap-2 text-xs font-semibold text-purple-800 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2" title="Agrega la calibración ADAS a precio completo">
             <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
-            Calibración ADAS {conAdas && <span className="font-normal text-purple-700">— se cobra completa (sin bonificación)</span>}
+            Calibración ADAS<ResumenAdas/>
           </label>
 
           {/* Búsqueda en catálogo */}
@@ -980,6 +996,7 @@ export default function PresupuestosClient({ userId }: { userId:string }) {
           {items.length>0&&(
             <div className="border-t border-p-line2 pt-2">
               {items.map((it,i)=>{
+                if (esLineaAdas(it.d)) return null
                 const alerta = alertaMargen(it)
                 const esRubro = (it as any).esRubro
                 return(

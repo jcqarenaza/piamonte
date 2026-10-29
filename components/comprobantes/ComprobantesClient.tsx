@@ -88,6 +88,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
   const ADAS_RE = /CAPTOR|CAMARA|CÁMARA|\bC\/?CAP\b|\bC\/?CAM\b|\bCAP\b|\bCAM\b|\bADAS\b/i   // Pilkington abrevia: 'C/CAP', 'RSB CAM', 'SER CAP'
   const esLineaAdas = (d: any) => /INSTALACION — INCLUIDA|CALIBRACION ADAS/i.test(String(d||''))
 
+
   const [showFiscal, setShowFiscal] = useState(false)
   const [ivaNegroP, setIvaNegroP] = useState(75)
 
@@ -519,6 +520,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (c.categoria==='nd') return 'ND'+letra
     return c.tipo==='FCE' ? 'FCE' : letra ? 'F'+letra : 'X'
   }
+  // Resumen de las líneas ADAS (se muestran acá, no en la lista editable; en el PDF salen como líneas)
+  const resumenAdas = (() => {
+    const calib = items.find(it => /^CALIBRACION ADAS$/i.test(String(it.d||'')))
+    const bonif = items.find(it => /^BONIFICACION CALIBRACION ADAS/i.test(String(it.d||'')))
+    if (!calib) return null
+    const pc = parseFloat(String(calib.p).replace(',','.')) || 0
+    const pb = bonif ? Math.abs(parseFloat(String(bonif.p).replace(',','.')) || 0) : 0
+    const pct = pc > 0 ? Math.round(pb / pc * 100) : 0
+    return { calib: pc, bonif: pb, pct, neto: pc - pb }
+  })()
+  const ResumenAdas = () => resumenAdas ? (
+    <span className="text-[11px] font-normal text-purple-700 ml-2">
+      {moneyARS(resumenAdas.calib)}{resumenAdas.bonif > 0 ? <> · bonificación {resumenAdas.pct}% → <strong>{moneyARS(resumenAdas.neto)}</strong></> : <> · <strong>se cobra completa</strong></>}
+    </span>
+  ) : null
   const tipoFiscalLabel = (tf:string|null) => TIPO_FISCAL.find(t=>t.id===tf)?.label || 'Consumidor Final'
   const tipoDoc = () => {
     if(!fiscal.tipo_fiscal||fiscal.tipo_fiscal==='consumidor_final'||fiscal.tipo_fiscal==='exento') return 'B'
@@ -2219,7 +2235,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
                     <span className="text-xs text-blue-600 font-semibold">✓ {asegSel.nombre}</span>
                     <label className="flex items-center gap-1.5 text-xs text-purple-800 font-semibold cursor-pointer ml-auto" title="Agrega calibración ADAS y la bonificación de la aseguradora">
                       <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
-                      Calibración ADAS
+                      Calibración ADAS<ResumenAdas/>
                     </label>
                   </>
                 ) : (
@@ -2409,7 +2425,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           {modo !== 'aseguradora' && (
             <label className="flex items-center gap-2 text-xs font-semibold text-purple-800 cursor-pointer bg-purple-50 border border-purple-200 rounded-lg px-3 py-2" title="Agrega la calibración ADAS a precio completo">
               <input type="checkbox" checked={conAdas} onChange={e=>{setAdasManual(true);setConAdas(e.target.checked)}} className="accent-purple-600"/>
-              Calibración ADAS {conAdas && <span className="font-normal text-purple-700">— se cobra completa (sin bonificación)</span>}
+              Calibración ADAS<ResumenAdas/>
             </label>
           )}
           <div>
@@ -2515,7 +2531,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
           {items.length>0&&(
             <div className="border-t border-p-line2 pt-2">
               <label className="block text-[11px] font-semibold text-p-ink2 uppercase tracking-wider mb-2">Ítems</label>
-              {items.map((it,i)=>(
+              {items.map((it,i)=> esLineaAdas(it.d) ? null : (
                 <div key={i} className="flex items-center gap-2 py-1.5 border-b border-p-line2">
                   {it.articulo_id && <span className="text-[10px] text-p-green font-bold shrink-0">🔗</span>}
                   {it.stock_id&&<span className="text-[10px] text-blue-500 font-bold shrink-0">📦</span>}
