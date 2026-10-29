@@ -6,6 +6,7 @@ import { moneyARS } from '@/lib/utils/format'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { OfflineBanner } from '@/lib/offline/OfflineBanner'
 import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
+import RevisarClient from '@/components/precios/RevisarClient'
 
 /**
  * PRECIOS — búsqueda por FAMILIA sobre el catálogo completo (GAMMA + Malatesta + Sekurit).
@@ -22,6 +23,7 @@ interface Fila {
   costo_neto: number | null; costo_anterior: number | null; precio_lista: number | null; lista_nombre: string | null; es_promo: boolean
   disponible: boolean | null; updated_at: string | null
   stock_cant: number | null; stock_precio: number | null; stock_costo: number | null
+  desc_familia?: string | null
 }
 interface Tarjeta {
   key: string; familias: string[]; base6: string; descripcion: string; pos: string | null; manual: boolean
@@ -65,7 +67,8 @@ function armarTarjetas(filas: Fila[]): Tarjeta[] {
     const unicas = fs.filter(f => { const k = `${f.proveedor}|${f.codigo.toUpperCase()}`; if (vistos.has(k)) return false; vistos.add(k); return true })
     unicas.sort((a, b) => (Number(b.stock_cant) || 0) - (Number(a.stock_cant) || 0) || (Number(a.costo_neto) || 9e12) - (Number(b.costo_neto) || 9e12))
     const conStock = unicas.find(f => Number(f.stock_cant) > 0)
-    const desc = (conStock ?? unicas.find(f => f.proveedor === 'GAMMA') ?? unicas[0]).descripcion
+    const oficial = unicas.find(f => f.desc_familia)?.desc_familia
+    const desc = oficial || (conStock ?? unicas.find(f => f.proveedor === 'GAMMA') ?? unicas[0]).descripcion
     const familias = Array.from(new Set(unicas.map(f => f.familia)))
     const base6 = unicas[0].base6
     const costos = unicas.map(f => Number(f.costo_neto)).filter(c => c > 0)
@@ -102,6 +105,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [abierta, setAbierta] = useState<string | null>(null)   // tarjeta expandida (precios por tipo)
+  const [tab, setTab] = useState<'buscar' | 'revisar'>('buscar')
+  useEffect(() => { try { if (new URLSearchParams(window.location.search).get('tab') === 'revisar') setTab('revisar') } catch {} }, [])
   const supabase = createClient()
   const isOnline = useOnlineStatus()
   const router = useRouter()
@@ -177,7 +182,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         familia: familiaDe(p.codigo || ''), base6: familiaDe(p.codigo || '').slice(0, 6), es_variante: false, grupo_id: p.grupo_id ?? null,
         id: p.id, proveedor: p.proveedor, codigo: p.codigo, descripcion: p.descripcion, marca: p.marca ?? null, pos: p.pos ?? null,
         costo_neto: p.costo_neto, costo_anterior: p.costo_anterior ?? null, precio_lista: null, lista_nombre: p.lista_nombre ?? null, es_promo: !!p.es_promo,
-        disponible: null, updated_at: p.updated_at ?? null, stock_cant: null, stock_precio: null, stock_costo: null,
+        disponible: null, updated_at: p.updated_at ?? null, stock_cant: null, stock_precio: null, stock_costo: null, desc_familia: null,
       })))
       setLoading(false); return
     }
@@ -203,6 +208,16 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   return (
     <div>
       {!isOnline && <OfflineBanner />}
+      <div className="flex border-b border-p-line mb-4">
+        {([['buscar', '💰 Precios'], ['revisar', '🧹 Revisar']] as const).map(([v, l]) => (
+          <button key={v} onClick={() => setTab(v)}
+            style={{ padding: '8px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', border: 'none', background: 'none', borderBottom: tab === v ? '3px solid #00A550' : '3px solid transparent', color: tab === v ? '#00A550' : '#6b7280' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === 'revisar' && <RevisarClient />}
+      {tab === 'buscar' && <>
       <div className="flex gap-2 flex-wrap mb-4">
         <button onClick={() => setTipoSel('todos')}
           style={{ background: tipoSel === 'todos' ? '#0C1810' : '#fff', color: tipoSel === 'todos' ? '#fff' : '#4A6655', border: '1.5px solid #C2DDD0', borderRadius: 20, padding: '6px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
@@ -227,7 +242,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
           </label>
         )}
       </div>
-      <p className="text-[11px] text-p-ink2 mb-4">Cada tarjeta es una pieza con todos sus códigos equivalentes (mismos 6 dígitos + 3 letras; la 4ª letra es el origen). Abajo de cada una, las otras variantes del mismo modelo (otro color, con/sin sensor). 📦 = cantidad en stock.</p>
+      <p className="text-[11px] text-p-ink2 mb-4">Una tarjeta por pieza con todos sus códigos equivalentes (mismos 6 dígitos + 3 letras; la 4ª letra es el origen). <b>Doble clic</b> abre los precios por tipo de cliente. 📦 = cantidad en stock. Abajo, las otras variantes del mismo modelo.</p>
 
       {loading && <p className="text-sm text-p-gray text-center py-8">Buscando…</p>}
 
@@ -237,11 +252,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
             const aseg = asegDe(t)
             const expandida = abierta === t.key
             return (
-              <div key={t.key} className={`bg-white border rounded-xl overflow-hidden shadow-sm ${t.stock > 0 ? 'border-green-300' : 'border-p-line'}`}>
+              <div key={t.key} onDoubleClick={() => setAbierta(expandida ? null : t.key)} title="Doble clic: abrir / cerrar precios por tipo"
+                className={`bg-white border rounded-xl overflow-hidden shadow-sm select-none ${t.stock > 0 ? 'border-green-300' : 'border-p-line'} ${expandida ? 'ring-2 ring-p-green/40' : ''}`}>
                 {/* Cabecera de la pieza */}
                 <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-saira font-bold text-p-ink">{t.descripcion}</p>
+                    {t.filas.some(f => f.desc_familia) && <span className="text-[10px] text-p-green" title="Descripción elegida en Revisar">✓ oficial</span>}
                     {t.stock > 0
                       ? <span className="text-[11px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-2 py-0.5">📦 {t.stock} en stock</span>
                       : <span className="text-[11px] font-semibold text-p-ink2 bg-white border border-p-line rounded-full px-2 py-0.5">sin stock · a pedir</span>}
@@ -375,6 +392,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
           <p className="text-sm mt-1 max-w-md mx-auto">Buscá por código o descripción: ves la pieza con todos sus códigos equivalentes, el stock en mano, el costo por proveedor y el precio de venta por tipo de cliente.</p>
         </div>
       )}
+      </>}
     </div>
   )
 }
