@@ -676,7 +676,7 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     const ncIvaF   = esAsegNC ? ncComp.iva   : ncIva
     const ncTotalF = esAsegNC ? ncComp.total : ncTotal
     const { data: nc } = await supabase.from('comprobantes').insert({
-      numero: nextNum, fecha: todayStr(), tipo: ncComp.tipo, categoria: 'nc',
+      numero: nextNum, fecha: todayStr(), tipo: ncComp.tipo, categoria: 'nc', es_nc: true,
       cliente_id: (ncComp as any).cliente_id ?? null, cliente_nombre: ncComp.cliente_nombre,
       cliente_telefono: ncComp.cliente_telefono, cliente_cuit: ncComp.cliente_cuit,
       cliente_tipo_fiscal: ncComp.cliente_tipo_fiscal, vehiculo: ncComp.vehiculo,

@@ -253,7 +253,7 @@ export default function InformesClient() {
     Promise.all([
       supabase.from('ordenes_servicio').select('fecha,aseguradora,estado')
         .not('aseguradora','is',null).gte('fecha', desde),
-      supabase.from('comprobantes').select('fecha,aseguradora_nombre,total,es_nc')
+      supabase.from('comprobantes').select('fecha,aseguradora_nombre,total,es_nc,categoria')
         .not('aseguradora_nombre','is',null).gte('fecha', desde),
     ]).then(([osRes, compRes]) => {
       const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -272,7 +272,7 @@ export default function InformesClient() {
       for (const c of (compRes.data??[]) as any[]) {
         const s = bucket(c.fecha, c.aseguradora_nombre)
         const monto = +(c.total||0)
-        if (c.es_nc) { s.fc_importe -= monto }        // NC restan importe, no cuentan como facturada
+        if (c.es_nc || c.categoria === 'nc') { s.fc_importe -= monto }        // NC restan importe, no cuentan como facturada
         else { s.facturadas++; s.fc_importe += monto }
       }
       const meses: AsegMes[] = Object.entries(porMes).map(([mes, v]) => {
@@ -377,9 +377,9 @@ export default function InformesClient() {
       const hoy = new Date()
       const desde = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1).toISOString().slice(0,10)
       const { data: comps } = await supabase.from('comprobantes')
-        .select('id,fecha,tipo,numero,cliente_nombre,aseguradora_id,aseguradora_nombre,total,es_nc,pagos')
+        .select('id,fecha,tipo,numero,cliente_nombre,aseguradora_id,aseguradora_nombre,total,es_nc,categoria,comprobante_original_id,pagos,excluir_cobranzas')
         .gte('fecha', desde).order('fecha')
-      const lista = (comps??[]) as any[]
+      const lista = ((comps??[]) as any[]).filter(c=>!c.excluir_cobranzas)   // pruebas / resueltos fuera del sistema
       // Imputaciones de cobros de aseguradoras, mapeadas por comprobante
       const ids = lista.map(c=>c.id)
       const cobradoAseg: Record<string, number> = {}
@@ -389,6 +389,12 @@ export default function InformesClient() {
         for (const r of (caf??[]) as any[])
           cobradoAseg[r.comprobante_id] = (cobradoAseg[r.comprobante_id]||0) + Number(r.monto||0)
       }
+      // Las NC se guardaban con es_nc=false (solo categoria='nc'): se detectan por categoria y se
+      // descuentan del pendiente de la factura que anulan (comprobante_original_id).
+      const esNCc = (c:any) => !!c.es_nc || c.categoria === 'nc'
+      const acreditado: Record<string, number> = {}
+      for (const c of lista) if (esNCc(c) && c.comprobante_original_id)
+        acreditado[c.comprobante_original_id] = (acreditado[c.comprobante_original_id]||0) + Number(c.total||0)
       const porMes: Record<string, MesCobro> = {}
       const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
       for (const c of lista) {
@@ -399,7 +405,7 @@ export default function InformesClient() {
         }
         const m = porMes[mes]
         const total = Number(c.total||0)
-        const esNC = !!c.es_nc
+        const esNC = esNCc(c)
         // Cobrado: aseguradoras SOLO vía liquidaciones imputadas (el jsonb pagos trae
         // "Cta. Cte." al emitir, que es deuda, no cobro). Mostrador: pagos del jsonb
         // excluyendo formas tipo cuenta corriente.
@@ -407,7 +413,7 @@ export default function InformesClient() {
         let cobrado = cobradoAseg[c.id] || 0
         if (!esAseguradora && Array.isArray(c.pagos))
           for (const p of c.pagos) {
-            const forma = String((p as any)?.forma ?? (p as any)?.tipo ?? '').toLowerCase()
+            const forma = String((p as any)?.forma ?? (p as any)?.tipo ?? (p as any)?.metodo ?? '').toLowerCase()
             if (forma.includes('cta') || forma.includes('cuenta corriente')) continue
             cobrado += Number((p as any)?.monto ?? (p as any)?.importe ?? 0)
           }
@@ -415,7 +421,8 @@ export default function InformesClient() {
         m.facturado += total
         cobrado = Math.min(cobrado, total)              // sobrepagos/redondeos no generan negativo
         m.cobrado += cobrado
-        const pend = Math.round((total - cobrado)*100)/100
+        const acred = Math.min(acreditado[c.id]||0, total - cobrado)   // anulada por NC
+        const pend = Math.round((total - cobrado - acred)*100)/100
         if (pend >= 1) {
           m.pendiente += pend
           m.impagos.push({
