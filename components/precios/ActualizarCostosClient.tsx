@@ -61,7 +61,7 @@ export default function ActualizarCostosClient() {
   const supabase = createClient()
   const [prov, setProv] = useState<(typeof PROVS)[number]>('MALATESTA')
   const [desc, setDesc] = useState('53')
-  const [descM, setDescM] = useState('')   // descuento propio de los códigos terminados en M (Euroglass). Vacío = el mismo que el general
+  const [descM, setDescM] = useState('0')   // Euroglass (códigos …M) NO lleva descuento en Malatesta: costo = lista. Vacío = usar el descuento general
   const [flete, setFlete] = useState('0')   // Malatesta: costo = lista × 0,47 (sin flete, como está cargado). Gamma: 1,5%
   const [descDefault, setDescDefault] = useState<Record<string, string>>({})
   const [file, setFile] = useState<File | null>(null)
@@ -81,7 +81,7 @@ export default function ActualizarCostosClient() {
   }, [supabase])
 
   function cambiarProv(p: (typeof PROVS)[number]) {
-    setProv(p); setDiff(null); setMsg(null); setDescM('')
+    setProv(p); setDiff(null); setMsg(null); setDescM('0')
     if (descDefault[p]) setDesc(descDefault[p])
     setFlete(p === 'GAMMA' ? '1.5' : '0')
   }
@@ -193,7 +193,7 @@ export default function ActualizarCostosClient() {
         </div>
         <button onClick={analizar} disabled={!file || !!busy} className="px-4 py-1.5 rounded text-white text-sm font-bold" style={{ background: !file || busy ? '#9ca3af' : '#1e40af', cursor: !file || busy ? 'default' : 'pointer' }}>🔍 Ver qué cambia</button>
       </div>
-      <p className="text-[11px] text-p-gray mb-3">Malatesta: 53% de descuento, sin flete (así están cargados hoy). Gamma: 48% + 1,5% de flete sobre la hoja GENERAL; las hojas XYG y ORIGINALES ya vienen netas (solo suman flete). Herramientas, pegamentos y films no se importan.</p>
+      <p className="text-[11px] text-p-gray mb-3">Malatesta: 53% de descuento (Pilkington e importados) y 0% en Euroglass (códigos terminados en M), sin flete. Gamma: 48% + 1,5% de flete sobre la hoja GENERAL; las hojas XYG y ORIGINALES ya vienen netas (solo suman flete). Herramientas, pegamentos y films no se importan.</p>
 
       {busy && <p className="text-sm text-p-ink2 mb-3">⏳ {busy}</p>}
       {msg && <p className="text-sm mb-3 px-3 py-2 rounded" style={{ background: msg.ok ? '#dcfce7' : '#fee2e2', color: msg.ok ? '#166534' : '#991b1b' }}>{msg.t}</p>}
