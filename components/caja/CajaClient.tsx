@@ -117,6 +117,13 @@ export default function CajaClient({ userId, perfil }: { userId: string; perfil:
   })
   const [tipos, setTipos] = useState<{id:string;nombre:string}[]>([])
   const [tab, setTab] = useState<'ventas'|'gastos'|'ctacte'>('ventas')
+  // Llegada desde Informes: /caja?fecha=YYYY-MM-DD&tab=gastos
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const f = sp.get('fecha'); const t = sp.get('tab')
+    if (f && /^\d{4}-\d{2}-\d{2}$/.test(f)) setFecha(f)
+    if (t === 'gastos' || t === 'ventas' || t === 'ctacte') setTab(t)
+  }, [])
   const [gastos, setGastos] = useState<any[]>([])
   const [recibos, setRecibos] = useState<any[]>([])
   const [pagosProveedores, setPagosProveedores] = useState<any[]>([])

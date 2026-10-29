@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { KpiCard } from '@/components/ui'
 import { moneyARS } from '@/lib/utils/format'
@@ -42,6 +43,9 @@ export default function InformesClient() {
   const aplicarCustom = (p: Periodo) => { setPeriodos(prev => [...prev.slice(0,4), p]); setPIdx(4) }
   const [ventas, setVentas] = useState<Venta[]>([])
   const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const irA = (id: string) => { setTab('resultado'); setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior:'smooth', block:'start' }), 80) }
+  const irCaja = (fecha: string, t: 'ventas'|'gastos' = 'ventas') => router.push(`/caja?fecha=${fecha}&tab=${t}`)
   const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
@@ -487,11 +491,11 @@ export default function InformesClient() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-2">
-            <KpiCard label="Ventas netas (s/IVA)" value={moneyARS(total)} sub={`c/IVA ${moneyARS(totalConIva)}`} />
-            <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado (no suman acá)`:`${ventas.length} operaciones con costo`} />
+            <KpiCard label="Ventas netas (s/IVA)" value={moneyARS(total)} sub={`c/IVA ${moneyARS(totalConIva)}`} onClick={()=>irA('inf-ventas')} />
+            <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado (no suman acá)`:`${ventas.length} operaciones con costo`} onClick={()=>setTab('general')} />
             <KpiCard label={`Margen bruto${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={`${margen}% s/ventas netas`} />
-            <KpiCard label="Gastos del período" value={moneyARS(gastosPeriodo)} />
-            <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={`${total>0?Math.round(resultadoOp/total*100):0}% de las ventas${toUsd(resultadoOp)?' · '+toUsd(resultadoOp):''}`} />
+            <KpiCard label="Gastos del período" value={moneyARS(gastosPeriodo)} onClick={()=>irA('inf-gastos')} />
+            <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={`${total>0?Math.round(resultadoOp/total*100):0}% de las ventas${toUsd(resultadoOp)?' · '+toUsd(resultadoOp):''}`} onClick={()=>irA('inf-resultado')} />
           </div>
           <p className="text-[11px] text-p-ink2 mb-5">Todo sin IVA. Margen bruto = ventas netas − costo de lo vendido · Resultado operativo = margen bruto − gastos (impuestos incluidos). Las compras no se restan: van a stock (ver 📋 Resultado). {ventas.length} operaciones · ticket promedio {moneyARS(ticket)}.</p>
 
@@ -742,8 +746,8 @@ export default function InformesClient() {
               const margenPct = total > 0 ? margenBruto / total : 0
               const puntoEq = margenPct > 0 ? totalGastos / margenPct : 0
 
-              const Fila = ({ l, v, bold, neg, sub }: { l:string; v:number; bold?:boolean; neg?:boolean; sub?:string }) => (
-                <div className={`flex justify-between items-center py-1.5 border-b border-p-line last:border-0 ${bold?'bg-p-light -mx-2 px-2 rounded':''}`}>
+              const Fila = ({ l, v, bold, neg, sub, onClick }: { l:string; v:number; bold?:boolean; neg?:boolean; sub?:string; onClick?:()=>void }) => (
+                <div onClick={onClick} title={onClick?'Ver detalle':undefined} className={`flex justify-between items-center py-1.5 border-b border-p-line last:border-0 ${bold?'bg-p-light -mx-2 px-2 rounded':''} ${onClick?'cursor-pointer hover:bg-p-light':''}`}>
                   <div><span className={`text-sm ${bold?'font-saira font-bold text-p-ink':'text-p-ink'}`}>{l}</span>{sub && <span className="text-[10px] text-p-ink2 ml-2">{sub}</span>}</div>
                   <span className={`font-mono text-sm ${bold?'font-bold':''}`} style={{color: neg ? '#ef4444' : bold ? (v>=0?'#00A550':'#ef4444') : '#1a1a1a'}}>{neg?'− ':''}{moneyARS(Math.abs(v))}</span>
                 </div>
@@ -752,21 +756,21 @@ export default function InformesClient() {
               return (
                 <div className="flex flex-col gap-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <KpiCard label="Ventas netas" value={moneyARS(totalIngresos)} accent/>
+                    <KpiCard label="Ventas netas" value={moneyARS(totalIngresos)} accent onClick={()=>irA('inf-ventas')}/>
                     <KpiCard label="Margen bruto" value={moneyARS(margenBruto)} sub={`${Math.round(margenPct*100)}%`}/>
-                    <KpiCard label="Gastos" value={moneyARS(totalGastos)}/>
+                    <KpiCard label="Gastos" value={moneyARS(totalGastos)} onClick={()=>irA('inf-gastos')}/>
                     <KpiCard label={resultado>=0?"Resultado operativo":"Pérdida operativa"} value={moneyARS(Math.abs(resultado))} accent={resultado>=0} sub={`${total>0?Math.round(resultado/total*100):0}% de las ventas`}/>
                   </div>
 
                   {/* ── Bloque 1: Resultado operativo ── */}
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="bg-white border border-p-line rounded-2xl p-4">
-                      <p className="font-saira font-bold text-sm text-p-ink mb-1">1 · Resultado operativo</p>
+                      <p id="inf-resultado" className="font-saira font-bold text-sm text-p-ink mb-1">1 · Resultado operativo</p>
                       <p className="text-[11px] text-p-ink2 mb-3">Lo que gana el negocio por operar. Sin IVA. Las compras no entran acá: van a stock.</p>
                       <Fila l="Ventas netas" v={totalIngresos} sub={`${ops} operaciones`}/>
                       <Fila l="Costo de lo vendido" v={costo} neg sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado, no suman acá`:undefined}/>
                       <Fila l="Margen bruto" v={margenBruto} bold sub={`${Math.round(margenPct*100)}%`}/>
-                      <Fila l="Gastos operativos (impuestos incluidos)" v={totalGastos} neg/>
+                      <Fila l="Gastos operativos (impuestos incluidos)" v={totalGastos} neg onClick={()=>irA('inf-gastos')}/>
                       <Fila l={resultado>=0?'Resultado operativo':'Pérdida operativa'} v={resultado} bold sub={`${total>0?Math.round(resultado/total*100):0}% de las ventas netas`}/>
                     </div>
 
@@ -774,12 +778,12 @@ export default function InformesClient() {
                     <div className="bg-white border border-p-line rounded-2xl p-4">
                       <p className="font-saira font-bold text-sm text-p-ink mb-1">2 · Stock e inversión</p>
                       <p className="text-[11px] text-p-ink2 mb-3">Adónde fue la plata de las compras. Valorizado a costo neto.</p>
-                      <Fila l="Stock al inicio" v={stockIni} sub={periodo.desde.split('-').reverse().join('/')}/>
-                      <Fila l="Compras netas" v={totalCompras} sub={`${comprasFact.length} factura(s)`}/>
+                      <Fila l="Stock al inicio" v={stockIni} onClick={()=>router.push('/stock')} sub={periodo.desde.split('-').reverse().join('/')}/>
+                      <Fila l="Compras netas" v={totalCompras} onClick={()=>router.push('/compras')} sub={`${comprasFact.length} factura(s)`}/>
                       {totalNC > 0 && <Fila l="NC de proveedor (roturas, devoluciones)" v={totalNC} neg/>}
                       <Fila l="Costo de lo vendido" v={costo} neg/>
                       <Fila l={ajustes>=0?'Ajustes y diferencias':'Ajustes, roturas y diferencias'} v={ajustes} neg={ajustes<0} sub="lo que no explican compras ni ventas"/>
-                      <Fila l="Stock al cierre" v={stockFin} bold sub={periodo.hasta.split('-').reverse().join('/')}/>
+                      <Fila l="Stock al cierre" v={stockFin} bold onClick={()=>router.push('/stock')} sub={periodo.hasta.split('-').reverse().join('/')}/>
                       <p className={`text-xs mt-2 font-semibold ${variacion>=0?'text-p-green':'text-amber-600'}`}>
                         {variacion>=0 ? `El stock creció ${moneyARS(variacion)} en el período: parte del margen quedó invertido en vidrios.` : `El stock bajó ${moneyARS(-variacion)}: se vendió mercadería que ya estaba comprada.`}
                       </p>
@@ -805,7 +809,7 @@ export default function InformesClient() {
                     const maxCat = cats[0].monto
                     return (
                       <div className="bg-white border border-p-line rounded-2xl p-4">
-                        <p className="font-saira font-bold text-sm text-p-ink mb-1">💡 Dónde está la plata de los gastos</p>
+                        <p id="inf-gastos" className="font-saira font-bold text-sm text-p-ink mb-1">💡 Dónde está la plata de los gastos</p>
                         <p className="text-[11px] text-p-ink2 mb-3">Ordenado de mayor a menor. Los rubros de arriba son los que mueven la aguja: ahí conviene mirar si hay algo para bajar. <span className="text-amber-700">Todavía no se cargan gastos bancarios ni comisiones de tarjetas.</span></p>
                         <div className="grid md:grid-cols-2 gap-4">
                           <div>
@@ -826,7 +830,7 @@ export default function InformesClient() {
                             <p className="text-[10px] uppercase tracking-wider text-p-ink2 mb-1">Los gastos individuales más grandes</p>
                             <div className="flex flex-col gap-1">
                               {topG.map(g => (
-                                <div key={g.id} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                                <div key={g.id} onClick={()=>irCaja(g.fecha,'gastos')} title="Abrir en Caja" className="flex justify-between items-center py-1 border-b border-p-line last:border-0 cursor-pointer hover:bg-p-light rounded px-1">
                                   <div>
                                     <p className="text-xs text-p-ink truncate max-w-[220px]">{g.descripcion}</p>
                                     <p className="text-[10px] text-p-ink2">{g.categoria} · {g.fecha.split('-').reverse().join('/')}</p>
@@ -844,11 +848,11 @@ export default function InformesClient() {
                   <div className="grid md:grid-cols-2 gap-4">
                     {/* INGRESOS */}
                     <div className="bg-white border border-p-line rounded-2xl p-4">
-                      <p className="font-saira font-bold text-sm text-p-ink mb-3">📈 Ventas netas — {moneyARS(totalIngresos)}</p>
+                      <p id="inf-ventas" className="font-saira font-bold text-sm text-p-ink mb-3">📈 Ventas netas — {moneyARS(totalIngresos)}</p>
                       {ventas.length === 0 ? <p className="text-xs text-p-ink2">Sin ventas en el período</p> : (
                         <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                           {ventas.map((v,i) => (
-                            <div key={i} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                            <div key={i} onClick={()=>irCaja(v.fecha,'ventas')} title="Abrir en Caja" className="flex justify-between items-center py-1 border-b border-p-line last:border-0 cursor-pointer hover:bg-p-light rounded px-1">
                               <div>
                                 <p className="text-xs text-p-ink truncate max-w-[200px]">{v.descripcion}</p>
                                 <p className="text-[10px] text-p-ink2">{v.fecha.split('-').reverse().join('/')}</p>
@@ -887,7 +891,7 @@ export default function InformesClient() {
                                 {isOpen && (
                                   <div className="ml-4 flex flex-col gap-0.5 py-1">
                                     {gs.map(g=>(
-                                      <div key={g.id} className="flex justify-between items-center py-0.5">
+                                      <div key={g.id} onClick={()=>irCaja(g.fecha,'gastos')} title="Abrir en Caja" className="flex justify-between items-center py-0.5 cursor-pointer hover:bg-p-light rounded px-1">
                                         <div>
                                           <p className="text-[11px] text-p-ink">{g.descripcion}</p>
                                           <p className="text-[10px] text-p-ink2">{g.fecha.split('-').reverse().join('/')} · {g.forma_pago||''}</p>
