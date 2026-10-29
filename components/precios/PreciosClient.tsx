@@ -113,6 +113,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [abierta, setAbierta] = useState<string | null>(null)   // tarjeta expandida (precios por tipo)
+
   const [tab, setTab] = useState<'buscar' | 'revisar'>('buscar')
   useEffect(() => { try { if (new URLSearchParams(window.location.search).get('tab') === 'revisar') setTab('revisar') } catch {} }, [])
   const supabase = createClient()
@@ -205,6 +206,41 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
 
   useEffect(() => { const t = setTimeout(buscar, 300); return () => clearTimeout(t) }, [buscar])
 
+  // ── Vincular equivalencias desde la tarjeta (gerencial) ─────────────────────
+  const [vinculando, setVinculando] = useState<string | null>(null)   // key de la tarjeta con el buscador abierto
+  const [vinQ, setVinQ] = useState('')
+  const [vinRes, setVinRes] = useState<{ familia: string; descripcion: string; codigos: string[]; stock: number }[]>([])
+  const [vinMsg, setVinMsg] = useState('')
+  useEffect(() => {
+    if (!vinculando || vinQ.trim().length < 2) { setVinRes([]); return }
+    let vivo = true
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc('buscar_familias', { p_q: vinQ.trim(), p_limit: 12 })
+      if (!vivo) return
+      const m = new Map<string, { familia: string; descripcion: string; codigos: string[]; stock: number }>()
+      for (const f of (data ?? []) as Fila[]) {
+        if (f.es_variante) continue
+        const x = m.get(f.familia) ?? { familia: f.familia, descripcion: f.desc_familia || f.descripcion, codigos: [], stock: 0 }
+        if (!x.codigos.includes(f.codigo)) x.codigos.push(f.codigo)
+        x.stock = Math.max(x.stock, Number(f.stock_cant) || 0)
+        m.set(f.familia, x)
+      }
+      setVinRes([...m.values()])
+    }, 300)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [vinQ, vinculando, supabase])
+  async function vincular(t: Tarjeta, otra: string) {
+    if (!confirm(`¿Vincular ${otra} como equivalente de ${t.familias.join(' = ')}?\nVan a aparecer juntos en la misma tarjeta (se puede deshacer).`)) return
+    const { error } = await supabase.rpc('vincular_familias', { p_a: t.familias[0], p_b: otra })
+    if (error) { alert('No se pudo vincular: ' + error.message); return }
+    setVinMsg(`✅ ${otra} vinculado`); setVinQ(''); setVinRes([]); await buscar()
+  }
+  async function desvincular(t: Tarjeta) {
+    if (!confirm(`¿Deshacer el vínculo manual de ${t.familias.join(' = ')}? Cada familia vuelve a su tarjeta propia.`)) return
+    for (const f of t.familias) await supabase.rpc('desvincular_familia', { p_familia: f })
+    setVinculando(null); await buscar()
+  }
+
   function irAPresupuesto(t: Tarjeta, f: Fila, tipo: TipoCliente) {
     const p = calcPrecios(Number(f.costo_neto) || 0, tipo.margen_pct, configPrecios)
     const params = new URLSearchParams({
@@ -275,7 +311,14 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                       ? <span className="text-[11px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-2 py-0.5">📦 {t.stock} en stock</span>
                       : <span className="text-[11px] font-semibold text-p-ink2 bg-white border border-p-line rounded-full px-2 py-0.5">sin stock · a pedir</span>}
                     <span className="font-mono text-[10px] text-p-ink2 bg-white border border-p-line px-2 py-0.5 rounded-full">{t.familias.join(' = ')}</span>
-                    {t.manual && <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full" title="Equivalencia confirmada a mano en Comparar">vinculada a mano</span>}
+                    {t.manual && <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full" title="Equivalencia confirmada a mano">vinculada a mano</span>}
+                    {esGerencial && isOnline && (
+                      <span className="ml-auto flex gap-1.5" onDoubleClick={e => e.stopPropagation()}>
+                        <button onClick={() => { setVinculando(vinculando === t.key ? null : t.key); setVinQ(''); setVinRes([]); setVinMsg('') }}
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-purple-300 text-purple-700 bg-white hover:bg-purple-50 cursor-pointer">🔗 Vincular</button>
+                        {t.manual && <button onClick={() => desvincular(t)} className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-red-200 text-red-600 bg-white hover:bg-red-50 cursor-pointer">✕ Desvincular</button>}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {t.pos || '—'} · {t.filas.length} {t.filas.length === 1 ? 'código' : 'códigos'} en {new Set(t.filas.map(f => f.proveedor)).size} proveedor(es)
@@ -371,19 +414,45 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                   })}
                 </div>
 
+                {/* Buscador para vincular otra pieza como equivalente */}
+                {vinculando === t.key && (
+                  <div className="px-4 py-3 bg-purple-50/60 border-t border-purple-100" onDoubleClick={e => e.stopPropagation()}>
+                    <p className="text-[11px] font-semibold text-purple-800 mb-1">🔗 Buscá la pieza que es equivalente de <span className="font-mono">{t.familias.join(' = ')}</span> (por código o descripción) y tocá Vincular</p>
+                    <input autoFocus value={vinQ} onChange={e => { setVinQ(e.target.value); setVinMsg('') }} placeholder="Código o descripción…"
+                      className="w-full border border-purple-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-purple-500" />
+                    {vinMsg && <p className="text-[11px] text-green-700 mt-1">{vinMsg}</p>}
+                    <div className="mt-2 flex flex-col gap-1">
+                      {vinRes.filter(x => !t.familias.includes(x.familia)).map(x => (
+                        <div key={x.familia} className="flex items-center gap-2 bg-white border border-p-line rounded-lg px-2 py-1 text-xs">
+                          <span className="font-mono font-bold">{x.familia}</span>
+                          <span className="flex-1 text-p-ink2 truncate">{x.descripcion}</span>
+                          <span className="font-mono text-[10px] text-p-gray hidden md:inline">{x.codigos.slice(0, 4).join(' · ')}</span>
+                          {x.stock > 0 && <span className="font-bold text-green-700">📦 {x.stock}</span>}
+                          <button onClick={() => vincular(t, x.familia)} className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-600 text-white cursor-pointer border-none">Vincular</button>
+                        </div>
+                      ))}
+                      {vinQ.trim().length >= 2 && vinRes.filter(x => !t.familias.includes(x.familia)).length === 0 && <p className="text-[11px] text-p-gray">Sin resultados.</p>}
+                    </div>
+                  </div>
+                )}
+
                 {/* Variantes del mismo modelo */}
                 {t.variantes.length > 0 && (
                   <div className="px-4 py-2 bg-amber-50/60 border-t border-amber-100">
                     <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold mb-1">Otras variantes del mismo modelo ({t.base6}) — otro color, con/sin sensor, otro proceso</p>
                     <div className="flex gap-1.5 flex-wrap">
                       {t.variantes.map(v => (
-                        <button key={v.familia} onClick={() => setQ(v.familia)} title={`${v.descripcion} · ${v.provs.join(', ')}`}
+                        <span key={v.familia} className="inline-flex items-stretch gap-0.5">
+                        <button onClick={() => setQ(v.familia)} title={`${v.descripcion} · ${v.provs.join(', ')}`}
                           className={`text-[11px] rounded-lg px-2 py-1 border ${v.stock > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-white border-amber-200 text-p-ink'} hover:border-p-green`}>
                           <span className="font-mono font-bold">{v.familia}</span>
                           <span className="ml-1 text-p-ink2">{v.descripcion.length > 34 ? v.descripcion.slice(0, 34) + '…' : v.descripcion}</span>
                           {esGerencial && v.costo != null && <span className="ml-1 font-mono">{moneyARS(v.costo)}</span>}
                           {v.stock > 0 && <span className="ml-1 font-bold">📦 {v.stock}</span>}
                         </button>
+                        {esGerencial && isOnline && <button onClick={() => vincular(t, v.familia)} title={`Vincular ${v.familia} como equivalente de esta pieza`}
+                          className="text-[11px] rounded-lg px-1.5 border border-purple-300 text-purple-700 bg-white hover:bg-purple-50 cursor-pointer">🔗</button>}
+                        </span>
                       ))}
                     </div>
                   </div>
