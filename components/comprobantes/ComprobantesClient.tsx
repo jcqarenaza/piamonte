@@ -1,5 +1,6 @@
 'use client'
 import { LOGO_BASE64 } from '@/lib/logo'
+import { prepararAdjunto } from '@/lib/utils/comprimirImagen'
 import { FIRMA_SAPPA } from '@/lib/firma'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -1449,19 +1450,21 @@ export default function ComprobantesClient({ userId, rol = 'ventas' }: { userId:
     if (!adjModal) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${adjModal.id}/${Date.now()}.${ext}`
-      const { error } = await supabase.storage.from('comprobante-adjuntos').upload(path, file)
+      const prep = await prepararAdjunto(file)
+      file = prep.file
+      const path = `${adjModal.id}/${Date.now()}.${prep.ext}`
+      const { error } = await supabase.storage.from('comprobante-adjuntos').upload(path, file, { contentType: file.type })
       if (error) throw error
       const { data: urlData } = supabase.storage.from('comprobante-adjuntos').getPublicUrl(path)
-      await supabase.from('comprobante_adjuntos').insert({
+      const { error: errIns } = await supabase.from('comprobante_adjuntos').insert({
         comprobante_id: adjModal.id, tipo, nombre: file.name,
         url: urlData.publicUrl, storage_path: path,
         orden: adjuntos.length
       })
+      if (errIns) throw errIns
       const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('comprobante_id', adjModal.id).order('orden')
       setAdjuntos(await firmarAdjuntos(data ?? []))
-    } catch(e) { console.error(e) }
+    } catch(e: any) { console.error(e); alert('No se pudo subir el archivo: ' + (e?.message || e?.error || 'error desconocido')) }
     setUploading(false)
   }
 
