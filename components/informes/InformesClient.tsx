@@ -456,7 +456,7 @@ export default function InformesClient() {
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-2">
             <KpiCard label="Ventas netas (s/IVA)" value={moneyARS(total)} sub={`c/IVA ${moneyARS(totalConIva)}`} />
-            <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`${pendientes} venta(s) s/costo`:undefined} />
+            <KpiCard label="Costo de lo vendido" value={moneyARS(costo)} sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado (no suman acá)`:`${ventas.length} operaciones con costo`} />
             <KpiCard label={`Margen bruto${pendientes?' (parcial)':''}`} value={moneyARS(ganancia)} accent sub={`${margen}% s/ventas netas`} />
             <KpiCard label="Gastos del período" value={moneyARS(gastosPeriodo)} />
             <KpiCard label={resultadoOp>=0?'Resultado operativo':'Pérdida operativa'} value={moneyARS(Math.abs(resultadoOp))} accent={resultadoOp>=0} sub={toUsd(resultadoOp)??undefined} />
@@ -732,7 +732,7 @@ export default function InformesClient() {
                       <p className="font-saira font-bold text-sm text-p-ink mb-1">1 · Resultado operativo</p>
                       <p className="text-[11px] text-p-ink2 mb-3">Lo que gana el negocio por operar. Sin IVA. Las compras no entran acá: van a stock.</p>
                       <Fila l="Ventas netas" v={totalIngresos} sub={`${ops} operaciones`}/>
-                      <Fila l="Costo de lo vendido" v={costo} neg sub={pendientes?`${pendientes} venta(s) sin costo`:undefined}/>
+                      <Fila l="Costo de lo vendido" v={costo} neg sub={pendientes?`⚠ ${pendientes} venta(s) sin costo cargado, no suman acá`:undefined}/>
                       <Fila l="Margen bruto" v={margenBruto} bold sub={`${Math.round(margenPct*100)}%`}/>
                       <Fila l="Gastos operativos (impuestos incluidos)" v={totalGastos} neg/>
                       <Fila l={resultado>=0?'Resultado operativo':'Pérdida operativa'} v={resultado} bold/>
