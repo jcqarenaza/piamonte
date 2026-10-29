@@ -7,7 +7,6 @@ import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { OfflineBanner } from '@/lib/offline/OfflineBanner'
 import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
 import RevisarClient from '@/components/precios/RevisarClient'
-import ActualizarCostosClient from '@/components/precios/ActualizarCostosClient'
 
 /**
  * PRECIOS — búsqueda por FAMILIA sobre el catálogo completo (GAMMA + Malatesta + Sekurit).
@@ -106,8 +105,8 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
   const [abierta, setAbierta] = useState<string | null>(null)   // tarjeta expandida (precios por tipo)
-  const [tab, setTab] = useState<'buscar' | 'revisar' | 'costos'>('buscar')
-  useEffect(() => { try { const tq = new URLSearchParams(window.location.search).get('tab'); if (tq === 'revisar') setTab('revisar'); if (tq === 'costos') setTab('costos') } catch {} }, [])
+  const [tab, setTab] = useState<'buscar' | 'revisar'>('buscar')
+  useEffect(() => { try { if (new URLSearchParams(window.location.search).get('tab') === 'revisar') setTab('revisar') } catch {} }, [])
   const supabase = createClient()
   const isOnline = useOnlineStatus()
   const router = useRouter()
@@ -210,7 +209,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     <div>
       {!isOnline && <OfflineBanner />}
       <div className="flex border-b border-p-line mb-4">
-        {([['buscar', '💰 Precios'], ['revisar', '🧹 Revisar'], ...(esGerencial ? [['costos', '💲 Actualizar costos']] : [])] as [typeof tab, string][]).map(([v, l]) => (
+        {([['buscar', '💰 Precios'], ['revisar', '🧹 Revisar']] as const).map(([v, l]) => (
           <button key={v} onClick={() => setTab(v)}
             style={{ padding: '8px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', border: 'none', background: 'none', borderBottom: tab === v ? '3px solid #00A550' : '3px solid transparent', color: tab === v ? '#00A550' : '#6b7280' }}>
             {l}
@@ -218,7 +217,6 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         ))}
       </div>
       {tab === 'revisar' && <RevisarClient />}
-      {tab === 'costos' && esGerencial && <ActualizarCostosClient />}
       {tab === 'buscar' && <>
       <div className="flex gap-2 flex-wrap mb-4">
         <button onClick={() => setTipoSel('todos')}

@@ -335,14 +335,6 @@ export default function ArticulosClient() {
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='todos' ? 'border-p-green text-p-green' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
           📦 Todos los artículos
         </button>
-        <button onClick={()=>setTab('pendientes')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='pendientes' ? 'border-amber-500 text-amber-600' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
-          🔗 Equivalencias pendientes
-        </button>
-        <button onClick={()=>setTab('referencias')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${tab==='referencias' ? 'border-blue-500 text-blue-600' : 'border-transparent text-p-ink2 hover:text-p-ink'}`}>
-          📖 Referencias
-        </button>
       </div>
 
       {tab === 'referencias' ? (
