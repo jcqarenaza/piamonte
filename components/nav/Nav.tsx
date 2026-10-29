@@ -18,7 +18,6 @@ const GRUPOS = [
     label: 'CATÁLOGO / ARTÍCULOS',
     items: [
       { id:'articulos', href:'/articulos', label:'Artículos', icon:'🏷️' },
-      { id:'comparar',  href:'/comparar',  label:'Comparar',  icon:'⚖️' },
       { id:'ofertas',   href:'/ofertas',   label:'Ofertas',   icon:'⭐' },
     ]
   },
