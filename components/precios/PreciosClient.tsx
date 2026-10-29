@@ -7,6 +7,7 @@ import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { OfflineBanner } from '@/lib/offline/OfflineBanner'
 import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
 import RevisarClient from '@/components/precios/RevisarClient'
+import { extraerAnios, extraerEquipo, textoAnios, aplicaAnio, partirConsulta } from '@/lib/utils/descripcionPieza'
 
 /**
  * PRECIOS — búsqueda por FAMILIA sobre el catálogo completo (GAMMA + Malatesta + Sekurit).
@@ -135,7 +136,13 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const isOnline = useOnlineStatus()
   const router = useRouter()
 
-  const tarjetas = useMemo(() => armarTarjetas(filas), [filas])
+  const anioBuscado = useMemo(() => partirConsulta(q).anio, [q])
+  const tarjetas = useMemo(() => {
+    const todas = armarTarjetas(filas)
+    if (!anioBuscado) return todas
+    // Con año: se quedan las piezas que aplican a ese año o que no informan año (esas se avisan en la tarjeta)
+    return todas.filter(t => t.filas.some(f => aplicaAnio(extraerAnios(f.descripcion), anioBuscado) !== false))
+  }, [filas, anioBuscado])
 
   // Precio de venta a ASEGURADORAS (lista Pilkington) por código, con fallback a la misma base
   const [asegPrecios, setAsegPrecios] = useState<Record<string, any>>({})
@@ -198,7 +205,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
 
   const reqRef = useRef(0)   // descarta respuestas viejas (al tipear rápido llegaban búsquedas parciales tarde y pisaban el resultado)
   const buscar = useCallback(async () => {
-    const texto = q.trim()
+    const { texto, anio } = partirConsulta(q)
     const reqId = ++reqRef.current
     if (texto.length < 2) { setFilas([]); setLoading(false); return }
     setLoading(true)
@@ -213,7 +220,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       })))
       setLoading(false); return
     }
-    const { data, error } = await supabase.rpc('buscar_familias', { p_q: texto, p_limit: 40 })
+    const { data, error } = await supabase.rpc('buscar_familias', { p_q: texto, p_limit: anio ? 150 : 40 })
     if (reqId !== reqRef.current) return
     if (error) { console.error(error); setFilas([]) } else setFilas((data ?? []) as Fila[])
     setLoading(false)
@@ -335,6 +342,23 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                       </span>
                     )}
                   </div>
+                  {(() => {
+                    const rangos = new Map<string, ReturnType<typeof extraerAnios>>()
+                    const equipo = new Set<string>()
+                    for (const f of [...t.filas]) {
+                      const r = extraerAnios(f.descripcion); if (r) rangos.set(textoAnios(r), r)
+                      extraerEquipo(f.descripcion).forEach(x => equipo.add(x))
+                    }
+                    const sinAnio = rangos.size === 0
+                    if (sinAnio && !equipo.size) return null
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        {[...rangos.keys()].slice(0, 3).map(k => <span key={k} className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">📅 {k}</span>)}
+                        {sinAnio && anioBuscado && <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5" title="La descripción no trae años: confirmar compatibilidad">sin año en la descripción</span>}
+                        {[...equipo].map(x => <span key={x} className="text-[10px] text-p-ink2 bg-white border border-p-line rounded-full px-2 py-0.5">{x}</span>)}
+                      </div>
+                    )
+                  })()}
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {t.pos || '—'} · {t.filas.length} {t.filas.length === 1 ? 'código' : 'códigos'} en {new Set(t.filas.map(f => f.proveedor)).size} proveedor(es)
                     {esGerencial && t.bestCosto > 0 && <> · <span className="text-p-green font-semibold">mejor costo {moneyARS(t.bestCosto)}</span>{t.baratoSinDisp > 0 && <span className="text-red-600"> · más barato {moneyARS(t.baratoSinDisp)} pero sin disponibilidad</span>}</>}
