@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { moneyARS } from '@/lib/utils/format'
@@ -7,327 +7,203 @@ import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { OfflineBanner } from '@/lib/offline/OfflineBanner'
 import { precargarCatalogoCompleto, getCatalogoMeta, buscarEnCatalogoCompleto } from '@/lib/offline/db'
 
+/**
+ * PRECIOS — búsqueda por FAMILIA sobre el catálogo completo (GAMMA + Malatesta + Sekurit).
+ *  familia = 6 dígitos + 3 primeras letras  → misma pieza, otro origen (4ª letra): se muestran juntas
+ *  base6   = 6 dígitos                      → mismo modelo, otra variante (color/sensor/proceso): chips abajo
+ *  grupo_id (vínculo a mano de Comparar)    → une familias en una sola tarjeta
+ * El stock en mano se muestra por código, en la tarjeta y en cada fila.
+ */
+
 interface TipoCliente { id: string; nombre: string; margen_pct: number }
-interface PrecioProveedor {
-  proveedor: string; codigo: string | null; costo_neto: number; lista_nombre: string | null; es_promo: boolean; costo_anterior: number | null
+interface Fila {
+  familia: string; base6: string; es_variante: boolean; grupo_id: number | null
+  id: string; proveedor: string; codigo: string; descripcion: string; marca: string | null; pos: string | null
+  costo_neto: number | null; costo_anterior: number | null; precio_lista: number | null; lista_nombre: string | null; es_promo: boolean
+  disponible: boolean | null; updated_at: string | null
+  stock_cant: number | null; stock_precio: number | null; stock_costo: number | null
 }
-interface Articulo {
-  id: string; sku_interno: string | null; codigo_referencia: string | null
-  descripcion: string; pos: string | null
-  precios: PrecioProveedor[]
+interface Tarjeta {
+  key: string; familias: string[]; base6: string; descripcion: string; pos: string | null; manual: boolean
+  filas: Fila[]; stock: number; bestCosto: number
+  variantes: { familia: string; codigo: string; descripcion: string; costo: number | null; stock: number; provs: string[] }[]
 }
 
-const PROV_COLOR: Record<string, string> = {
-  GAMMA: '#166534', MALATESTA: '#1e40af', SEKURIT: '#5b21b6'
-}
+const PROV_COLOR: Record<string, string> = { GAMMA: '#166534', MALATESTA: '#1e40af', SEKURIT: '#5b21b6' }
+// 4ª letra del código = origen / marca del vidrio
+const ORIGEN: Record<string, string> = { P: 'Pilkington', M: 'Euroglas', X: 'Xinyi', I: 'Importado', F: 'Fanavid', U: 'Importado', E: 'Euroglas', C: 'China', R: 'Reposición', S: 'Sekurit' }
 const TIPO_ORDER = ['Particular', 'Chapista']
 const TIPO_ICON: Record<string, string> = { Particular: '👤', Chapista: '🔧' }
-
 const IVA_RATE = 0.21
 const TIPOS_CON_IVA_DISCRIMINADO = ['Chapista']
 
-// El costo_neto ya incluye flete (se aplica al importar las listas)
-// NO volver a sumar flete acá
-function calcPrecios(costo: number, margen: number, flete: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
-  const costoReal = costo // flete ya incluido en costo_neto
-  const tarjeta     = Math.round(costoReal * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
+// El costo_neto ya incluye flete (se aplica al importar las listas). NO volver a sumar flete acá.
+function calcPrecios(costo: number, margen: number, cfg: { recargo_tarjeta_pct: number; descuento_transferencia_pct: number; descuento_efectivo_pct: number }) {
+  const tarjeta       = Math.round(costo * (1 + margen) * (1 + cfg.recargo_tarjeta_pct / 100))
   const transferencia = Math.round(tarjeta * (1 - cfg.descuento_transferencia_pct / 100))
-  const efectivo    = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))
-  return { tarjeta, transferencia, efectivo, costoReal: Math.round(costoReal) }
+  const efectivo      = Math.round(tarjeta * (1 - cfg.descuento_efectivo_pct / 100))
+  return { tarjeta, transferencia, efectivo }
 }
-function precioSinIva(precio: number) {
-  return Math.round(precio / (1 + IVA_RATE))
-}
-function ivaMonto(precio: number) {
-  return precio - precioSinIva(precio)
-}
+const precioSinIva = (p: number) => Math.round(p / (1 + IVA_RATE))
+const familiaDe = (codigo: string) => /^[0-9]{6}[A-Za-z]{4}$/.test(codigo) ? codigo.slice(0, 9).toUpperCase() : codigo.toUpperCase()
+const fechaCorta = (iso: string | null) => iso ? iso.slice(0, 10).split('-').reverse().slice(0, 2).join('/') : ''
 
-// Agrupa las equivalencias "crudas" de un artículo en una fila por proveedor —
-// si el mismo proveedor tiene varios códigos de variante para la misma pieza,
-// nos quedamos con el costo más bajo de ese proveedor (no se muestran como filas separadas).
-function dedupPorProveedor(equivalencias: any[]): PrecioProveedor[] {
-  const porProveedor = new Map<string, PrecioProveedor>()
-  for (const e of equivalencias) {
-    if (e.costo_neto == null) continue
-    const actual = porProveedor.get(e.proveedor)
-    if (!actual || e.costo_neto < actual.costo_neto) {
-      porProveedor.set(e.proveedor, {
-        proveedor: e.proveedor, codigo: e.codigo_proveedor,
-        costo_neto: e.costo_neto, lista_nombre: e.lista_nombre, es_promo: !!e.lista_nombre,
-        costo_anterior: e.costo_anterior ?? null,
-      })
-    }
+// Arma las tarjetas: una por familia (o por grupo manual), con sus filas y las variantes del mismo modelo
+function armarTarjetas(filas: Fila[]): Tarjeta[] {
+  const directas = filas.filter(f => !f.es_variante)
+  const variantes = filas.filter(f => f.es_variante)
+  const porKey = new Map<string, Fila[]>()
+  for (const f of directas) {
+    const key = f.grupo_id ? `g${f.grupo_id}` : f.familia
+    if (!porKey.has(key)) porKey.set(key, [])
+    porKey.get(key)!.push(f)
   }
-  return [...porProveedor.values()].sort((a, b) => a.costo_neto - b.costo_neto)
+  const tarjetas: Tarjeta[] = []
+  for (const [key, fs] of porKey) {
+    // sin duplicar proveedor+código
+    const vistos = new Set<string>()
+    const unicas = fs.filter(f => { const k = `${f.proveedor}|${f.codigo.toUpperCase()}`; if (vistos.has(k)) return false; vistos.add(k); return true })
+    unicas.sort((a, b) => (Number(b.stock_cant) || 0) - (Number(a.stock_cant) || 0) || (Number(a.costo_neto) || 9e12) - (Number(b.costo_neto) || 9e12))
+    const conStock = unicas.find(f => Number(f.stock_cant) > 0)
+    const desc = (conStock ?? unicas.find(f => f.proveedor === 'GAMMA') ?? unicas[0]).descripcion
+    const familias = Array.from(new Set(unicas.map(f => f.familia)))
+    const base6 = unicas[0].base6
+    const costos = unicas.map(f => Number(f.costo_neto)).filter(c => c > 0)
+    // variantes del mismo modelo que NO están en esta tarjeta
+    const varMap = new Map<string, Tarjeta['variantes'][0]>()
+    for (const v of variantes) {
+      if (v.base6 !== base6 || familias.includes(v.familia)) continue
+      const e = varMap.get(v.familia) ?? { familia: v.familia, codigo: v.codigo, descripcion: v.descripcion, costo: null, stock: 0, provs: [] }
+      const c = Number(v.costo_neto); if (c > 0 && (e.costo == null || c < e.costo)) e.costo = c
+      e.stock += Number(v.stock_cant) || 0
+      if (!e.provs.includes(v.proveedor)) e.provs.push(v.proveedor)
+      if (Number(v.stock_cant) > 0) e.codigo = v.codigo
+      varMap.set(v.familia, e)
+    }
+    tarjetas.push({
+      key, familias, base6, descripcion: desc, pos: unicas[0].pos, manual: !!unicas[0].grupo_id,
+      filas: unicas, stock: unicas.reduce((a, f) => a + (Number(f.stock_cant) || 0), 0),
+      bestCosto: costos.length ? Math.min(...costos) : 0,
+      variantes: [...varMap.values()].sort((a, b) => b.stock - a.stock || (a.costo ?? 9e12) - (b.costo ?? 9e12)),
+    })
+  }
+  // Los que tenés en stock primero, después por cantidad de proveedores
+  return tarjetas.sort((a, b) => (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0) || b.filas.length - a.filas.length)
 }
 
 export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
   const esGerencial = rol === 'gerencial' || rol === 'admin'
-  const [q, setQ]           = useState('')
-  const [configPrecios, setConfigPrecios] = useState({
-    recargo_tarjeta_pct: 35,
-    descuento_transferencia_pct: 15,
-    descuento_efectivo_pct: 25,
-  })
-  const [articulos, setArticulos] = useState<Articulo[]>([])
-  const [tipos, setTipos]   = useState<TipoCliente[]>([])
+  const [q, setQ] = useState('')
+  const [configPrecios, setConfigPrecios] = useState({ recargo_tarjeta_pct: 35, descuento_transferencia_pct: 15, descuento_efectivo_pct: 25 })
+  const [filas, setFilas] = useState<Fila[]>([])
+  const [tipos, setTipos] = useState<TipoCliente[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoSel, setTipoSel] = useState<string>('todos')
   const [precioInstalacion, setPrecioInstalacion] = useState(0)
   const [conInstalacion, setConInstalacion] = useState(true)
-  const [fleteProv, setFleteProv] = useState<Record<string,number>>({})
+  const [abierta, setAbierta] = useState<string | null>(null)   // tarjeta expandida (precios por tipo)
   const supabase = createClient()
+  const isOnline = useOnlineStatus()
+  const router = useRouter()
 
-  // Precios de venta a ASEGURADORAS (lista Pilkington importada) por código PLK
+  const tarjetas = useMemo(() => armarTarjetas(filas), [filas])
+
+  // Precio de venta a ASEGURADORAS (lista Pilkington) por código, con fallback a la misma base
   const [asegPrecios, setAsegPrecios] = useState<Record<string, any>>({})
   useEffect(() => {
-    if (!articulos.length) { setAsegPrecios({}); return }
+    if (!tarjetas.length || !isOnline) { setAsegPrecios({}); return }
     ;(async () => {
-      const codes = Array.from(new Set(articulos.flatMap(a =>
-        [a.codigo_referencia, ...a.precios.map(p => p.codigo)]
-          .filter((c): c is string => !!c && /^\d{6}/.test(c)).map(c => c.toUpperCase())
-      )))
-      if (!codes.length) { setAsegPrecios({}); return }
-      // Última vigencia disponible
-      const { data: vig } = await supabase.from('precios_aseguradora')
-        .select('vigencia').eq('lista','comun').order('vigencia',{ascending:false}).limit(1).maybeSingle()
+      const bases = Array.from(new Set(tarjetas.map(t => t.base6).filter(b => /^\d{6}$/.test(b))))
+      if (!bases.length) { setAsegPrecios({}); return }
+      const { data: vig } = await supabase.from('precios_aseguradora').select('vigencia').eq('lista', 'comun').order('vigencia', { ascending: false }).limit(1).maybeSingle()
       const vigencia = (vig as any)?.vigencia
       if (!vigencia) return
-      const bases = Array.from(new Set(codes.map(c => c.slice(0,6))))
-      const orFiltro = bases.map(b => `codigo.ilike.${b}%`).join(',')
       const { data: rows } = await supabase.from('precios_aseguradora')
         .select('codigo,descripcion,precio_siva,instalacion_siva,total_siva')
-        .eq('lista','comun').eq('vigencia', vigencia).or(orFiltro).limit(200)
+        .eq('lista', 'comun').eq('vigencia', vigencia).or(bases.map(b => `codigo.ilike.${b}%`).join(',')).limit(300)
       const map: Record<string, any> = {}
-      for (const r of (rows??[]) as any[]) {
-        const cod = String(r.codigo||'').toUpperCase()
-        map[cod] = { ...r, vigencia }                    // match exacto
-        const base = cod.slice(0,6)
-        if (!map[`~${base}`]) map[`~${base}`] = { ...r, vigencia }  // fallback por variante
+      for (const r of (rows ?? []) as any[]) {
+        const cod = String(r.codigo || '').toUpperCase()
+        map[cod] = { ...r, vigencia }
+        if (!map[`~${cod.slice(0, 6)}`]) map[`~${cod.slice(0, 6)}`] = { ...r, vigencia }
       }
       setAsegPrecios(map)
     })()
-  }, [articulos, supabase])
-  // Busca el precio de aseguradora de un artículo: código exacto o variante de la misma base
-  function asegDe(a: Articulo): { row:any; exacto:boolean } | null {
-    const codes = [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
-      .filter((c): c is string => !!c && /^\d{6}/.test(c)).map(c=>c.toUpperCase())
-    for (const c of codes) if (asegPrecios[c]) return { row: asegPrecios[c], exacto: true }
-    for (const c of codes) if (asegPrecios[`~${c.slice(0,6)}`]) return { row: asegPrecios[`~${c.slice(0,6)}`], exacto: false }
+  }, [tarjetas, isOnline, supabase])
+  function asegDe(t: Tarjeta): { row: any; exacto: boolean } | null {
+    for (const f of t.filas) if (asegPrecios[f.codigo.toUpperCase()]) return { row: asegPrecios[f.codigo.toUpperCase()], exacto: true }
+    if (asegPrecios[`~${t.base6}`]) return { row: asegPrecios[`~${t.base6}`], exacto: false }
     return null
   }
-  const isOnline = useOnlineStatus()
-
-  // Stock físico por artículo (la feature estrella de la vieja pantalla Buscar)
-  const [stockPorCod, setStockPorCod] = useState<Record<string, number>>({})
-  useEffect(() => {
-    if (!articulos.length || !isOnline) { setStockPorCod({}); return }
-    const codes = Array.from(new Set(articulos.flatMap(a =>
-      [a.codigo_referencia, ...a.precios.map(p=>p.codigo)].filter((c): c is string => !!c).map(c=>c.toUpperCase())
-    )))
-    if (!codes.length) return
-    supabase.from('stock').select('codigo,cantidad').eq('activo', true).gt('cantidad', 0).in('codigo', codes)
-      .then(({data}) => {
-        const m: Record<string, number> = {}
-        for (const s of (data??[]) as any[]) {
-          const c = String(s.codigo||'').toUpperCase()
-          m[c] = (m[c]||0) + Number(s.cantidad||0)
-        }
-        setStockPorCod(m)
-      })
-  }, [articulos, isOnline, supabase])
-  function stockDe(a: Articulo): number {
-    return [a.codigo_referencia, ...a.precios.map(p=>p.codigo)]
-      .filter((c): c is string => !!c)
-      .reduce((acc, c) => acc + (stockPorCod[c.toUpperCase()]||0), 0)
-  }
-  const router = useRouter()
 
   useEffect(() => {
-    supabase.from('config_precios').select('*').eq('id', 1).maybeSingle()
-      .then(({ data }) => { if (data) setConfigPrecios(data) })
-    // Precio de instalación = artículo de servicio COLOC0001 (única fuente, ya no hay rubro aparte)
-    supabase.from('stock').select('precio_venta').eq('codigo','COLOC0001').maybeSingle()
-      .then(({data}) => { if (data) setPrecioInstalacion(+(data as any).precio_venta || 0) })
-    supabase.from('proveedores_compra').select('nombre,flete_pct').eq('activo',true)
-      .then(({data}) => {
-        const m: Record<string,number> = {}
-        for (const p of (data??[])) m[p.nombre] = +(p.flete_pct||0)
-        setFleteProv(m)
-      })
+    supabase.from('config_precios').select('*').eq('id', 1).maybeSingle().then(({ data }) => { if (data) setConfigPrecios(data) })
+    supabase.from('stock').select('precio_venta').eq('codigo', 'COLOC0001').maybeSingle().then(({ data }) => { if (data) setPrecioInstalacion(+(data as any).precio_venta || 0) })
+    supabase.from('tipos_cliente').select('*').order('nombre').then(({ data }) => {
+      const sorted = TIPO_ORDER.map(n => (data ?? []).find((t: TipoCliente) => t.nombre === n)).filter(Boolean) as TipoCliente[]
+      const resto = (data ?? []).filter((t: TipoCliente) => !TIPO_ORDER.includes(t.nombre) && t.nombre !== 'Compañías')
+      setTipos([...sorted, ...resto])
+    })
   }, [supabase])
 
-  useEffect(() => {
-    supabase.from('tipos_cliente').select('*').order('nombre')
-      .then(({ data }) => {
-        const sorted = TIPO_ORDER
-          .map(n => (data ?? []).find((t: TipoCliente) => t.nombre === n))
-          .filter(Boolean) as TipoCliente[]
-        const resto = (data ?? []).filter((t: TipoCliente) => !TIPO_ORDER.includes(t.nombre) && t.nombre !== 'Compañías')
-        setTipos([...sorted, ...resto])
-      })
-  }, [supabase])
-
+  // Precarga offline del catálogo (se usa solo sin conexión)
   useEffect(() => {
     if (!isOnline) return
     let cancelado = false
-    async function chequearYPrecargar() {
-      const [artInfo, equivInfo, configInfo, tiposInfo] = await Promise.all([
-        supabase.from('articulos_maestro').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('articulo_equivalencias').select('created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('config_precios').select('updated_at').eq('id', 1).maybeSingle(),
-        supabase.from('tipos_cliente').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-      ])
-      const { count } = await supabase.from('articulos_maestro').select('id', { count: 'exact', head: true })
-
-      const fingerprint = [
-        count ?? 0,
-        artInfo.data?.updated_at ?? '',
-        equivInfo.data?.created_at ?? '',
-        configInfo.data?.updated_at ?? '',
-        tiposInfo.data?.updated_at ?? '',
-      ].join('|')
-
+    ;(async () => {
+      const { data: ult } = await supabase.from('catalogo').select('updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      const { count } = await supabase.from('catalogo').select('id', { count: 'exact', head: true })
+      const fingerprint = `cat|${count ?? 0}|${(ult as any)?.updated_at ?? ''}`
       const meta = await getCatalogoMeta()
       if (meta?.fingerprint === fingerprint) return
-
-      const { data } = await supabase.from('articulos_maestro')
-        .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
-        .eq('activo', true)
-      if (!cancelado && data) {
-        const piezasPlanas = data.flatMap((a: any) =>
-          dedupPorProveedor(a.articulo_equivalencias ?? []).map((p: PrecioProveedor) => ({
-            id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
-            descripcion: a.descripcion, pos: a.pos,
-            proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
-            lista_nombre: p.lista_nombre, es_promo: p.es_promo, costo_anterior: p.costo_anterior,
-          }))
-        )
-        precargarCatalogoCompleto(piezasPlanas, fingerprint)
+      const planas: any[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data } = await supabase.from('catalogo').select('id,proveedor,codigo,descripcion,marca,pos,costo_neto,costo_anterior,lista_nombre,es_promo,grupo_id,updated_at').range(from, from + 999)
+        if (!data?.length) break
+        planas.push(...data); if (data.length < 1000) break
       }
-    }
-    chequearYPrecargar()
+      if (!cancelado && planas.length) precargarCatalogoCompleto(planas, fingerprint)
+    })()
     return () => { cancelado = true }
   }, [isOnline, supabase])
 
-  const POS_KW: Record<string,string> = {
-    'PARA':'PARABRISAS','PARABRISA':'PARABRISAS','PARABRISAS':'PARABRISAS',
-    'LUNETA':'LUNETA','LU':'LUNETA','REAR':'LUNETA',
-    'LATERAL':'LATERAL','LA':'LATERAL','LAT':'LATERAL',
-    'ALETA':'ALETA_D','AD':'ALETA_D','AT':'ALETA_T',
-  }
-
-  function agruparPlanasEnArticulos(planas: any[]): Articulo[] {
-    const porArticulo = new Map<string, Articulo>()
-    for (const p of planas) {
-      if (!porArticulo.has(p.id)) {
-        porArticulo.set(p.id, {
-          id: p.id, sku_interno: p.sku_interno, codigo_referencia: p.codigo_referencia,
-          descripcion: p.descripcion, pos: p.pos, precios: [],
-        })
-      }
-      porArticulo.get(p.id)!.precios.push({
-        proveedor: p.proveedor, codigo: p.codigo, costo_neto: p.costo_neto,
-        lista_nombre: p.lista_nombre, es_promo: p.es_promo, costo_anterior: p.costo_anterior ?? null,
-      })
-    }
-    return [...porArticulo.values()]
-  }
-
   const buscar = useCallback(async () => {
-    if (q.trim().length < 2) { setArticulos([]); return }
+    const texto = q.trim()
+    if (texto.length < 2) { setFilas([]); return }
     setLoading(true)
-
     if (!isOnline) {
-      const planas = await buscarEnCatalogoCompleto(q.trim())
-      setArticulos(agruparPlanasEnArticulos(planas))
-      setLoading(false)
-      return
+      const planas = await buscarEnCatalogoCompleto(texto)
+      setFilas((planas as any[]).map(p => ({
+        familia: familiaDe(p.codigo || ''), base6: familiaDe(p.codigo || '').slice(0, 6), es_variante: false, grupo_id: p.grupo_id ?? null,
+        id: p.id, proveedor: p.proveedor, codigo: p.codigo, descripcion: p.descripcion, marca: p.marca ?? null, pos: p.pos ?? null,
+        costo_neto: p.costo_neto, costo_anterior: p.costo_anterior ?? null, precio_lista: null, lista_nombre: p.lista_nombre ?? null, es_promo: !!p.es_promo,
+        disponible: null, updated_at: p.updated_at ?? null, stock_cant: null, stock_precio: null, stock_costo: null,
+      })))
+      setLoading(false); return
     }
-
-    const esCodigo = !/\s/.test(q.trim()) // sin espacios = posible código
-    const words = q.toUpperCase().split(/\s+/).filter(Boolean)
-    const posWord = words.find(w => POS_KW[w])
-    const nonPos  = words.filter(w => !POS_KW[w])
-    const pos     = posWord ? POS_KW[posWord] : null
-    const first   = nonPos[0] || words[0]
-    const rest    = nonPos.slice(1)
-
-    // Si parece un código, buscar primero por codigo_proveedor en equivalencias
-    if (esCodigo) {
-      const { data: eqData } = await supabase.from('articulo_equivalencias')
-        .select('articulo_id, proveedor, codigo_proveedor, costo_neto, lista_nombre')
-        .ilike('codigo_proveedor', `%${q.trim()}%`).limit(50)
-      if (eqData && eqData.length > 0) {
-        const artIds = [...new Set(eqData.map((e:any) => e.articulo_id))]
-        const { data: artData } = await supabase.from('articulos_maestro')
-          .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
-          .in('id', artIds).eq('activo', true)
-        const resultado: Articulo[] = (artData ?? []).map((a: any) => ({
-          id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
-          descripcion: a.descripcion, pos: a.pos,
-          precios: dedupPorProveedor(a.articulo_equivalencias ?? []),
-        })).filter((a: Articulo) => a.precios.length > 0)
-        setArticulos(resultado); setLoading(false); return
-      }
-    }
-
-    let query = supabase.from('articulos_maestro')
-      .select('id,sku_interno,codigo_referencia,descripcion,pos,articulo_equivalencias(proveedor,codigo_proveedor,costo_neto,lista_nombre,costo_anterior)')
-      .eq('activo', true)
-      .or(`descripcion.ilike.%${first}%,codigo_referencia.ilike.%${first}%,sku_interno.ilike.%${first}%`)
-      .order('descripcion').limit(150)
-    if (pos) query = query.eq('pos', pos)
-
-    const { data, error } = await query
-    if (error) {
-      const planas = await buscarEnCatalogoCompleto(q.trim())
-      setArticulos(agruparPlanasEnArticulos(planas))
-      setLoading(false)
-      return
-    }
-
-    const filtrados = (data ?? []).filter((a: any) =>
-      rest.every((w: string) => (a.descripcion || '').toUpperCase().includes(w))
-    )
-
-    const resultado: Articulo[] = filtrados.map((a: any) => ({
-      id: a.id, sku_interno: a.sku_interno, codigo_referencia: a.codigo_referencia,
-      descripcion: a.descripcion, pos: a.pos,
-      precios: dedupPorProveedor(a.articulo_equivalencias ?? []),
-    })).filter((a: Articulo) => a.precios.length > 0)
-
-    setArticulos(resultado)
+    const { data, error } = await supabase.rpc('buscar_familias', { p_q: texto, p_limit: 40 })
+    if (error) { console.error(error); setFilas([]) } else setFilas((data ?? []) as Fila[])
     setLoading(false)
   }, [q, supabase, isOnline])
 
-  useEffect(() => {
-    const t = setTimeout(buscar, 300)
-    return () => clearTimeout(t)
-  }, [buscar])
+  useEffect(() => { const t = setTimeout(buscar, 300); return () => clearTimeout(t) }, [buscar])
 
-  // Los que TENÉS EN STOCK primero (el criterio de la vieja pantalla Buscar), después por cobertura de proveedores
-  const articulosOrdenados = [...articulos].sort((a, b) =>
-    (stockDe(b) > 0 ? 1 : 0) - (stockDe(a) > 0 ? 1 : 0) || b.precios.length - a.precios.length)
-
-  function irAPresupuesto(articulo: Articulo, precio: PrecioProveedor, tipo: TipoCliente) {
-    const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, fleteProv[precio.proveedor]||0, configPrecios)
+  function irAPresupuesto(t: Tarjeta, f: Fila, tipo: TipoCliente) {
+    const p = calcPrecios(Number(f.costo_neto) || 0, tipo.margen_pct, configPrecios)
     const params = new URLSearchParams({
-      pieza_id: articulo.id,
-      pieza_desc: articulo.descripcion,
-      pieza_precio: String(precios.tarjeta),
-      pieza_precio_transf: String(precios.transferencia),
-      pieza_precio_efect: String(precios.efectivo),
-      tipo_id: tipo.id,
-      tipo_nombre: tipo.nombre,
+      pieza_id: f.id, pieza_desc: `${t.descripcion} (${f.codigo})`, pieza_precio: String(p.tarjeta),
+      pieza_precio_transf: String(p.transferencia), pieza_precio_efect: String(p.efectivo),
+      tipo_id: tipo.id, tipo_nombre: tipo.nombre,
     })
     router.push(`/presupuestos?${params.toString()}`)
   }
 
+  const tiposVisibles = tipos.filter(t => tipoSel === 'todos' || t.id === tipoSel)
+
   return (
     <div>
       {!isOnline && <OfflineBanner />}
-      <div className="flex gap-2 flex-wrap mb-5">
+      <div className="flex gap-2 flex-wrap mb-4">
         <button onClick={() => setTipoSel('todos')}
           style={{ background: tipoSel === 'todos' ? '#0C1810' : '#fff', color: tipoSel === 'todos' ? '#fff' : '#4A6655', border: '1.5px solid #C2DDD0', borderRadius: 20, padding: '6px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
           Todos los tipos
@@ -340,141 +216,163 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
         ))}
       </div>
 
-      <div className="flex gap-3 items-center mb-5 flex-wrap">
+      <div className="flex gap-3 items-center mb-2 flex-wrap">
         <input value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Buscá una pieza: ford focus parabrisas, vw gol luneta…"
+          placeholder="Código (422131, VSLP) o descripción (taos parabrisas, gol luneta)…"
           className="flex-1 border-2 border-p-line focus:border-p-green rounded-xl px-4 py-3 text-sm bg-white outline-none shadow-sm min-w-[200px]"/>
         {precioInstalacion > 0 && (
           <label className="flex items-center gap-2 cursor-pointer bg-white border border-p-line rounded-xl px-4 py-3 shadow-sm select-none shrink-0">
-            <input type="checkbox" checked={conInstalacion} onChange={e=>setConInstalacion(e.target.checked)} className="accent-p-green w-4 h-4"/>
+            <input type="checkbox" checked={conInstalacion} onChange={e => setConInstalacion(e.target.checked)} className="accent-p-green w-4 h-4"/>
             <span className="text-sm font-semibold text-p-ink">+ Instalación ({moneyARS(precioInstalacion)})</span>
           </label>
         )}
       </div>
+      <p className="text-[11px] text-p-ink2 mb-4">Cada tarjeta es una pieza con todos sus códigos equivalentes (mismos 6 dígitos + 3 letras; la 4ª letra es el origen). Abajo de cada una, las otras variantes del mismo modelo (otro color, con/sin sensor). 📦 = cantidad en stock.</p>
 
       {loading && <p className="text-sm text-p-gray text-center py-8">Buscando…</p>}
 
-      {!loading && articulosOrdenados.length > 0 && (
+      {!loading && tarjetas.length > 0 && (
         <div className="flex flex-col gap-4">
-          {articulosOrdenados.map((articulo) => {
-            const bestCosto = Math.min(...articulo.precios.map(p => p.costo_neto))
-
+          {tarjetas.map(t => {
+            const aseg = asegDe(t)
+            const expandida = abierta === t.key
             return (
-              <div key={articulo.id} className="bg-white border border-p-line rounded-xl overflow-hidden shadow-sm">
+              <div key={t.key} className={`bg-white border rounded-xl overflow-hidden shadow-sm ${t.stock > 0 ? 'border-green-300' : 'border-p-line'}`}>
+                {/* Cabecera de la pieza */}
                 <div className="px-4 py-3 border-b border-p-line2 bg-p-light">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-saira font-bold text-p-ink">{articulo.descripcion}</p>
-                    {stockDe(articulo) > 0 && (
-                      <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-2 py-0.5">✓ En stock ({stockDe(articulo)})</span>
-                    )}
-                    {esGerencial && articulo.sku_interno && (
-                      <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{articulo.sku_interno}</span>
-                    )}
+                    <p className="font-saira font-bold text-p-ink">{t.descripcion}</p>
+                    {t.stock > 0
+                      ? <span className="text-[11px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-2 py-0.5">📦 {t.stock} en stock</span>
+                      : <span className="text-[11px] font-semibold text-p-ink2 bg-white border border-p-line rounded-full px-2 py-0.5">sin stock · a pedir</span>}
+                    <span className="font-mono text-[10px] text-p-ink2 bg-white border border-p-line px-2 py-0.5 rounded-full">{t.familias.join(' = ')}</span>
+                    {t.manual && <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full" title="Equivalencia confirmada a mano en Comparar">vinculada a mano</span>}
                   </div>
                   <p className="text-xs text-p-ink2 mt-0.5">
-                    {articulo.pos} · {articulo.precios.length} {articulo.precios.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
-                    {esGerencial && <span className="text-p-green font-semibold">mejor costo {moneyARS(bestCosto)}</span>}
+                    {t.pos || '—'} · {t.filas.length} {t.filas.length === 1 ? 'código' : 'códigos'} en {new Set(t.filas.map(f => f.proveedor)).size} proveedor(es)
+                    {esGerencial && t.bestCosto > 0 && <> · <span className="text-p-green font-semibold">mejor costo {moneyARS(t.bestCosto)}</span></>}
                   </p>
-                  {(() => {
-                    const aseg = asegDe(articulo)
-                    if (!aseg) return null
-                    const total = Number(aseg.row.total_siva)||0
-                    const civa = total * 1.21
-                    const mercantil = civa * 1.06
+                  {aseg && (() => {
+                    const total = Number(aseg.row.total_siva) || 0
                     return (
-                      <div className="mt-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px]">
+                      <div className="mt-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5 flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px]">
                         <span className="font-bold text-teal-800">💼 Aseguradora ({String(aseg.row.vigencia)})</span>
-                        <span className="text-teal-800">Material {moneyARS(Number(aseg.row.precio_siva)||0)}</span>
-                        <span className="text-teal-800">+ Instal. {moneyARS(Number(aseg.row.instalacion_siva)||0)}</span>
+                        <span className="text-teal-800">Material {moneyARS(Number(aseg.row.precio_siva) || 0)}</span>
+                        <span className="text-teal-800">+ Instal. {moneyARS(Number(aseg.row.instalacion_siva) || 0)}</span>
                         <span className="font-bold text-teal-900">Total s/IVA {moneyARS(total)}</span>
-                        <span className="font-bold text-teal-900">c/IVA {moneyARS(civa)}</span>
-                        <span className="font-bold text-teal-900">Mercantil {moneyARS(mercantil)}</span>
+                        <span className="font-bold text-teal-900">c/IVA {moneyARS(total * 1.21)}</span>
+                        <span className="font-bold text-teal-900">Mercantil {moneyARS(total * 1.21 * 1.06)}</span>
                         {!aseg.exacto && <span className="text-amber-700 font-semibold">variante {aseg.row.codigo}</span>}
                       </div>
                     )
                   })()}
                 </div>
 
+                {/* Una fila por código de proveedor */}
                 <div className="divide-y divide-p-line2">
-                  {articulo.precios.map((precio, i) => (
-                    <div key={`${precio.proveedor}-${i}`}>
-                      <div className="flex items-center gap-3 px-4 py-2 bg-gray-50/60">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white shrink-0"
-                          style={{ background: PROV_COLOR[precio.proveedor] || '#6b7280' }}>
-                          {precio.proveedor}{precio.es_promo ? ' · OFERTA' : ''}
-                        </span>
-                        {precio.codigo && <span className="font-mono text-[10px] text-p-ink2">{precio.codigo}</span>}
-                        {precio.lista_nombre && <span className="text-[10px] text-p-ink2">{precio.lista_nombre}</span>}
-                        {esGerencial && <span className="ml-auto text-[10px] text-p-ink2">Costo: <span className="font-mono font-bold text-p-dark">{moneyARS(precio.costo_neto)}</span>
-                          {precio.costo_anterior && precio.costo_anterior !== precio.costo_neto && (() => {
-                            const diff = precio.costo_neto - precio.costo_anterior
-                            const pct = Math.round((diff / precio.costo_anterior) * 100)
-                            return <span className={`ml-1.5 font-mono font-bold ${diff > 0 ? 'text-red-500' : 'text-green-600'}`}>{diff > 0 ? '▲' : '▼'} {pct > 0 ? '+' : ''}{pct}%</span>
-                          })()}
-                        </span>}
-                      </div>
+                  {t.filas.map(f => {
+                    const costo = Number(f.costo_neto) || 0
+                    const stock = Number(f.stock_cant) || 0
+                    const origen = /^[0-9]{6}[A-Z]{4}$/i.test(f.codigo) ? ORIGEN[f.codigo[9].toUpperCase()] : null
+                    const isBest = costo > 0 && costo === t.bestCosto
+                    const tipoRef = tiposVisibles[0]
+                    const pRef = tipoRef && costo > 0 ? calcPrecios(costo, tipoRef.margen_pct, configPrecios) : null
+                    const inst = conInstalacion ? precioInstalacion : 0
+                    return (
+                      <div key={`${f.proveedor}-${f.codigo}`} className={`px-4 py-2 ${isBest ? 'bg-green-50/40' : ''}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white shrink-0" style={{ background: PROV_COLOR[f.proveedor] || '#6b7280' }}>
+                            {f.proveedor}{f.es_promo ? ' · OFERTA' : ''}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-p-ink">{f.codigo}</span>
+                          {origen && <span className="text-[10px] text-p-ink2">{origen}</span>}
+                          {stock > 0 && <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded-full px-1.5">📦 {stock}</span>}
+                          {f.disponible === false && <span className="text-[10px] text-red-600">sin disponibilidad</span>}
+                          {f.lista_nombre && <span className="text-[10px] text-p-ink2">{f.lista_nombre}</span>}
+                          {f.descripcion !== t.descripcion && <span className="text-[10px] text-p-ink2 italic truncate max-w-[260px]" title={f.descripcion}>“{f.descripcion}”</span>}
+                          <span className="ml-auto flex items-center gap-3">
+                            {esGerencial && (
+                              <span className="text-[10px] text-p-ink2">Costo <span className="font-mono font-bold text-p-dark">{costo > 0 ? moneyARS(costo) : '—'}</span>
+                                {f.costo_anterior && costo > 0 && Number(f.costo_anterior) !== costo && (() => {
+                                  const diff = costo - Number(f.costo_anterior); const pct = Math.round(diff / Number(f.costo_anterior) * 100)
+                                  return <span className={`ml-1 font-mono font-bold ${diff > 0 ? 'text-red-500' : 'text-green-600'}`}>{diff > 0 ? '▲' : '▼'}{pct > 0 ? '+' : ''}{pct}%</span>
+                                })()}
+                                {f.updated_at && <span className="ml-1 text-p-gray">({fechaCorta(f.updated_at)})</span>}
+                              </span>
+                            )}
+                            {pRef && tipoRef && (
+                              <span className="text-xs" title={`${tipoRef.nombre} · tarjeta / transferencia / efectivo`}>
+                                <span className="font-saira font-bold text-p-ink">{moneyARS(pRef.tarjeta + inst)}</span>
+                                <span className="text-blue-600 font-semibold ml-1.5">{moneyARS(pRef.transferencia + inst)}</span>
+                                <span className="text-green-700 font-semibold ml-1.5">{moneyARS(pRef.efectivo + inst)}</span>
+                              </span>
+                            )}
+                            {costo > 0 && (
+                              <button onClick={() => setAbierta(expandida ? null : t.key)} className="text-[11px] text-p-green font-semibold hover:underline">{expandida ? 'cerrar' : 'detalle'}</button>
+                            )}
+                          </span>
+                        </div>
 
-                      <div className={`grid gap-0 ${tipoSel === 'todos' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
-                        {tipos
-                          .filter(t => tipoSel === 'todos' || t.id === tipoSel)
-                          .map((tipo, idx) => {
-                            const inst = conInstalacion ? precioInstalacion : 0
-                            const precios = calcPrecios(precio.costo_neto, tipo.margen_pct, fleteProv[precio.proveedor]||0, configPrecios)
-                            const isBest = precio.costo_neto === bestCosto
-                            return (
-                              <div key={tipo.id}
-                                className={`flex items-center justify-between px-4 py-3 border-t border-p-line2 ${idx > 0 ? 'md:border-l' : ''} ${isBest ? 'bg-green-50/50' : ''}`}>
-                                <div className="flex-1">
-                                  <p className="text-[11px] font-semibold text-p-ink2 mb-1">
-                                    {TIPO_ICON[tipo.nombre] || '👥'} {tipo.nombre}
-                                    {esGerencial && <span className="text-p-gray ml-1">+{Math.round(tipo.margen_pct * 100)}%</span>}
-                                  </p>
-                                  <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-p-ink2 w-24">💳 Tarjeta</span>
-                                      <span className={`font-saira font-bold text-base ${isBest ? 'text-p-green' : 'text-p-ink'}`}>{moneyARS(precios.tarjeta + inst)}</span>
+                        {expandida && costo > 0 && (
+                          <div className={`mt-2 grid gap-2 ${tiposVisibles.length > 1 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
+                            {tiposVisibles.map(tipo => {
+                              const p = calcPrecios(costo, tipo.margen_pct, configPrecios)
+                              return (
+                                <div key={tipo.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold text-p-ink2 mb-1">{TIPO_ICON[tipo.nombre] || '👥'} {tipo.nombre}{esGerencial && <span className="text-p-gray ml-1">+{Math.round(tipo.margen_pct * 100)}%</span>}</p>
+                                    <div className="text-xs leading-5">
+                                      <div>💳 Tarjeta <b className="font-saira text-sm">{moneyARS(p.tarjeta + inst)}</b></div>
+                                      <div>🏦 Transf. <span className="text-green-600 text-[10px]">-{configPrecios.descuento_transferencia_pct}%</span> <b className="font-saira text-sm text-blue-600">{moneyARS(p.transferencia + inst)}</b></div>
+                                      <div>💵 Efectivo <span className="text-green-600 text-[10px]">-{configPrecios.descuento_efectivo_pct}%</span> <b className="font-saira text-sm text-green-700">{moneyARS(p.efectivo + inst)}</b></div>
+                                      {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && <div className="text-[10px] text-p-ink2">Neto {moneyARS(precioSinIva(p.tarjeta))} · IVA {moneyARS(p.tarjeta - precioSinIva(p.tarjeta))}</div>}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-p-ink2 w-24">🏦 Transf. <span className="text-green-600">-{configPrecios.descuento_transferencia_pct}%</span></span>
-                                      <span className="font-saira font-bold text-base text-blue-600">{moneyARS(precios.transferencia + inst)}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-p-ink2 w-24">💵 Efectivo <span className="text-green-600">-{configPrecios.descuento_efectivo_pct}%</span></span>
-                                      <span className="font-saira font-bold text-base text-green-700">{moneyARS(precios.efectivo + inst)}</span>
-                                    </div>
-                                    {TIPOS_CON_IVA_DISCRIMINADO.includes(tipo.nombre) && (
-                                      <div className="mt-1 text-[10px] text-p-ink2">
-                                        Neto: {moneyARS(precioSinIva(precios.tarjeta))} · IVA: {moneyARS(ivaMonto(precios.tarjeta))}
-                                      </div>
-                                    )}
                                   </div>
+                                  <button onClick={() => irAPresupuesto(t, f, tipo)} disabled={!isOnline}
+                                    style={{ background: isOnline ? '#00A550' : '#9ca3af', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontWeight: 700, fontSize: 12, cursor: isOnline ? 'pointer' : 'not-allowed' }}>
+                                    → Presupuesto
+                                  </button>
                                 </div>
-                                <button onClick={() => irAPresupuesto(articulo, precio, tipo)} disabled={!isOnline}
-                                  style={{ background: isOnline ? '#00A550' : '#9ca3af', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: isOnline ? 'pointer' : 'not-allowed' }}>
-                                  {isOnline ? '→ Presupuesto' : 'Sin conexión'}
-                                </button>
-                              </div>
-                            )
-                          })}
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
+
+                {/* Variantes del mismo modelo */}
+                {t.variantes.length > 0 && (
+                  <div className="px-4 py-2 bg-amber-50/60 border-t border-amber-100">
+                    <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold mb-1">Otras variantes del mismo modelo ({t.base6}) — otro color, con/sin sensor, otro proceso</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {t.variantes.map(v => (
+                        <button key={v.familia} onClick={() => setQ(v.familia)} title={`${v.descripcion} · ${v.provs.join(', ')}`}
+                          className={`text-[11px] rounded-lg px-2 py-1 border ${v.stock > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-white border-amber-200 text-p-ink'} hover:border-p-green`}>
+                          <span className="font-mono font-bold">{v.familia}</span>
+                          <span className="ml-1 text-p-ink2">{v.descripcion.length > 34 ? v.descripcion.slice(0, 34) + '…' : v.descripcion}</span>
+                          {esGerencial && v.costo != null && <span className="ml-1 font-mono">{moneyARS(v.costo)}</span>}
+                          {v.stock > 0 && <span className="ml-1 font-bold">📦 {v.stock}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {q.length >= 2 && !loading && articulosOrdenados.length === 0 && (
+      {q.trim().length >= 2 && !loading && tarjetas.length === 0 && (
         <p className="text-center text-sm text-p-gray py-10">Sin resultados para "{q}".</p>
       )}
-
-      {q.length < 2 && (
+      {q.trim().length < 2 && (
         <div className="text-center py-16 text-p-gray">
           <p className="text-4xl mb-3">💰</p>
-          <p className="font-saira font-bold text-p-ink text-lg">Calculadora de precios</p>
-          <p className="text-sm mt-1 max-w-md mx-auto">Buscá una pieza y ves el precio de venta para cada tipo de cliente con el margen aplicado automáticamente.</p>
+          <p className="font-saira font-bold text-p-ink text-lg">Precios y equivalencias</p>
+          <p className="text-sm mt-1 max-w-md mx-auto">Buscá por código o descripción: ves la pieza con todos sus códigos equivalentes, el stock en mano, el costo por proveedor y el precio de venta por tipo de cliente.</p>
         </div>
       )}
     </div>
