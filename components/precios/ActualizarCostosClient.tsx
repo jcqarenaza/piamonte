@@ -61,6 +61,7 @@ export default function ActualizarCostosClient() {
   const supabase = createClient()
   const [prov, setProv] = useState<(typeof PROVS)[number]>('MALATESTA')
   const [desc, setDesc] = useState('53')
+  const [descM, setDescM] = useState('')   // descuento propio de los códigos terminados en M (Euroglass). Vacío = el mismo que el general
   const [flete, setFlete] = useState('0')   // Malatesta: costo = lista × 0,47 (sin flete, como está cargado). Gamma: 1,5%
   const [descDefault, setDescDefault] = useState<Record<string, string>>({})
   const [file, setFile] = useState<File | null>(null)
@@ -80,7 +81,7 @@ export default function ActualizarCostosClient() {
   }, [supabase])
 
   function cambiarProv(p: (typeof PROVS)[number]) {
-    setProv(p); setDiff(null); setMsg(null)
+    setProv(p); setDiff(null); setMsg(null); setDescM('')
     if (descDefault[p]) setDesc(descDefault[p])
     setFlete(p === 'GAMMA' ? '1.5' : '0')
   }
@@ -92,7 +93,12 @@ export default function ActualizarCostosClient() {
     setBusy('Leyendo el archivo…'); setMsg(null); setDiff(null)
     try {
       const fl = (parseFloat(flete.replace(',', '.')) || 0) / 100
-      const items = (await leerLista(file)).map(i => ({ ...i, costo: Math.round(i.lista * (i.neto ? 1 : 1 - d) * (1 + fl)) }))
+      const dM = descM.trim() === '' ? d : parseFloat(descM.replace(',', '.')) / 100
+      if (isNaN(dM) || dM < 0 || dM >= 1) { setMsg({ ok: false, t: 'Descuento Euroglass inválido' }); setBusy(''); return }
+      const items = (await leerLista(file)).map(i => {
+        const dd = prov === 'MALATESTA' && i.codigo.endsWith('M') ? dM : d   // Euroglass (…M) puede tener otro descuento
+        return { ...i, costo: Math.round(i.lista * (i.neto ? 1 : 1 - dd) * (1 + fl)) }
+      })
       if (!items.length) throw new Error('No encontré códigos (formato 6 números + 4 letras) con precio en la columna E')
       setBusy('Comparando con el catálogo…')
       const actual = new Map<string, number>()
@@ -173,6 +179,10 @@ export default function ActualizarCostosClient() {
           <div className="text-[11px] text-p-ink2 mb-1">Descuento sobre la lista (%)</div>
           <input value={desc} onChange={e => { setDesc(e.target.value); setDiff(null) }} className="border border-p-line rounded px-2 py-1 text-sm w-24" />
         </div>
+        {prov === 'MALATESTA' && <div>
+          <div className="text-[11px] text-p-ink2 mb-1">Desc. Euroglass «…M» (%)</div>
+          <input value={descM} onChange={e => { setDescM(e.target.value); setDiff(null) }} placeholder="igual" className="border border-p-line rounded px-2 py-1 text-sm w-24" />
+        </div>}
         <div>
           <div className="text-[11px] text-p-ink2 mb-1">Flete (%)</div>
           <input value={flete} onChange={e => { setFlete(e.target.value); setDiff(null) }} className="border border-p-line rounded px-2 py-1 text-sm w-16" />

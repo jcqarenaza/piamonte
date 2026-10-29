@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { moneyARS } from '@/lib/utils/format'
@@ -172,12 +172,15 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
     return () => { cancelado = true }
   }, [isOnline, supabase])
 
+  const reqRef = useRef(0)   // descarta respuestas viejas (al tipear rápido llegaban búsquedas parciales tarde y pisaban el resultado)
   const buscar = useCallback(async () => {
     const texto = q.trim()
-    if (texto.length < 2) { setFilas([]); return }
+    const reqId = ++reqRef.current
+    if (texto.length < 2) { setFilas([]); setLoading(false); return }
     setLoading(true)
     if (!isOnline) {
       const planas = await buscarEnCatalogoCompleto(texto)
+      if (reqId !== reqRef.current) return
       setFilas((planas as any[]).map(p => ({
         familia: familiaDe(p.codigo || ''), base6: familiaDe(p.codigo || '').slice(0, 6), es_variante: false, grupo_id: p.grupo_id ?? null,
         id: p.id, proveedor: p.proveedor, codigo: p.codigo, descripcion: p.descripcion, marca: p.marca ?? null, pos: p.pos ?? null,
@@ -187,6 +190,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
       setLoading(false); return
     }
     const { data, error } = await supabase.rpc('buscar_familias', { p_q: texto, p_limit: 40 })
+    if (reqId !== reqRef.current) return
     if (error) { console.error(error); setFilas([]) } else setFilas((data ?? []) as Fila[])
     setLoading(false)
   }, [q, supabase, isOnline])
