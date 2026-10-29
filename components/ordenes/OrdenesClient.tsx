@@ -42,6 +42,13 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
   const [buscarNombre, setBuscarNombre] = useState('')
   const [adjModal, setAdjModal]   = useState<any|null>(null)
   const [adjuntos, setAdjuntos]   = useState<any[]>([])
+  const [adjCounts, setAdjCounts] = useState<Record<string,{f:number;s:number}>>({})
+  const cargarAdjCounts = useCallback(async () => {
+    const { data } = await supabase.from('comprobante_adjuntos').select('os_id,tipo').not('os_id','is',null).limit(5000)
+    const m: Record<string,{f:number;s:number}> = {}
+    for (const a of (data??[]) as any[]) { const c = m[a.os_id] ??= {f:0,s:0}; if (a.tipo==='foto') c.f++; else if (a.tipo==='os_firmada') c.s++ }
+    setAdjCounts(m)
+  }, [supabase])
   const [uploading, setUploading] = useState(false)
   const [editId, setEditId]     = useState<string|null>(null)
   const [pidOS, setPidOS]         = useState<string|null>(null) // presupuesto de origen (se marca convertido al guardar la OS)
@@ -225,7 +232,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     supabase.from('colaboradores').select('id,nombre,es_colocador').eq('activo',true).order('nombre').then(({data})=>setColaboradores(data??[]))
   }, [supabase])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); cargarAdjCounts() }, [load, cargarAdjCounts])
 
   useEffect(()=>{
     if(stockQ.trim().length<2){setStockSugs([]);return}
@@ -302,6 +309,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
       })
       const { data } = await supabase.from('comprobante_adjuntos').select('*').eq('os_id', adjModal.id).order('orden')
       setAdjuntos(await firmarAdjuntos(data ?? []))
+      cargarAdjCounts()
     } catch(e) { console.error(e) }
     setUploading(false)
   }
@@ -310,6 +318,7 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
     await supabase.storage.from('comprobante-adjuntos').remove([path])
     await supabase.from('comprobante_adjuntos').delete().eq('id', id)
     setAdjuntos(prev=>prev.filter(a=>a.id!==id))
+    cargarAdjCounts()
   }
 
   // Descargar todos los adjuntos con nombres prolijos (para subir a portales de aseguradoras)
@@ -1007,9 +1016,10 @@ export default function OrdenesClient({ userId, rol }: { userId: string; rol?: s
                     <div className="flex gap-2 flex-wrap">
                       {/* Botones siempre visibles */}
                       <button onClick={()=>enviarWA(o)} style={btnWa}>📱 WhatsApp</button>
-                      <button onClick={()=>abrirAdjuntos(o)} style={{...btnSm,background:'#7c3aed'}}>
-                        📎 {adjModal?.id===o.id?`${adjuntos.length} adj.`:'Fotos'}
-                      </button>
+                      {(() => { const c = adjCounts[o.id] ?? {f:0,s:0}; const ok = c.f>=3 && c.s>=1; const algo = c.f+c.s>0
+                        return <button onClick={()=>abrirAdjuntos(o)} title={ok?'Expediente completo':algo?'Faltan archivos':'Sin fotos ni OS firmada'} style={{...btnSm,background: ok?'#16a34a': algo?'#d97706':'#7c3aed'}}>
+                          📷 {c.f}/3 · {c.s>=1?'✍ OS firmada':'✍ sin firmar'}{ok?' ✓':''}
+                        </button> })()}
                       {!(o as any).convertido_comp && esAdmin && (
                         <button onClick={()=>openEdit(o)} style={{...btnSm,background:'#6b7280'}}>✏ Editar</button>
                       )}
