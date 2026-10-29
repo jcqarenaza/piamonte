@@ -395,6 +395,32 @@ export default function InformesClient() {
       const acreditado: Record<string, number> = {}
       for (const c of lista) if (esNCc(c) && c.comprobante_original_id)
         acreditado[c.comprobante_original_id] = (acreditado[c.comprobante_original_id]||0) + Number(c.total||0)
+      // Clientes con cuenta corriente: los pagos "a cuenta" (haber) se aplican a las facturas más
+      // viejas de cada cliente (FIFO). Si el cliente pagó, la factura figura cobrada.
+      const ccAplicado: Record<string, number> = {}
+      {
+        const mov: any[] = []
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase.from('cuenta_corriente')
+            .select('cliente_id,cliente_nombre,fecha,created_at,debe,haber,comprobante_id')
+            .order('fecha').range(from, from + 999)
+          mov.push(...(data ?? []))
+          if (!data || data.length < 1000) break
+        }
+        const porCli: Record<string, any[]> = {}
+        for (const m of mov) (porCli[m.cliente_id || m.cliente_nombre] ||= []).push(m)
+        for (const arr of Object.values(porCli)) {
+          arr.sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)) || String(a.created_at).localeCompare(String(b.created_at)))
+          let pool = arr.reduce((a,m)=>a+Number(m.haber||0), 0)
+          for (const m of arr) {
+            const debe = Number(m.debe||0)
+            if (!m.comprobante_id || debe <= 0) continue
+            const x = Math.min(pool, debe)
+            ccAplicado[m.comprobante_id] = (ccAplicado[m.comprobante_id]||0) + x
+            pool -= x
+          }
+        }
+      }
       const porMes: Record<string, MesCobro> = {}
       const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
       for (const c of lista) {
@@ -410,11 +436,12 @@ export default function InformesClient() {
         // "Cta. Cte." al emitir, que es deuda, no cobro). Mostrador: pagos del jsonb
         // excluyendo formas tipo cuenta corriente.
         const esAseguradora = !!(c.aseguradora_id || c.aseguradora_nombre)
-        let cobrado = cobradoAseg[c.id] || 0
+        let cobrado = (cobradoAseg[c.id] || 0) + (esAseguradora ? 0 : (ccAplicado[c.id] || 0))
         if (!esAseguradora && Array.isArray(c.pagos))
           for (const p of c.pagos) {
             const forma = String((p as any)?.forma ?? (p as any)?.tipo ?? (p as any)?.metodo ?? '').toLowerCase()
-            if (forma.includes('cta') || forma.includes('cuenta corriente')) continue
+            // Solo si la forma de pago ES cuenta corriente (no "Transferencia (Banco … Cuenta Corriente)")
+            if (/^\s*(cta\.?|cuenta\s+corriente)/.test(forma)) continue
             cobrado += Number((p as any)?.monto ?? (p as any)?.importe ?? 0)
           }
         if (esNC) { m.facturado -= total; continue }   // NC resta facturado; no genera pendiente propio

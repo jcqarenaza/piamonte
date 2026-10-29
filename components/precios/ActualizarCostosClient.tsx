@@ -10,15 +10,38 @@ import { moneyARS } from '@/lib/utils/format'
  * Costo = lista × (1 − descuento). Primero muestra el cambio, recién después se confirma.
  */
 
-interface Item { codigo: string; descripcion: string; lista: number; costo: number }
+interface Item { codigo: string; descripcion: string; lista: number; costo: number; neto?: boolean }
 interface Cambio { codigo: string; descripcion: string; viejo: number; nuevo: number; pct: number }
 interface Diff { iguales: number; suben: Cambio[]; bajan: Cambio[]; nuevos: Item[]; noVienen: number; total: number; aEnviar: Item[] }
 
-const CODIGO_RE = /^\d{6}[A-Z]{4}$/
+const CODIGO_RE = /^\d{6}[A-Z]{4,5}$/
 const PROVS = ['MALATESTA', 'GAMMA'] as const
+const LOTE = 200   // lotes chicos: el catálogo tiene muchos índices y un lote grande da statement timeout
+
+// Lista de Gamma (hojas GENERAL / XYG / ORIGINALES): código, nombre, marca, precio en col D.
+// GENERAL viene "S/DCTO" (se le aplica el descuento); XYG y ORIGINALES ya vienen netos.
+async function leerGamma(wb: XLSX.WorkBook): Promise<Item[]> {
+  const seen = new Set<string>()
+  const out: Item[] = []
+  for (const hoja of ['GENERAL', 'XYG', 'ORIGINALES']) {
+    const ws = wb.Sheets[hoja]
+    if (!ws) continue
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+    for (const r of rows) {
+      const cod = String(r[0] ?? '').trim().toUpperCase()
+      if (!CODIGO_RE.test(cod) || seen.has(cod)) continue
+      const precio = typeof r[3] === 'number' ? r[3] : 0
+      if (precio <= 0) continue
+      seen.add(cod)
+      out.push({ codigo: cod, descripcion: String(r[1] ?? '').trim(), lista: precio, costo: 0, neto: hoja !== 'GENERAL' })
+    }
+  }
+  return out
+}
 
 async function leerLista(file: File): Promise<Item[]> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellFormula: false, cellNF: false })
+  if (wb.Sheets['GENERAL']) return leerGamma(wb)
   const ws = wb.Sheets['Lista'] ?? wb.Sheets[wb.SheetNames[0]]
   const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
   const seen = new Set<string>()
@@ -38,6 +61,7 @@ export default function ActualizarCostosClient() {
   const supabase = createClient()
   const [prov, setProv] = useState<(typeof PROVS)[number]>('MALATESTA')
   const [desc, setDesc] = useState('53')
+  const [flete, setFlete] = useState('0')   // Malatesta: costo = lista × 0,47 (sin flete, como está cargado). Gamma: 1,5%
   const [descDefault, setDescDefault] = useState<Record<string, string>>({})
   const [file, setFile] = useState<File | null>(null)
   const [diff, setDiff] = useState<Diff | null>(null)
@@ -58,6 +82,7 @@ export default function ActualizarCostosClient() {
   function cambiarProv(p: (typeof PROVS)[number]) {
     setProv(p); setDiff(null); setMsg(null)
     if (descDefault[p]) setDesc(descDefault[p])
+    setFlete(p === 'GAMMA' ? '1.5' : '0')
   }
 
   async function analizar() {
@@ -66,7 +91,8 @@ export default function ActualizarCostosClient() {
     if (isNaN(d) || d < 0 || d >= 1) { setMsg({ ok: false, t: 'Descuento inválido' }); return }
     setBusy('Leyendo el archivo…'); setMsg(null); setDiff(null)
     try {
-      const items = (await leerLista(file)).map(i => ({ ...i, costo: Math.round(i.lista * (1 - d)) }))
+      const fl = (parseFloat(flete.replace(',', '.')) || 0) / 100
+      const items = (await leerLista(file)).map(i => ({ ...i, costo: Math.round(i.lista * (i.neto ? 1 : 1 - d) * (1 + fl)) }))
       if (!items.length) throw new Error('No encontré códigos (formato 6 números + 4 letras) con precio en la columna E')
       setBusy('Comparando con el catálogo…')
       const actual = new Map<string, number>()
@@ -108,9 +134,9 @@ export default function ActualizarCostosClient() {
     setMsg(null)
     let act = 0, nue = 0
     try {
-      for (let i = 0; i < lista.length; i += 1500) {
-        setBusy(`Aplicando… ${Math.min(i + 1500, lista.length)} / ${lista.length}`)
-        const { data, error } = await supabase.rpc('actualizar_costos_catalogo', { p_proveedor: prov, p_items: lista.slice(i, i + 1500), p_crear_nuevos: crearNuevos })
+      for (let i = 0; i < lista.length; i += LOTE) {
+        setBusy(`Aplicando… ${Math.min(i + LOTE, lista.length)} / ${lista.length}`)
+        const { data, error } = await supabase.rpc('actualizar_costos_catalogo', { p_proveedor: prov, p_items: lista.slice(i, i + LOTE), p_crear_nuevos: crearNuevos })
         if (error) throw new Error(error.message)
         act += (data as any)?.actualizados ?? 0; nue += (data as any)?.nuevos ?? 0
       }
@@ -148,12 +174,16 @@ export default function ActualizarCostosClient() {
           <input value={desc} onChange={e => { setDesc(e.target.value); setDiff(null) }} className="border border-p-line rounded px-2 py-1 text-sm w-24" />
         </div>
         <div>
+          <div className="text-[11px] text-p-ink2 mb-1">Flete (%)</div>
+          <input value={flete} onChange={e => { setFlete(e.target.value); setDiff(null) }} className="border border-p-line rounded px-2 py-1 text-sm w-16" />
+        </div>
+        <div>
           <div className="text-[11px] text-p-ink2 mb-1">Archivo (.xlsx)</div>
           <input type="file" accept=".xlsx,.xls" onChange={e => { setFile(e.target.files?.[0] ?? null); setDiff(null); setMsg(null) }} className="text-xs" />
         </div>
         <button onClick={analizar} disabled={!file || !!busy} className="px-4 py-1.5 rounded text-white text-sm font-bold" style={{ background: !file || busy ? '#9ca3af' : '#1e40af', cursor: !file || busy ? 'default' : 'pointer' }}>🔍 Ver qué cambia</button>
       </div>
-      <p className="text-[11px] text-p-gray mb-3">Malatesta usa 53% (lista Pilkington y Euroglass juntas). Gamma figura con 48% en el sistema: confirmar con Mario qué descuento aplica a su lista.</p>
+      <p className="text-[11px] text-p-gray mb-3">Malatesta: 53% de descuento, sin flete (así están cargados hoy). Gamma: 48% + 1,5% de flete sobre la hoja GENERAL; las hojas XYG y ORIGINALES ya vienen netas (solo suman flete). Herramientas, pegamentos y films no se importan.</p>
 
       {busy && <p className="text-sm text-p-ink2 mb-3">⏳ {busy}</p>}
       {msg && <p className="text-sm mb-3 px-3 py-2 rounded" style={{ background: msg.ok ? '#dcfce7' : '#fee2e2', color: msg.ok ? '#166534' : '#991b1b' }}>{msg.t}</p>}
