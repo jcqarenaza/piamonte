@@ -23,6 +23,7 @@ interface Movimiento { id:string; fecha:string; tipo:string; descripcion:string|
 export default function CuentaCorrienteClient() {
   const [tab, setTab] = useState<'clientes'|'aseguradoras'>('clientes')
   const [saldos, setSaldos]     = useState<Saldo[]>([])
+  const [asegTot, setAsegTot] = useState<{total:number; con:number}>({total:0, con:0})
   const [sel, setSel]           = useState<Saldo|null>(null)
   const [movs, setMovs]         = useState<Movimiento[]>([])
   const [q, setQ]               = useState('')
@@ -46,6 +47,14 @@ export default function CuentaCorrienteClient() {
   const [cuentasBanco, setCuentasBanco] = useState<any[]>([])
   const [cuentaBancoId, setCuentaBancoId] = useState(PAMPA_CC_ID)
   const supabase = createClient()
+  useEffect(() => {
+    supabase.from('cuenta_corriente_aseguradoras').select('aseguradora_id,debe,haber').limit(10000).then(({data}) => {
+      const m = new Map<string, number>()
+      for (const r of (data ?? []) as any[]) m.set(r.aseguradora_id, (m.get(r.aseguradora_id) || 0) + (+r.debe) - (+r.haber))
+      const pos = [...m.values()].filter(v => v >= 1)
+      setAsegTot({ total: pos.reduce((a,v)=>a+v,0), con: pos.length })
+    })
+  }, [supabase])
   const router   = useRouter()
 
   async function load() {
@@ -317,6 +326,25 @@ export default function CuentaCorrienteClient() {
             {l}
           </button>
         ))}
+      </div>
+
+      {/* Resumen total en la calle: clientes + aseguradoras */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="bg-white border border-p-line rounded-xl p-3">
+          <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Clientes</p>
+          <p className="font-saira font-bold text-lg text-red-500 mt-0.5">{moneyARS(totalDeuda)}</p>
+          <p className="text-[10px] text-p-ink2">{conSaldo} con saldo</p>
+        </div>
+        <div className="bg-white border border-p-line rounded-xl p-3">
+          <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Aseguradoras</p>
+          <p className="font-saira font-bold text-lg text-red-500 mt-0.5">{moneyARS(asegTot.total)}</p>
+          <p className="text-[10px] text-p-ink2">{asegTot.con} con saldo</p>
+        </div>
+        <div className="bg-white border-2 border-p-green rounded-xl p-3">
+          <p className="text-[10px] font-semibold text-p-ink2 uppercase tracking-wider">Total en la calle</p>
+          <p className="font-saira font-bold text-lg text-p-dark mt-0.5">{moneyARS(totalDeuda + asegTot.total)}</p>
+          <p className="text-[10px] text-p-ink2">{conSaldo + asegTot.con} cuentas con saldo</p>
+        </div>
       </div>
 
       {tab==='aseguradoras' && <CuentaCorrienteAseguradorasClient />}
