@@ -58,6 +58,14 @@ const precioSinIva = (p: number) => Math.round(p / (1 + IVA_RATE))
 const familiaDe = (codigo: string) => /^[0-9]{6}[A-Za-z]{4}$/.test(codigo) ? codigo.slice(0, 9).toUpperCase() : codigo.toUpperCase()
 const fechaCorta = (iso: string | null) => iso ? iso.slice(0, 10).split('-').reverse().slice(0, 2).join('/') : ''
 
+// El stock es por CÓDIGO: si Malatesta y Gamma venden el mismo código, el stock en mano se cuenta una sola vez
+function stockPorCodigo(fs: Fila[]): number {
+  const m = new Map<string, number>()
+  for (const f of fs) { const k = f.codigo.toUpperCase(); m.set(k, Math.max(m.get(k) ?? 0, Number(f.stock_cant) || 0)) }
+  let t = 0; for (const v of m.values()) t += v
+  return t
+}
+
 // Arma las tarjetas: una por familia (o por grupo manual), con sus filas y las variantes del mismo modelo
 function armarTarjetas(filas: Fila[]): Tarjeta[] {
   const directas = filas.filter(f => !f.es_variante)
@@ -86,18 +94,20 @@ function armarTarjetas(filas: Fila[]): Tarjeta[] {
     const minTodos = costosTodos.length ? Math.min(...costosTodos) : 0
     // variantes del mismo modelo que NO están en esta tarjeta
     const varMap = new Map<string, Tarjeta['variantes'][0]>()
+    const varVistos = new Set<string>()
     for (const v of variantes) {
       if (v.base6 !== base6 || familias.includes(v.familia)) continue
       const e = varMap.get(v.familia) ?? { familia: v.familia, codigo: v.codigo, descripcion: v.descripcion, costo: null, stock: 0, provs: [] }
       const c = Number(v.costo_neto); if (c > 0 && (e.costo == null || c < e.costo)) e.costo = c
-      e.stock += Number(v.stock_cant) || 0
+      const kv = `${v.familia}|${v.codigo.toUpperCase()}`
+      if (!varVistos.has(kv)) { varVistos.add(kv); e.stock += Number(v.stock_cant) || 0 }
       if (!e.provs.includes(v.proveedor)) e.provs.push(v.proveedor)
       if (Number(v.stock_cant) > 0) e.codigo = v.codigo
       varMap.set(v.familia, e)
     }
     tarjetas.push({
       key, familias, base6, descripcion: desc, pos: unicas[0].pos, manual: !!unicas[0].grupo_id,
-      filas: unicas, stock: unicas.reduce((a, f) => a + (Number(f.stock_cant) || 0), 0),
+      filas: unicas, stock: stockPorCodigo(unicas),
       bestCosto: costos.length ? Math.min(...costos) : 0,
       baratoSinDisp: costosDisp.length && minTodos > 0 && minTodos < Math.min(...costosDisp) ? minTodos : 0,
       variantes: [...varMap.values()].sort((a, b) => b.stock - a.stock || (a.costo ?? 9e12) - (b.costo ?? 9e12)),
@@ -347,9 +357,10 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
 
                 {/* Una fila por código de proveedor */}
                 <div className="divide-y divide-p-line2">
-                  {t.filas.map(f => {
+                  {t.filas.map((f, idx) => {
                     const costo = Number(f.costo_neto) || 0
-                    const stock = Number(f.stock_cant) || 0
+                    const primeraDelCodigo = t.filas.findIndex(x => x.codigo.toUpperCase() === f.codigo.toUpperCase()) === idx
+                    const stock = primeraDelCodigo ? (Number(f.stock_cant) || 0) : 0
                     const origen = origenDe(f.codigo)
                     const isBest = costo > 0 && costo === t.bestCosto && f.disponible !== false
                     const tipoRef = tiposVisibles[0]

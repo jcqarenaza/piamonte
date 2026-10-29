@@ -1,0 +1,1 @@
+-- DESCARTADO: no correr. Las equivalencias se arman por codigo y Mario las acomoda a mano desde Precios.

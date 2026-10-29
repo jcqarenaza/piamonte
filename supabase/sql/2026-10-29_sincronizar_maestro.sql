@@ -1,6 +1,11 @@
 -- Sincroniza el MAESTRO (articulos_maestro + articulo_equivalencias) con el catálogo de proveedores.
 -- Cada código completo del catálogo que no esté en el maestro se agrega como artículo propio (como hace Compras),
--- con su equivalencia al proveedor (el más barato si el código está en varios). No toca ni borra nada existente.
+-- y cada proveedor que lo vende queda como equivalencia (un mismo código puede comprarse a más de un proveedor:
+-- si el más barato no lo tiene, el otro sigue disponible). No toca ni borra nada existente.
+
+-- Un código ahora puede tener una equivalencia por proveedor (antes era una sola por código).
+drop index if exists uq_equivalencias_codigo_prov;
+create unique index if not exists uq_equivalencias_codigo_prov on articulo_equivalencias (codigo_proveedor, proveedor) where lista_nombre is null;
 create or replace function sincronizar_maestro(p_codigos text[] default null)
 returns jsonb
 language plpgsql
@@ -26,15 +31,14 @@ begin
   )
   select count(*) into v_art from ins;
 
-  -- 2) equivalencias: una por código de proveedor que todavía no tenga (la más barata)
+  -- 2) equivalencias: una por (proveedor, código) que todavía no la tenga
   with cand as (
-    select distinct on (upper(c.codigo))
-           c.id as catalogo_id, c.proveedor, upper(c.codigo) as codigo, c.descripcion, c.costo_neto
+    select c.id as catalogo_id, c.proveedor, upper(c.codigo) as codigo, c.descripcion, c.costo_neto
     from catalogo c
     where c.lista_nombre is null and c.codigo is not null and trim(c.codigo) <> ''
       and (p_codigos is null or upper(c.codigo) = any (select upper(x) from unnest(p_codigos) x))
-      and not exists (select 1 from articulo_equivalencias e where upper(e.codigo_proveedor) = upper(c.codigo) and e.lista_nombre is null)
-    order by upper(c.codigo), c.costo_neto asc nulls last
+      and not exists (select 1 from articulo_equivalencias e
+                      where upper(e.codigo_proveedor) = upper(c.codigo) and e.proveedor = c.proveedor and e.lista_nombre is null)
   ), ins as (
     insert into articulo_equivalencias (articulo_id, proveedor, codigo_proveedor, descripcion_proveedor, costo_neto, lista_nombre, catalogo_id)
     select m.id, cand.proveedor, cand.codigo, cand.descripcion, cand.costo_neto, null, cand.catalogo_id
