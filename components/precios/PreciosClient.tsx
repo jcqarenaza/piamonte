@@ -34,6 +34,14 @@ interface Tarjeta {
 const PROV_COLOR: Record<string, string> = { GAMMA: '#166534', MALATESTA: '#1e40af', SEKURIT: '#5b21b6' }
 // 4ª letra del código = origen / marca del vidrio
 const ORIGEN: Record<string, string> = { P: 'Pilkington', M: 'Euroglas', X: 'Xinyi', I: 'Importado', F: 'Fanavid', U: 'Importado', E: 'Euroglas', C: 'China', R: 'Reposición', S: 'Sekurit' }
+// Origen de un código: 6 dígitos + 4 letras → la 4ª letra; códigos de Gamma de 5 letras → terminan en ORI (originales) o XYG
+function origenDe(codigo: string): string | null {
+  const c = (codigo || '').toUpperCase()
+  if (/^[0-9]{6}[A-Z]{4}$/.test(c)) return ORIGEN[c[9]] ?? null
+  if (/^[0-9]{6}[A-Z]{2,4}ORI$/.test(c)) return 'Original'
+  if (/^[0-9]{6}[A-Z]{2,4}XYG$/.test(c)) return 'XYG'
+  return null
+}
 const TIPO_ORDER = ['Particular', 'Chapista']
 const TIPO_ICON: Record<string, string> = { Particular: '👤', Chapista: '🔧' }
 const IVA_RATE = 0.21
@@ -294,7 +302,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                   {t.filas.map(f => {
                     const costo = Number(f.costo_neto) || 0
                     const stock = Number(f.stock_cant) || 0
-                    const origen = /^[0-9]{6}[A-Z]{4}$/i.test(f.codigo) ? ORIGEN[f.codigo[9].toUpperCase()] : null
+                    const origen = origenDe(f.codigo)
                     const isBest = costo > 0 && costo === t.bestCosto
                     const tipoRef = tiposVisibles[0]
                     const pRef = tipoRef && costo > 0 ? calcPrecios(costo, tipoRef.margen_pct, configPrecios) : null
