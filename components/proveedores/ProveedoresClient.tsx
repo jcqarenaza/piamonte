@@ -543,7 +543,7 @@ export default function ProveedoresClient() {
     <div>
       {/* Tabs principales */}
       <div className="flex border-b border-p-line mb-6">
-        {([['costos','💲 Actualizar costos'],['importar','📥 Otros formatos y descuentos'],['precios','💰 Precios por proveedor']] as const).map(([v,l])=>(
+        {([['costos','💲 Actualizar costos'],['precios','💰 Precios por proveedor']] as const).map(([v,l])=>(
           <button key={v} onClick={()=>setMainTab(v)}
             style={{padding:'8px 24px',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'none',
               borderBottom:mainTab===v?'3px solid #00A550':'3px solid transparent',
