@@ -477,7 +477,7 @@ export default function ComprasClient() {
         if (!articuloId && codigo) {
           // 1) Equivalencia exacta por código de proveedor
           const { data: eq } = await supabase.from('articulo_equivalencias')
-            .select('articulo_id').eq('codigo_proveedor', codigo).maybeSingle()
+            .select('articulo_id').eq('codigo_proveedor', codigo).limit(1).maybeSingle()
           articuloId = eq?.articulo_id || null
 
           // 2) Código de referencia Pilkington exacto en el maestro
@@ -525,7 +525,7 @@ export default function ComprasClient() {
                   descripcion_proveedor: descEquivalente || it.d || null,
                   costo_neto: costoUnit,
                   lista_nombre: null,
-                }, { onConflict: 'codigo_proveedor', ignoreDuplicates: false })
+                }, { onConflict: 'articulo_id,proveedor,codigo_proveedor', ignoreDuplicates: false })
                 articuloId = nuevoArt.id
               }
             }

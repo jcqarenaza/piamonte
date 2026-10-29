@@ -27,7 +27,7 @@ interface Fila {
 }
 interface Tarjeta {
   key: string; familias: string[]; base6: string; descripcion: string; pos: string | null; manual: boolean
-  filas: Fila[]; stock: number; bestCosto: number
+  filas: Fila[]; stock: number; bestCosto: number; baratoSinDisp: number
   variantes: { familia: string; codigo: string; descripcion: string; costo: number | null; stock: number; provs: string[] }[]
 }
 
@@ -79,7 +79,11 @@ function armarTarjetas(filas: Fila[]): Tarjeta[] {
     const desc = oficial || (conStock ?? unicas.find(f => f.proveedor === 'GAMMA') ?? unicas[0]).descripcion
     const familias = Array.from(new Set(unicas.map(f => f.familia)))
     const base6 = unicas[0].base6
-    const costos = unicas.map(f => Number(f.costo_neto)).filter(c => c > 0)
+    const costosTodos = unicas.map(f => Number(f.costo_neto)).filter(c => c > 0)
+    // El mejor costo cuenta solo lo que está disponible (si el más barato no lo tiene, no sirve para cotizar)
+    const costosDisp = unicas.filter(f => f.disponible !== false).map(f => Number(f.costo_neto)).filter(c => c > 0)
+    const costos = costosDisp.length ? costosDisp : costosTodos
+    const minTodos = costosTodos.length ? Math.min(...costosTodos) : 0
     // variantes del mismo modelo que NO están en esta tarjeta
     const varMap = new Map<string, Tarjeta['variantes'][0]>()
     for (const v of variantes) {
@@ -95,6 +99,7 @@ function armarTarjetas(filas: Fila[]): Tarjeta[] {
       key, familias, base6, descripcion: desc, pos: unicas[0].pos, manual: !!unicas[0].grupo_id,
       filas: unicas, stock: unicas.reduce((a, f) => a + (Number(f.stock_cant) || 0), 0),
       bestCosto: costos.length ? Math.min(...costos) : 0,
+      baratoSinDisp: costosDisp.length && minTodos > 0 && minTodos < Math.min(...costosDisp) ? minTodos : 0,
       variantes: [...varMap.values()].sort((a, b) => b.stock - a.stock || (a.costo ?? 9e12) - (b.costo ?? 9e12)),
     })
   }
@@ -322,7 +327,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                   </div>
                   <p className="text-xs text-p-ink2 mt-0.5">
                     {t.pos || '—'} · {t.filas.length} {t.filas.length === 1 ? 'código' : 'códigos'} en {new Set(t.filas.map(f => f.proveedor)).size} proveedor(es)
-                    {esGerencial && t.bestCosto > 0 && <> · <span className="text-p-green font-semibold">mejor costo {moneyARS(t.bestCosto)}</span></>}
+                    {esGerencial && t.bestCosto > 0 && <> · <span className="text-p-green font-semibold">mejor costo {moneyARS(t.bestCosto)}</span>{t.baratoSinDisp > 0 && <span className="text-red-600"> · más barato {moneyARS(t.baratoSinDisp)} pero sin disponibilidad</span>}</>}
                   </p>
                   {aseg && (() => {
                     const total = Number(aseg.row.total_siva) || 0
@@ -346,7 +351,7 @@ export default function PreciosClient({ rol = 'ventas' }: { rol?: string }) {
                     const costo = Number(f.costo_neto) || 0
                     const stock = Number(f.stock_cant) || 0
                     const origen = origenDe(f.codigo)
-                    const isBest = costo > 0 && costo === t.bestCosto
+                    const isBest = costo > 0 && costo === t.bestCosto && f.disponible !== false
                     const tipoRef = tiposVisibles[0]
                     const pRef = tipoRef && costo > 0 ? calcPrecios(costo, tipoRef.margen_pct, configPrecios) : null
                     const inst = conInstalacion ? precioInstalacion : 0
