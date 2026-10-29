@@ -75,6 +75,39 @@ export default function InformesClient() {
   interface GastoRow { id:string; fecha:string; categoria:string; descripcion:string; monto:number; forma_pago:string|null }
   interface CompraRow { id:string; fecha:string; proveedor_nombre:string; total:number; neto:number; tipo:string }
   const [gastos, setGastos] = useState<GastoRow[]>([])
+  // Plata en la calle: saldos de cuenta corriente de clientes y aseguradoras (foto de hoy)
+  interface Calle { clientes:number; nClientes:number; aseg:number; nAseg:number; top:{nombre:string; saldo:number; dias:number; esAseg:boolean}[] }
+  const [calle, setCalle] = useState<Calle|null>(null)
+  useEffect(() => {
+    if (tab !== 'resultado') return
+    Promise.all([
+      supabase.from('cuenta_corriente').select('cliente_id,cliente_nombre,fecha,debe,haber').limit(10000),
+      supabase.from('cuenta_corriente_aseguradoras').select('aseguradora_id,fecha,debe,haber').limit(10000),
+      supabase.from('aseguradoras').select('id,nombre'),
+    ]).then(([cc, ca, as]) => {
+      const hoy = Date.now()
+      const dias = (f:string) => Math.max(0, Math.round((hoy - new Date(f).getTime()) / 86400000))
+      const agg = (rows:any[], key:string, nombre:(r:any)=>string, esAseg:boolean) => {
+        const m = new Map<string,{nombre:string; saldo:number; viejo:string}>()
+        for (const r of rows) {
+          const k = r[key]; if (!k) continue
+          const e = m.get(k) ?? { nombre: nombre(r), saldo: 0, viejo: r.fecha }
+          e.saldo += (+r.debe) - (+r.haber)
+          if ((+r.debe) > 0 && r.fecha < e.viejo) e.viejo = r.fecha
+          m.set(k, e)
+        }
+        return [...m.values()].filter(e => e.saldo >= 1).map(e => ({ nombre:e.nombre, saldo:e.saldo, dias:dias(e.viejo), esAseg }))
+      }
+      const nomAseg = new Map((as.data ?? []).map((a:any) => [a.id, a.nombre]))
+      const cl = agg(cc.data ?? [], 'cliente_id', r => r.cliente_nombre, false)
+      const ag = agg(ca.data ?? [], 'aseguradora_id', r => nomAseg.get(r.aseguradora_id) ?? '', true)
+      setCalle({
+        clientes: cl.reduce((a,e)=>a+e.saldo,0), nClientes: cl.length,
+        aseg: ag.reduce((a,e)=>a+e.saldo,0), nAseg: ag.length,
+        top: [...cl, ...ag].sort((a,b)=>b.saldo-a.saldo).slice(0,6),
+      })
+    })
+  }, [tab, supabase])
   const [compras, setCompras] = useState<CompraRow[]>([])
   const [resLoading, setResLoading] = useState(false)
   const [drillCat, setDrillCat] = useState<string|null>(null)
@@ -793,7 +826,47 @@ export default function InformesClient() {
                     </div>
                   </div>
 
-                  {/* ── Bloque 3: Costo operativo ── */}
+                  {/* ── Bloque 3: Plata en la calle (foto de hoy) ── */}
+                  {calle && (
+                    <div className="bg-white border border-p-line rounded-2xl p-4">
+                      <div className="flex justify-between items-start flex-wrap gap-2 mb-1">
+                        <div>
+                          <p id="inf-calle" className="font-saira font-bold text-sm text-p-ink">3 · Plata en la calle</p>
+                          <p className="text-[11px] text-p-ink2">Lo que te deben hoy en cuenta corriente (foto actual, no depende del período elegido).</p>
+                        </div>
+                        <button onClick={()=>router.push('/cuenta-corriente')} className="text-xs text-p-green font-semibold hover:underline">Ir a Cuenta Corriente →</button>
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-4 mt-3">
+                        <div>
+                          <Fila l="Clientes" v={calle.clientes} sub={`${calle.nClientes} con saldo`} onClick={()=>router.push('/cuenta-corriente')}/>
+                          <Fila l="Aseguradoras" v={calle.aseg} sub={`${calle.nAseg} con saldo`} onClick={()=>router.push('/cuenta-corriente')}/>
+                          <Fila l="Total en la calle" v={calle.clientes + calle.aseg} bold/>
+                          {resultado > 0 && (
+                            <p className="text-xs mt-2 text-p-ink2">
+                              El resultado operativo del período es {moneyARS(resultado)}; en la calle hay {moneyARS(calle.clientes + calle.aseg)}
+                              {calle.clientes + calle.aseg > resultado ? ' — más que la ganancia: la plata está en cobranzas pendientes.' : '.'}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-p-ink2 mb-1">Los que más deben</p>
+                          <div className="flex flex-col gap-1">
+                            {calle.top.map((d,i) => (
+                              <div key={i} className="flex justify-between items-center py-1 border-b border-p-line last:border-0">
+                                <div>
+                                  <p className="text-xs text-p-ink truncate max-w-[220px]">{d.esAseg ? '🏢 ' : '👤 '}{d.nombre}</p>
+                                  <p className="text-[10px] text-p-ink2">cargo más viejo: hace {d.dias} días</p>
+                                </div>
+                                <span className={`font-mono text-xs font-semibold ${d.dias>60?'text-red-600':d.dias>30?'text-amber-600':'text-p-ink'}`}>{moneyARS(d.saldo)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Bloque 4: Costo operativo ── */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <KpiCard label="Costo operativo por operación" value={moneyARS(costoPorOp)} sub="gastos ÷ ventas"/>
                     <KpiCard label="Punto de equilibrio (ventas netas)" value={moneyARS(puntoEq)} sub={`con ${Math.round(margenPct*100)}% de margen`}/>
