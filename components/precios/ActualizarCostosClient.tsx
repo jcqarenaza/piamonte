@@ -62,8 +62,9 @@ export default function ActualizarCostosClient() {
   const [prov, setProv] = useState<(typeof PROVS)[number]>('MALATESTA')
   const [desc, setDesc] = useState('53')
   const [descM, setDescM] = useState('0')   // Euroglass (códigos …M) NO lleva descuento en Malatesta: costo = lista. Vacío = usar el descuento general
-  const [flete, setFlete] = useState('0')   // Malatesta: costo = lista × 0,47 (sin flete, como está cargado). Gamma: 1,5%
+  const [flete, setFlete] = useState('0')   // se completa con el flete cargado en la ficha del proveedor (Proveedores → Editar)
   const [descDefault, setDescDefault] = useState<Record<string, string>>({})
+  const [fleteDefault, setFleteDefault] = useState<Record<string, string>>({})
   const [file, setFile] = useState<File | null>(null)
   const [diff, setDiff] = useState<Diff | null>(null)
   const [crearNuevos, setCrearNuevos] = useState(false)
@@ -71,19 +72,33 @@ export default function ActualizarCostosClient() {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [ver, setVer] = useState<'suben' | 'bajan' | 'nuevos' | 'raros'>('raros')
 
+  // Descuento y flete salen de la ficha del proveedor (proveedores_compra); si no está, de la lista de precios.
   useEffect(() => {
-    supabase.from('listas_precio').select('proveedor,desc_pct,tipo').eq('tipo', 'catalogo').then(({ data }) => {
-      const m: Record<string, string> = {}
-      for (const l of data ?? []) m[(l as any).proveedor] = String(Math.round(Number((l as any).desc_pct) * 10000) / 100)
-      setDescDefault(m)
-      if (m.MALATESTA) setDesc(m.MALATESTA)
-    })
+    (async () => {
+      const dm: Record<string, string> = {}, fm: Record<string, string> = {}
+      const { data: lp } = await supabase.from('listas_precio').select('proveedor,desc_pct,flete_pct,tipo').eq('tipo', 'catalogo')
+      for (const l of lp ?? []) {
+        dm[(l as any).proveedor] = String(Math.round(Number((l as any).desc_pct) * 10000) / 100)
+        fm[(l as any).proveedor] = String(Math.round(Number((l as any).flete_pct) * 10000) / 100)
+      }
+      const { data: pc } = await supabase.from('proveedores_compra').select('nombre,descuento_pct,flete_pct')
+      for (const r of pc ?? []) {
+        const n = String((r as any).nombre ?? '').toUpperCase()
+        const k = PROVS.find(p => n.includes(p))
+        if (!k) continue
+        if ((r as any).descuento_pct != null) dm[k] = String(Number((r as any).descuento_pct))
+        if ((r as any).flete_pct != null) fm[k] = String(Math.round(Number((r as any).flete_pct) * 10000) / 100)   // flete se guarda como fracción (0,01 = 1%)
+      }
+      setDescDefault(dm); setFleteDefault(fm)
+      if (dm.MALATESTA) setDesc(dm.MALATESTA)
+      if (fm.MALATESTA != null) setFlete(fm.MALATESTA)
+    })()
   }, [supabase])
 
   function cambiarProv(p: (typeof PROVS)[number]) {
     setProv(p); setDiff(null); setMsg(null); setDescM('0')
     if (descDefault[p]) setDesc(descDefault[p])
-    setFlete(p === 'GAMMA' ? '1.5' : '0')
+    setFlete(fleteDefault[p] ?? '0')
   }
 
   async function analizar() {
@@ -125,7 +140,8 @@ export default function ActualizarCostosClient() {
       actual.forEach((_, k) => { if (!enArchivo.has(k)) noVienen++ })
       suben.sort((a, b) => b.pct - a.pct); bajan.sort((a, b) => a.pct - b.pct)
       setDiff({ iguales, suben, bajan, nuevos, noVienen, total: items.length, aEnviar })
-      setVer(suben.length + bajan.length ? 'raros' : 'nuevos')
+      const hayRaros = [...suben, ...bajan].some(c => Math.abs(c.pct) > 0.4)
+      setVer(hayRaros ? 'raros' : suben.length ? 'suben' : bajan.length ? 'bajan' : 'nuevos')
     } catch (e: any) {
       setMsg({ ok: false, t: e.message ?? String(e) })
     }
@@ -184,7 +200,7 @@ export default function ActualizarCostosClient() {
           <input value={descM} onChange={e => { setDescM(e.target.value); setDiff(null) }} placeholder="igual" className="border border-p-line rounded px-2 py-1 text-sm w-24" />
         </div>}
         <div>
-          <div className="text-[11px] text-p-ink2 mb-1">Flete (%)</div>
+          <div className="text-[11px] text-p-ink2 mb-1">Flete (%) <span className="text-p-gray">· de la ficha del proveedor</span></div>
           <input value={flete} onChange={e => { setFlete(e.target.value); setDiff(null) }} className="border border-p-line rounded px-2 py-1 text-sm w-16" />
         </div>
         <div>
@@ -193,7 +209,7 @@ export default function ActualizarCostosClient() {
         </div>
         <button onClick={analizar} disabled={!file || !!busy} className="px-4 py-1.5 rounded text-white text-sm font-bold" style={{ background: !file || busy ? '#9ca3af' : '#1e40af', cursor: !file || busy ? 'default' : 'pointer' }}>🔍 Ver qué cambia</button>
       </div>
-      <p className="text-[11px] text-p-gray mb-3">Malatesta: 53% de descuento (Pilkington e importados) y 0% en Euroglass (códigos terminados en M), sin flete. Gamma: 48% + 1,5% de flete sobre la hoja GENERAL; las hojas XYG y ORIGINALES ya vienen netas (solo suman flete). Herramientas, pegamentos y films no se importan.</p>
+      <p className="text-[11px] text-p-gray mb-3">Descuento y flete se cargan solos desde la ficha del proveedor (Proveedores → Editar); podés cambiarlos acá para esta carga. Malatesta: descuento sobre la lista (Pilkington e importados) y 0% en Euroglass (códigos terminados en M). Gamma: descuento + flete sobre la hoja GENERAL; las hojas XYG y ORIGINALES ya vienen netas (solo suman flete). Herramientas, pegamentos y films no se importan.</p>
 
       {busy && <p className="text-sm text-p-ink2 mb-3">⏳ {busy}</p>}
       {msg && <p className="text-sm mb-3 px-3 py-2 rounded" style={{ background: msg.ok ? '#dcfce7' : '#fee2e2', color: msg.ok ? '#166534' : '#991b1b' }}>{msg.t}</p>}
