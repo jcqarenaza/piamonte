@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { KpiCard } from '@/components/ui'
+import ComprasPorProveedor from './ComprasPorProveedor'
 import { moneyARS } from '@/lib/utils/format'
 
 interface Venta {
@@ -46,7 +47,7 @@ export default function InformesClient() {
   const router = useRouter()
   const irA = (id: string) => { setTab('resultado'); setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior:'smooth', block:'start' }), 80) }
   const irCaja = (fecha: string, t: 'ventas'|'gastos' = 'ventas') => router.push(`/caja?fecha=${fecha}&tab=${t}`)
-  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'>('general')
+  const [tab, setTab] = useState<'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'|'compras'>('general')
   const supabase = createClient()
   const [oficialRate, setOficialRate] = useState<number|null>(null)
   const [topPiezasCod, setTopPiezasCod] = useState<{descripcion:string;veces:number;total:number;ganancia:number}[]>([])
@@ -58,6 +59,7 @@ export default function InformesClient() {
   // Tab Colaboradores
   interface ColabRow { colaborador_id:string|null; nombre:string; cantidad:number; total:number; externos:number }
   const [colabData, setColabData] = useState<ColabRow[]>([])
+  const [costoColoc, setCostoColoc] = useState(0)   // costo de la ficha de stock COLOC0001 (colocación)
   const [colabLoading, setColabLoading] = useState(false)
 
   // Tab Reclamos
@@ -333,6 +335,8 @@ export default function InformesClient() {
     if(tab !== 'colaboradores') return
     setColabLoading(true)
     const p = periodos[pIdx]
+    supabase.from('stock').select('costo').eq('codigo','COLOC0001').maybeSingle()
+      .then(({data})=>setCostoColoc(Number((data as any)?.costo)||0))
     supabase.from('ordenes_servicio')
       .select('colaborador_id, total, stock_via_remito, colaboradores(nombre)')
       .eq('cristal_colocado', true)
@@ -505,7 +509,7 @@ export default function InformesClient() {
     setReclamos(data??[])
   }
 
-  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas', label:string) => (
+  const tabBtn = (t:'general'|'rentabilidad'|'aseguradoras'|'resultado'|'colaboradores'|'reclamos'|'cobranzas'|'compras', label:string) => (
     <button onClick={()=>setTab(t)}
       style={{background:tab===t?'#00A550':'#fff', color:tab===t?'#fff':'#4A6655',
         border:`1.5px solid ${tab===t?'#00A550':'#C2DDD0'}`,
@@ -575,6 +579,7 @@ export default function InformesClient() {
             {tabBtn('colaboradores','👷 Por colaborador')}
             {tabBtn('reclamos','⚠ Reclamos')}
             {tabBtn('cobranzas','💰 Cobranzas')}
+            {tabBtn('compras','🛒 Compras por proveedor')}
           </div>
 
           {tab === 'general' && (
@@ -1179,6 +1184,8 @@ export default function InformesClient() {
           )}
 
           {/* TAB COBRANZAS: facturado por mes vs pendiente de cobrar */}
+          {tab === 'compras' && <ComprasPorProveedor />}
+
           {tab === 'cobranzas' && (
             <div className="flex flex-col gap-4">
               <p className="text-xs text-p-ink2">Últimos 12 meses calendario · Facturado = facturas − NC · Pendiente = facturas sin cobro total (mostrador + liquidaciones de aseguradoras)</p>
@@ -1258,7 +1265,7 @@ export default function InformesClient() {
             <div className="flex flex-col gap-4">
               {colabLoading ? <p className="text-center text-p-ink2 py-8">Cargando…</p> : colabData.length === 0 ? (
                 <p className="text-center text-p-ink2 py-8">Sin OS colocadas en este período.</p>
-              ) : (
+              ) : (<>
                 <div className="overflow-x-auto rounded-2xl border border-p-line shadow-sm">
                   <table className="w-full text-sm">
                     <thead className="bg-p-light text-p-ink2 text-xs uppercase tracking-wider">
@@ -1266,6 +1273,7 @@ export default function InformesClient() {
                         <th className="px-4 py-3 text-left">Colaborador</th>
                         <th className="px-4 py-3 text-right">OS colocadas</th>
                         <th className="px-4 py-3 text-right">Vía remito</th>
+                        <th className="px-4 py-3 text-right">Colocación (costo)</th>
                         <th className="px-4 py-3 text-right">Total ARS</th>
                         <th className="px-4 py-3 text-right">Total USD</th>
                       </tr>
@@ -1276,6 +1284,7 @@ export default function InformesClient() {
                           <td className="px-4 py-3 font-semibold text-p-ink">{r.nombre}</td>
                           <td className="px-4 py-3 text-right font-mono">{r.cantidad}</td>
                           <td className="px-4 py-3 text-right font-mono text-p-ink2">{r.externos}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-p-dark">{costoColoc ? moneyARS(r.cantidad*costoColoc) : '—'}</td>
                           <td className="px-4 py-3 text-right font-mono font-bold text-p-dark">{moneyARS(r.total)}</td>
                           <td className="px-4 py-3 text-right font-mono text-p-ink2">
                             {oficialRate ? `US$ ${Math.round(r.total/oficialRate).toLocaleString('es-AR')}` : '—'}
@@ -1288,6 +1297,7 @@ export default function InformesClient() {
                         <td className="px-4 py-3">TOTAL</td>
                         <td className="px-4 py-3 text-right font-mono">{colabData.reduce((a,r)=>a+r.cantidad,0)}</td>
                         <td className="px-4 py-3 text-right font-mono">{colabData.reduce((a,r)=>a+r.externos,0)}</td>
+                        <td className="px-4 py-3 text-right font-mono">{costoColoc ? moneyARS(colabData.reduce((a,r)=>a+r.cantidad,0)*costoColoc) : '—'}</td>
                         <td className="px-4 py-3 text-right font-mono">{moneyARS(colabData.reduce((a,r)=>a+r.total,0))}</td>
                         <td className="px-4 py-3 text-right font-mono">
                           {oficialRate ? `US$ ${Math.round(colabData.reduce((a,r)=>a+r.total,0)/oficialRate).toLocaleString('es-AR')}` : '—'}
@@ -1296,7 +1306,8 @@ export default function InformesClient() {
                     </tfoot>
                   </table>
                 </div>
-              )}
+                <p className="text-[11px] text-p-gray">Colocación (costo) = OS colocadas × costo actual de la ficha de stock COLOC0001{costoColoc ? ` (${moneyARS(costoColoc)} por colocación)` : ' — no se encontró esa ficha'}.</p>
+              </>)}
             </div>
           )}
 
